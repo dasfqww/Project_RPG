@@ -1,0 +1,366 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "GameplayTagContainer.h"
+#include "ScalableFloat.h"
+#include "Type/RPGEnumTypes.h"
+#include "RPGStructTypes.generated.h"
+
+class URPGPlayerLinkedAnimLayer;
+class URPGGameplayAbility;
+class UInputMappingContext;
+class URPGItemBase;
+class UNiagaraSystem;
+class UAnimMontage;
+class URPGSkillAction;
+
+/**
+ * 유저의 개별 스킬 성장 데이터
+ */
+USTRUCT(BlueprintType)
+struct FRPGSkillSaveData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	int32 SkillLevel = 1;
+
+	// 선택된 트라이포드 인덱스 배열 (인덱스 0: 1티어, 1: 2티어, 2: 3티어 / -1은 선택 안됨)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TArray<int32> SelectedTripodIndices = { -1, -1, -1 };
+};
+
+USTRUCT(BlueprintType)
+struct FRPGPlayerAbilitySet
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Categories = "InputTag"))
+		FGameplayTag InputTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+		TSubclassOf<URPGGameplayAbility> AbilityToGrant;
+
+	bool IsValid() const;
+};
+
+USTRUCT(BlueprintType)
+struct FRPGPlayerSkillSet:public FRPGPlayerAbilitySet
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TSoftObjectPtr<UMaterialInterface> SoftAbilityIconMaterial;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Categories = "Player.Cooldown"))
+	FGameplayTag AbilityCooldownTag;
+};
+
+USTRUCT(BlueprintType)
+struct FSingleSectionData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, Category = "Skill")
+	TObjectPtr<UAnimMontage> MontageToPlay;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Skill", meta = (AllowPrivateAccess = "true"))
+	FName SectionNameToPlay;//for instant
+
+	/*UPROPERTY(EditDefaultsOnly, Category = "Skill", meta = (AllowPrivateAccess = "true"))
+	ERPGAttackType AttackType;*/
+};
+
+
+
+/** 
+ * 트라이포드가 주는 수치적 변화 (기존 RPGSkillConfig 설계 계승)
+ */
+USTRUCT(BlueprintType)
+struct FRPGSkillModifier
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (Categories = "Shared.Stat"))
+	FGameplayTag StatTag; 
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	float ScalarValue = 1.0f;
+};
+
+/** 
+ * 로스트아크식 트라이포드 선택지 (통합본)
+ */
+USTRUCT(BlueprintType)
+struct FRPGSkillTripodOption
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "General")
+	FText OptionName;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "General")
+	FText Description;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "General")
+	TSoftObjectPtr<UTexture2D> OptionIcon;
+
+	/** 1. 수치 변조: 데미지, 쿨감 등 (기존 기능) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic")
+	TArray<FRPGSkillModifier> StatModifiers;
+
+	/** 2. 로직 분기 태그 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic")
+	FGameplayTag TripodTag;
+
+	/** 3. 로직 자체 교체: 차징->즉발 등 (새 기능) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic")
+	TSubclassOf<URPGSkillAction> OverrideActionClass;
+
+	/** 4. 비주얼 오버라이드 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	TObjectPtr<UAnimMontage> OverrideMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	TObjectPtr<UNiagaraSystem> OverrideVFX;
+};
+
+USTRUCT(BlueprintType)
+struct FMultipleSectionData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, Category = "Skill")
+	TObjectPtr<UAnimMontage> MontageToPlay;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Skill", meta = (AllowPrivateAccess = "true"))
+	TMap<int,FName> SectionNamesToPlay;//for Combo&Casting&Charge
+
+	/*UPROPERTY(EditDefaultsOnly, Category = "Skill", meta = (AllowPrivateAccess = "true"))
+	ERPGAttackType AttackType;*/
+};
+
+USTRUCT(BlueprintType)
+struct FChargeLevelNiagaraOptionData
+{
+	GENERATED_BODY()
+
+	// ���� �ܰ迡 �ش��ϴ� ����
+	UPROPERTY(EditDefaultsOnly, Category = "Charge Effect")
+	bool bAddDetail;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Charge Effect")
+	bool bSimple;
+};
+
+USTRUCT(BlueprintType)
+struct FRPGPlayerWeaponData
+{
+	GENERATED_BODY()
+
+		UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+		TSubclassOf<URPGPlayerLinkedAnimLayer> WeaponAnimLayerToLink;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+		TObjectPtr<UInputMappingContext> WeaponInputMappingContext;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (TitleProperty = "InputTag"))
+		TArray<FRPGPlayerAbilitySet> DefaultWeaponAbilities;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (TitleProperty = "InputTag"))
+		TArray<FRPGPlayerSkillSet> SpecialWeaponAbilities;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+		FScalableFloat WeaponBaseDamage;
+};
+
+USTRUCT()
+struct FContentData
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FString Name;
+
+	UPROPERTY()
+	FString Description;
+
+	UPROPERTY()
+	TArray<FString> RewardItems;  // ������ �̸� ����Ʈ (������ ó��)
+
+	
+	
+};
+
+USTRUCT(BlueprintType)
+struct FDropItem
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Drop Item")
+	TSubclassOf<class ARPGPickUpBase> ItemClass;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Drop Item")
+	int32 DropQuantity;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Drop Item")
+	float DropChance;
+};
+
+USTRUCT(BlueprintType)
+struct FRewardItem
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Drop Item")
+	FName ItemRowName;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Drop Item")
+	int32 DropQuantity;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Drop Item")
+	float DropChance;
+};
+
+USTRUCT(BlueprintType)
+struct FSlotAvailability
+{
+	GENERATED_BODY()
+
+	FSlotAvailability() {}
+	FSlotAvailability(int32 ItemIndex, int32 Space, bool bHasItem) :
+		Index(ItemIndex), AmountToFill(Space), bItemAtIndex(bHasItem) {}
+
+	int32 Index = INDEX_NONE;
+	int32 AmountToFill = 0;
+	bool bItemAtIndex = false;
+
+};
+
+USTRUCT(BlueprintType)
+struct FSlotAvailabilityResult
+{
+	GENERATED_BODY()
+
+	FSlotAvailabilityResult() {}
+
+	TWeakObjectPtr<URPGItemBase> Item;
+
+	int32 TotalSpaceToFill = 0;
+	int32 Remainder = 0;
+
+	bool bStackable = false;
+	TArray<FSlotAvailability> SlotAvailabilities;
+};
+
+USTRUCT(BlueprintType)
+struct FTileParameters
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Inventory")
+	FIntPoint TileCoords{};
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Inventory")
+	int32 TileIndex{ INDEX_NONE };
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Inventory")
+	ETileQuadrant TileQuadrant = ETileQuadrant::None;
+};
+
+inline bool operator==(const FTileParameters& A, const FTileParameters& B)
+{
+	return A.TileCoords == B.TileCoords &&
+		A.TileIndex == B.TileIndex && A.TileQuadrant == B.TileQuadrant;
+}
+
+USTRUCT()
+struct FSpaceQueryResult
+{
+	GENERATED_BODY()
+
+	// True if the space queried has no items in it
+	bool bHasSpace{ false };
+
+	// Valid if there's a single item we can swap with
+	TWeakObjectPtr<URPGItemBase> ValidItem = nullptr;
+
+	// Upper left index of the valid item, if there is one
+	int32 UpperLeftIndex = INDEX_NONE;
+};
+
+USTRUCT(BlueprintType)
+struct FItemSaveData
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FName ItemID;
+
+	UPROPERTY()
+	int32 Quantity;
+
+	UPROPERTY()
+	int32 SlotIndex;
+
+	UPROPERTY()
+	FString Category;
+};
+
+
+USTRUCT()
+struct FGraphicSaveData
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FString Resolution;
+
+	UPROPERTY()
+	FString WindowMode;
+
+	UPROPERTY()
+	bool bVSync;
+};
+
+
+USTRUCT(BlueprintType)
+struct FSoundSaveData
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	float MasterVolume = 1.0f;
+
+	UPROPERTY()
+	bool bMasterMuted;
+
+	UPROPERTY()
+	TMap<FString, float> Volumes;
+
+	UPROPERTY()
+	TMap<FString, bool> Mutes;
+};
+
+/** 직업별 아이덴티티 설정 데이터 */
+USTRUCT(BlueprintType)
+struct FRPGPlayerIdentityData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	ERPGIdentityType IdentityType = ERPGIdentityType::Cost;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TSubclassOf<URPGGameplayAbility> IdentityAbility;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	FLinearColor GaugeColor = FLinearColor::White;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TSoftObjectPtr<UTexture2D> IdentityIcon;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TSoftObjectPtr<UMaterialInterface> IdentityGaugeMaterial;
+};

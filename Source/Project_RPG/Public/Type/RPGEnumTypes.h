@@ -1,0 +1,126 @@
+#pragma once
+
+UENUM()
+enum class ERPGConfirmType : uint8
+{
+	Yes,
+	No
+};
+
+UENUM()
+enum class ERPGValidType : uint8
+{
+	Valid,
+	Invalid
+};
+
+UENUM()
+enum class ERPGSuccessType : uint8
+{
+	Successful,
+	Failed
+};
+
+UENUM()
+enum class ERPGCountDownActionInput :uint8
+{
+	Start,
+	Cancel
+};
+
+UENUM()
+enum class ERPGCountDownActionOutput :uint8
+{
+	Updated,
+	Completed,
+	Canceled
+};
+
+//UENUM(BlueprintType)
+//enum class ERPGSkillCastType : uint8
+//{
+//	Instant UMETA(DisplayName = "Instant Skill"), // ��� ���� ��ų),
+//	Combo UMETA(DisplayName = "Combo Skill"),
+//	Holding UMETA(DisplayName = "Holding Skill"),
+//	Casting UMETA(DisplayName = "Casting Skill"),
+//	Charge UMETA(DisplayName = "Charge Skill")	
+//};
+
+UENUM(BlueprintType)
+enum class ERPGAttackType : uint8
+{
+	Melee UMETA(DisplayName = "Melee Attack"),
+	Projectile UMETA(DisplayName = "Ranged Attack"),
+	AOE UMETA(DisplayName = "AOE Attack")
+};
+
+UENUM(BlueprintType)
+enum class ERPGGameDifficulty : uint8
+{
+	Easy,
+	Normal,
+	Hard,
+	Hell
+};
+
+UENUM(BlueprintType)
+enum class ERPGInputMode : uint8
+{
+	GameOnly,
+	UIOnly
+};
+
+UENUM(BlueprintType)
+enum class ESoundType : uint8
+{
+	BGM     UMETA(DisplayName = "BGM"),
+	Effect  UMETA(DisplayName = "Effect"),
+	Max
+};
+
+UENUM(BlueprintType)
+enum class EAOETraceType : uint8
+{
+	Box     UMETA(DisplayName = "Box"),
+	Sphere  UMETA(DisplayName = "Sphere"),
+	Cone  UMETA(DisplayName = "Cone"),
+	Capsule  UMETA(DisplayName = "Capsule"),
+	Max
+};
+
+UENUM(BlueprintType)
+enum class EItemCategory :uint8
+{
+	Equip  UMETA(DisplayName = "Equip"),
+	Consume UMETA(DisplayName = "Consume"),
+	Craft UMETA(DisplayName = "Craft"),
+	None
+};
+
+UENUM(BlueprintType)
+enum class ETileQuadrant : uint8
+{
+	TopLeft,
+	TopRight,
+	BottomLeft,
+	BottomRight,
+	None
+};
+
+UENUM(BlueprintType)
+enum class EConditionType : uint8
+{
+	TimeElapsed, 
+	MoneyGreaterThan,
+	CoolTime,
+	Max
+};
+
+/** 로스트아크식 직업 아이덴티티 타입 */
+UENUM(BlueprintType)
+enum class ERPGIdentityType : uint8
+{
+	Cost,       /** 게이지를 코스트로 소모하는 형태 (예: 블링크) */
+	Transform,  /** 게이지가 차면 변신하는 형태 (예: 데모닉) */
+	BuffMode    /** 게이지가 차면 강화 모드로 진입하는 형태 (예: 버서커) */
+};

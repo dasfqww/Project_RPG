@@ -1,0 +1,17 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "UI/RPGWidgetBase.h"
+#include "RPGSkillWindow.generated.h"
+
+/**
+ * 
+ */
+UCLASS()
+class PROJECT_RPG_API URPGSkillWindow : public URPGWidgetBase
+{
+	GENERATED_BODY()
+	
+};
