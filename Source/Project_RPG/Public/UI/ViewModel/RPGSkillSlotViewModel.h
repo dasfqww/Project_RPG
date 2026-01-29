@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "MVVMViewModelBase.h"
+#include "Type/RPGStructTypes.h"
+#include "GameplayTagContainer.h"
 #include "RPGSkillSlotViewModel.generated.h"
 
 class URPGSkillDefinition;
@@ -20,6 +22,9 @@ class PROJECT_RPG_API URPGSkillSlotViewModel : public UMVVMViewModelBase
 
 public:
 	void SetSkillDefinition(URPGSkillDefinition* InDefinition);
+	void RefreshFromSaveData(const FRPGSkillSaveData& Data);
+
+	FGameplayTag GetSkillTag() const;
 
 	// UI에서 바인딩할 필드들
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "Settings")

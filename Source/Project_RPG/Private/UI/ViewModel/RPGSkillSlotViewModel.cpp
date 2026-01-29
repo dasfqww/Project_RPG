@@ -21,3 +21,21 @@ void URPGSkillSlotViewModel::SetSkillDefinition(URPGSkillDefinition* InDefinitio
 		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(SkillIcon);
 	}
 }
+
+void URPGSkillSlotViewModel::RefreshFromSaveData(const FRPGSkillSaveData& Data)
+{
+	if (SkillLevel != Data.SkillLevel)
+	{
+		SkillLevel = Data.SkillLevel;
+		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(SkillLevel);
+	}
+}
+
+FGameplayTag URPGSkillSlotViewModel::GetSkillTag() const
+{
+	if (SkillDefinition)
+	{
+		return SkillDefinition->SkillTag;
+	}
+	return FGameplayTag();
+}
