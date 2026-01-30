@@ -2,7 +2,7 @@
 
 
 #include "UI/Skill/RPGSkillListModule.h"
-#include "Components/ListView.h"
+#include "CommonListView.h"
 #include "UI/ViewModel/RPGSkillSlotViewModel.h"
 
 void URPGSkillListModule::NativeConstruct()

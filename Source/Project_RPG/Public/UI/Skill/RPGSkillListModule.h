@@ -6,7 +6,7 @@
 #include "UI/RPGWidgetBase.h"
 #include "RPGSkillListModule.generated.h"
 
-class UListView;
+class UCommonListView;
 class URPGSkillSlotViewModel;
 
 // 스킬 선택 시 알림을 보낼 델리게이트 선언
@@ -41,5 +41,5 @@ protected:
 protected:
 	// UMG의 ListView 위젯과 바인딩 (이름을 일치시켜야 함)
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UListView> SkillListView;
+	TObjectPtr<UCommonListView> SkillListView;
 };
