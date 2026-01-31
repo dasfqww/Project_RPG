@@ -27,6 +27,7 @@ void URPGSkillViewModel::InitializeSkillData(URPGPlayerSkillComponent* InSkillCo
 
 		URPGSkillSlotViewModel* NewSlotVM = NewObject<URPGSkillSlotViewModel>(this);
 		NewSlotVM->SetSkillDefinition(SkillDef);
+		NewSlotVM->SetOwnerComponent(SkillComponent);
 		
 		// 초기 상태 동기화 (레벨 등)
 		FRPGSkillSaveData SaveData = SkillComponent->GetSkillSaveData(SkillDef->SkillTag);
@@ -54,6 +55,40 @@ void URPGSkillViewModel::RequestSkillLevelDown(FGameplayTag SkillTag)
 	if (SkillComponent && SkillComponent->TryLevelDownSkill(SkillTag))
 	{
 		RefreshSkillData();
+	}
+}
+
+void URPGSkillViewModel::RequestSkillLevelMax(FGameplayTag SkillTag)
+{
+	if (SkillComponent)
+	{
+		bool bChanged = false;
+		while (SkillComponent->TryLevelUpSkill(SkillTag))
+		{
+			bChanged = true;
+		}
+
+		if (bChanged)
+		{
+			RefreshSkillData();
+		}
+	}
+}
+
+void URPGSkillViewModel::RequestSkillLevelMin(FGameplayTag SkillTag)
+{
+	if (SkillComponent)
+	{
+		bool bChanged = false;
+		while (SkillComponent->TryLevelDownSkill(SkillTag))
+		{
+			bChanged = true;
+		}
+
+		if (bChanged)
+		{
+			RefreshSkillData();
+		}
 	}
 }
 

@@ -9,6 +9,9 @@
 #include "RPGSkillSlotViewModel.generated.h"
 
 class URPGSkillDefinition;
+class URPGPlayerSkillComponent;
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnNextLevelCostChanged, int32 /*NewCost*/);
 
 /**
  * URPGSkillSlotViewModel
@@ -26,6 +29,8 @@ public:
 
 	FGameplayTag GetSkillTag() const;
 
+	FOnNextLevelCostChanged OnNextLevelCostChanged;
+
 	// UI에서 바인딩할 필드들
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "Settings")
 	UTexture2D* SkillIcon;
@@ -37,9 +42,16 @@ public:
 	int32 SkillLevel = 1;
 
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "Settings")
+	int32 NextLevelCost = 0;
+
+	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "Settings")
 	bool bIsLocked = false;
+
+	void SetOwnerComponent(URPGPlayerSkillComponent* InComp);
 
 private:
 	UPROPERTY()
 	TObjectPtr<URPGSkillDefinition> SkillDefinition;
+
+	TWeakObjectPtr<URPGPlayerSkillComponent> OwnerSkillComponent;
 };

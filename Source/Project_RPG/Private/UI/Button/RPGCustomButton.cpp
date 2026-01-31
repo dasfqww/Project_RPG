@@ -16,8 +16,8 @@ void URPGCustomButton::SynchronizeProperties()
 {
 	Super::SynchronizeProperties();
 
-	//OnPressed.AddDynamic(this, &ThisClass::OnPressedCallback);
-	//OnHovered.AddDynamic(this, &ThisClass::OnHoveredCallback);
+	OnPressed.AddDynamic(this, &ThisClass::OnPressedCallback);
+	OnHovered.AddDynamic(this, &ThisClass::OnHoveredCallback);
 }
 
 void URPGCustomButton::PostLoad()

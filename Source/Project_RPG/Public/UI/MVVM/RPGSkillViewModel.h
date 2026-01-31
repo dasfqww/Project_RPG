@@ -51,6 +51,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RPG|Skill")
 	void RequestSkillLevelDown(FGameplayTag SkillTag);
 
+	UFUNCTION(BlueprintCallable, Category = "RPG|Skill")
+	void RequestSkillLevelMax(FGameplayTag SkillTag);
+
+	UFUNCTION(BlueprintCallable, Category = "RPG|Skill")
+	void RequestSkillLevelMin(FGameplayTag SkillTag);
+
 	// 데이터 갱신 (Model -> ViewModel)
 	void RefreshSkillData();
 

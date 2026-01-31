@@ -3,6 +3,7 @@
 
 #include "UI/ViewModel/RPGSkillSlotViewModel.h"
 #include "Skill/RPGSkillDefinition.h"
+#include "Component/Skill/RPGPlayerSkillComponent.h"
 
 void URPGSkillSlotViewModel::SetSkillDefinition(URPGSkillDefinition* InDefinition)
 {
@@ -22,12 +23,38 @@ void URPGSkillSlotViewModel::SetSkillDefinition(URPGSkillDefinition* InDefinitio
 	}
 }
 
+void URPGSkillSlotViewModel::SetOwnerComponent(URPGPlayerSkillComponent* InComp)
+{
+	OwnerSkillComponent = InComp;
+}
+
 void URPGSkillSlotViewModel::RefreshFromSaveData(const FRPGSkillSaveData& Data)
 {
-	if (SkillLevel != Data.SkillLevel)
+	bool bLevelChanged = (SkillLevel != Data.SkillLevel);
+
+	if (bLevelChanged)
 	{
 		SkillLevel = Data.SkillLevel;
 		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(SkillLevel);
+	}
+
+	// 다음 레벨업 비용 계산
+	if (OwnerSkillComponent.IsValid())
+	{
+		int32 NewCost = OwnerSkillComponent->GetRequiredSPForLevel(SkillLevel + 1);
+		
+		// 만약 최대 레벨이라면 비용을 0으로 표시하거나 숨김 처리
+		if (SkillDefinition && SkillLevel >= SkillDefinition->MaxSkillLevel)
+		{
+			NewCost = 0;
+		}
+
+		if (NextLevelCost != NewCost)
+		{
+			NextLevelCost = NewCost;
+			UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(NextLevelCost);
+			OnNextLevelCostChanged.Broadcast(NextLevelCost);
+		}
 	}
 }
 

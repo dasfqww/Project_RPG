@@ -62,10 +62,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RPG|Skill")
 	void AddTotalSP(int32 Amount) { TotalSP += Amount; }
 
-protected:
 	// 스킬 레벨에 따른 소모 SP 계산 (로아 방식: 고레벨일수록 많이 필요)
+	UFUNCTION(BlueprintPure, Category = "RPG|Skill")
 	int32 GetRequiredSPForLevel(int32 TargetLevel) const;
 
+protected:
+	
 private:
 	// 유저의 스킬 정보 맵 (태그 -> 데이터)
 	UPROPERTY()

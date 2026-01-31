@@ -9,6 +9,8 @@
 
 class URPGSkillViewModel;
 class URPGSkillSlotViewModel;
+class URPGCustomButton;
+class UCommonTextBlock;
 
 /**
  * URPGSkillLevelAdjuster
@@ -25,16 +27,34 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RPG|UI")
 	void InitializeAdjuster(URPGSkillViewModel* InMainVM, URPGSkillSlotViewModel* InSlotVM);
 
-	UFUNCTION(BlueprintCallable, Category = "RPG|UI")
-	void OnIncreaseLevelClicked();
-
-	UFUNCTION(BlueprintCallable, Category = "RPG|UI")
-	void OnDecreaseLevelClicked();
-
 protected:
+	virtual void NativeOnInitialized() override;
+	virtual void NativeDestruct() override;
+
 	UPROPERTY(BlueprintReadOnly, Category = "RPG|Context")
 	TObjectPtr<URPGSkillViewModel> MainViewModel;
 
 	UPROPERTY(BlueprintReadOnly, Category = "RPG|Context")
 	TObjectPtr<URPGSkillSlotViewModel> TargetSlotViewModel;
+
+private:
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UCommonTextBlock> RequireLevelText;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<URPGCustomButton> Btn_IncreaseLevel;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<URPGCustomButton> Btn_DecreaseLevel;
+
+	UFUNCTION()
+	void OnIncreaseLevelClicked();
+
+	UFUNCTION()
+	void OnDecreaseLevelClicked();
+
+	// 데이터 변경 감지 콜백 (C++ Native Delegate)
+	void OnCostChanged(int32 NewCost);
+
+	void UpdateRequireLevelText();
 };
