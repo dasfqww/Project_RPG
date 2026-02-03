@@ -33,9 +33,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Drag")
 	bool bCanDrag = false;
 
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Drag")
+	class UWidget* TitleBar;
+
 private:
 	FVector2D InitialMousePosition;
-	FVector2D InitialWidgetPosition;
+	FVector2D InitialRenderTranslation;
 	bool bIsDragging = false;
 
 public:

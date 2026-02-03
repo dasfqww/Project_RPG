@@ -12,6 +12,7 @@ class URPGSkillDefinition;
 class URPGPlayerSkillComponent;
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnNextLevelCostChanged, int32 /*NewCost*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnTripodIndicesChanged, const TArray<int32>& /*NewIndices*/);
 
 /**
  * URPGSkillSlotViewModel
@@ -28,8 +29,10 @@ public:
 	void RefreshFromSaveData(const FRPGSkillSaveData& Data);
 
 	FGameplayTag GetSkillTag() const;
+	URPGSkillDefinition* GetSkillDefinition() const { return SkillDefinition; }
 
 	FOnNextLevelCostChanged OnNextLevelCostChanged;
+	FOnTripodIndicesChanged OnTripodIndicesChanged;
 
 	// UI에서 바인딩할 필드들
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "Settings")
@@ -47,7 +50,16 @@ public:
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "Settings")
 	bool bIsLocked = false;
 
+	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "Settings")
+	TArray<int32> CurrentTripodIndices;
+
 	void SetOwnerComponent(URPGPlayerSkillComponent* InComp);
+
+	UFUNCTION(BlueprintCallable, Category = "RPG|Skill")
+	void RequestTripodSelection(int32 Tier, int32 OptionIndex);
+
+	UFUNCTION(BlueprintPure, Category = "RPG|Skill")
+	bool IsTripodSelected(int32 Tier, int32 OptionIndex) const;
 
 private:
 	UPROPERTY()

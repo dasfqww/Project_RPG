@@ -11,7 +11,7 @@ void UURPGSkillListSlot::NativeOnListItemObjectSet(UObject* ListItemObject)
 	{
 		// C++ 로직 처리 (필요하다면)
 		// ...
-
+		
 		// BP 이벤트 호출 (디자이너가 ViewBinding 등을 확인/디버깅 하거나 추가 연출을 할 수 있도록)
 		OnSlotViewModelSet(ViewModel);
 	}

@@ -19,15 +19,32 @@ void URPGWidgetBase::NativeOnInitialized()
 
 FReply URPGWidgetBase::NativeOnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	if (bCanDrag && MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+	bool bShouldStartDrag = false;
+
+	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
-	    // 드래그 시작
-	    bIsDragging = true;
-	    InitialMousePosition = MouseEvent.GetScreenSpacePosition();
-	    InitialWidgetPosition = MyGeometry.GetAbsolutePosition();
-	
-	    return FReply::Handled().CaptureMouse(GetCachedWidget().ToSharedRef());
+		if (TitleBar)
+		{
+			if (TitleBar->GetCachedGeometry().IsUnderLocation(MouseEvent.GetScreenSpacePosition()))
+			{
+				bShouldStartDrag = true;
+			}
+		}
+		else if (bCanDrag)
+		{
+			bShouldStartDrag = true;
+		}
 	}
+
+	if (bShouldStartDrag)
+	{
+		bIsDragging = true;
+		InitialMousePosition = MouseEvent.GetScreenSpacePosition();
+		InitialRenderTranslation = GetRenderTransform().Translation;
+
+		return FReply::Handled().CaptureMouse(GetCachedWidget().ToSharedRef());
+	}
+
 	return Super::NativeOnMouseButtonDown(MyGeometry, MouseEvent);
 }
 
@@ -35,10 +52,10 @@ FReply URPGWidgetBase::NativeOnMouseMove(const FGeometry& MyGeometry, const FPoi
 {
 	if (bIsDragging)
 	{
-	    // 드래그 중에 위치 업데이트
-	    FVector2D MouseDelta = MouseEvent.GetScreenSpacePosition() - InitialMousePosition;
-	    FVector2D NewPosition = InitialWidgetPosition + MouseDelta;
-	    this->SetRenderTranslation(NewPosition);
+		FVector2D MouseDelta = MouseEvent.GetScreenSpacePosition() - InitialMousePosition;
+		FVector2D NewTranslation = InitialRenderTranslation + MouseDelta;
+		
+		SetRenderTranslation(NewTranslation);
 	}
 
 	return Super::NativeOnMouseMove(MyGeometry, MouseEvent);
@@ -46,11 +63,10 @@ FReply URPGWidgetBase::NativeOnMouseMove(const FGeometry& MyGeometry, const FPoi
 
 FReply URPGWidgetBase::NativeOnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	if (bCanDrag && MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+	if (bIsDragging && MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
-	    // 드래그 끝
-	    bIsDragging = false;
-	    return FReply::Handled().ReleaseMouseCapture();
+		bIsDragging = false;
+		return FReply::Handled().ReleaseMouseCapture();
 	}
 	return Super::NativeOnMouseButtonUp(MyGeometry, MouseEvent);
 }

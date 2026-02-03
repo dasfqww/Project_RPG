@@ -32,15 +32,15 @@ void URPGSkillLevelAdjuster::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
-	/*if (Btn_IncreaseLevel)
+	if (Btn_IncreaseLevel)
 	{
-		Btn_IncreaseLevel->OnClicked().AddUObject(this, &ThisClass::OnIncreaseLevelClicked);
+		Btn_IncreaseLevel->OnClicked.AddDynamic(this, &ThisClass::OnIncreaseLevelClicked);
 	}
 
 	if (Btn_DecreaseLevel)
 	{
-		Btn_DecreaseLevel->OnClicked().AddUObject(this, &ThisClass::OnDecreaseLevelClicked);
-	}*/
+		Btn_DecreaseLevel->OnClicked.AddDynamic(this, &ThisClass::OnDecreaseLevelClicked);
+	}
 }
 
 void URPGSkillLevelAdjuster::NativeDestruct()
