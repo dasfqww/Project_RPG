@@ -4,16 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "UI/RPGWidgetBase.h"
-#include "INotifyFieldValueChanged.h"
 #include "RPGTripodBoard.generated.h"
 
-class UVerticalBox;
 class URPGSkillSlotViewModel;
+class URPGTripodButton;
 
 /**
- * 트라이포드 선택 보드
- * - 스킬 정의에 따라 동적으로 트라이포드 버튼을 생성
- * - 선택 상태 관리 및 ViewModel 연동
+ * 트라이포드 선택 보드 (고정형 3-3-2 구조)
+ * - WBP에서 8개의 버튼을 미리 배치하고 BindWidget으로 연결
  */
 UCLASS()
 class PROJECT_RPG_API URPGTripodBoard : public URPGWidgetBase
@@ -25,24 +23,32 @@ public:
 	void InitializeBoard(URPGSkillSlotViewModel* InSlotVM);
 
 protected:
+	virtual void NativeOnInitialized() override;
+	virtual void NativePreConstruct() override;
 	virtual void NativeDestruct() override;
 
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UVerticalBox> TripodContainer;
+	// 티어 1 (3개 선택지)
+	UPROPERTY(meta = (BindWidget)) TObjectPtr<URPGTripodButton> Btn_1_1;
+	UPROPERTY(meta = (BindWidget)) TObjectPtr<URPGTripodButton> Btn_1_2;
+	UPROPERTY(meta = (BindWidget)) TObjectPtr<URPGTripodButton> Btn_1_3;
 
-	UPROPERTY(EditDefaultsOnly, Category = "UI")
-	TSubclassOf<class URPGTripodButton> TripodButtonClass;
+	// 티어 2 (3개 선택지)
+	UPROPERTY(meta = (BindWidget)) TObjectPtr<URPGTripodButton> Btn_2_1;
+	UPROPERTY(meta = (BindWidget)) TObjectPtr<URPGTripodButton> Btn_2_2;
+	UPROPERTY(meta = (BindWidget)) TObjectPtr<URPGTripodButton> Btn_2_3;
+
+	// 티어 3 (2개 선택지)
+	UPROPERTY(meta = (BindWidget)) TObjectPtr<URPGTripodButton> Btn_3_1;
+	UPROPERTY(meta = (BindWidget)) TObjectPtr<URPGTripodButton> Btn_3_2;
 
 private:
 	TWeakObjectPtr<URPGSkillSlotViewModel> CurrentSlotVM;
 	
-	// 생성된 버튼들 관리 (Tier -> Button Array)
-	TMap<int32, TArray<class URPGTripodButton*>> CreatedButtons;
+	// 내부 관리를 위한 배열 (티어별로 그룹화)
+	TArray<TArray<URPGTripodButton*>> TripodTiers;
 
-	void CreateButtons();
+	void UpdateButtons();
 	void RefreshSelection();
 	void OnTripodBtnClicked(int32 Tier, int32 Index);
-	
-	// 커스텀 델리게이트용 콜백 (에러가 날 수 없는 단순 구조)
 	void UpdateTripodSelection(const TArray<int32>& NewIndices);
 };

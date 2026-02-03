@@ -4,15 +4,32 @@
 #include "UI/Skill/RPGTripodButton.h"
 #include "UI/ViewModel/RPGSkillSlotViewModel.h"
 #include "Skill/RPGSkillDefinition.h"
-#include "Components/VerticalBox.h"
-#include "Components/HorizontalBox.h"
-#include "Components/HorizontalBoxSlot.h"
-#include "Components/Spacer.h"
-#include "Components/TextBlock.h"
+
+void URPGTripodBoard::NativeOnInitialized()
+{
+	Super::NativeOnInitialized();
+
+	// 버튼들을 티어별 배열로 정리
+	TripodTiers.Empty();
+	TripodTiers.Add({ Btn_1_1, Btn_1_2, Btn_1_3 }); // Tier 0
+	TripodTiers.Add({ Btn_2_1, Btn_2_2, Btn_2_3 }); // Tier 1
+	TripodTiers.Add({ Btn_3_1, Btn_3_2 });          // Tier 2
+
+	// 모든 버튼에 클릭 이벤트 연결
+	for (int32 TierIdx = 0; TierIdx < TripodTiers.Num(); ++TierIdx)
+	{
+		for (int32 OptIdx = 0; OptIdx < TripodTiers[TierIdx].Num(); ++OptIdx)
+		{
+			if (URPGTripodButton* Btn = TripodTiers[TierIdx][OptIdx])
+			{
+				Btn->OnTripodClicked.AddUObject(this, &ThisClass::OnTripodBtnClicked);
+			}
+		}
+	}
+}
 
 void URPGTripodBoard::InitializeBoard(URPGSkillSlotViewModel* InSlotVM)
 {
-	// 기존 바인딩 해제
 	if (CurrentSlotVM.IsValid())
 	{
 		CurrentSlotVM->OnTripodIndicesChanged.RemoveAll(this);
@@ -22,12 +39,37 @@ void URPGTripodBoard::InitializeBoard(URPGSkillSlotViewModel* InSlotVM)
 
 	if (CurrentSlotVM.IsValid())
 	{
-		// 커스텀 델리게이트 바인딩 (컴파일 에러 걱정 없음)
 		CurrentSlotVM->OnTripodIndicesChanged.AddUObject(this, &URPGTripodBoard::UpdateTripodSelection);
-
-		// 버튼 재생성 및 초기 선택 상태 반영
-		CreateButtons();
+		UpdateButtons();
 		RefreshSelection();
+	}
+}
+
+void URPGTripodBoard::NativePreConstruct()
+{
+	Super::NativePreConstruct();
+
+	if (IsDesignTime())
+	{
+		// 디자인 모드에서 더미 데이터 세팅 (레이아웃 확인용)
+		TArray<TArray<URPGTripodButton*>> DesignTiers;
+		DesignTiers.Add({ Btn_1_1, Btn_1_2, Btn_1_3 });
+		DesignTiers.Add({ Btn_2_1, Btn_2_2, Btn_2_3 });
+		DesignTiers.Add({ Btn_3_1, Btn_3_2 });
+
+		for (int32 i = 0; i < DesignTiers.Num(); ++i)
+		{
+			for (int32 j = 0; j < DesignTiers[i].Num(); ++j)
+			{
+				if (URPGTripodButton* Btn = DesignTiers[i][j])
+				{
+					FRPGSkillTripodOption DummyOption;
+					DummyOption.OptionName = FText::FromString(FString::Printf(TEXT("Tier %d Opt %d"), i + 1, j + 1));
+					Btn->InitializeTripod(i, j, DummyOption);
+					Btn->SetVisibility(ESlateVisibility::Visible);
+				}
+			}
+		}
 	}
 }
 
@@ -35,76 +77,67 @@ void URPGTripodBoard::NativeDestruct()
 {
 	if (CurrentSlotVM.IsValid())
 	{
-		CurrentSlotVM->RemoveAllFieldValueChangedDelegates(this);
+		CurrentSlotVM->OnTripodIndicesChanged.RemoveAll(this);
 	}
 	Super::NativeDestruct();
 }
 
-void URPGTripodBoard::CreateButtons()
+void URPGTripodBoard::UpdateButtons()
 {
-	if (!TripodContainer || !CurrentSlotVM.IsValid() || !TripodButtonClass)
-	{
-		return;
-	}
+	if (!CurrentSlotVM.IsValid()) return;
 
 	URPGSkillDefinition* SkillDef = CurrentSlotVM->GetSkillDefinition();
-	if (!SkillDef)
+	if (!SkillDef) return;
+
+	const TArray<FRPGSkillTripodTier>& DataTiers = SkillDef->TripodTiers;
+
+	for (int32 TierIdx = 0; TierIdx < TripodTiers.Num(); ++TierIdx)
 	{
-		return;
-	}
-
-	TripodContainer->ClearChildren();
-	CreatedButtons.Empty();
-
-	const TArray<FRPGSkillTripodTier>& Tiers = SkillDef->TripodTiers;
-
-	for (int32 TierIdx = 0; TierIdx < Tiers.Num(); ++TierIdx)
-	{
-		const FRPGSkillTripodTier& TierData = Tiers[TierIdx];
-		UHorizontalBox* RowBox = NewObject<UHorizontalBox>(this);
-		TArray<URPGTripodButton*>& ButtonList = CreatedButtons.FindOrAdd(TierIdx);
+		const TArray<URPGTripodButton*>& UIButtons = TripodTiers[TierIdx];
 		
-		for (int32 OptIdx = 0; OptIdx < TierData.Options.Num(); ++OptIdx)
+		// 데이터가 있는 티어인지 확인
+		if (DataTiers.IsValidIndex(TierIdx))
 		{
-			const FRPGSkillTripodOption& Option = TierData.Options[OptIdx];
-			URPGTripodButton* NewBtn = CreateWidget<URPGTripodButton>(this, TripodButtonClass);
-			if (NewBtn)
+			const FRPGSkillTripodTier& TierData = DataTiers[TierIdx];
+			
+			for (int32 OptIdx = 0; OptIdx < UIButtons.Num(); ++OptIdx)
 			{
-				NewBtn->InitializeTripod(TierIdx, OptIdx, Option);
-				NewBtn->OnTripodClicked.AddUObject(this, &ThisClass::OnTripodBtnClicked);
-				
-				UHorizontalBoxSlot* HSlot = RowBox->AddChildToHorizontalBox(NewBtn);
-				if (HSlot)
+				URPGTripodButton* Btn = UIButtons[OptIdx];
+				if (!Btn) continue;
+
+				// 해당 옵션 데이터가 있으면 활성화 및 초기화
+				if (TierData.Options.IsValidIndex(OptIdx))
 				{
-					HSlot->SetPadding(FMargin(5.0f, 0.0f));
-					HSlot->SetVerticalAlignment(VAlign_Center);
+					Btn->SetVisibility(ESlateVisibility::Visible);
+					Btn->InitializeTripod(TierIdx, OptIdx, TierData.Options[OptIdx]);
 				}
-				ButtonList.Add(NewBtn);
+				else
+				{
+					// 데이터가 없으면 버튼 숨김
+					Btn->SetVisibility(ESlateVisibility::Collapsed);
+				}
 			}
 		}
-
-		TripodContainer->AddChildToVerticalBox(RowBox);
-		USpacer* Spacer = NewObject<USpacer>(this);
-		Spacer->SetSize(FVector2D(0.f, 10.f));
-		TripodContainer->AddChildToVerticalBox(Spacer);
+		else
+		{
+			// 티어 자체가 데이터에 없으면 해당 티어 버튼 모두 숨김
+			for (URPGTripodButton* Btn : UIButtons)
+			{
+				if (Btn) Btn->SetVisibility(ESlateVisibility::Collapsed);
+			}
+		}
 	}
 }
 
 void URPGTripodBoard::RefreshSelection()
 {
-	if (!CurrentSlotVM.IsValid())
-	{
-		return;
-	}
+	if (!CurrentSlotVM.IsValid()) return;
 
-	for (auto& Pair : CreatedButtons)
+	for (int32 TierIdx = 0; TierIdx < TripodTiers.Num(); ++TierIdx)
 	{
-		int32 TierIdx = Pair.Key;
-		const TArray<URPGTripodButton*>& Buttons = Pair.Value;
-
-		for (URPGTripodButton* Btn : Buttons)
+		for (URPGTripodButton* Btn : TripodTiers[TierIdx])
 		{
-			if (Btn)
+			if (Btn && Btn->GetVisibility() == ESlateVisibility::Visible)
 			{
 				bool bSelected = CurrentSlotVM->IsTripodSelected(TierIdx, Btn->GetOptionIndex());
 				Btn->SetIsTripodSelected(bSelected);
