@@ -18,6 +18,7 @@ class PROJECT_RPG_API URPGInputOptionMenu : public URPGWidgetBase
 
 public:
 	virtual void NativeConstruct() override;
+	virtual void NativePreConstruct() override;
 
 	// UI 리스트 새로고침
 	UFUNCTION(BlueprintCallable, Category = "Input")
@@ -31,6 +32,10 @@ protected:
 	// 입력 설정 데이터 에셋 (블루프린트에서 설정)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
 	TObjectPtr<UDataAsset_InputConfig> InputConfig;
+
+	// 키 아이콘 데이터 에셋 (블루프린트에서 설정)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<class UDataAsset_KeyIconConfig> KeyIconConfig;
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UScrollBox> MappingScrollBox;
