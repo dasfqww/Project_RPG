@@ -21,9 +21,11 @@ void URPGOptionMenu::InitButtonMap()
 {
 	TabButtonMap.Add(ESettingTabType::Graphics, GraphicOptionButton);
 	TabButtonMap.Add(ESettingTabType::Sound, SoundOptionButton);
+	TabButtonMap.Add(ESettingTabType::Controls, InputOptionButton);
 
 	TabIndexMap.Add(ESettingTabType::Graphics, 0);
 	TabIndexMap.Add(ESettingTabType::Sound, 1);
+	TabIndexMap.Add(ESettingTabType::Controls, 2);
 
 	for (const TPair<ESettingTabType, TObjectPtr<UButton>>& Pair : TabButtonMap)
 	{
@@ -42,10 +44,10 @@ void URPGOptionMenu::OnTabButtonHovered()
 
 void URPGOptionMenu::OnTabButtonClicked()
 {
-	// ¾î¶² ¹öÆ°ÀÌ ´­·È´ÂÁö È®ÀÎ
+	// ï¿½î¶² ï¿½ï¿½Æ°ï¿½ï¿½ ï¿½ï¿½ï¿½È´ï¿½ï¿½ï¿½ È®ï¿½ï¿½
 	for (const TPair<ESettingTabType, TObjectPtr<UButton>>& Pair : TabButtonMap)
 	{
-		if (Pair.Value->HasKeyboardFocus()) // ¶Ç´Â IsHovered()·Îµµ °¡´É
+		if (Pair.Value->HasKeyboardFocus()) // ï¿½Ç´ï¿½ IsHovered()ï¿½Îµï¿½ ï¿½ï¿½ï¿½ï¿½
 		{
 			if (int32* Index = TabIndexMap.Find(Pair.Key))
 			{

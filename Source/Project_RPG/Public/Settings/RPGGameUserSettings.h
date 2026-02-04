@@ -4,10 +4,24 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameUserSettings.h"
+#include "InputCoreTypes.h"
+#include "GameplayTagContainer.h"
 #include "Type/RPGEnumTypes.h"
 #include "RPGGameUserSettings.generated.h"
 
 DECLARE_MULTICAST_DELEGATE(FOnSoundSettingsChanged);
+
+USTRUCT(BlueprintType)
+struct FRPGKeyMapping
+{
+	GENERATED_BODY()
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Input")
+	FGameplayTag InputTag;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Input")
+	FKey Key;
+};
 
 /**
  * 
@@ -42,6 +56,9 @@ public:
 	UPROPERTY(Config, BlueprintReadWrite, Category = "Audio")
 	bool bEffectMuted = false;
 
+	UPROPERTY(Config, BlueprintReadWrite, Category = "Input")
+	TArray<FRPGKeyMapping> CustomKeyMappings;
+
 	FOnSoundSettingsChanged OnSoundSettingsChanged;
 
 	float GetVolume(ESoundType Type) const;
@@ -49,4 +66,8 @@ public:
 
 	bool IsMuted(ESoundType Type) const;
 	void SetMute(ESoundType Type, bool bMute);
+
+	// Key Mapping Methods
+	void SetKeyMapping(const FGameplayTag& InTag, const FKey& InKey);
+	FKey GetKeyMapping(const FGameplayTag& InTag) const;
 };

@@ -16,8 +16,8 @@ enum class ESettingTabType : uint8
 {
 	Sound,
 	Graphics,
-	Gameplay
-	// ...
+	Gameplay,
+	Controls
 };
 
 /**
@@ -58,6 +58,9 @@ private:
 	
 	UPROPERTY(VisibleAnywhere, Category = "Tab Button", meta = (BindWidget))
 	TObjectPtr<UButton> GraphicOptionButton;
+
+	UPROPERTY(VisibleAnywhere, Category = "Tab Button", meta = (BindWidget))
+	TObjectPtr<UButton> InputOptionButton;
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UWidgetSwitcher> TabSwitcher;

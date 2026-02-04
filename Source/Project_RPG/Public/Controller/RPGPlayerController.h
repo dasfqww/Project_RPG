@@ -51,6 +51,15 @@ public:
 
 	void DropItem(URPGItemBase* ItemToDrop, const int32 QuantityToDrop);
 
+	UFUNCTION(BlueprintCallable, Category = "Input")
+	void UpdateInputMappings();
+
+	UFUNCTION(BlueprintCallable, Category = "Input")
+	void ApplyKeyMapping(FGameplayTag InTag, FKey NewKey);
+
+	UFUNCTION(BlueprintCallable, Category = "Input")
+	FKey GetCurrentKeyForTag(FGameplayTag InTag) const;
+
 protected:
 	virtual void SetupInputComponent() override;
 	virtual void BeginPlay() override;
@@ -66,7 +75,7 @@ protected:
 	void EndInteract();
 	void Interact();
 	
-	// Äü½½·ÔÀ» »ç¿ëÇÒ ÀÔ·Â Ã³¸®
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ô·ï¿½ Ã³ï¿½ï¿½
 	void UseQuickSlot(int32 SlotIndex);
 
 	void EnableCameraZoom();
@@ -83,7 +92,7 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "Pickup")
 	TSubclassOf<ARPGPickUpBase> PickupClass;
 
-	// Äü½½·Ô ÄÄÆ÷³ÍÆ® (ÇÃ·¹ÀÌ¾î°¡ °ü¸®ÇÏ´Â Äü½½·Ô)
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ® (ï¿½Ã·ï¿½ï¿½Ì¾î°¡ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
 	UPROPERTY(VisibleAnywhere, Category = "QuickSlot")
 	TObjectPtr<UQuickSlotComponent> QuickSlotComponent;
 

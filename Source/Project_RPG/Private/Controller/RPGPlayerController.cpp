@@ -3,6 +3,7 @@
 
 #include "Controller/RPGPlayerController.h"
 #include "EnhancedInputSubsystems.h"
+#include "InputMappingContext.h"
 #include "DataAsset/Input/DataAsset_InputConfig.h"
 #include "Component/RPGInputComponent.h"
 #include "RPGGameplayTags.h"
@@ -11,7 +12,6 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "UI/HUD/RPGHUD.h"
 #include "UI/Inventory/Equipment/RPGEquipmentWidget.h"
-
 #include "Component/RPGInventoryComponent.h"
 #include "Item/PickUp/RPGPickUpBase.h"
 #include "Components/WidgetComponent.h"
@@ -19,16 +19,109 @@
 #include "Item/RPGItemBase.h"
 #include "Components/TextBlock.h"
 #include "Component/UI/QuickSlotComponent.h"
-
+#include "Settings/RPGGameUserSettings.h"
 
 #include "RPGDebugHelper.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
 
+
+
 ARPGPlayerController::ARPGPlayerController()
 {
 	PlayerTeamID = FGenericTeamId(0);
+}
+
+void ARPGPlayerController::UpdateInputMappings()
+{
+	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+	if (!LocalPlayer) return;
+
+	UEnhancedInputLocalPlayerSubsystem* Subsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
+	if (!Subsystem) return;
+
+	URPGGameUserSettings* UserSettings = URPGGameUserSettings::GetRPGGameUserSettings();
+	if (!UserSettings) return;
+
+	for (const FRPGKeyMapping& Mapping : UserSettings->CustomKeyMappings)
+	{
+		ApplyKeyMapping(Mapping.InputTag, Mapping.Key);
+	}
+}
+
+void ARPGPlayerController::ApplyKeyMapping(FGameplayTag InTag, FKey NewKey)
+{
+	if (!InputConfigDataAsset) return;
+
+	UInputAction* TargetAction = InputConfigDataAsset->FindNativeInputActionByTag(InTag);
+	if (!TargetAction)
+	{
+		TargetAction = InputConfigDataAsset->FindAbilityInputActionByTag(InTag);
+	}
+
+	if (!TargetAction) return;
+
+	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+	if (!LocalPlayer) return;
+
+	UEnhancedInputLocalPlayerSubsystem* Subsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
+	if (!Subsystem) return;
+
+	InputConfigDataAsset->DefaultMappingContext->UnmapKey(TargetAction, NewKey);
+	InputConfigDataAsset->DefaultMappingContext->MapKey(TargetAction, NewKey);
+	
+	FModifyContextOptions Options;
+	Options.bForceImmediately = true;
+	Options.bIgnoreAllPressedKeysUntilRelease = true;
+
+	Subsystem->RequestRebuildControlMappings(Options);
+
+	// Save to settings
+	URPGGameUserSettings* UserSettings = URPGGameUserSettings::GetRPGGameUserSettings();
+	if (UserSettings)
+	{
+		UserSettings->SetKeyMapping(InTag, NewKey);
+		UserSettings->ApplySettings(false);
+		UserSettings->SaveSettings();
+	}
+}
+
+FKey ARPGPlayerController::GetCurrentKeyForTag(FGameplayTag InTag) const
+{
+	// 1. Check custom settings first
+	URPGGameUserSettings* UserSettings = URPGGameUserSettings::GetRPGGameUserSettings();
+	if (UserSettings)
+	{
+		FKey CustomKey = UserSettings->GetKeyMapping(InTag);
+		if (CustomKey.IsValid())
+		{
+			return CustomKey;
+		}
+	}
+
+	// 2. Fallback to default from DataAsset/IMC
+	if (InputConfigDataAsset)
+	{
+		UInputAction* TargetAction = InputConfigDataAsset->FindNativeInputActionByTag(InTag);
+		if (!TargetAction)
+		{
+			TargetAction = InputConfigDataAsset->FindAbilityInputActionByTag(InTag);
+		}
+
+		if (TargetAction && InputConfigDataAsset->DefaultMappingContext)
+		{
+			for (const FEnhancedActionKeyMapping& Mapping : InputConfigDataAsset->DefaultMappingContext->GetMappings())
+			{
+				if (Mapping.Action == TargetAction)
+				{
+					return Mapping.Key;
+				}
+			}
+		}
+	}
+
+	return FKey();
 }
 
 FGenericTeamId ARPGPlayerController::GetGenericTeamId() const
@@ -360,6 +453,8 @@ void ARPGPlayerController::SetupInputComponent()
 
 	RPGInputComponent->BindAbilityInputAction(InputConfigDataAsset,
 			this, &ThisClass::Input_AbilityInputPressed, &ThisClass::Input_AbilityInputReleased);
+
+	UpdateInputMappings();
 }
 
 void ARPGPlayerController::BeginPlay()

@@ -76,3 +76,32 @@ void URPGGameUserSettings::SetMute(ESoundType Type, bool bMute)
 		break;
 	}
 }
+
+void URPGGameUserSettings::SetKeyMapping(const FGameplayTag& InTag, const FKey& InKey)
+{
+	for (FRPGKeyMapping& Mapping : CustomKeyMappings)
+	{
+		if (Mapping.InputTag.MatchesTagExact(InTag))
+		{
+			Mapping.Key = InKey;
+			return;
+		}
+	}
+
+	FRPGKeyMapping NewMapping;
+	NewMapping.InputTag = InTag;
+	NewMapping.Key = InKey;
+	CustomKeyMappings.Add(NewMapping);
+}
+
+FKey URPGGameUserSettings::GetKeyMapping(const FGameplayTag& InTag) const
+{
+	for (const FRPGKeyMapping& Mapping : CustomKeyMappings)
+	{
+		if (Mapping.InputTag.MatchesTagExact(InTag))
+		{
+			return Mapping.Key;
+		}
+	}
+	return FKey();
+}
