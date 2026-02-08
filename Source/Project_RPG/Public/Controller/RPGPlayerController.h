@@ -75,8 +75,12 @@ protected:
 	void EndInteract();
 	void Interact();
 	
-	// �������� ����� �Է� ó��
-	void UseQuickSlot(int32 SlotIndex);
+	// 퀵슬롯 입력 처리
+	UFUNCTION()
+	void UseSkillSlot(int32 SlotIndex);
+
+	UFUNCTION()
+	void UseItemSlot(int32 SlotIndex);
 
 	void EnableCameraZoom();
 
@@ -92,7 +96,7 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "Pickup")
 	TSubclassOf<ARPGPickUpBase> PickupClass;
 
-	// ������ ������Ʈ (�÷��̾ �����ϴ� ������)
+	// 퀵슬롯 컴포넌트
 	UPROPERTY(VisibleAnywhere, Category = "QuickSlot")
 	TObjectPtr<UQuickSlotComponent> QuickSlotComponent;
 
@@ -115,6 +119,7 @@ private:
 		ARPGPlayer* PlayerCharacter;
 
 	FGenericTeamId PlayerTeamID;
+
 #pragma region Inputs
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CharacterData", meta = (AllowPrivateAccess = "true"))
@@ -122,21 +127,40 @@ private:
 
 	FVector2D SwitchDirection = FVector2D::ZeroVector;
 
+	// --- [자동화 규칙] 함수 이름은 'Input_태그명'이어야 합니다. ---
+
+	UFUNCTION()
 	void Input_Move(const FInputActionValue& InputActionValue);
+
+	UFUNCTION()
 	void Input_Look(const FInputActionValue& InputActionValue);
 
+	UFUNCTION()
 	void Input_CameraZoom(const FInputActionValue& InputActionValue);
 
-	void Input_SwitchTargetTriggered(const FInputActionValue& InputActionValue);
-	void Input_SwitchTargetCompleted(const FInputActionValue& InputActionValue);
+	/** SwitchTarget 전용 래퍼 (Triggered/Completed 통합 처리) */
+	UFUNCTION()
+	void Input_SwitchTarget(const FInputActionValue& InputActionValue);
 
-	void Input_PickUpItemsStarted(const FInputActionValue& InputActionValue);
+	UFUNCTION()
+	void Input_PickUp_Items(const FInputActionValue& InputActionValue);
+
+	/** 일시정지 메뉴 토글 */
+	UFUNCTION()
+	void Input_ToggleMenu(const FInputActionValue& Value);
+
+	/** 장비창 토글 (태그: InputTag.ShowEquipmentWidget) */
+	UFUNCTION()
+	void Input_ShowEquipmentWidget(const FInputActionValue& Value);
 
 	void Input_AbilityInputPressed(FGameplayTag InInputTag);
 	void Input_AbilityInputReleased(FGameplayTag InInputTag);
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void ToggleInventory();
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ToggleOptionMenu();
 
 	void ShowEquipmentWidget();
 #pragma endregion

@@ -12,7 +12,7 @@ class URPGQuickSlotWidget;
 class URPGWidgetBase;
 class APlayerController;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnQuickSlotChanged, int32, SlotIndex, URPGItemBase*, Item);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnQuickSlotChanged, int32, SlotIndex, const FRPGQuickSlotContent&, Content);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnQuickSlotQuantityChanged, URPGItemBase*, Item, int32, NewQuantity);
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
@@ -23,12 +23,23 @@ class PROJECT_RPG_API UQuickSlotComponent : public UActorComponent
 public:	
 	UQuickSlotComponent();
 
-	void SetQuickSlotItem(int32 Index, URPGItemBase* NewItem);
-	void UseItemInQuickSlot(int32 Index, const APlayerController* PC);
-	void SwapQuickSlotItems(int32 SlotIndexA, int32 SlotIndexB);
-	void ClearQuickSlot(int32 Index);
+	// 슬롯 설정 및 사용 (타입 구분)
+	void SetSkillSlot(int32 Index, FGameplayTag AbilityTag);
+	void SetItemSlot(int32 Index, URPGItemBase* NewItem);
 
-	URPGItemBase* GetItemInSlot(int32 Index) const;
+	void UseSkillSlot(int32 Index);
+	void UseItemSlot(int32 Index, const APlayerController* PC);
+
+	void ClearSlot(bool bIsSkillSlot, int32 Index);
+
+	const FRPGQuickSlotContent* GetSkillSlotContent(int32 Index) const;
+	const FRPGQuickSlotContent* GetItemSlotContent(int32 Index) const;
+
+	UPROPERTY(BlueprintAssignable, Category = "QuickSlot")
+	FOnQuickSlotChanged OnSkillSlotChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "QuickSlot")
+	FOnQuickSlotChanged OnItemSlotChanged;
 
 	UPROPERTY(BlueprintAssignable, Category = "QuickSlot")
 	FOnQuickSlotChanged OnQuickSlotChanged;
@@ -38,46 +49,49 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
-	void InitializeItemQuickSlots();
 	
 private:
 	UPROPERTY(EditAnywhere, Category = "QuickSlot", meta = (AllowPrivateAccess = "true"))
 	TSubclassOf<URPGWidgetBase> PlayerHUDClass;
 
-	UPROPERTY(EditAnywhere, Category = "QuickSlot", meta = (AllowPrivateAccess="true"))
-	int32 MaxSlots = 4;
+	UPROPERTY(EditAnywhere, Category = "QuickSlot")
+	int32 MaxSkillSlots = 8;
 
-	UPROPERTY(VisibleAnywhere, ReplicatedUsing = OnRep_QuickSlotItems, Category = "QuickSlot")
-	TArray<URPGItemBase*> QuickSlotItems;
+	UPROPERTY(EditAnywhere, Category = "QuickSlot")
+	int32 MaxItemSlots = 8;
+
+	UPROPERTY(VisibleAnywhere, ReplicatedUsing = OnRep_SkillSlots, Category = "QuickSlot")
+	TArray<FRPGQuickSlotContent> SkillSlots;
+
+	UPROPERTY(VisibleAnywhere, ReplicatedUsing = OnRep_ItemSlots, Category = "QuickSlot")
+	TArray<FRPGQuickSlotContent> ItemSlots;
 
 	UFUNCTION()
-	void OnRep_QuickSlotItems();
+	void OnRep_SkillSlots();
 
-	UPROPERTY(VisibleAnywhere, Category = "QuickSlot")
-	TArray<URPGQuickSlotWidget*> QuickSlotWidgets;
+	UFUNCTION()
+	void OnRep_ItemSlots();
 
 	// --- 인벤토리 연동 핸들러 ---
 
 	UFUNCTION()
 	void HandleOnItemRemoved(URPGItemBase* RemovedItem);
 
-	// 시그니처를 인벤토리의 FOnQuantityChanged와 일치시킴
 	UFUNCTION()
 	void HandleOnItemQuantityChanged(const FSlotAvailabilityResult& Result);
 
 	UFUNCTION(Server, Reliable)
-	void Server_SetQuickSlotItem(int32 Index, URPGItemBase* NewItem);
+	void Server_SetSkillSlot(int32 Index, FGameplayTag AbilityTag);
 
 	UFUNCTION(Server, Reliable)
-	void Server_SwapQuickSlotItems(int32 SlotIndexA, int32 SlotIndexB);
+	void Server_SetItemSlot(int32 Index, URPGItemBase* NewItem);
 
 	UFUNCTION(Server, Reliable)
-	void Server_ClearQuickSlot(int32 Index);
+	void Server_ClearSlot(bool bIsSkillSlot, int32 Index);
 
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	FORCEINLINE TArray<URPGItemBase*>& GetQuickSlotItems() { return QuickSlotItems; }
-	FORCEINLINE TArray<URPGQuickSlotWidget*>& GetQuickSlotWidgets() { return QuickSlotWidgets; }
-	FORCEINLINE int32 GetMaxSlots() const { return MaxSlots; }
+	FORCEINLINE int32 GetMaxSkillSlots() const { return MaxSkillSlots; }
+	FORCEINLINE int32 GetMaxItemSlots() const { return MaxItemSlots; }
 };

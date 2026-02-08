@@ -9,6 +9,7 @@
 #include "UI/RPGWidgetBase.h"
 #include "RPGFunctionLibrary.h"
 #include "Component/RPGInventoryComponent.h"
+#include "Component/RPGAbilitySystemComponent.h"
 
 #include "RPGDebugHelper.h"
 
@@ -17,35 +18,60 @@ UQuickSlotComponent::UQuickSlotComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);
 
-	QuickSlotItems.SetNum(MaxSlots);
+	SkillSlots.SetNum(MaxSkillSlots);
+	ItemSlots.SetNum(MaxItemSlots);
 }
 
 void UQuickSlotComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(UQuickSlotComponent, QuickSlotItems);
+	DOREPLIFETIME(UQuickSlotComponent, SkillSlots);
+	DOREPLIFETIME(UQuickSlotComponent, ItemSlots);
 }
 
-void UQuickSlotComponent::OnRep_QuickSlotItems()
+void UQuickSlotComponent::OnRep_SkillSlots()
 {
-	for (int32 i = 0; i < QuickSlotWidgets.Num(); i++)
+	for (int32 i = 0; i < SkillSlots.Num(); i++)
 	{
-		if (QuickSlotWidgets[i])
-		{
-			if (QuickSlotItems.IsValidIndex(i))
-			{
-				OnQuickSlotChanged.Broadcast(i, QuickSlotItems[i]);
-			}
-		}
+		OnSkillSlotChanged.Broadcast(i, SkillSlots[i]);
 	}
 }
 
-void UQuickSlotComponent::SetQuickSlotItem(int32 Index, URPGItemBase* NewItem)
+void UQuickSlotComponent::OnRep_ItemSlots()
+{
+	for (int32 i = 0; i < ItemSlots.Num(); i++)
+	{
+		OnItemSlotChanged.Broadcast(i, ItemSlots[i]);
+	}
+}
+
+void UQuickSlotComponent::SetSkillSlot(int32 Index, FGameplayTag AbilityTag)
 {
 	if (GetOwner()->HasAuthority())
 	{
-		if (!QuickSlotItems.IsValidIndex(Index)) return;
+		if (!SkillSlots.IsValidIndex(Index)) return;
+
+		SkillSlots[Index].AbilityTag = AbilityTag;
+		SkillSlots[Index].Item = nullptr;
+		OnSkillSlotChanged.Broadcast(Index, SkillSlots[Index]);
+	}
+	else
+	{
+		Server_SetSkillSlot(Index, AbilityTag);
+	}
+}
+
+void UQuickSlotComponent::Server_SetSkillSlot_Implementation(int32 Index, FGameplayTag AbilityTag)
+{
+	SetSkillSlot(Index, AbilityTag);
+}
+
+void UQuickSlotComponent::SetItemSlot(int32 Index, URPGItemBase* NewItem)
+{
+	if (GetOwner()->HasAuthority())
+	{
+		if (!ItemSlots.IsValidIndex(Index)) return;
 
 		// 소모성 아이템만 등록 가능하도록 제한
 		if (NewItem && !NewItem->IsConsumable())
@@ -54,18 +80,19 @@ void UQuickSlotComponent::SetQuickSlotItem(int32 Index, URPGItemBase* NewItem)
 			return;
 		}
 
-		QuickSlotItems[Index] = NewItem;
-		OnQuickSlotChanged.Broadcast(Index, NewItem);
+		ItemSlots[Index].Item = NewItem;
+		ItemSlots[Index].AbilityTag = FGameplayTag::EmptyTag;
+		OnItemSlotChanged.Broadcast(Index, ItemSlots[Index]);
 	}
 	else
 	{
-		Server_SetQuickSlotItem(Index, NewItem);
+		Server_SetItemSlot(Index, NewItem);
 	}
 }
 
-void UQuickSlotComponent::Server_SetQuickSlotItem_Implementation(int32 Index, URPGItemBase* NewItem)
+void UQuickSlotComponent::Server_SetItemSlot_Implementation(int32 Index, URPGItemBase* NewItem)
 {
-	SetQuickSlotItem(Index, NewItem);
+	SetItemSlot(Index, NewItem);
 }
 
 void UQuickSlotComponent::BeginPlay()
@@ -77,37 +104,10 @@ void UQuickSlotComponent::BeginPlay()
 	{
 		APlayerController* PC = Cast<APlayerController>(OwnerPawn->GetController());
 
-		// OwnerPawn->GetController()를 통해 인벤토리를 가져옴
 		if (URPGInventoryComponent* Inventory = URPGFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(PC))
 		{
 			Inventory->OnQuantityChanged.AddDynamic(this, &UQuickSlotComponent::HandleOnItemQuantityChanged);
 			Inventory->OnItemRemoved.AddDynamic(this, &UQuickSlotComponent::HandleOnItemRemoved);
-		}
-	}
-	
-	InitializeItemQuickSlots();
-}
-
-void UQuickSlotComponent::InitializeItemQuickSlots()
-{
-	if (APawn* OwnerPawn = Cast<APawn>(GetOwner()))
-	{
-		if (!OwnerPawn->IsLocallyControlled()) return;
-	}
-
-	URPGWidgetBase* PlayerHUD = CreateWidget<URPGWidgetBase>(GetWorld(), PlayerHUDClass);
-
-	if (PlayerHUD)
-	{
-		for (int i = 0; i < MaxSlots; i++)
-		{
-			FString SlotName = FString::Printf(TEXT("WBP_QuickSlot%d"), i+1);
-			URPGQuickSlotWidget* QuickSlot = Cast<URPGQuickSlotWidget>(PlayerHUD->GetWidgetFromName(FName(*SlotName)));
-			
-			if (QuickSlot)
-			{
-				QuickSlotWidgets.Add(QuickSlot);
-			}
 		}
 	}
 }
@@ -116,11 +116,11 @@ void UQuickSlotComponent::HandleOnItemRemoved(URPGItemBase* RemovedItem)
 {
 	if (!RemovedItem) return;
 
-	for (int32 i = 0; i < QuickSlotItems.Num(); i++)
+	for (int32 i = 0; i < ItemSlots.Num(); i++)
 	{
-		if (QuickSlotItems[i] == RemovedItem)
+		if (ItemSlots[i].Item == RemovedItem)
 		{
-			ClearQuickSlot(i);
+			ClearSlot(false, i);
 		}
 	}
 }
@@ -130,74 +130,76 @@ void UQuickSlotComponent::HandleOnItemQuantityChanged(const FSlotAvailabilityRes
 	URPGItemBase* ChangedItem = Result.Item.Get();
 	if (!ChangedItem) return;
 
-	// 해당 아이템이 퀵슬롯에 있는지 전수 조사
-	for (int32 i = 0; i < QuickSlotItems.Num(); i++)
+	for (int32 i = 0; i < ItemSlots.Num(); i++)
 	{
-		if (QuickSlotItems[i] == ChangedItem)
+		if (ItemSlots[i].Item == ChangedItem)
 		{
-			// 수량 델리게이트 방송
 			OnQuickSlotQuantityChanged.Broadcast(ChangedItem, ChangedItem->GetTotalQuantity());
 		}
 	}
 }
 
-void UQuickSlotComponent::UseItemInQuickSlot(int32 Index, const APlayerController* PC)
+void UQuickSlotComponent::UseSkillSlot(int32 Index)
 {
-	if (URPGItemBase* ItemToUse = GetItemInSlot(Index))
+	if (!SkillSlots.IsValidIndex(Index) || SkillSlots[Index].AbilityTag.IsValid() == false) return;
+
+	if (ARPGBaseCharacter* OwnerCharacter = Cast<ARPGBaseCharacter>(GetOwner()))
 	{
-		if (URPGInventoryComponent* InventoryComponent = URPGFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(PC))
+		if (URPGAbilitySystemComponent* ASC = OwnerCharacter->GetRPGAbilitySystemComponent())
 		{
-			InventoryComponent->Server_ConsumeItem(ItemToUse);
+			// GAS 입력 시스템을 통해 스킬 발동 (이미 해당 태그로 바인딩된 능력이 있다면 발동됨)
+			ASC->OnAbilityInputPressed(SkillSlots[Index].AbilityTag);
+			ASC->OnAbilityInputReleased(SkillSlots[Index].AbilityTag);
 		}
 	}
 }
 
-void UQuickSlotComponent::SwapQuickSlotItems(int32 SlotIndexA, int32 SlotIndexB)
+void UQuickSlotComponent::UseItemSlot(int32 Index, const APlayerController* PC)
+{
+	if (!ItemSlots.IsValidIndex(Index) || ItemSlots[Index].Item == nullptr) return;
+
+	if (URPGInventoryComponent* InventoryComponent = URPGFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(PC))
+	{
+		InventoryComponent->Server_ConsumeItem(ItemSlots[Index].Item);
+	}
+}
+
+void UQuickSlotComponent::ClearSlot(bool bIsSkillSlot, int32 Index)
 {
 	if (GetOwner()->HasAuthority())
 	{
-		if (!QuickSlotItems.IsValidIndex(SlotIndexA) || !QuickSlotItems.IsValidIndex(SlotIndexB)) return;
-
-		QuickSlotItems.Swap(SlotIndexA, SlotIndexB);
-
-		OnQuickSlotChanged.Broadcast(SlotIndexA, QuickSlotItems[SlotIndexA]);
-		OnQuickSlotChanged.Broadcast(SlotIndexB, QuickSlotItems[SlotIndexB]);
+		if (bIsSkillSlot)
+		{
+			if (!SkillSlots.IsValidIndex(Index)) return;
+			SkillSlots[Index] = FRPGQuickSlotContent();
+			OnSkillSlotChanged.Broadcast(Index, SkillSlots[Index]);
+		}
+		else
+		{
+			if (!ItemSlots.IsValidIndex(Index)) return;
+			ItemSlots[Index] = FRPGQuickSlotContent();
+			OnItemSlotChanged.Broadcast(Index, ItemSlots[Index]);
+		}
 	}
 	else
 	{
-		Server_SwapQuickSlotItems(SlotIndexA, SlotIndexB);
+		Server_ClearSlot(bIsSkillSlot, Index);
 	}
 }
 
-void UQuickSlotComponent::Server_SwapQuickSlotItems_Implementation(int32 SlotIndexA, int32 SlotIndexB)
+void UQuickSlotComponent::Server_ClearSlot_Implementation(bool bIsSkillSlot, int32 Index)
 {
-	SwapQuickSlotItems(SlotIndexA, SlotIndexB);
+	ClearSlot(bIsSkillSlot, Index);
 }
 
-void UQuickSlotComponent::ClearQuickSlot(int32 Index)
+const FRPGQuickSlotContent* UQuickSlotComponent::GetSkillSlotContent(int32 Index) const
 {
-	if (GetOwner()->HasAuthority())
-	{
-		if (!QuickSlotItems.IsValidIndex(Index)) return;
-		QuickSlotItems[Index] = nullptr;
-		OnQuickSlotChanged.Broadcast(Index, nullptr);
-	}
-	else
-	{
-		Server_ClearQuickSlot(Index);
-	}
+	if (SkillSlots.IsValidIndex(Index)) return &SkillSlots[Index];
+	return nullptr;
 }
 
-void UQuickSlotComponent::Server_ClearQuickSlot_Implementation(int32 Index)
+const FRPGQuickSlotContent* UQuickSlotComponent::GetItemSlotContent(int32 Index) const
 {
-	ClearQuickSlot(Index);
-}
-
-URPGItemBase* UQuickSlotComponent::GetItemInSlot(int32 Index) const
-{
-	if (QuickSlotItems.IsValidIndex(Index))
-	{
-		return QuickSlotItems[Index];
-	}
+	if (ItemSlots.IsValidIndex(Index)) return &ItemSlots[Index];
 	return nullptr;
 }

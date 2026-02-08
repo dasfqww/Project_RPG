@@ -34,7 +34,7 @@ void URPGInputOptionMenu::RefreshMappings()
 
 	auto AddRow = [&](const FWarriorInputActionConfig& Config)
 	{
-		if (!Config.InputTag.IsValid()) return;
+		if (!Config.InputTag.IsValid()||!Config.bShowInInputOptionMenu) return;
 
 		URPGInputMappingRow* RowWidget = CreateWidget<URPGInputMappingRow>(this, RowWidgetClass);
 		if (RowWidget)
@@ -56,13 +56,14 @@ void URPGInputOptionMenu::RefreshMappings()
 					}
 				}
 			}
+
 			else if (RPGPC)
 			{
 				// 게임 실행 중: 플레이어의 실제 설정값을 가져옴
 				DisplayKey = RPGPC->GetCurrentKeyForTag(Config.InputTag);
 			}
 
-			FText ActionName = FText::FromName(Config.InputTag.GetTagName());
+			FText ActionName = Config.InputActionName;
 			
 			// KeyIconConfig는 .h에서 추가했으므로 사용 가능
 			RowWidget->InitializeRow(Config.InputTag, ActionName, DisplayKey, KeyIconConfig);

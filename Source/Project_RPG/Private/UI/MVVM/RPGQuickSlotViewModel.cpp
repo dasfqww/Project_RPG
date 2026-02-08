@@ -4,40 +4,65 @@
 #include "UI/MVVM/RPGQuickSlotViewModel.h"
 #include "Item/RPGItemBase.h"
 #include "Component/UI/QuickSlotComponent.h"
+#include "RPGFunctionLibrary.h"
+#include "RPGGameplayTags.h"
 
-void URPGQuickSlotViewModel::Initialize(int32 InSlotIndex, UQuickSlotComponent* InComponent)
+void URPGQuickSlotViewModel::Initialize(int32 InSlotIndex, UQuickSlotComponent* InComponent, bool bIsSkillSlot)
 {
 	if (!InComponent) return;
 
 	TargetSlotIndex = InSlotIndex;
 	LinkedComponent = InComponent;
+	bIsSkillSlotViewModel = bIsSkillSlot;
 
-	// 컴포넌트의 슬롯 변경 및 수량 변경 델리게이트 구독
-	InComponent->OnQuickSlotChanged.AddDynamic(this, &URPGQuickSlotViewModel::HandleSlotChanged);
-	InComponent->OnQuickSlotQuantityChanged.AddDynamic(this, &URPGQuickSlotViewModel::HandleQuantityChanged);
+	// 타입에 맞는 델리게이트 구독
+	if (bIsSkillSlotViewModel)
+	{
+		InComponent->OnSkillSlotChanged.AddDynamic(this, &URPGQuickSlotViewModel::HandleSlotChanged);
+		
+		// 스킬 슬롯 키 텍스트 설정 (Q, E, R, F, 1, 2, 3, 4)
+		TArray<FText> SkillKeys = { FText::FromString("Q"), FText::FromString("E"), FText::FromString("R"), FText::FromString("F"), 
+									 FText::FromString("1"), FText::FromString("2"), FText::FromString("3"), FText::FromString("4") };
+		if (SkillKeys.IsValidIndex(InSlotIndex)) SetInputKeyText(SkillKeys[InSlotIndex]);
 
-	// 입력 키 텍스트 초기 설정 (예: 1, 2, 3, 4...)
-	SetInputKeyText(FText::AsNumber(InSlotIndex + 1));
+		// 초기 데이터 반영
+		if (const FRPGQuickSlotContent* Content = InComponent->GetSkillSlotContent(InSlotIndex))
+		{
+			UpdateFromContent(*Content);
+		}
+	}
+	else
+	{
+		InComponent->OnItemSlotChanged.AddDynamic(this, &URPGQuickSlotViewModel::HandleSlotChanged);
+		InComponent->OnQuickSlotQuantityChanged.AddDynamic(this, &URPGQuickSlotViewModel::HandleQuantityChanged);
 
-	// 초기 데이터 반영
-	UpdateFromItem(InComponent->GetItemInSlot(InSlotIndex));
+		// 아이템 슬롯 키 텍스트 설정 (F1 ~ F8)
+		SetInputKeyText(FText::FromString(FString::Printf(TEXT("F%d"), InSlotIndex + 1)));
+
+		// 초기 데이터 반영
+		if (const FRPGQuickSlotContent* Content = InComponent->GetItemSlotContent(InSlotIndex))
+		{
+			UpdateFromContent(*Content);
+		}
+	}
 }
 
-void URPGQuickSlotViewModel::HandleSlotChanged(int32 SlotIndex, URPGItemBase* NewItem)
+void URPGQuickSlotViewModel::HandleSlotChanged(int32 SlotIndex, const FRPGQuickSlotContent& NewContent)
 {
 	if (SlotIndex == TargetSlotIndex)
 	{
-		UpdateFromItem(NewItem);
+		UpdateFromContent(NewContent);
 	}
 }
 
 void URPGQuickSlotViewModel::HandleQuantityChanged(URPGItemBase* Item, int32 NewQuantity)
 {
-	// 현재 이 슬롯에 들어있는 아이템의 수량이 변한 경우에만 갱신
+	if (bIsSkillSlotViewModel) return; // 스킬 뷰모델은 수량 변화 무시
+
 	if (LinkedComponent.IsValid())
 	{
-		URPGItemBase* CurrentItem = LinkedComponent->GetItemInSlot(TargetSlotIndex);
-		if (CurrentItem == Item)
+		const FRPGQuickSlotContent* CurrentContent = LinkedComponent->GetItemSlotContent(TargetSlotIndex);
+		if (CurrentContent && CurrentContent->Item == Item)
 		{
 			if (NewQuantity > 0)
 			{
@@ -45,28 +70,38 @@ void URPGQuickSlotViewModel::HandleQuantityChanged(URPGItemBase* Item, int32 New
 			}
 			else
 			{
-				// 수량이 0이 되면 슬롯 비우기
-				UpdateFromItem(nullptr);
+				UpdateFromContent(FRPGQuickSlotContent()); // 비우기
 			}
 		}
 	}
 }
 
-void URPGQuickSlotViewModel::UpdateFromItem(URPGItemBase* InItem)
+void URPGQuickSlotViewModel::UpdateFromContent(const FRPGQuickSlotContent& InContent)
 {
-	if (InItem && InItem->GetTotalQuantity() > 0)
+	if (InContent.IsEmpty())
 	{
-		// 아이템이 있을 때
-		// SetItemIcon(InItem->GetIcon()); // 아이템 아이콘 설정 로직 필요
-		SetQuantityText(FText::AsNumber(InItem->GetTotalQuantity()));
-		SetIsSlotActive(true);
-	}
-	else
-	{
-		// 아이템이 없거나 수량이 0일 때
 		SetItemIcon(nullptr);
 		SetQuantityText(FText::GetEmpty());
 		SetIsSlotActive(false);
+		return;
+	}
+
+	if (InContent.Item)
+	{
+		// 아이템인 경우
+		// SetItemIcon(InContent.Item->GetIcon()); // 아이템 아이콘 설정
+		SetQuantityText(FText::AsNumber(InContent.Item->GetTotalQuantity()));
+		SetIsSlotActive(true);
+	}
+	else if (InContent.AbilityTag.IsValid())
+	{
+		// 스킬인 경우
+		// 스킬 태그를 통해 아이콘을 가져오는 로직 (데이터 에셋 등에서 조회 필요)
+		// UTexture2D* SkillIcon = URPGFunctionLibrary::GetIconForSkillTag(GetWorld(), InContent.AbilityTag);
+		// SetItemIcon(SkillIcon);
+		
+		SetQuantityText(FText::GetEmpty()); // 스킬은 개수 표시 안함
+		SetIsSlotActive(true);
 	}
 }
 

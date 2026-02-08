@@ -364,3 +364,22 @@ struct FRPGPlayerIdentityData
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	TSoftObjectPtr<UMaterialInterface> IdentityGaugeMaterial;
 };
+
+/**
+ * 퀵슬롯에 담길 수 있는 내용물 (아이템 또는 스킬)
+ */
+USTRUCT(BlueprintType)
+struct FRPGQuickSlotContent
+{
+	GENERATED_BODY()
+
+	FRPGQuickSlotContent() : AbilityTag(FGameplayTag::EmptyTag), Item(nullptr) {}
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "QuickSlot")
+	FGameplayTag AbilityTag; // 스킬 태그 (GAS)
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "QuickSlot")
+	TObjectPtr<URPGItemBase> Item; // 아이템
+
+	bool IsEmpty() const { return !AbilityTag.IsValid() && !Item; }
+};

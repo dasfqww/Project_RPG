@@ -5,6 +5,7 @@
 #include "Components/Button.h"
 #include "Components/WidgetSwitcher.h"
 #include "Manager/SoundManager.h"
+#include "UI/Option/RPGInputOptionMenu.h"
 
 URPGOptionMenu::URPGOptionMenu()
 {
@@ -56,5 +57,13 @@ void URPGOptionMenu::OnTabButtonClicked()
 				break;
 			}
 		}
+	}
+}
+
+void URPGOptionMenu::OnMenuShown()
+{
+	if (InputOptionMenu)
+	{
+		InputOptionMenu->RefreshMappings();
 	}
 }

@@ -20,7 +20,13 @@ public:
 		FGameplayTag InputTag;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-		UInputAction* InputAction;
+	TObjectPtr<UInputAction> InputAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	FText InputActionName;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	bool bShowInInputOptionMenu = true;
 
 	bool IsValid() const{
 		return InputTag.IsValid() && InputAction;
@@ -46,4 +52,8 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (TitleProperty = "InputTag"))
 		TArray<FWarriorInputActionConfig> AbilityInputActions;
+
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
 };

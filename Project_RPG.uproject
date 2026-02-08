@@ -13,6 +13,11 @@
 				"ModelViewViewModel",
 				"CommonUI"
 			]
+		},
+		{
+			"Name": "Project_RPGEditor",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit"
 		}
 	],
 	"Plugins": [

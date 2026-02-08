@@ -4,6 +4,7 @@
 #include "UI/HUD/RPGHUD.h"
 #include "UI/RPGMainMenuWidget.h"
 #include "UI/RPGInteractionWidget.h"
+#include "UI/Option/RPGOptionMenu.h"
 
 ARPGHUD::ARPGHUD()
 {
@@ -15,10 +16,17 @@ void ARPGHUD::BeginPlay()
 
 	if (MainMenuWidgetClass)
 	{
-		//µå·¡±×µå·ÓÀÌ ¾ÈµÈ´Ù¸é AddToViewport(zorder)<<Á¶Á¤ÇÒ°Í
+		//ï¿½å·¡ï¿½×µï¿½ï¿½ï¿½ï¿½ ï¿½ÈµÈ´Ù¸ï¿½ AddToViewport(zorder)<<ï¿½ï¿½ï¿½ï¿½ï¿½Ò°ï¿½
 		MainMenuWidget = CreateWidget<URPGMainMenuWidget>(GetWorld(), MainMenuWidgetClass);
 		MainMenuWidget->AddToViewport(-1);
 		MainMenuWidget->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	if (OptionMenuWidgetClass)
+	{
+		OptionMenuWidget = CreateWidget<URPGOptionMenu>(GetWorld(), OptionMenuWidgetClass);
+		OptionMenuWidget->AddToViewport(10);
+		OptionMenuWidget->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
 	if (InteractionWidgetClass)
@@ -49,6 +57,11 @@ void ARPGHUD::HideMenu()
 
 void ARPGHUD::ToggleMenu()
 {
+	if (bIsOptionMenuVisible)
+	{
+		HideOptionMenu();
+	}
+
 	if (bIsMenuVisible)
 	{
 		HideMenu();
@@ -61,6 +74,45 @@ void ARPGHUD::ToggleMenu()
 	else
 	{
 		DisplayMenu();
+
+		const FInputModeGameAndUI InputMode;
+		GetOwningPlayerController()->SetInputMode(InputMode);
+		GetOwningPlayerController()->SetShowMouseCursor(true);
+	}
+}
+
+void ARPGHUD::DisplayOptionMenu()
+{
+	if (OptionMenuWidget)
+	{
+		bIsOptionMenuVisible = true;
+		OptionMenuWidget->SetVisibility(ESlateVisibility::Visible);
+		OptionMenuWidget->OnMenuShown();
+	}
+}
+
+void ARPGHUD::HideOptionMenu()
+{
+	if (OptionMenuWidget)
+	{
+		bIsOptionMenuVisible = false;
+		OptionMenuWidget->SetVisibility(ESlateVisibility::Collapsed);
+	}
+}
+
+void ARPGHUD::ToggleOptionMenu()
+{
+	if (bIsOptionMenuVisible)
+	{
+		HideOptionMenu();
+
+		const FInputModeGameOnly InputMode;
+		GetOwningPlayerController()->SetInputMode(InputMode);
+		GetOwningPlayerController()->SetShowMouseCursor(false);
+	}
+	else
+	{
+		DisplayOptionMenu();
 
 		const FInputModeGameAndUI InputMode;
 		GetOwningPlayerController()->SetInputMode(InputMode);

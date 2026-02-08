@@ -40,6 +40,8 @@ public:
 	UFUNCTION()
 	void OnTabButtonClicked();
 
+	void OnMenuShown();
+
 private:
 	UPROPERTY(EditDefaultsOnly, Category = "Sound", meta = (AllowPrivateAccess="true"))
 	TObjectPtr<USoundBase> HoverButtonSound;
@@ -61,6 +63,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "Tab Button", meta = (BindWidget))
 	TObjectPtr<UButton> InputOptionButton;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<class URPGInputOptionMenu> InputOptionMenu;
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UWidgetSwitcher> TabSwitcher;

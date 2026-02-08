@@ -1,0 +1,38 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "NativeGameplayTags.h"
+
+namespace RPGGameplayTags
+{
+	/* Item tags */
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameItem_Equipment_Weapon_GreatSword);
+
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameItem_Equipment_Helm_Default);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameItem_Equipment_Shoulder_Default);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameItem_Equipment_Chest_Default);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameItem_Equipment_Pants_Default);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameItem_Equipment_Glove_Default);
+
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameItem_Consume_Potion_Red_Small);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameItem_Consume_Potion_Red_Large);
+
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameItem_Consume_Potion_Blue_Small);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameItem_Consume_Potion_Blue_Large);
+
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameItem_Craft_fruit);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameItem_Craft_daisy);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameItem_Craft_Blossom);
+
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Fragment_GridFragment);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Fragment_IconFragment);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Fragment_StackableFragment);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Fragment_ConsumableFragment);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Fragment_ItemNameFragment);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Fragment_PrimaryStatFragment);
+
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Fragment_StatMod_1);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Fragment_StatMod_2);
+	PROJECT_RPG_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Fragment_StatMod_3);
+}

@@ -11,5 +11,6 @@ public class Project_RPGEditorTarget : TargetRules
 		DefaultBuildSettings = BuildSettingsVersion.V6;
 		IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_7;
 		ExtraModuleNames.Add("Project_RPG");
+		ExtraModuleNames.Add("Project_RPGEditor");
 	}
 }

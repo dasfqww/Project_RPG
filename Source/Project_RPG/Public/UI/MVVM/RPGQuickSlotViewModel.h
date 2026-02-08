@@ -4,41 +4,43 @@
 
 #include "CoreMinimal.h"
 #include "UI/MVVM/RPGViewModelBase.h"
+#include "Type/RPGStructTypes.h" // FRPGQuickSlotContent 사용을 위해 인클루드
 #include "RPGQuickSlotViewModel.generated.h"
 
 class URPGItemBase;
 class UQuickSlotComponent;
-class UTexture2D; // 전방 선언 추가
+class UTexture2D;
 
 /**
  * 퀵슬롯 개별 칸의 데이터를 관리하고 UI에 전달하는 뷰모델입니다.
+ * 전투 스킬(Q,E,R,F,1-4)과 아이템(F1-F8) 모두에서 사용될 수 있습니다.
  */
-UCLASS(BlueprintType) // BlueprintType 추가
+UCLASS(BlueprintType)
 class PROJECT_RPG_API URPGQuickSlotViewModel : public URPGViewModelBase
 {
 	GENERATED_BODY()
 
 public:
-	/** 뷰모델 초기화 */
+	/** 뷰모델 초기화 (bIsSkillSlot으로 타입 구분) */
 	UFUNCTION(BlueprintCallable, Category = "RPG|ViewModel")
-	void Initialize(int32 InSlotIndex, UQuickSlotComponent* InComponent);
+	void Initialize(int32 InSlotIndex, UQuickSlotComponent* InComponent, bool bIsSkillSlot);
 
 private:
-	/** 컴포넌트의 슬롯 변경 델리게이트를 처리할 함수 */
+	/** 슬롯 내용물 변경 처리 */
 	UFUNCTION()
-	void HandleSlotChanged(int32 SlotIndex, URPGItemBase* NewItem);
+	void HandleSlotChanged(int32 SlotIndex, const FRPGQuickSlotContent& NewContent);
 
-	/** 아이템 수량 변경 델리게이트를 처리할 함수 */
+	/** 아이템 수량 변경 처리 (아이템 슬롯인 경우에만 반응) */
 	UFUNCTION()
 	void HandleQuantityChanged(URPGItemBase* Item, int32 NewQuantity);
 
-	/** 아이템 데이터를 UI용 정보로 변환 */
-	void UpdateFromItem(URPGItemBase* InItem);
+	/** 데이터를 UI용 정보로 변환 (통합 처리) */
+	void UpdateFromContent(const FRPGQuickSlotContent& InContent);
 
 private:
 	// --- UI 바인딩용 프로퍼티 (FieldNotify) ---
 
-	/** 아이템 아이콘 */
+	/** 슬롯 아이콘 (아이템 또는 스킬 아이콘) */
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Setter = "SetItemIcon", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UTexture2D> ItemIcon;
 
@@ -50,12 +52,11 @@ private:
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Setter = "SetIsSlotActive", meta = (AllowPrivateAccess = "true"))
 	bool bIsSlotActive;
 
-	/** 입력 키 텍스트 */
+	/** 입력 키 텍스트 (예: Q, E, F1 등) */
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Setter = "SetInputKeyText", meta = (AllowPrivateAccess = "true"))
 	FText InputKeyText;
 
 public:
-	// Setter 함수들은 반드시 UFUNCTION이어야 하며, 매크로에서 지정한 이름과 일치해야 합니다.
 	UFUNCTION(BlueprintCallable, Category = "RPG|ViewModel")
 	void SetItemIcon(UTexture2D* InIcon);
 
@@ -69,10 +70,9 @@ public:
 	void SetInputKeyText(FText InText);
 
 private:
-	/** 현재 이 뷰모델이 담당하는 슬롯 번호 */
 	int32 TargetSlotIndex;
+	bool bIsSkillSlotViewModel;
 
-	/** 연동된 퀵슬롯 컴포넌트 (약참조) */
 	UPROPERTY()
 	TWeakObjectPtr<UQuickSlotComponent> LinkedComponent;
 };

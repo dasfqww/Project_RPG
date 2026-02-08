@@ -26,8 +26,6 @@
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
 
-
-
 ARPGPlayerController::ARPGPlayerController()
 {
 	PlayerTeamID = FGenericTeamId(0);
@@ -68,6 +66,7 @@ void ARPGPlayerController::ApplyKeyMapping(FGameplayTag InTag, FKey NewKey)
 	UEnhancedInputLocalPlayerSubsystem* Subsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
 	if (!Subsystem) return;
 
+	// Clean re-binding
 	InputConfigDataAsset->DefaultMappingContext->UnmapKey(TargetAction, NewKey);
 	InputConfigDataAsset->DefaultMappingContext->MapKey(TargetAction, NewKey);
 	
@@ -89,34 +88,23 @@ void ARPGPlayerController::ApplyKeyMapping(FGameplayTag InTag, FKey NewKey)
 
 FKey ARPGPlayerController::GetCurrentKeyForTag(FGameplayTag InTag) const
 {
-	// 1. Check custom settings first
 	URPGGameUserSettings* UserSettings = URPGGameUserSettings::GetRPGGameUserSettings();
 	if (UserSettings)
 	{
 		FKey CustomKey = UserSettings->GetKeyMapping(InTag);
-		if (CustomKey.IsValid())
-		{
-			return CustomKey;
-		}
+		if (CustomKey.IsValid()) return CustomKey;
 	}
 
-	// 2. Fallback to default from DataAsset/IMC
 	if (InputConfigDataAsset)
 	{
 		UInputAction* TargetAction = InputConfigDataAsset->FindNativeInputActionByTag(InTag);
-		if (!TargetAction)
-		{
-			TargetAction = InputConfigDataAsset->FindAbilityInputActionByTag(InTag);
-		}
+		if (!TargetAction) TargetAction = InputConfigDataAsset->FindAbilityInputActionByTag(InTag);
 
 		if (TargetAction && InputConfigDataAsset->DefaultMappingContext)
 		{
 			for (const FEnhancedActionKeyMapping& Mapping : InputConfigDataAsset->DefaultMappingContext->GetMappings())
 			{
-				if (Mapping.Action == TargetAction)
-				{
-					return Mapping.Key;
-				}
+				if (Mapping.Action == TargetAction) return Mapping.Key;
 			}
 		}
 	}
@@ -132,100 +120,34 @@ FGenericTeamId ARPGPlayerController::GetGenericTeamId() const
 void ARPGPlayerController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
-
-	
 }
-
-//void ARPGPlayerController::PerformInteractionCheck_LineTrace()
-//{
-//	InteractionData.LastInteractionCheckTime = GetWorld()->GetWorld()->GetTimeSeconds();
-//
-//	FVector TraceStart{PlayerCharacter->GetPawnViewLocation()};
-//	FVector TraceEnd{ TraceStart + (PlayerCharacter->GetViewRotation().Vector() * InteractionCheckDistance) };
-//
-//	float LookDirection =
-//		FVector::DotProduct(
-//			PlayerCharacter->GetActorForwardVector(),
-//			PlayerCharacter->GetViewRotation().Vector());
-//
-//	if (LookDirection>0)
-//	{
-//		DrawDebugLine(GetWorld(), TraceStart, TraceEnd, FColor::Red, false, 1.0f, 0, 2.f);
-//
-//		FCollisionQueryParams QueryParams;
-//		QueryParams.AddIgnoredActor(PlayerCharacter);
-//		FHitResult TraceHit;
-//
-//		if (GetWorld()->LineTraceSingleByChannel(TraceHit, TraceStart, TraceEnd, ECC_Visibility, QueryParams))
-//		{
-//			if (TraceHit.GetActor()->GetClass()->ImplementsInterface(UInteractionInterface::StaticClass()))
-//			{
-//				//const float Distance = (TraceStart - TraceHit.ImpactPoint).Size();
-//
-//				if (TraceHit.GetActor() != InteractionData.CurrentInteractable)
-//				{
-//					FoundInteractable(TraceHit.GetActor());
-//					return;
-//				}
-//
-//				else if (TraceHit.GetActor() == InteractionData.CurrentInteractable)
-//				{
-//					return;
-//				}
-//			}
-//		}
-//	}	
-//
-//	NoInteractableFound();
-//}
 
 void ARPGPlayerController::PerformInteractionCheck_Around()
 {
+	if (!PlayerCharacter) return;
 	FVector Center = PlayerCharacter->GetActorLocation();
-
 	TArray<FOverlapResult> OverlapResults;
-
 	FCollisionObjectQueryParams ObjectQueryParams(ECollisionChannel::ECC_WorldDynamic);
-
-	// 4. Ž���� ����(Sphere)�� �����մϴ�.
 	FCollisionShape CollisionShape;
 	CollisionShape.SetSphere(PickupCheckRadius);
-
-	// 5. ���� �Ķ���͸� �����մϴ�. (�÷��̾� �ڽ��� ����)
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(PlayerCharacter);
 
-	// 6. OverlapMultiByObjectType �Լ��� �����Ͽ� �ݰ� �� ��� ���͸� ã���ϴ�.
-	bool bHasOverlapped = GetWorld()->OverlapMultiByObjectType(
-		OverlapResults,
-		Center,
-		FQuat::Identity,
-		ObjectQueryParams,
-		CollisionShape,
-		QueryParams
-	);
-
-	// ����� �뵵�� Ž�� ������ �׸��ϴ�.
-	DrawDebugSphere(GetWorld(), Center, PickupCheckRadius, 12, FColor::Cyan, false, 0.5f);
+	bool bHasOverlapped = GetWorld()->OverlapMultiByObjectType(OverlapResults, Center, FQuat::Identity, ObjectQueryParams, CollisionShape, QueryParams);
 
 	if (bHasOverlapped)
 	{
 		AActor* ClosestInteractable = nullptr;
-		float MinDistanceSquared = FLT_MAX; // ���� ����� �Ÿ��� ã�� ���� ���� (���� �Ÿ� ���)
+		float MinDistanceSquared = FLT_MAX; 
 
 		for (const FOverlapResult& Result : OverlapResults)
 		{
 			AActor* OverlappedActor = Result.GetActor();
 			if (!OverlappedActor) continue;
-						// ��ȣ�ۿ� �������̽��� �����ߴ��� Ȯ���մϴ�.
+						
 			if (OverlappedActor->GetClass()->ImplementsInterface(UInteractionInterface::StaticClass()))
 			{
-				// ĳ���Ϳ��� �Ÿ��� ����մϴ� (���� �Ÿ��� ���� ����� �� �����մϴ�).
-				float DistanceSquared =
-					FVector::DistSquared(PlayerCharacter->GetActorLocation(), 
-						OverlappedActor->GetActorLocation());
-
-				// ������� ���� ������� ���ͺ��� �� �����ٸ�, �� ���͸� ���� ����� ���ͷ� �����մϴ�.
+				float DistanceSquared = FVector::DistSquared(PlayerCharacter->GetActorLocation(), OverlappedActor->GetActorLocation());
 				if (DistanceSquared < MinDistanceSquared)
 				{
 					MinDistanceSquared = DistanceSquared;
@@ -236,23 +158,16 @@ void ARPGPlayerController::PerformInteractionCheck_Around()
 
 		if (ClosestInteractable)
 		{
-			if (InteractionData.CurrentInteractable != ClosestInteractable)
-			{
-				FoundInteractable(ClosestInteractable);
-			}
+			if (InteractionData.CurrentInteractable != ClosestInteractable) FoundInteractable(ClosestInteractable);
 			return;
 		}
 	}
-
 	NoInteractableFound();
 }
 
 void ARPGPlayerController::FoundInteractable(AActor* NewInteractable)
 {
-	if (IsInteracting())
-	{
-		EndInteract();
-	}
+	if (IsInteracting()) EndInteract();
 	
 	if (InteractionData.CurrentInteractable)
 	{
@@ -262,28 +177,17 @@ void ARPGPlayerController::FoundInteractable(AActor* NewInteractable)
 
 	InteractionData.CurrentInteractable = NewInteractable;
 	TargetInteractable = NewInteractable;
-
-	//HUD->UpdateInteractionWidget(&TargetInteractable->InteractableData);
-
 	TargetInteractable->BeginFocus();
 }
 
 void ARPGPlayerController::NoInteractableFound()
 {
-	if (IsInteracting())
-	{
-		GetWorldTimerManager().ClearTimer(TimerHandle_Interaction);
-	}
+	if (IsInteracting()) GetWorldTimerManager().ClearTimer(TimerHandle_Interaction);
 
 	if (InteractionData.CurrentInteractable)
 	{
-		if (IsValid(TargetInteractable.GetObject()))
-		{
-			TargetInteractable->EndFocus();
-		}
-
-		HUD->HideInteractionWidget();
-
+		if (IsValid(TargetInteractable.GetObject())) TargetInteractable->EndFocus();
+		if (HUD) HUD->HideInteractionWidget();
 		InteractionData.CurrentInteractable = nullptr;
 		TargetInteractable = nullptr;
 	}
@@ -292,27 +196,13 @@ void ARPGPlayerController::NoInteractableFound()
 void ARPGPlayerController::BeginInteract()
 {
 	PerformInteractionCheck_Around();
-
-	if (InteractionData.CurrentInteractable)
+	if (InteractionData.CurrentInteractable && IsValid(TargetInteractable.GetObject()))
 	{
-		if (IsValid(TargetInteractable.GetObject()))
+		TargetInteractable->BeginInteract();
+		if (FMath::IsNearlyZero(TargetInteractable->InteractableData.InteractionDuration, 0.1f)) Interact();
+		else
 		{
-			TargetInteractable->BeginInteract();
-
-			if (FMath::IsNearlyZero(TargetInteractable->InteractableData.InteractionDuration, 0.1f))
-			{
-				Interact();
-			}
-
-			else
-			{
-				GetWorldTimerManager().SetTimer(TimerHandle_Interaction, 
-					this,
-					&ThisClass::Interact,
-					TargetInteractable->InteractableData.InteractionDuration,
-					false
-					);
-			}
+			GetWorldTimerManager().SetTimer(TimerHandle_Interaction, this, &ThisClass::Interact, TargetInteractable->InteractableData.InteractionDuration, false);
 		}
 	}
 }
@@ -320,34 +210,30 @@ void ARPGPlayerController::BeginInteract()
 void ARPGPlayerController::EndInteract()
 {
 	GetWorldTimerManager().ClearTimer(TimerHandle_Interaction);
-
-	if (IsValid(TargetInteractable.GetObject()))
-	{
-		TargetInteractable->EndInteract();
-	}
+	if (IsValid(TargetInteractable.GetObject())) TargetInteractable->EndInteract();
 }
 
 void ARPGPlayerController::Interact()
 {
 	GetWorldTimerManager().ClearTimer(TimerHandle_Interaction);
+	if (IsValid(TargetInteractable.GetObject())) TargetInteractable->Interact(this);
+}
 
-	if (IsValid(TargetInteractable.GetObject()))
+void ARPGPlayerController::UseSkillSlot(int32 SlotIndex)
+{
+	if (APawn* PlayerPawn = GetPawn())
 	{
-		TargetInteractable->Interact(this);
+		if (UQuickSlotComponent* QuickSlotComp = PlayerPawn->FindComponentByClass<UQuickSlotComponent>())
+			QuickSlotComp->UseSkillSlot(SlotIndex);
 	}
 }
 
-void ARPGPlayerController::UseQuickSlot(int32 SlotIndex)
+void ARPGPlayerController::UseItemSlot(int32 SlotIndex)
 {
-	// �÷��̾� Pawn�� QuickSlotComponent�� ��������
 	if (APawn* PlayerPawn = GetPawn())
 	{
-		QuickSlotComponent = PlayerPawn->FindComponentByClass<UQuickSlotComponent>();
-
-		if (QuickSlotComponent)
-		{			
-			QuickSlotComponent->UseItemInQuickSlot(SlotIndex, this);
-		}
+		if (UQuickSlotComponent* QuickSlotComp = PlayerPawn->FindComponentByClass<UQuickSlotComponent>())
+			QuickSlotComp->UseItemSlot(SlotIndex, this);
 	}
 }
 
@@ -356,103 +242,35 @@ void ARPGPlayerController::EnableCameraZoom()
 	bCanZoom = true;
 }
 
-void ARPGPlayerController::DropItem(URPGItemBase* ItemToDrop, const int32 QuantityToDrop)
-{
-	/*if (PlayerCharacter->GetRPGInventory()->FindMatchingItem(ItemToDrop))
-	{
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = this;
-		SpawnParams.bNoFail = true;
-		SpawnParams.SpawnCollisionHandlingOverride 
-			= ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-		const FVector SpawnPos{ PlayerCharacter->GetActorLocation() +
-			(PlayerCharacter->GetActorForwardVector() * 50.f) };
-		const FTransform SpawnTransform(PlayerCharacter->GetActorRotation(), SpawnPos);
-
-		const int32 RemoveQuantity
-			= PlayerCharacter->GetRPGInventory()->RemoveAmountOfItem(ItemToDrop, QuantityToDrop);
-
-		ARPGPickUpBase* Pickup= GetWorld()->SpawnActor<ARPGPickUpBase>(PickupClass, SpawnTransform, SpawnParams);
-
-		Pickup->InitializeDrop(ItemToDrop, RemoveQuantity);
-	}
-
-	else
-	{
-		Debug::Print("����� ������ ��������,..");
-	}*/
-}
-
-void ARPGPlayerController::UpdateInteractionWidget() const
-{
-	if (IsValid(TargetInteractable.GetObject()))
-	{
-		//HUD->UpdateInteractionWidget(&TargetInteractable->InteractableData);
-	}
-}
-
 void ARPGPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
 
-	Debug::Print(TEXT("comp init.."));
-
-	// EnhancedInput
-	auto* SubSystem =
-		ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer());
-	if (SubSystem)
-	{
-		
-		SubSystem->AddMappingContext(InputConfigDataAsset->DefaultMappingContext, 0);
-	}
+	auto* SubSystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer());
+	if (SubSystem) SubSystem->AddMappingContext(InputConfigDataAsset->DefaultMappingContext, 0);
 
 	URPGInputComponent* RPGInputComponent = CastChecked<URPGInputComponent>(InputComponent);
 
-	RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_Move,
-		ETriggerEvent::Triggered, this, &ThisClass::Input_Move);
-	RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_Look,
-		ETriggerEvent::Triggered, this, &ThisClass::Input_Look);
+	// =========================================================================
+	// [완전 자동화] 이제부터는 데이터 에셋에 액션/태그만 추가하면 자동으로 연결됩니다.
+	// =========================================================================
+	
+	// 1. 모든 Native 입력 자동 바인딩 (리플렉션 이용)
+	// 규칙: 태그 InputTag.Move -> 함수 Input_Move
+	RPGInputComponent->BindNativeInputActions(InputConfigDataAsset, this);
 
-	RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_CameraZoom,
-		ETriggerEvent::Triggered, this, &ThisClass::Input_CameraZoom);
+	// 2. 퀵슬롯 루프 바인딩
+	for (int32 i = 0; i < 8; ++i)
+	{
+		FGameplayTag SkillTag = FGameplayTag::RequestGameplayTag(FName(*FString::Printf(TEXT("InputTag.QuickSkill.%d"), i + 1)));
+		FGameplayTag ItemTag = FGameplayTag::RequestGameplayTag(FName(*FString::Printf(TEXT("InputTag.QuickItem.%d"), i + 1)));
 
-	RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_SwitchTarget,
-		ETriggerEvent::Triggered, this, &ThisClass::Input_SwitchTargetTriggered);
-	RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_SwitchTarget,
-		ETriggerEvent::Completed, this, &ThisClass::Input_SwitchTargetCompleted);
-	
-	RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_PickUp_Items,
-		ETriggerEvent::Started, this, &ThisClass::Input_PickUpItemsStarted);
-	
-	RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_PickUp_Items,
-		ETriggerEvent::Completed, this, &ThisClass::EndInteract);
+		RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, SkillTag, ETriggerEvent::Started, this, &ThisClass::UseSkillSlot, i);
+		RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, ItemTag, ETriggerEvent::Started, this, &ThisClass::UseItemSlot, i);
+	}
 
-	RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_ToggleMenu,
-		ETriggerEvent::Started, this, &ThisClass::ToggleInventory);
-	
-	RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_ShowEquipmentWidget,
-		ETriggerEvent::Started, this, &ThisClass::ToggleInventory);
-
-	/*RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_UseQuickSlotF1,
-		ETriggerEvent::Started, this, &ThisClass::UseQuickSlot, 0);*/
-	
-	RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_UseQuickSlot1,
-		ETriggerEvent::Started, this, &ThisClass::UseQuickSlot, 0);
-	
-	RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_UseQuickSlot2,
-		ETriggerEvent::Started, this, &ThisClass::UseQuickSlot, 1);
-	
-	RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_UseQuickSlot3,
-		ETriggerEvent::Started, this, &ThisClass::UseQuickSlot, 2);
-	
-	RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, RPGGameplayTags::InputTag_UseQuickSlot4,
-		ETriggerEvent::Started, this, &ThisClass::UseQuickSlot, 3);
-
-	
-
-	RPGInputComponent->BindAbilityInputAction(InputConfigDataAsset,
-			this, &ThisClass::Input_AbilityInputPressed, &ThisClass::Input_AbilityInputReleased);
+	// 3. GAS 어빌리티 바인딩 (이미 자동화 구조)
+	RPGInputComponent->BindAbilityInputAction(InputConfigDataAsset, this, &ThisClass::Input_AbilityInputPressed, &ThisClass::Input_AbilityInputReleased);
 
 	UpdateInputMappings();
 }
@@ -460,53 +278,32 @@ void ARPGPlayerController::SetupInputComponent()
 void ARPGPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
-
 	PlayerCharacter = Cast<ARPGPlayer>(GetPawn());
-	HUD = Cast<ARPGHUD>(GetWorld()->GetFirstPlayerController()->GetHUD());
-
+	HUD = Cast<ARPGHUD>(GetHUD());
 	InventoryComponent = FindComponentByClass<URPGInventoryComponent>();
-
-	// ������ ������Ʈ ��������
-	QuickSlotComponent = GetPawn()->FindComponentByClass<UQuickSlotComponent>();
-
-	// �������� ������ �ʱ�ȭ
-	if (QuickSlotComponent)
-	{
-		//QuickSlotComponent->InitializeQuickSlots();
-	}
+	QuickSlotComponent = GetPawn() ? GetPawn()->FindComponentByClass<UQuickSlotComponent>() : nullptr;
 }
 
 void ARPGPlayerController::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-
-	/*if (GetWorld()->TimeSince(InteractionData.LastInteractionCheckTime)>InteractionCheckFequency)
-	{
-		PerformInteractionCheck_LineTrace();
-	}*/
 }
+
+// --- 핸들러 구현부 (이름 규칙: Input_태그명) ---
 
 void ARPGPlayerController::Input_Move(const FInputActionValue& InputActionValue)
 {
-	if (PlayerCharacter)
-	{
-		PlayerCharacter->Move(InputActionValue);
-		
-	}
+	if (PlayerCharacter) PlayerCharacter->Move(InputActionValue);
 }
 
 void ARPGPlayerController::Input_Look(const FInputActionValue& InputActionValue)
 {
-	if (PlayerCharacter)
-	{
-		PlayerCharacter->Look(InputActionValue);
-		
-	}
+	if (PlayerCharacter) PlayerCharacter->Look(InputActionValue);
 }
 
 void ARPGPlayerController::Input_CameraZoom(const FInputActionValue& InputActionValue)
 {
-	if (PlayerCharacter&&bCanZoom)
+	if (PlayerCharacter && bCanZoom)
 	{		
 		PlayerCharacter->HandleCameraZoom(InputActionValue);
 		bCanZoom = false;
@@ -514,59 +311,57 @@ void ARPGPlayerController::Input_CameraZoom(const FInputActionValue& InputAction
 	}
 }
 
-
-
-void ARPGPlayerController::Input_SwitchTargetTriggered(const FInputActionValue& InputActionValue)
+void ARPGPlayerController::Input_SwitchTarget(const FInputActionValue& InputActionValue)
 {
-	SwitchDirection = InputActionValue.Get<FVector2D>();
+	// Triggered와 Completed를 모두 처리할 수 있음
+	if (InputActionValue.Get<FVector2D>() != FVector2D::ZeroVector)
+	{
+		SwitchDirection = InputActionValue.Get<FVector2D>();
+	}
+	else // Completed 시점 (Value가 0이 됨)
+	{
+		FGameplayEventData Data;
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(PlayerCharacter,
+			SwitchDirection.X > 0.f ? RPGGameplayTags::Player_Event_SwitchTarget_Right : RPGGameplayTags::Player_Event_SwitchTarget_Left, Data);
+	}
 }
 
-void ARPGPlayerController::Input_SwitchTargetCompleted(const FInputActionValue& InputActionValue)
+void ARPGPlayerController::Input_PickUp_Items(const FInputActionValue& InputActionValue)
 {
-	FGameplayEventData Data;
-
-	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(
-		PlayerCharacter,
-		SwitchDirection.X > 0.f ? RPGGameplayTags::Player_Event_SwitchTarget_Right : 
-		RPGGameplayTags::Player_Event_SwitchTarget_Left,
-		Data
-	);
-
-	//Debug::Print(TEXT("SwitchDir: ") + SwitchDirection.ToString());
+	if (InputActionValue.Get<bool>()) BeginInteract();
+	else EndInteract();
 }
 
-void ARPGPlayerController::Input_PickUpItemsStarted(const FInputActionValue& InputActionValue)
+void ARPGPlayerController::Input_ToggleMenu(const FInputActionValue& Value)
 {
-	/*PlayerCharacter->GetRPGAbilitySystemComponent()->
-		TryActivateAbilityByTag(RPGGameplayTags::Player_Ability_PickUp_Instant);*/
-	BeginInteract();
+	if (HUD) HUD->ToggleMenu();
+}
+
+void ARPGPlayerController::Input_ShowEquipmentWidget(const FInputActionValue& Value)
+{
+	ToggleInventory();
 }
 
 void ARPGPlayerController::Input_AbilityInputPressed(FGameplayTag InInputTag)
 {
-	if (PlayerCharacter)
-	{
-		PlayerCharacter->GetRPGAbilitySystemComponent()->OnAbilityInputPressed(InInputTag);
-	}
+	if (PlayerCharacter) PlayerCharacter->GetRPGAbilitySystemComponent()->OnAbilityInputPressed(InInputTag);
 }
 
 void ARPGPlayerController::Input_AbilityInputReleased(FGameplayTag InInputTag)
 {
-	if (PlayerCharacter)
-	{
-		PlayerCharacter->GetRPGAbilitySystemComponent()->OnAbilityInputReleased(InInputTag);
-	}
+	if (PlayerCharacter) PlayerCharacter->GetRPGAbilitySystemComponent()->OnAbilityInputReleased(InInputTag);
 }
 
 void ARPGPlayerController::ToggleInventory()
 {
-	if (!InventoryComponent.IsValid()) return;
+	if (InventoryComponent.IsValid()) InventoryComponent->ToggleInventoryMenu();
+}
 
-	InventoryComponent->ToggleInventoryMenu();
-	//HUD->ToggleMenu();
+void ARPGPlayerController::ToggleOptionMenu()
+{
+	if (HUD) HUD->ToggleOptionMenu();
 }
 
 void ARPGPlayerController::ShowEquipmentWidget()
 {
-	
 }

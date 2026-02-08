@@ -11,7 +11,7 @@ class URPGInteractionWidget;
 class URPGMainMenuWidget;
 
 /**
- * ÄÚµå ÃÄº¸°í ÇÊ¿ä½Ã ¸®ÆÑÅä¸µ °í·ÁÇÒ°Í.
+ * ï¿½Úµï¿½ ï¿½Äºï¿½ï¿½ï¿½ ï¿½Ê¿ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ä¸µ ï¿½ï¿½ï¿½ï¿½ï¿½Ò°ï¿½.
  */
 UCLASS()
 class PROJECT_RPG_API ARPGHUD : public AHUD
@@ -26,16 +26,24 @@ public:
 	TSubclassOf<URPGMainMenuWidget> MainMenuWidgetClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Widgets")
+	TSubclassOf<class URPGOptionMenu> OptionMenuWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Widgets")
 	TSubclassOf<URPGInteractionWidget> InteractionWidgetClass;
 	
 	/*UPROPERTY(EditDefaultsOnly, Category = "Widgets")
 	TSubclassOf<URPGInteractionWidget> InteractionWidgetClass;*/
 
 	bool bIsMenuVisible;
+	bool bIsOptionMenuVisible;
 
 	void DisplayMenu();
 	void HideMenu();
 	void ToggleMenu();
+
+	void DisplayOptionMenu();
+	void HideOptionMenu();
+	void ToggleOptionMenu();
 
 	void ShowInteractionWidget();
 	void HideInteractionWidget();
@@ -44,6 +52,9 @@ public:
 protected:
 	UPROPERTY()
 	URPGMainMenuWidget* MainMenuWidget;
+
+	UPROPERTY()
+	class URPGOptionMenu* OptionMenuWidget;
 
 	UPROPERTY()
 	URPGInteractionWidget* InteractionWidget;
