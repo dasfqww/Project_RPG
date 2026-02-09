@@ -11,19 +11,19 @@ struct FRPGSkillDataTable:public FTableRowBase
 public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill)
-	FName SkillName;  // ½ºÅ³ ÀÌ¸§
+	FName SkillName;  // ï¿½ï¿½Å³ ï¿½Ì¸ï¿½
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill)
-	float AttackPower;
+	float AttackPower = 0.0f;
 
 	/*UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill)
 	float CoolTime;*/
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill)
-	float ManaCost;
+	float ManaCost = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill)
-	float IdentityGainAmount;
+	float IdentityGainAmount = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Skill)
 	FText ToolTip;

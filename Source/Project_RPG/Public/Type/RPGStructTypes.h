@@ -146,12 +146,12 @@ struct FChargeLevelNiagaraOptionData
 {
 	GENERATED_BODY()
 
-	// ���� �ܰ迡 �ش��ϴ� ����
+	//  ܰ迡 شϴ 
 	UPROPERTY(EditDefaultsOnly, Category = "Charge Effect")
-	bool bAddDetail;
+	bool bAddDetail = false;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Charge Effect")
-	bool bSimple;
+	bool bSimple = false;
 };
 
 USTRUCT(BlueprintType)
@@ -187,7 +187,7 @@ struct FContentData
 	FString Description;
 
 	UPROPERTY()
-	TArray<FString> RewardItems;  // ������ �̸� ����Ʈ (������ ó��)
+	TArray<FString> RewardItems;  //  ̸ Ʈ ( ó)
 
 	
 	
@@ -202,10 +202,10 @@ struct FDropItem
 	TSubclassOf<class ARPGPickUpBase> ItemClass;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Drop Item")
-	int32 DropQuantity;
+	int32 DropQuantity = 0;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Drop Item")
-	float DropChance;
+	float DropChance = 0.0f;
 };
 
 USTRUCT(BlueprintType)
@@ -217,10 +217,10 @@ struct FRewardItem
 	FName ItemRowName;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Drop Item")
-	int32 DropQuantity;
+	int32 DropQuantity = 0;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Drop Item")
-	float DropChance;
+	float DropChance = 0.0f;
 };
 
 USTRUCT(BlueprintType)
@@ -299,10 +299,10 @@ struct FItemSaveData
 	FName ItemID;
 
 	UPROPERTY()
-	int32 Quantity;
+	int32 Quantity = 0;
 
 	UPROPERTY()
-	int32 SlotIndex;
+	int32 SlotIndex = -1;
 
 	UPROPERTY()
 	FString Category;
@@ -321,7 +321,7 @@ struct FGraphicSaveData
 	FString WindowMode;
 
 	UPROPERTY()
-	bool bVSync;
+	bool bVSync = false;
 };
 
 
@@ -334,7 +334,7 @@ struct FSoundSaveData
 	float MasterVolume = 1.0f;
 
 	UPROPERTY()
-	bool bMasterMuted;
+	bool bMasterMuted = false;
 
 	UPROPERTY()
 	TMap<FString, float> Volumes;

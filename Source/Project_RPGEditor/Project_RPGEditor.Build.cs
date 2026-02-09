@@ -31,7 +31,8 @@ public class Project_RPGEditor : ModuleRules
 				"EditorSubsystem",
 				"Blutility", // Editor Utility Widgets를 위해 필요
 				"UMG",
-				"UMGEditor"
+				"UMGEditor",
+				"DataValidation"
 			}
 		);
 	}
