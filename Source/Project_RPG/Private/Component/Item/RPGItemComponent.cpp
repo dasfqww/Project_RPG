@@ -2,17 +2,13 @@
 
 
 #include "Component/Item/RPGItemComponent.h"
+#include "Component/RPGInventoryComponent.h"
 
-// Sets default values for this component's properties
-URPGItemComponent::URPGItemComponent()
+URPGItemComponent::URPGItemComponent(const FObjectInitializer& ObjectInitializer)
+	:Super(ObjectInitializer)
 {
-	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
-	// off to improve performance if you don't need them.
-	PrimaryComponentTick.bCanEverTick = true;
-
-	// ...
+	SetIsReplicatedByDefault(true);
 }
-
 
 // Called when the game starts
 void URPGItemComponent::BeginPlay()

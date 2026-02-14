@@ -11,6 +11,8 @@
 
 class URPGAbilitySystemComponent;
 class URPGAttributeSet;
+class URPGEquipComponent;
+class URPGEquipmentComponent;
 class UDataAsset_StartUpDataBase;
 class UMotionWarpingComponent;
 class UDamageFontWidget;
@@ -56,6 +58,12 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AbilitySystem")
 		TObjectPtr<URPGAttributeSet> RPGAttributeSet;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
+		TObjectPtr<URPGEquipComponent> EquipComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
+		TObjectPtr<URPGEquipmentComponent> EquipmentComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MotionWarping")
 		TObjectPtr<UMotionWarpingComponent> MotionWarpingComponent;

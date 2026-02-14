@@ -98,6 +98,16 @@ enum class EItemCategory :uint8
 };
 
 UENUM(BlueprintType)
+enum class EWeaponHandType : uint8
+{
+	LeftHand,
+	RightHand,
+	TwoHand,
+
+	Count	UMETA(Hidden)
+};
+
+UENUM(BlueprintType)
 enum class ETileQuadrant : uint8
 {
 	TopLeft,
@@ -122,5 +132,39 @@ enum class ERPGIdentityType : uint8
 {
 	Cost,       /** 게이지를 코스트로 소모하는 형태 (예: 블링크) */
 	Transform,  /** 게이지가 차면 변신하는 형태 (예: 데모닉) */
-	BuffMode    /** 게이지가 차면 강화 모드로 진입하는 형태 (예: 버서커) */
-};
+		BuffMode    /** 게이지가 차면 강화 모드로 진입하는 형태 (예: 버서커) */
+	};
+	
+	UENUM(BlueprintType)
+	enum class EEquipState : uint8
+	{
+		None,
+		WeaponSet_Primary,
+		WeaponSet_Secondary,
+		Utility,
+	
+		Count UMETA(Hidden)
+	};
+
+	UENUM(BlueprintType)
+	enum class EEquipmentSlotType : uint8
+	{
+		Head,
+		Chest,
+		Legs,
+		Feet,
+		Hands,
+		Necklace,
+		Ring_L,
+		Ring_R,
+		Weapon_Primary_L,
+		Weapon_Primary_R,
+		Weapon_Secondary_L,
+		Weapon_Secondary_R,
+		Utility_1,
+		Utility_2,
+	
+		Count UMETA(Hidden),
+		None UMETA(Hidden)
+	};
+	

@@ -11,7 +11,10 @@
 			"AdditionalDependencies": [
 				"Engine",
 				"ModelViewViewModel",
-				"CommonUI"
+				"CommonUI",
+				"NiagaraAnimNotifies",
+				"CoreUObject",
+				"ModularGameplay"
 			]
 		},
 		{
@@ -70,6 +73,10 @@
 		},
 		{
 			"Name": "ModelViewViewModel",
+			"Enabled": true
+		},
+		{
+			"Name": "AIAssistant",
 			"Enabled": true
 		}
 	]

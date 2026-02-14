@@ -2,19 +2,22 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
-#include "Components/ActorComponent.h"
+//#include "CoreMinimal.h"
+#include "Components/ControllerComponent.h"
 #include "RPGItemComponent.generated.h"
 
+class URPGItemBase;
+class ARPGPickUpBase;
+class URPGInventoryComponent;
 
-UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), Blueprintable)
-class PROJECT_RPG_API URPGItemComponent : public UActorComponent
+UCLASS()
+class PROJECT_RPG_API URPGItemComponent : public UControllerComponent
 {
 	GENERATED_BODY()
 
 public:	
 	// Sets default values for this component's properties
-	URPGItemComponent();
+	URPGItemComponent(const FObjectInitializer& ObjectInitializer);
 
 protected:
 	// Called when the game starts
