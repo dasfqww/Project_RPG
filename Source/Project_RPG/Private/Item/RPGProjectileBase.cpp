@@ -5,7 +5,8 @@
 #include "Components/BoxComponent.h"
 #include "NiagaraComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
+#include "FunctionLibrary/RPGCombatFunctionLibrary.h"
 #include "RPGGameplayTags.h"
 #include "AbilitySystemBlueprintLibrary.h"
 
@@ -58,7 +59,7 @@ void ARPGProjectileBase::OnProjectileHit(UPrimitiveComponent* HitComponent, AAct
 
 	APawn* HitPawn = Cast<APawn>(OtherActor);
 
-	if (!HitPawn || !URPGFunctionLibrary::IsTargetPawnHostile(GetInstigator(), HitPawn))
+	if (!HitPawn || !URPGCombatFunctionLibrary::IsTargetPawnHostile(GetInstigator(), HitPawn))
 	{
 		Destroy();
 		return;
@@ -67,11 +68,12 @@ void ARPGProjectileBase::OnProjectileHit(UPrimitiveComponent* HitComponent, AAct
 	bool bIsValidBlock = false;
 
 	const bool bIsPlayerBlocking =
-		URPGFunctionLibrary::NativeDoesActorHaveTag(HitPawn, RPGGameplayTags::Player_Status_Blocking);
+		URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(HitPawn,
+		RPGGameplayTags::Player_Status_Blocking);
 
 	if (bIsPlayerBlocking)
 	{
-		bIsValidBlock = URPGFunctionLibrary::IsValidBlock(this, HitPawn);
+		bIsValidBlock = URPGCombatFunctionLibrary::IsValidBlock(this, HitPawn);
 	}
 
 	FGameplayEventData Data;
@@ -104,7 +106,7 @@ void ARPGProjectileBase::HandleApplyProjectileDamage(APawn* InHitPawn, const FGa
 	checkf(ProjectileDamageEffectSpecHandle.IsValid(), 
 		TEXT("Forgot to assign a valid spec handle to the projectile: %s"), *GetActorNameOrLabel());
 
-	const bool bWasApplied = URPGFunctionLibrary::ApplyGameplayEffectSpecHandleToTargetActor
+	const bool bWasApplied = URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToTargetActor
 		(GetInstigator(), InHitPawn, ProjectileDamageEffectSpecHandle);
 
 	if (bWasApplied)

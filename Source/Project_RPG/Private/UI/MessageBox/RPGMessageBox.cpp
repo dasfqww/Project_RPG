@@ -5,7 +5,7 @@
 #include "Components/TextBlock.h"
 #include "GameInstance/RPGGameInstance.h"
 #include "Kismet/GameplayStatics.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 #include "Manager/SoundManager.h"
 
 void URPGMessageBox::NativeConstruct()
@@ -19,7 +19,7 @@ void URPGMessageBox::NativeConstruct()
 
 void URPGMessageBox::OnConfirm()
 {
-	URPGGameInstance* GI = URPGFunctionLibrary::GetRPGGameInstance(GetWorld());
+	URPGGameInstance* GI = URPGCoreFunctionLibrary::GetRPGGameInstance(GetWorld());
 	
 	if (GI)
 	{

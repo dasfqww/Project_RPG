@@ -5,7 +5,7 @@
 #include "MoviePlayer.h"
 #include "Manager/DataManager.h"
 #include "Manager/SoundManager.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 #include "GameFramework/GameUserSettings.h"
 #include "DataTable/SkillData.h"
 
@@ -66,11 +66,11 @@ void URPGGameInstance::InitializeGraphicOption()
     FGraphicSaveData SavedData;
     if (UDataManager::Get()->LoadGraphicOptionsFromJson(SavedData))
     {
-        // 1. ÇöÀç À¯Àú ¼¼ÆÃ ºÒ·¯¿À±â
+        // 1. ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ò·ï¿½ï¿½ï¿½ï¿½ï¿½
         UGameUserSettings* Settings = GEngine->GetGameUserSettings();
         if (!Settings) return;
 
-        // 2. ÇØ»óµµ ÆÄ½Ì (¿¹: "1920x1080" ÇüÅÂ)
+        // 2. ï¿½Ø»ï¿½ ï¿½Ä½ï¿½ (ï¿½ï¿½: "1920x1080" ï¿½ï¿½ï¿½ï¿½)
         FString ResolutionStr = SavedData.Resolution; // "1920x1080"
         FString LeftStr, RightStr;
         if (ResolutionStr.Split("x", &LeftStr, &RightStr))
@@ -80,7 +80,7 @@ void URPGGameInstance::InitializeGraphicOption()
             Settings->SetScreenResolution(FIntPoint(Width, Height));
         }
 
-        // 3. Ã¢ ¸ðµå ¼³Á¤
+        // 3. Ã¢ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
         FString WindowModeStr = SavedData.WindowMode; // "Fullscreen", "Windowed", etc.
         EWindowMode::Type WindowMode = EWindowMode::Windowed;
         if (WindowModeStr == "Fullscreen")
@@ -96,10 +96,10 @@ void URPGGameInstance::InitializeGraphicOption()
         bool bVSyncEnabled = SavedData.bVSync;
         Settings->SetVSyncEnabled(bVSyncEnabled);
 
-        // 5. ½ÇÁ¦ Àû¿ë
-        Settings->ApplySettings(false); // true¸é ·Îµù È­¸é ³ª¿Ã ¼ö ÀÖÀ½
+        // 5. ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+        Settings->ApplySettings(false); // trueï¿½ï¿½ ï¿½Îµï¿½ È­ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 
-        // ¼±ÅÃÀûÀ¸·Î ÀúÀå
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
         Settings->SaveSettings();
 
         /*Debug::Print(TEXT("Loaded Resolution: ")+SavedData.Resolution);
@@ -119,11 +119,11 @@ void URPGGameInstance::InitializeSoundOption()
         //Debug::Print("Loaded MasterVolume: ", SavedData.MasterVolume);
         //Debug::Print("Loaded MasterMute: ", SavedData.bMasterMuted);
 
-        // º¼·ý ÃÊ±âÈ­
+        // ï¿½ï¿½ï¿½ï¿½ ï¿½Ê±ï¿½È­
         for (const auto& Pair : SavedData.Volumes)
         {
             ESoundType SoundType;
-            if(URPGFunctionLibrary::TryConvertStringToEnum(Pair.Key, SoundType))  // ¹®ÀÚ¿­ ¡æ enum º¯È¯
+            if(URPGCoreFunctionLibrary::TryConvertStringToEnum(Pair.Key, SoundType))  // ï¿½ï¿½ï¿½Ú¿ï¿½ ï¿½ï¿½ enum ï¿½ï¿½È¯
             {
                 USoundManager::Get()->SetVolume(SoundType, Pair.Value);
 
@@ -131,11 +131,11 @@ void URPGGameInstance::InitializeSoundOption()
             }
         }
 
-        // ¹ÂÆ® ÃÊ±âÈ­
+        // ï¿½ï¿½Æ® ï¿½Ê±ï¿½È­
         for (const auto& Pair : SavedData.Mutes)
         {
             ESoundType SoundType;
-            if (URPGFunctionLibrary::TryConvertStringToEnum(Pair.Key, SoundType))  // ¹®ÀÚ¿­ ¡æ enum º¯È¯
+            if (URPGCoreFunctionLibrary::TryConvertStringToEnum(Pair.Key, SoundType))  // ï¿½ï¿½ï¿½Ú¿ï¿½ ï¿½ï¿½ enum ï¿½ï¿½È¯
             {
                 USoundManager::Get()->SetMute(SoundType, Pair.Value, SavedData.Volumes[Pair.Key]);
 

@@ -11,7 +11,8 @@
 #include "Component/UI/PlayerUIComponent.h"
 #include "Attribute/RPGAttributeSet.h"
 #include "DataTable/SkillData.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
+#include "FunctionLibrary/RPGCombatFunctionLibrary.h"
 #include "Manager/SoundManager.h"
 #include "GameInstance/RPGGameInstance.h"
 #include "NiagaraFunctionLibrary.h"
@@ -23,10 +24,10 @@ bool URPGPlayerGameplayAbility::CanActivateAbility(const FGameplayAbilitySpecHan
 	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags, 
 	const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
 {
-	// ºÎ¸ð Å¬·¡½ºÀÇ ±âº» Á¶°Ç °Ë»ç
+	// ï¿½Î¸ï¿½ Å¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½âº» ï¿½ï¿½ï¿½ï¿½ ï¿½Ë»ï¿½
 	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
 	{
-		return false;  // ºÎ¸ð Å¬·¡½º¿¡¼­ Á¶°ÇÀÌ ÃæÁ·µÇÁö ¾ÊÀ¸¸é ¹Ù·Î false ¹ÝÈ¯
+		return false;  // ï¿½Î¸ï¿½ Å¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ù·ï¿½ false ï¿½ï¿½È¯
 	}
 
 	if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
@@ -36,23 +37,23 @@ bool URPGPlayerGameplayAbility::CanActivateAbility(const FGameplayAbilitySpecHan
 
 		if (ASC)
 		{
-			// AbilitySystemComponent¿¡ Àû¿ëµÈ ¸ðµç ÅÂ±×¸¦ °¡Á®¿À±â
+			// AbilitySystemComponentï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½Â±×¸ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 			const FGameplayTagContainer& AppliedTags = ASC->GetOwnedGameplayTags();
 
-			// ÅÂ±×¸¦ µð¹ö±ë¿ëÀ¸·Î Ãâ·Â
+			// ï¿½Â±×¸ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½
 			for (const FGameplayTag& Tag : AppliedTags)
 			{
 				UE_LOG(LogTemp, Warning, TEXT("Applied Tag: %s"), *Tag.ToString());
 			}
 		}
 		
-		// ÆøÁÖ »óÅÂ Ã¼Å©: Player.Status.Rage.Activating ÅÂ±×°¡ ÀÖ´ÂÁö È®ÀÎ
+		// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ Ã¼Å©: Player.Status.Rage.Activating ï¿½Â±×°ï¿½ ï¿½Ö´ï¿½ï¿½ï¿½ È®ï¿½ï¿½
 		if (AbilityTags.HasTag(FGameplayTag::RequestGameplayTag(FName("Player.Ability.IdentitySkill"))))
 		{
-			// IdentitySkill ÅÂ±×°¡ ÀÌ¹Ì ÀÖÀ» ¶§´Â ½ÇÇà ºÒ°¡
+			// IdentitySkill ï¿½Â±×°ï¿½ ï¿½Ì¹ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ò°ï¿½
 			if (ASC->HasMatchingGameplayTag(FGameplayTag::RequestGameplayTag(FName("Player.Status.Rage.Active"))))
 			{
-				return true;  // ÀÌ¹Ì IdentitySkill ÅÂ±×°¡ ÀÖÀ¸¸é »ç¿ë ºÒ°¡
+				return true;  // ï¿½Ì¹ï¿½ IdentitySkill ï¿½Â±×°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½Ò°ï¿½
 			}
 
 			else
@@ -67,28 +68,28 @@ bool URPGPlayerGameplayAbility::CanActivateAbility(const FGameplayAbilitySpecHan
 
 	if (AttributeSet)
 	{
-		float CurrentMana = AttributeSet->GetCurrentMana();       // ÇöÀç ¸¶³ª °¡Á®¿À±â
-		float ManaCost = RequireManaCost;                    // ¸¶³ª ¼Ò¸ð·® °¡Á®¿À±â (ÇÔ¼ö·Î ±¸Çö °¡´É)
+		float CurrentMana = AttributeSet->GetCurrentMana();       // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+		float ManaCost = RequireManaCost;                    // ï¿½ï¿½ï¿½ï¿½ ï¿½Ò¸ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ (ï¿½Ô¼ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½)
 
 		if (ManaCost > 0.0f && CurrentMana < ManaCost)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Not enough mana!"));  // ¸¶³ª ºÎÁ· ¸Þ½ÃÁö Ãâ·Â
-			return false;  // ¸¶³ª°¡ ºÎÁ·ÇÏ¸é È°¼ºÈ­ ºÒ°¡
+			UE_LOG(LogTemp, Warning, TEXT("Not enough mana!"));  // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Þ½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½
+			return false;  // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï¸ï¿½ È°ï¿½ï¿½È­ ï¿½Ò°ï¿½
 		}
 	}
 
-	return true;  // ¸ðµç Á¶°ÇÀÌ ÃæÁ·µÇ¸é È°¼ºÈ­
+	return true;  // ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ç¸ï¿½ È°ï¿½ï¿½È­
 }
 
 void URPGPlayerGameplayAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle, 
 	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
 	const FGameplayEventData* TriggerEventData)
 {
-	if (!ApplyManaCost(ActorInfo)) // ¸¶³ª ¼Ò¸ð ½ÇÆÐ ½Ã
+	if (!ApplyManaCost(ActorInfo)) // ï¿½ï¿½ï¿½ï¿½ ï¿½Ò¸ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Not enough mana to activate ability."));
 
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true); // ¾îºô¸®Æ¼ Á¾·á
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true); // ï¿½ï¿½ï¿½ï¿½ï¿½Æ¼ ï¿½ï¿½ï¿½ï¿½
 		return;
 	}
 
@@ -96,7 +97,7 @@ void URPGPlayerGameplayAbility::ActivateAbility(const FGameplayAbilitySpecHandle
 	{
 		UE_LOG(LogTemp, Error, TEXT("[%s] ActivateAbility() - CachedAttributeSet is NULL! Trying to reinitialize..."), *GetName());
 
-		// °­Á¦·Î ´Ù½Ã ÃÊ±âÈ­
+		// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ù½ï¿½ ï¿½Ê±ï¿½È­
 		if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
 		{
 			CachedAttributeSet = ActorInfo->AbilitySystemComponent->GetSet<URPGAttributeSet>();
@@ -208,11 +209,11 @@ void URPGPlayerGameplayAbility::PlaySkillMontage()
 //	float CriticalChance = CachedAttributeSet->GetCriticalChance();
 //	float CriticalDamageMultiplier = CachedAttributeSet->GetCriticalDamage();
 //
-//	// ·£´ý È®·ü·Î Ä¡¸íÅ¸ ¿©ºÎ ÆÇ´Ü
+//	// ï¿½ï¿½ï¿½ï¿½ È®ï¿½ï¿½ï¿½ï¿½ Ä¡ï¿½ï¿½Å¸ ï¿½ï¿½ï¿½ï¿½ ï¿½Ç´ï¿½
 //	float RandomChance = FMath::RandRange(0.0f, 1.0f);
 //	if (RandomChance <= CriticalChance)
 //	{
-//		// Ä¡¸íÅ¸ ¹ß»ý ½Ã µ¥¹ÌÁö ¹èÀ² Àû¿ë
+//		// Ä¡ï¿½ï¿½Å¸ ï¿½ß»ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 //		InDamage *= CriticalDamageMultiplier;
 //
 //		Debug::Print("Calc Damage: ", InDamage);
@@ -235,7 +236,7 @@ void URPGPlayerGameplayAbility::ExecWaitGameplayEvent()
 		return;
 	}*/
 
-	// ±âÁ¸ ÅÂ½ºÅ© Á¤¸® (Áßº¹ µî·Ï ¹æÁö)
+	// ï¿½ï¿½ï¿½ï¿½ ï¿½Â½ï¿½Å© ï¿½ï¿½ï¿½ï¿½ (ï¿½ßºï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½)
 	if (WaitGameplayEventTask)
 	{
 		WaitGameplayEventTask->EndTask();
@@ -247,8 +248,8 @@ void URPGPlayerGameplayAbility::ExecWaitGameplayEvent()
 		this,
 		EventTag,
 		nullptr,
-		false,  // bOnlyTriggerOnce: ÀÌº¥Æ®°¡ ÇÑ ¹ø¸¸ Æ®¸®°ÅµÉÁö ¿©ºÎ
-		true   // bMatchExact: ÅÂ±×°¡ Á¤È®È÷ ÀÏÄ¡ÇØ¾ß ÇÏ´ÂÁö ¿©ºÎ
+		false,  // bOnlyTriggerOnce: ï¿½Ìºï¿½Æ®ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ Æ®ï¿½ï¿½ï¿½Åµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+		true   // bMatchExact: ï¿½Â±×°ï¿½ ï¿½ï¿½È®ï¿½ï¿½ ï¿½ï¿½Ä¡ï¿½Ø¾ï¿½ ï¿½Ï´ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 	);
 
 
@@ -306,7 +307,7 @@ void URPGPlayerGameplayAbility::HandleApplyDamage(const FGameplayEventData& InGa
 
 	AActor* CachedTargetActor = const_cast<AActor*>(InGameplayEventData.Target.Get());
 
-	if (URPGFunctionLibrary::NativeDoesActorHaveTag(CachedTargetActor, RPGGameplayTags::Shared_Status_Invincible))
+	if (URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(CachedTargetActor, RPGGameplayTags::Shared_Status_Invincible))
 	{
 		DisplayInvincibleEffect(CachedTargetActor);
 
@@ -332,7 +333,7 @@ void URPGPlayerGameplayAbility::HandleApplyDamage(const FGameplayEventData& InGa
 
 	FGameplayEventData EventData;
 
-	// Instigator¸¦ ¾îºô¸®Æ¼ ¼ÒÀ¯ÀÚ·Î ¼³Á¤
+	// Instigatorï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Æ¼ ï¿½ï¿½ï¿½ï¿½ï¿½Ú·ï¿½ ï¿½ï¿½ï¿½ï¿½
 	if (CurrentActorInfo)
 	{
 		EventData.Instigator = CurrentActorInfo->OwnerActor.Get();
@@ -340,7 +341,7 @@ void URPGPlayerGameplayAbility::HandleApplyDamage(const FGameplayEventData& InGa
 
 	EventData.Target = CachedTargetActor;
 
-	// ÀÌº¥Æ® Àü¼Û(È÷Æ® ¸®¾×¼Ç ÅÂ±× Àü¼Û)
+	// ï¿½Ìºï¿½Æ® ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½Æ® ï¿½ï¿½ï¿½×¼ï¿½ ï¿½Â±ï¿½ ï¿½ï¿½ï¿½ï¿½)
 	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(CachedTargetActor, HitReactTag, EventData);
 
 	GainIdentity();
@@ -351,21 +352,21 @@ void URPGPlayerGameplayAbility::HandleApplyAOEDamage(const FGameplayEventData& I
 	TArray<FHitResult> HitResults;
 
 	FVector Origin = GetAvatarActorFromActorInfo()->GetActorLocation();
-	float Radius = 200.f;  // ¿¹½Ã ¹Ý°æ
+	float Radius = 200.f;  // ï¿½ï¿½ï¿½ï¿½ ï¿½Ý°ï¿½
 	FVector HalfSize = FVector(200.f, 200.f, 100.f);
 	FRotator Rotation = FRotator::ZeroRotator;
 
 	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
-	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECollisionChannel::ECC_Pawn));  // Pawn Å¸ÀÔ¸¸ Ã¼Å©
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECollisionChannel::ECC_Pawn));  // Pawn Å¸ï¿½Ô¸ï¿½ Ã¼Å©
 
 	switch (AOETraceType)
 	{
 	case EAOETraceType::Box:
-		HitResults = URPGFunctionLibrary::DoBoxTrace(GetWorld(), Origin, HalfSize, Rotation
+		HitResults = URPGCombatFunctionLibrary::DoBoxTrace(GetWorld(), Origin, HalfSize, Rotation
 			,50.f, ObjectTypes);
 		break;
 	case EAOETraceType::Sphere:
-		HitResults = URPGFunctionLibrary::DoSphereTrace(GetWorld(),
+		HitResults = URPGCombatFunctionLibrary::DoSphereTrace(GetWorld(),
 			Origin, Radius, 50.f, ObjectTypes, GetAvatarActorFromActorInfo());
 		break;
 	case EAOETraceType::Cone:
@@ -411,15 +412,15 @@ void URPGPlayerGameplayAbility::GainIdentity()
 {
 	UAbilitySystemComponent* ASC = CurrentActorInfo->AbilitySystemComponent.Get();
 
-	// IdentitySkill ÅÂ±×°¡ ÀÌ¹Ì ÀÖÀ» ¶§´Â ½ÇÇà ºÒ°¡
+	// IdentitySkill ï¿½Â±×°ï¿½ ï¿½Ì¹ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ò°ï¿½
 	if (ASC->HasMatchingGameplayTag(FGameplayTag::RequestGameplayTag(FName("Player.Status.Rage.Active"))))
 	{
-		return;  // ÀÌ¹Ì IdentitySkill ÅÂ±×°¡ ÀÖÀ¸¸é »ç¿ë ºÒ°¡
+		return;  // ï¿½Ì¹ï¿½ IdentitySkill ï¿½Â±×°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½Ò°ï¿½
 	}
 		
 	float IdentityGainAmount = GainIdentityAmount;
 
-	// °ÔÀÓÇÃ·¹ÀÌ ÀÌÆåÆ®¿¡ ¼ö±Þ·® Àû¿ë
+	// ï¿½ï¿½ï¿½ï¿½ï¿½Ã·ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Æ®ï¿½ï¿½ ï¿½ï¿½ï¿½Þ·ï¿½ ï¿½ï¿½ï¿½ï¿½
 	FGameplayEffectSpecHandle EffectSpecHandle = MakeOutgoingGameplayEffectSpec(GainIdentityEffectClass, 1.0f);
 
 	if (EffectSpecHandle.IsValid())
@@ -427,13 +428,13 @@ void URPGPlayerGameplayAbility::GainIdentity()
 		FGameplayEffectSpec* EffectSpec = EffectSpecHandle.Data.Get();
 		if (EffectSpec)
 		{
-			// SetByCaller·Î ¼ö±Þ·® ¼³Á¤
+			// SetByCallerï¿½ï¿½ ï¿½ï¿½ï¿½Þ·ï¿½ ï¿½ï¿½ï¿½ï¿½
 			FGameplayTag IdentityGainTag = 
 				FGameplayTag::RequestGameplayTag(FName("Player.Ability.Skill.GainIdentity"));
 			EffectSpec->SetSetByCallerMagnitude(IdentityGainTag, IdentityGainAmount);
 		}
 
-		// Effect¸¦ Àû¿ë
+		// Effectï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 		ApplyGameplayEffectSpecToOwner(CurrentSpecHandle, 
 			CurrentActorInfo, CurrentActivationInfo, EffectSpecHandle);
 
@@ -444,18 +445,18 @@ void URPGPlayerGameplayAbility::GainIdentity()
 //{
 //	//float CooldownTime = CoolTime;
 //
-//	if (!CooldownGameplayEffectClass)  // UPROPERTY·Î µî·ÏÇØµÐ Äð´Ù¿î GE Å¬·¡½º
+//	if (!CooldownGameplayEffectClass)  // UPROPERTYï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Øµï¿½ ï¿½ï¿½Ù¿ï¿½ GE Å¬ï¿½ï¿½ï¿½ï¿½
 //	{
 //		UE_LOG(LogTemp, Warning, TEXT("CooldownGameplayEffectClass is null!"));
 //		return nullptr;
 //	}
 //
-//	// ½ºÆå »ý¼º
+//	// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 //	FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CooldownGameplayEffectClass, GetAbilityLevel());
 //
 //	if (SpecHandle.IsValid())
 //	{
-//		// SetByCaller °ª ÁöÁ¤ (CoolTimeÀº ÀÌ Ability¿¡ ÀÖ´Â float º¯¼ö)
+//		// SetByCaller ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ (CoolTimeï¿½ï¿½ ï¿½ï¿½ Abilityï¿½ï¿½ ï¿½Ö´ï¿½ float ï¿½ï¿½ï¿½ï¿½)
 //		SpecHandle.Data->SetSetByCallerMagnitude(
 //			FGameplayTag::RequestGameplayTag(FName("Player.Ability.Skill.CoolDown")),
 //			CoolTime
@@ -485,9 +486,9 @@ bool URPGPlayerGameplayAbility::ApplyManaCost(const FGameplayAbilityActorInfo* A
 	if (AttributeSet)
 	{
 		float CurrentMana = AttributeSet->GetCurrentMana();
-		float ManaCost = RequireManaCost;  // ¾îºô¸®Æ¼¸¶´Ù ´Ù¸¥ ¸¶³ª ¼Ò¸ð·®À» °¡Á®¿Ã ¼ö ÀÖ´Ù°í °¡Á¤
+		float ManaCost = RequireManaCost;  // ï¿½ï¿½ï¿½ï¿½ï¿½Æ¼ï¿½ï¿½ï¿½ï¿½ ï¿½Ù¸ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ò¸ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½Ö´Ù°ï¿½ ï¿½ï¿½ï¿½ï¿½
 
-		if (ManaCost <= 0.0f)  // ¸¶³ª ¼Ò¸ð°¡ 0ÀÌ°Å³ª À½¼ö¶ó¸é ±×³É Åë°ú
+		if (ManaCost <= 0.0f)  // ï¿½ï¿½ï¿½ï¿½ ï¿½Ò¸ï¿½ 0ï¿½Ì°Å³ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½×³ï¿½ ï¿½ï¿½ï¿½
 		{
 			return true;
 		}
@@ -497,18 +498,18 @@ bool URPGPlayerGameplayAbility::ApplyManaCost(const FGameplayAbilityActorInfo* A
 			AbilitySystemComponent->ApplyModToAttribute(AttributeSet->GetCurrentManaAttribute(),
 				EGameplayModOp::Additive, -ManaCost);
 
-			// ActorInfo·ÎºÎÅÍ PawnUIComponent¸¦ °¡Á®¿É´Ï´Ù.
+			// ActorInfoï¿½Îºï¿½ï¿½ï¿½ PawnUIComponentï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½É´Ï´ï¿½.
 			if (ActorInfo)
 			{
-				// Pawn UI ÀÎÅÍÆäÀÌ½º¸¦ Ä³½ºÆÃÇÏ¿© »ç¿ë
+				// Pawn UI ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ì½ï¿½ï¿½ï¿½ Ä³ï¿½ï¿½ï¿½ï¿½ï¿½Ï¿ï¿½ ï¿½ï¿½ï¿½
 				if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(ActorInfo->OwnerActor))
 				{
-					// UI ÄÄÆ÷³ÍÆ®¿¡ Á¢±Ù
+					// UI ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ®ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 					if (UPlayerUIComponent* PlayerUIComponent = PawnUIInterface->GetPlayerUIComponent())
 					{
-						// ÇÁ·Î±×·¹½º ¹Ù UI¸¦ º¸ÀÌµµ·Ï µ¨¸®°ÔÀÌÆ® È£Ãâ
+						// ï¿½ï¿½ï¿½Î±×·ï¿½ï¿½ï¿½ ï¿½ï¿½ UIï¿½ï¿½ ï¿½ï¿½ï¿½Ìµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ® È£ï¿½ï¿½
 						PlayerUIComponent->OnCurrentManaChanged.Broadcast
-							(AttributeSet->GetCurrentMana()/AttributeSet->GetMaxMana());  // ÇÁ·Î±×·¹½º ¹Ù Ç¥½Ã
+							(AttributeSet->GetCurrentMana()/AttributeSet->GetMaxMana());  // ï¿½ï¿½ï¿½Î±×·ï¿½ï¿½ï¿½ ï¿½ï¿½ Ç¥ï¿½ï¿½
 						
 						FString ManaText = FString::Printf(TEXT("%.0f/%.0f"),
 							AttributeSet->GetCurrentMana(), AttributeSet->GetMaxMana());
@@ -518,7 +519,7 @@ bool URPGPlayerGameplayAbility::ApplyManaCost(const FGameplayAbilityActorInfo* A
 			}
 
 			UE_LOG(LogTemp, Log, TEXT("Mana reduced by %f. Current Mana: %f"), ManaCost, CurrentMana - ManaCost);
-			return true;  // ¸¶³ª ¼Ò¸ð ¼º°ø
+			return true;  // ï¿½ï¿½ï¿½ï¿½ ï¿½Ò¸ï¿½ ï¿½ï¿½ï¿½ï¿½
 		}
 		else
 		{
@@ -526,21 +527,21 @@ bool URPGPlayerGameplayAbility::ApplyManaCost(const FGameplayAbilityActorInfo* A
 		}
 	}
 
-	return false;  // ¸¶³ª ¼Ò¸ð ½ÇÆÐ
+	return false;  // ï¿½ï¿½ï¿½ï¿½ ï¿½Ò¸ï¿½ ï¿½ï¿½ï¿½ï¿½
 }
 
 void URPGPlayerGameplayAbility::ShowProgressBar(const FGameplayAbilityActorInfo* ActorInfo)
 {
 	if (ActorInfo)
 	{
-		// Pawn UI ÀÎÅÍÆäÀÌ½º¸¦ Ä³½ºÆÃÇÏ¿© »ç¿ë
+		// Pawn UI ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ì½ï¿½ï¿½ï¿½ Ä³ï¿½ï¿½ï¿½ï¿½ï¿½Ï¿ï¿½ ï¿½ï¿½ï¿½
 		if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(ActorInfo->OwnerActor))
 		{
-			// UI ÄÄÆ÷³ÍÆ®¿¡ Á¢±Ù
+			// UI ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ®ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 			if (UPlayerUIComponent* PlayerUIComponent = PawnUIInterface->GetPlayerUIComponent())
 			{
-				// ÇÁ·Î±×·¹½º ¹Ù UI¸¦ º¸ÀÌµµ·Ï µ¨¸®°ÔÀÌÆ® È£Ãâ
-				PlayerUIComponent->OnProgressBarShow.Broadcast();  // ÇÁ·Î±×·¹½º ¹Ù Ç¥½Ã
+				// ï¿½ï¿½ï¿½Î±×·ï¿½ï¿½ï¿½ ï¿½ï¿½ UIï¿½ï¿½ ï¿½ï¿½ï¿½Ìµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ® È£ï¿½ï¿½
+				PlayerUIComponent->OnProgressBarShow.Broadcast();  // ï¿½ï¿½ï¿½Î±×·ï¿½ï¿½ï¿½ ï¿½ï¿½ Ç¥ï¿½ï¿½
 				PlayerUIComponent->OnProgressBarTextChanged.Broadcast(SkillName);
 			}
 		}
@@ -549,17 +550,17 @@ void URPGPlayerGameplayAbility::ShowProgressBar(const FGameplayAbilityActorInfo*
 
 void URPGPlayerGameplayAbility::HiddenProgressBar(const FGameplayAbilityActorInfo* ActorInfo)
 {
-	// ActorInfo·ÎºÎÅÍ PawnUIComponent¸¦ °¡Á®¿É´Ï´Ù.
+	// ActorInfoï¿½Îºï¿½ï¿½ï¿½ PawnUIComponentï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½É´Ï´ï¿½.
 	if (ActorInfo)
 	{
-		// Pawn UI ÀÎÅÍÆäÀÌ½º¸¦ Ä³½ºÆÃÇÏ¿© »ç¿ë
+		// Pawn UI ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ì½ï¿½ï¿½ï¿½ Ä³ï¿½ï¿½ï¿½ï¿½ï¿½Ï¿ï¿½ ï¿½ï¿½ï¿½
 		if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(ActorInfo->OwnerActor))
 		{
-			// UI ÄÄÆ÷³ÍÆ®¿¡ Á¢±Ù
+			// UI ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ®ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 			if (UPlayerUIComponent* PawnUIComponent = PawnUIInterface->GetPlayerUIComponent())
 			{
-				// ÇÁ·Î±×·¹½º ¹Ù UI¸¦ º¸ÀÌµµ·Ï µ¨¸®°ÔÀÌÆ® È£Ãâ
-				PawnUIComponent->OnProgressBarHidden.Broadcast();  // ÇÁ·Î±×·¹½º ¹Ù Ç¥½Ã
+				// ï¿½ï¿½ï¿½Î±×·ï¿½ï¿½ï¿½ ï¿½ï¿½ UIï¿½ï¿½ ï¿½ï¿½ï¿½Ìµï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ® È£ï¿½ï¿½
+				PawnUIComponent->OnProgressBarHidden.Broadcast();  // ï¿½ï¿½ï¿½Î±×·ï¿½ï¿½ï¿½ ï¿½ï¿½ Ç¥ï¿½ï¿½
 			}
 		}
 	}
@@ -567,7 +568,7 @@ void URPGPlayerGameplayAbility::HiddenProgressBar(const FGameplayAbilityActorInf
 
 void URPGPlayerGameplayAbility::ShowProcessBarFilling(FString& TimeText, float CurremtTime, float RequireTime)
 {
-	// AbilityActorInfo¸¦ »ç¿ëÇÏ¿© ActorInfo °¡Á®¿À±â
+	// AbilityActorInfoï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Ï¿ï¿½ ActorInfo ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	if (CurrentActorInfo)
 	{
 		if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(CurrentActorInfo->OwnerActor))

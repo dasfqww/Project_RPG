@@ -5,7 +5,6 @@
 #include "Item/RPGItemBase.h"
 #include "Manager/DataManager.h"
 #include "Manager/HttpWebManager.h" // HTTP Manager Include
-#include "RPGFunctionLibrary.h"
 #include "Interface/PawnUIInterface.h"
 #include "Component/UI/PlayerUIComponent.h"
 #include "UI/Inventory/Spatial/RPGInventoryGrid.h"

@@ -4,28 +4,131 @@
 
 #include "CoreMinimal.h"
 #include "Camera/RPGCameraMode.h"
+#include "Curves/CurveFloat.h"
+#include "Camera/RPGPenetrationAvoidanceFeeler.h"
 #include "RPGCameraMode_ThirdPerson.generated.h"
 
+class UCurveVector;
+
 /**
- * 전형적인 3인칭 카메라 모드 (SpringArm 로직 포함)
+ * URPGCameraMode_ThirdPerson
+ *
+ *	A basic third person camera mode.
  */
-UCLASS()
+UCLASS(Abstract, Blueprintable)
 class PROJECT_RPG_API URPGCameraMode_ThirdPerson : public URPGCameraMode
 {
 	GENERATED_BODY()
 
 public:
+
 	URPGCameraMode_ThirdPerson();
 
 protected:
+
+	virtual void OnActivation() override;
 	virtual void UpdateView(float DeltaTime) override;
 
-protected:
-	/** 캐릭터로부터의 거리 */
-	UPROPERTY(EditDefaultsOnly, Category = "Third Person")
-	float TargetArmLength;
+	void UpdateForTarget(float DeltaTime);
+	void UpdatePreventPenetration(float DeltaTime);
+	void PreventCameraPenetration(class AActor const& ViewTarget, FVector const& SafeLoc, FVector& CameraLoc, float const& DeltaTime, float& DistBlockedPct, bool bSingleRayOnly);
 
-	/** 캐릭터 기준 위치 오프셋 (어깨 위 등) */
+	virtual void DrawDebug(UCanvas* Canvas) const override;
+
+protected:
+
+	// Curve that defines local-space offsets from the target using the view pitch to evaluate the curve.
+	UPROPERTY(EditDefaultsOnly, Category = "Third Person", Meta = (EditCondition = "!bUseRuntimeFloatCurves"))
+	TObjectPtr<const UCurveVector> TargetOffsetCurve;
+
 	UPROPERTY(EditDefaultsOnly, Category = "Third Person")
-	FVector TargetOffset;
+	TObjectPtr<const UCurveVector> TargetRotationCurve;
+
+	// UE-103986: Live editing of RuntimeFloatCurves during PIE does not work (unlike curve assets).
+	// Once that is resolved this will become the default and TargetOffsetCurve will be removed.
+	UPROPERTY(EditDefaultsOnly, Category = "Third Person")
+	bool bUseRuntimeFloatCurves;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Third Person", Meta = (EditCondition = "bUseRuntimeFloatCurves"))
+	FRuntimeFloatCurve TargetOffsetX;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Third Person", Meta = (EditCondition = "bUseRuntimeFloatCurves"))
+	FRuntimeFloatCurve TargetOffsetY;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Third Person", Meta = (EditCondition = "bUseRuntimeFloatCurves"))
+	FRuntimeFloatCurve TargetOffsetZ;
+
+	// Alters the speed that a crouch offset is blended in or out
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person")
+	float CrouchOffsetBlendMultiplier = 5.0f;
+	
+	// Alters the speed that a jump offset is blended in or out
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Third Person")
+	float JumpOffsetBlendMultiplier = 5.0f;
+
+	// Penetration prevention
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Collision")
+	float PenetrationBlendInTime = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Collision")
+	float PenetrationBlendOutTime = 0.15f;
+
+	/** If true, does collision checks to keep the camera out of the world. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Collision")
+	bool bPreventPenetration = true;
+
+	/** If true, try to detect nearby walls and move the camera in anticipation.  Helps prevent popping. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Collision")
+	bool bDoPredictiveAvoidance = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision")
+	float CollisionPushOutDistance = 2.f;
+
+	/** When the camera's distance is pushed into this percentage of its full distance due to penetration */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Collision")
+	float ReportPenetrationPercent = 0.f;
+
+	/**
+	 * These are the feeler rays that are used to find where to place the camera.
+	 * Index: 0  : This is the normal feeler we use to prevent collisions.
+	 * Index: 1+ : These feelers are used if you bDoPredictiveAvoidance=true, to scan for potential impacts if the player
+	 *             were to rotate towards that direction and primitively collide the camera so that it pulls in before
+	 *             impacting the occluder.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Collision")
+	TArray<FRPGPenetrationAvoidanceFeeler> PenetrationAvoidanceFeelers;
+
+	UPROPERTY(Transient)
+	float AimLineToDesiredPosBlockedPct;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<const AActor>> DebugActorsHitDuringCameraPenetration;
+
+	bool bResetInterpolation = false;
+
+#if ENABLE_DRAW_DEBUG
+	mutable float LastDrawDebugTime = -MAX_FLT;
+#endif
+
+protected:
+	void SetTargetCrouchOffset(FVector NewTargetOffset);
+	void UpdateCrouchOffset(float DeltaTime);
+
+	FVector InitialCrouchOffset = FVector::ZeroVector;
+	FVector TargetCrouchOffset = FVector::ZeroVector;
+	float CrouchOffsetBlendPct = 1.0f;
+	FVector CurrentCrouchOffset = FVector::ZeroVector;
+
+protected:
+	void SetTargetJumpOffset(FVector NewTargetOffset);
+	void UpdateJumpOffset(float DeltaTime);
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	FVector JumpOffset = FVector::ZeroVector;
+	
+	FVector InitialJumpOffset = FVector::ZeroVector;
+	FVector TargetJumpOffset = FVector::ZeroVector;
+	float JumpOffsetBlendPct = 1.0f;
+	FVector CurrentJumpOffset = FVector::ZeroVector;
 };

@@ -3,7 +3,7 @@
 
 #include "Item/Weapon/RPGWeaponBase.h"
 #include "Components/BoxComponent.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGCombatFunctionLibrary.h"
 #include "NiagaraFunctionLibrary.h"
 
 #include "DrawDebugHelpers.h"
@@ -38,12 +38,12 @@ void ARPGWeaponBase::OnCollisionBoxBeginOverlap(UPrimitiveComponent* OverlappedC
 
 	if (APawn* HitPawn = Cast<APawn>(OtherActor))
 	{
-		if (URPGFunctionLibrary::IsTargetPawnHostile(WeaponOwningPawn, HitPawn))
+		if (URPGCombatFunctionLibrary::IsTargetPawnHostile(WeaponOwningPawn, HitPawn))
 		{
 			OnWeaponHitTarget.ExecuteIfBound(OtherActor);
 
 			UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), HitEffect, OtherActor->GetActorLocation());
-			//URPGFunctionLibrary::SpawnHitEffect(GetWorld(), HitEffect, SweepResult);
+			//URPGCombatFunctionLibrary::SpawnHitEffect(GetWorld(), HitEffect, SweepResult);
 		}
 	}
 }
@@ -57,7 +57,7 @@ void ARPGWeaponBase::OnCollisionBoxEndOverlap(UPrimitiveComponent* OverlappedCom
 
 	if (APawn* HitPawn = Cast<APawn>(OtherActor))
 	{
-		if (URPGFunctionLibrary::IsTargetPawnHostile(WeaponOwningPawn, HitPawn))
+		if (URPGCombatFunctionLibrary::IsTargetPawnHostile(WeaponOwningPawn, HitPawn))
 		{
 			OnWeaponPulledFromTarget.ExecuteIfBound(OtherActor);
 		}

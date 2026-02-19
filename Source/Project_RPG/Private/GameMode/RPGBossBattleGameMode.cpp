@@ -8,7 +8,7 @@
 #include "UI/RPGWidgetBase.h"
 #include "Manager/SoundManager.h"
 #include "GameMode/RPGGameModeBase.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 #include "RPGDebugHelper.h"
@@ -26,7 +26,7 @@ void ARPGBossBattleGameMode::BeginPlay()
 	//OnBattleStateChanged.AddDynamic(this, &ThisClass::SetBattleStateChanged);
 	//OnBattleStateChanged.AddDynamic(this, &ThisClass::SetBattleStateChanged);
 
-	URPGFunctionLibrary::ToggleInputMode(GetWorld(), ERPGInputMode::GameOnly);
+	URPGCoreFunctionLibrary::ToggleInputMode(GetWorld(), ERPGInputMode::GameOnly);
 
 	SetBattleState(EBossBattleState::InProgress);
 
@@ -95,7 +95,7 @@ void ARPGBossBattleGameMode::DisplayResultWidget(TSubclassOf<URPGWidgetBase> InW
 
 void ARPGBossBattleGameMode::SetBattleState(EBossBattleState InState)
 {
-	if (CurrentBossBattleState == InState) return; // ? ╟╟ю╨ ╩Себ╦И ╧╚╫ц
+	if (CurrentBossBattleState == InState) return; // ? О©╫О©╫О©╫О©╫ О©╫О©╫О©╫б╦О©╫ О©╫О©╫О©╫О©╫
 
 	CurrentBossBattleState = InState;
 	OnBattleStateChanged.Broadcast(CurrentBossBattleState);

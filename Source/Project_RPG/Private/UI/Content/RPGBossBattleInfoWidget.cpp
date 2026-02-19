@@ -2,7 +2,7 @@
 
 
 #include "UI/Content/RPGBossBattleInfoWidget.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 #include "Components/TextBlock.h"
 #include "GameMode/RPGBossBattleGameMode.h"
 
@@ -27,7 +27,7 @@ void URPGBossBattleInfoWidget::UpdateBattleLimitTimeText(UTextBlock* TextBlock, 
 		}
 	}
 
-	FString TimeString = URPGFunctionLibrary::FormatTimeToMMSS(InRemainingTime);
+	FString TimeString = URPGCoreFunctionLibrary::FormatTimeToMMSS(InRemainingTime);
 	FString FinalString="Limit Time: " + TimeString;
 	TextBlock->SetText(FText::FromString(TimeString));
 

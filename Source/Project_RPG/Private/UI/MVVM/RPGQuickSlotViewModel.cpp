@@ -4,7 +4,7 @@
 #include "UI/MVVM/RPGQuickSlotViewModel.h"
 #include "Item/RPGItemBase.h"
 #include "Component/UI/QuickSlotComponent.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 #include "RPGGameplayTags.h"
 
 void URPGQuickSlotViewModel::Initialize(int32 InSlotIndex, UQuickSlotComponent* InComponent, bool bIsSkillSlot)

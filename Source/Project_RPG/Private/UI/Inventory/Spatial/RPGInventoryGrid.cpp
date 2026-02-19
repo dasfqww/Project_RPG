@@ -9,7 +9,8 @@
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGUIFunctionLibrary.h"
+#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 #include "Item/Manifest/RPGItemManifest.h"
 #include "Item/Fragment/RPGItemFragment.h"
 #include "RPGGameplayTags.h"
@@ -30,7 +31,7 @@ void URPGInventoryGrid::NativeOnInitialized()
 
 	ConstructGrid();
 	UE_LOG(LogTemp, Warning, TEXT("NativeOnInitialized called on: %s"), *GetName());
-	InventoryComponent = URPGFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(GetOwningPlayer());
+	InventoryComponent = URPGCoreFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(GetOwningPlayer());
 	//��������Ʈ �ߺ� ���..
 	InventoryComponent->OnItemAdded.AddDynamic(this, &ThisClass::AddItem);
 	InventoryComponent->OnQuantityChanged.AddDynamic(this, &ThisClass::AddQuantity);
@@ -52,10 +53,10 @@ void URPGInventoryGrid::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 
 	if (!HasHoverItem()) return;
 
-	const FVector2D CanvasPos = URPGFunctionLibrary::GetWidgetPosition(CanvasPanel);
+	const FVector2D CanvasPos = URPGUIFunctionLibrary::GetWidgetPosition(CanvasPanel);
 	const FVector2D MousePos = UWidgetLayoutLibrary	::GetMousePositionOnViewport(GetOwningPlayer());
 
-	if (CursorExitedCanvas(CanvasPos, URPGFunctionLibrary::GetWidgetSize(CanvasPanel), MousePos))
+	if (CursorExitedCanvas(CanvasPos, URPGUIFunctionLibrary::GetWidgetSize(CanvasPanel), MousePos))
 	{
 		return;
 	}
@@ -88,7 +89,7 @@ void URPGInventoryGrid::ConstructGrid()
 			CanvasPanel->AddChild(GridSlot);
 
 			const FIntPoint TilePosition(i, j);
-			GridSlot->SetTileIndex(URPGFunctionLibrary::GetIndexFromWidgetPosition(TilePosition, Columns));
+			GridSlot->SetTileIndex(URPGUIFunctionLibrary::GetIndexFromWidgetPosition(TilePosition, Columns));
 
 			UCanvasPanelSlot* GridCPS = UWidgetLayoutLibrary::SlotAsCanvasSlot(GridSlot);
 			GridCPS->SetSize(FVector2D(TileSize));
@@ -488,7 +489,7 @@ URPGInventoryItemSlot* URPGInventoryGrid::CreateSlotItem(URPGItemBase* Item, con
 //	CanvasPanel->AddChild(ItemSlot);
 //	UCanvasPanelSlot* CanvasSlot = UWidgetLayoutLibrary::SlotAsCanvasSlot(ItemSlot);
 //	CanvasSlot->SetSize(GetDrawSize());
-//	const FVector2D DrawPos = URPGFunctionLibrary::GetPositionFromWidgetIndex(Index, Columns)* TileSize;
+//	const FVector2D DrawPos = URPGUIFunctionLibrary::GetPositionFromWidgetIndex(Index, Columns)* TileSize;
 //	constexpr float Padding = 2.f;
 //	const FVector2D DrawPosWithPadding = DrawPos + FVector2D(Padding);
 //	CanvasSlot->SetPosition(DrawPosWithPadding);
@@ -502,7 +503,7 @@ void URPGInventoryGrid::AddItemSlotToCanvas(const int32 Index, URPGInventoryItem
 	CanvasPanel->AddChild(ItemSlot);
 	UCanvasPanelSlot* CanvasSlot = UWidgetLayoutLibrary::SlotAsCanvasSlot(ItemSlot);
 	CanvasSlot->SetSize(GetDrawSize()); // GridFragment �Ķ���� ����
-	const FVector2D DrawPos = URPGFunctionLibrary::GetPositionFromWidgetIndex(Index, Columns) * TileSize;
+	const FVector2D DrawPos = URPGUIFunctionLibrary::GetPositionFromWidgetIndex(Index, Columns) * TileSize;
 	//constexpr float Padding = 2.f;
 	const FVector2D DrawPosWithPadding = DrawPos;
 	CanvasSlot->SetPosition(DrawPosWithPadding);
@@ -532,7 +533,7 @@ void URPGInventoryGrid::UpdateGridSlots(URPGItemBase* NewItem, const int32 Index
 		= GetFragment<FGridFragment>(NewItem, RPGGameplayTags::Fragment_GridFragment);
 	const FIntPoint Dimensions = GridFragment ? GridFragment->GetGridSize() : FIntPoint(1, 1);
 
-	URPGFunctionLibrary::ForeachGridSlot2D(GridSlots, Index, Dimensions, Columns, 
+	URPGUIFunctionLibrary::ForeachGridSlot2D(GridSlots, Index, Dimensions, Columns, 
 		[&](URPGGridSlot* GridSlot)
 	{
 		GridSlot->SetInvenItem(NewItem);
@@ -553,7 +554,7 @@ void URPGInventoryGrid::UpdateGridSlots(URPGItemBase* NewItem, const int32 Index
 //{
 //	bool bHasSpaceAtIndex = true;
 //
-//	URPGFunctionLibrary::ForeachGridSlot2D(GridSlots, GridSlot->GetTileIndex(), Dimension, Columns, 
+//	URPGUIFunctionLibrary::ForeachGridSlot2D(GridSlots, GridSlot->GetTileIndex(), Dimension, Columns, 
 //		[&](const URPGGridSlot* SubGridSlot)
 //	{
 //			if (CheckSlotConstraints(GridSlot, SubGridSlot,CheckedIndices, 
@@ -729,7 +730,7 @@ void URPGInventoryGrid::RemoveItemFromGrid(URPGItemBase* Item, const int32 GridI
 	GridSlot->SetAvailable(true);
 	GridSlot->SetQuantity(0);
 
-	/*URPGFunctionLibrary::ForeachGridSlot2D(GridSlots, GridIndex, GridFragment->GetGridSize(),
+	/*URPGUIFunctionLibrary::ForeachGridSlot2D(GridSlots, GridIndex, GridFragment->GetGridSize(),
 		Columns, [&](URPGGridSlot* GridSlot)
 	{
 			GridSlot->SetInvenItem(nullptr);
@@ -755,7 +756,7 @@ void URPGInventoryGrid::RemoveItemFromGrid(URPGItemBase* Item, const int32 GridI
 //
 //	LastTileParams= TileParams;
 //	TileParams.TileCoords = HoveredTileCoords;
-//	TileParams.TileIndex = URPGFunctionLibrary::GetIndexFromWidgetPosition(HoveredTileCoords, Columns);
+//	TileParams.TileIndex = URPGUIFunctionLibrary::GetIndexFromWidgetPosition(HoveredTileCoords, Columns);
 //
 //	TileParams.TileQuadrant = CalculateTileQuadrant(CanvasPos, MousePos);
 //
@@ -795,7 +796,7 @@ void URPGInventoryGrid::RemoveItemFromGrid(URPGItemBase* Item, const int32 GridI
 //
 //	const FIntPoint StartingCoord = 
 //		CalculateStartingCoordinate(Params.TileCoords, Dimensions, Params.TileQuadrant);
-//	ItemDropIndex = URPGFunctionLibrary::GetIndexFromWidgetPosition(StartingCoord, Columns);
+//	ItemDropIndex = URPGUIFunctionLibrary::GetIndexFromWidgetPosition(StartingCoord, Columns);
 //
 //	CurrentQueryResult = CheckHoverPosition(StartingCoord, Dimensions);
 //
@@ -857,14 +858,14 @@ void URPGInventoryGrid::RemoveItemFromGrid(URPGItemBase* Item, const int32 GridI
 //{
 //	FSpaceQueryResult Result;
 //
-//	if (!IsInGridBounds(URPGFunctionLibrary::GetIndexFromWidgetPosition(Pos, Columns), Dimensions))
+//	if (!IsInGridBounds(URPGUIFunctionLibrary::GetIndexFromWidgetPosition(Pos, Columns), Dimensions))
 //		return Result;
 //
 //	Result.bHasSpace = true;
 //
 //	TSet<int32> OccupiedUpperLeftIndices;
-//	URPGFunctionLibrary::ForeachGridSlot2D(GridSlots,
-//		URPGFunctionLibrary::GetIndexFromWidgetPosition(Pos, Columns),Dimensions, Columns,
+//	URPGUIFunctionLibrary::ForeachGridSlot2D(GridSlots,
+//		URPGUIFunctionLibrary::GetIndexFromWidgetPosition(Pos, Columns),Dimensions, Columns,
 //	[&](const URPGGridSlot* GridSlot)
 //	{
 //		if (GridSlot->GetInvenItem().IsValid())
@@ -892,7 +893,7 @@ void URPGInventoryGrid::UpdateHoveredSlot(const FVector2D& CanvasPos, const FVec
 	);
 
 	const int32 NewHoveredIndex = 
-		URPGFunctionLibrary::GetIndexFromWidgetPosition(HoveredCoords, Columns);
+		URPGUIFunctionLibrary::GetIndexFromWidgetPosition(HoveredCoords, Columns);
 
 	if (LastHoveredIndex != NewHoveredIndex)
 	{
@@ -917,7 +918,7 @@ bool URPGInventoryGrid::CursorExitedCanvas(const FVector2D& BoundaryPos,
 	const FVector2D& BoundarySize, const FVector2D& Location)
 {
 	bLastMouseWithinCanvas = bMouseWithinCanvas;
-	bMouseWithinCanvas = URPGFunctionLibrary::IsWithinBounds(BoundaryPos, BoundarySize, Location);
+	bMouseWithinCanvas = URPGUIFunctionLibrary::IsWithinBounds(BoundaryPos, BoundarySize, Location);
 	if (!bMouseWithinCanvas && bLastMouseWithinCanvas)
 	{
 		
@@ -931,7 +932,7 @@ bool URPGInventoryGrid::CursorExitedCanvas(const FVector2D& BoundaryPos,
 //{
 //	if (!bMouseWithinCanvas) return;
 //	UnHighlightSlots(LastHighlightedIndex, LastHighlightedDimensions);
-//	URPGFunctionLibrary::ForeachGridSlot2D(GridSlots,
+//	URPGUIFunctionLibrary::ForeachGridSlot2D(GridSlots,
 //		Index, Dimensions, Columns,
 //		[&](URPGGridSlot* GridSlot)
 //		{
@@ -954,7 +955,7 @@ void URPGInventoryGrid::HighlightSlots(const int32 Index)
 
 //void URPGInventoryGrid::UnHighlightSlots(const int32 Index, const FIntPoint& Dimensions)
 //{
-//	URPGFunctionLibrary::ForeachGridSlot2D(GridSlots,
+//	URPGUIFunctionLibrary::ForeachGridSlot2D(GridSlots,
 //		Index, Dimensions, Columns,
 //		[&](URPGGridSlot* GridSlot)
 //		{
@@ -983,7 +984,7 @@ void URPGInventoryGrid::ChangeHoverType(const int32 Index,
 	const FIntPoint& Dimensions, EGridSlotState SlotState)
 {
 	UnHighlightSlots(LastHighlightedIndex);
-	URPGFunctionLibrary::ForeachGridSlot2D(GridSlots,
+	URPGUIFunctionLibrary::ForeachGridSlot2D(GridSlots,
 		Index, Dimensions, Columns,
 		[State = SlotState](URPGGridSlot* GridSlot)
 		{
@@ -1257,7 +1258,7 @@ void URPGInventoryGrid::AddQuantity(const FSlotAvailabilityResult& Result)
 void URPGInventoryGrid::OnSlotItemClicked(int32 GridIndex, const FPointerEvent& MouseEvent)
 {
 	//Debug::Print("Clicked on item at index : %d", GridIndex);
-	URPGFunctionLibrary::ItemUnhovered(GetOwningPlayer());
+	URPGUIFunctionLibrary::ItemUnhovered(GetOwningPlayer());
 
 	check(GridSlots.IsValidIndex(GridIndex));
 	URPGItemBase* ClickedInvenItem = GridSlots[GridIndex]->GetInvenItem().Get();

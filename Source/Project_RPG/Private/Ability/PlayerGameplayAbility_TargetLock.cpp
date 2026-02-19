@@ -10,7 +10,7 @@
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/SizeBox.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "RPGGameplayTags.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -39,8 +39,8 @@ void UPlayerGameplayAbility_TargetLock::EndAbility(const FGameplayAbilitySpecHan
 void UPlayerGameplayAbility_TargetLock::OnTargetLockTick(float DeltaTime)
 {
 	if (!CurrentLockedActor ||
-		URPGFunctionLibrary::NativeDoesActorHaveTag(CurrentLockedActor,RPGGameplayTags::Shared_Status_Death) ||
-		URPGFunctionLibrary::NativeDoesActorHaveTag(GetPlayerCharacterFromActorInfo(), 
+		URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(CurrentLockedActor,RPGGameplayTags::Shared_Status_Death) ||
+		URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(GetPlayerCharacterFromActorInfo(), 
 			RPGGameplayTags::Shared_Status_Death)
 		)
 	{
@@ -51,9 +51,9 @@ void UPlayerGameplayAbility_TargetLock::OnTargetLockTick(float DeltaTime)
 	SetTargetLockWidgetPosition();
 
 	const bool bShouldOverrideRotation =
-		!URPGFunctionLibrary::NativeDoesActorHaveTag(GetPlayerCharacterFromActorInfo(),
+		!URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(GetPlayerCharacterFromActorInfo(),
 			RPGGameplayTags::Player_Status_Rolling) &&
-		!URPGFunctionLibrary::NativeDoesActorHaveTag(GetPlayerCharacterFromActorInfo(),
+		!URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(GetPlayerCharacterFromActorInfo(),
 			RPGGameplayTags::Player_Status_Blocking);
 
 	if (bShouldOverrideRotation)

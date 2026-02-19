@@ -2,7 +2,7 @@
 
 
 #include "UI/GridSlot/RPGEquippedGridSlot.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGUIFunctionLibrary.h"
 #include "UI/Inventory/Hover/RPGHoverItem.h"
 #include "Components/Image.h"
 
@@ -29,7 +29,7 @@ FReply URPGEquippedGridSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry
 void URPGEquippedGridSlot::SetSlotTextureByHoverItem(EGridSlotState SlotState, ESlateVisibility InVisibility)
 {
 	if (!IsAvailiable()) return;
-	URPGHoverItem* HoverItem = URPGFunctionLibrary::GetHoverItem(GetOwningPlayer());
+	URPGHoverItem* HoverItem = URPGUIFunctionLibrary::GetHoverItem(GetOwningPlayer());
 	if (!IsValid(HoverItem)) return;
 
 	if (HoverItem->GetItemTag().MatchesTag(EquipmentTag))

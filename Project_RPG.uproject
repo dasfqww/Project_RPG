@@ -14,7 +14,8 @@
 				"CommonUI",
 				"NiagaraAnimNotifies",
 				"CoreUObject",
-				"ModularGameplay"
+				"ModularGameplay",
+				"ModularGameplayActors"
 			]
 		},
 		{

@@ -8,7 +8,7 @@
 #include "Manager/SoundManager.h"
 #include "Components/TextBlock.h"
 #include "UI/CheckBox/RPGCheckBox.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 
 #include "RPGDebugHelper.h"
 
@@ -61,7 +61,7 @@ void USoundOptionMenu::InitializeFromSavedSettings()
 
 		for (const auto& Pair : SoundTypeToSliderMap)
 		{
-			FString Key = URPGFunctionLibrary::GetEnumNameString(Pair.Key);
+			FString Key = URPGCoreFunctionLibrary::GetEnumNameString(Pair.Key);
 			if (SavedData.Volumes.Contains(Key))
 			{
 				Pair.Value->SetValue(SavedData.Volumes[Key]);
@@ -73,7 +73,7 @@ void USoundOptionMenu::InitializeFromSavedSettings()
 
 		for (const auto& Pair : SoundTypeToCheckBoxMap)
 		{
-			FString Key = URPGFunctionLibrary::GetEnumNameString(Pair.Key);
+			FString Key = URPGCoreFunctionLibrary::GetEnumNameString(Pair.Key);
 			if (SavedData.Mutes.Contains(Key))
 			{
 				Pair.Value->SetIsChecked(SavedData.Mutes[Key]);
@@ -101,9 +101,9 @@ void USoundOptionMenu::OnVolumeChanged(float Value)
 {
 	for (const TPair<ESoundType, USlider*>& Pair : SoundTypeToSliderMap)
 	{
-		if (Pair.Value->GetValue() == Value) // ½½¶óÀÌ´õÀÇ °ªÀÌ º¯°æµÇ¾úÀ» ¶§
+		if (Pair.Value->GetValue() == Value) // ï¿½ï¿½ï¿½ï¿½ï¿½Ì´ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Ç¾ï¿½ï¿½ï¿½ ï¿½ï¿½
 		{
-			USoundManager::Get()->SetVolume(Pair.Key, Value); // À½·®À» ¼³Á¤
+			USoundManager::Get()->SetVolume(Pair.Key, Value); // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 
 			break;
 		}

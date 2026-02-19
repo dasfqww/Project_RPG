@@ -4,7 +4,8 @@
 #include "Component/Combat/NPCCombatComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "RPGGameplayTags.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
+#include "FunctionLibrary/RPGCombatFunctionLibrary.h"
 #include "Character/RPGNonPlayerCharacter.h"
 #include "Components/BoxComponent.h"
 
@@ -22,13 +23,13 @@ void UNPCCombatComponent::OnHitTargetActor(AActor* HitActor)
 	bool bIsValidBlock = false;
 
 	const bool bIsPlayerBlocking =
-		URPGFunctionLibrary::NativeDoesActorHaveTag(HitActor, RPGGameplayTags::Player_Status_Blocking);
+		URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(HitActor, RPGGameplayTags::Player_Status_Blocking);
 	const bool bIsMyAttackUnblockable =
-		URPGFunctionLibrary::NativeDoesActorHaveTag(GetOwningPawn(), RPGGameplayTags::NPC_Status_Unblockable);
+		URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(GetOwningPawn(), RPGGameplayTags::NPC_Status_Unblockable);
 
 	if (bIsPlayerBlocking&&!bIsMyAttackUnblockable)
 	{
-		bIsValidBlock = URPGFunctionLibrary::IsValidBlock(GetOwningPawn(), HitActor);
+		bIsValidBlock = URPGCombatFunctionLibrary::IsValidBlock(GetOwningPawn(), HitActor);
 	}
 
 	FGameplayEventData EventData;

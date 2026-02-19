@@ -9,7 +9,7 @@
 #include "Attribute/RPGAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include <DataTable/SkillData.h>
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "RPGGameplayTags.h"
 
 #include "RPGDebugHelper.h"
@@ -63,7 +63,7 @@ void URPGComboSkillAbility::PlaySkillMontage()
 
 	//Debug::Print("Attack Speed: ", AttackSpeed);
 
-	if (URPGFunctionLibrary::NativeDoesActorHaveTag
+	if (URPGAbilityFunctionLibrary::NativeDoesActorHaveTag
 	(GetOwningActorFromActorInfo(), RPGGameplayTags::Player_Status_Rage_Active))
 	{
 		SelectedAttackData = &DefaultAttackSectionData_Rage;
@@ -118,7 +118,7 @@ void URPGComboSkillAbility::PlaySkillMontage()
 //
 //	BP_ApplyEffectSpecHandleToTarget(CachedTargetActor, GameplayEffectSpecHandle, SuccessType);
 //
-//	// SuccessType °ª¿¡ µû¶ó ºÐ±â Ã³¸®
+//	// SuccessType ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ð±ï¿½ Ã³ï¿½ï¿½
 //	if (SuccessType == ERPGSuccessType::Successful)
 //	{
 //		UE_LOG(LogTemp, Log, TEXT("Effect applied successfully."));
@@ -128,7 +128,7 @@ void URPGComboSkillAbility::PlaySkillMontage()
 //
 //		FGameplayEventData EventData;
 //
-//		// Instigator¸¦ ¾îºô¸®Æ¼ ¼ÒÀ¯ÀÚ·Î ¼³Á¤
+//		// Instigatorï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Æ¼ ï¿½ï¿½ï¿½ï¿½ï¿½Ú·ï¿½ ï¿½ï¿½ï¿½ï¿½
 //		if (CurrentActorInfo)
 //		{
 //			EventData.Instigator = CurrentActorInfo->OwnerActor.Get();
@@ -136,7 +136,7 @@ void URPGComboSkillAbility::PlaySkillMontage()
 //
 //		EventData.Target = CachedTargetActor;
 //
-//		// ÀÌº¥Æ® Àü¼Û(È÷Æ® ¸®¾×¼Ç ÅÂ±× Àü¼Û)
+//		// ï¿½Ìºï¿½Æ® ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½Æ® ï¿½ï¿½ï¿½×¼ï¿½ ï¿½Â±ï¿½ ï¿½ï¿½ï¿½ï¿½)
 //		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(CachedTargetActor, HitReactTag, EventData);
 //		
 //		GainIdentity();

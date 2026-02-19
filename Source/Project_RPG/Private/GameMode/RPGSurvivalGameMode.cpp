@@ -7,7 +7,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/TargetPoint.h"
 #include "NavigationSystem.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 
 #include "RPGDebugHelper.h"
 
@@ -42,7 +42,7 @@ void ARPGSurvivalGameMode::BeginPlay()
 
 	checkf(NPCWaveSpawnerDataTable, TEXT("Forgot to assign a valid datat table in survial game mode blueprint"));
 
-	URPGFunctionLibrary::ToggleInputMode(GetWorld(), ERPGInputMode::GameOnly);
+	URPGCoreFunctionLibrary::ToggleInputMode(GetWorld(), ERPGInputMode::GameOnly);
 
 	SetCurrentSurvialGameModeState(ERPGSurvialGameModeState::WaitSpawnNewWave);
 
@@ -55,7 +55,7 @@ void ARPGSurvivalGameMode::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	//³ªÁß¿¡ ÃÖÀûÈ­ ÁøÇàÇØº¼°Í.
+	//ï¿½ï¿½ï¿½ß¿ï¿½ ï¿½ï¿½ï¿½ï¿½È­ ï¿½ï¿½ï¿½ï¿½ï¿½Øºï¿½ï¿½ï¿½.
 	if (CurrentSurvialGameModeState == ERPGSurvialGameModeState::WaitSpawnNewWave)
 	{
 		TimePassedSinceStart += DeltaTime;

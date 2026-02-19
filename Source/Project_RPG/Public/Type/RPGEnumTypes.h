@@ -1,5 +1,15 @@
 #pragma once
 
+UENUM(BlueprintType)
+enum class ERPGTeamID : uint8
+{
+	Player,
+	Enemy,
+	Neutral,
+
+	NoTeam = 255
+};
+
 UENUM()
 enum class ERPGConfirmType : uint8
 {
@@ -105,6 +115,15 @@ enum class EWeaponHandType : uint8
 	TwoHand,
 
 	Count	UMETA(Hidden)
+};
+
+UENUM(BlueprintType)
+enum class EOverlayTargetType : uint8
+{
+	None,
+	Weapon,
+	Character,
+	All,
 };
 
 UENUM(BlueprintType)

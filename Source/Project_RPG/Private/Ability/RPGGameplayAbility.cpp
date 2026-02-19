@@ -5,7 +5,7 @@
 #include "Component/RPGAbilitySystemComponent.h"
 #include "Component/Combat/PawnCombatComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGCombatFunctionLibrary.h"
 #include "RPGGameplayTags.h"
 #include "Character/RPGBaseCharacter.h"
 #include"Attribute/RPGAttributeSet.h"
@@ -42,7 +42,7 @@ void URPGGameplayAbility::OnAvatarSet(const FGameplayAbilityActorInfo* ActorInfo
 
 	if (ActorInfo&&ActorInfo->AbilitySystemComponent.IsValid())
 	{
-		// ÃÖÃÊ ÇÑ ¹ø¸¸ Ä³½Ì
+		// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ Ä³ï¿½ï¿½
 		CachedAttributeSet = ActorInfo->AbilitySystemComponent->GetSet<URPGAttributeSet>();
 	}
 }
@@ -90,7 +90,7 @@ void URPGGameplayAbility::ApplyGameplayEffectSpecHandleToHitResults(const FGamep
 	{
 		if (APawn* HitPawn = Cast<APawn>(Hit.GetActor()))
 		{
-			if (URPGFunctionLibrary::IsTargetPawnHostile(OwningPawn, HitPawn))
+			if (URPGCombatFunctionLibrary::IsTargetPawnHostile(OwningPawn, HitPawn))
 			{
 				FActiveGameplayEffectHandle ActiveGameplayEffectHandle = NativeApplyEffectSpecHandleToTarget(HitPawn, InSpecHandle);
 
@@ -111,18 +111,18 @@ void URPGGameplayAbility::ApplyGameplayEffectSpecHandleToHitResults(const FGamep
 	}
 }
 
-////µ¥¹ÌÁö ÆùÆ® UIÅ¬·¡½º·Î ±â´É ÀÌÀüÇØº¼°Í.
+////ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Æ® UIÅ¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Øºï¿½ï¿½ï¿½.
 //void URPGGameplayAbility::DisplayDamageEffect
 //	(AActor* InCachedTargetActor, float InWeaponBaseDamage, bool bCritical)
 //{
-//	//³ªÁß¿¡ ¸®ÆÑÅä¸µ ÇÒ °Í
+//	//ï¿½ï¿½ï¿½ß¿ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ä¸µ ï¿½ï¿½ ï¿½ï¿½
 //	if (InCachedTargetActor)
 //	{
 //		ARPGBaseCharacter* TargetCharacter = Cast<ARPGBaseCharacter>(InCachedTargetActor);
 //
 //		if (TargetCharacter)
 //		{
-//			// µ¥¹ÌÁö ÆùÆ®¸¦ Ç¥½ÃÇÏ´Â ÇÔ¼ö È£Ãâ
+//			// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Æ®ï¿½ï¿½ Ç¥ï¿½ï¿½ï¿½Ï´ï¿½ ï¿½Ô¼ï¿½ È£ï¿½ï¿½
 //			TargetCharacter->
 //				ShowDamageFont(InWeaponBaseDamage, InCachedTargetActor->GetActorLocation(), bCritical);
 //		}

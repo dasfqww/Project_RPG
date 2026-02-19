@@ -7,7 +7,7 @@
 #include "Item/RPGItemBase.h"
 #include "Character/RPGPlayer.h"
 #include "UI/RPGWidgetBase.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 #include "Component/RPGInventoryComponent.h"
 #include "Component/RPGAbilitySystemComponent.h"
 
@@ -104,7 +104,7 @@ void UQuickSlotComponent::BeginPlay()
 	{
 		APlayerController* PC = Cast<APlayerController>(OwnerPawn->GetController());
 
-		if (URPGInventoryComponent* Inventory = URPGFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(PC))
+		if (URPGInventoryComponent* Inventory = URPGCoreFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(PC))
 		{
 			Inventory->OnQuantityChanged.AddDynamic(this, &UQuickSlotComponent::HandleOnItemQuantityChanged);
 			Inventory->OnItemRemoved.AddDynamic(this, &UQuickSlotComponent::HandleOnItemRemoved);
@@ -158,7 +158,7 @@ void UQuickSlotComponent::UseItemSlot(int32 Index, const APlayerController* PC)
 {
 	if (!ItemSlots.IsValidIndex(Index) || ItemSlots[Index].Item == nullptr) return;
 
-	if (URPGInventoryComponent* InventoryComponent = URPGFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(PC))
+	if (URPGInventoryComponent* InventoryComponent = URPGCoreFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(PC))
 	{
 		InventoryComponent->Server_ConsumeItem(ItemSlots[Index].Item);
 	}

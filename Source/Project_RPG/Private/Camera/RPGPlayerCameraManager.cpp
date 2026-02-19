@@ -38,12 +38,16 @@ void ARPGPlayerCameraManager::UpdateViewTarget(FTViewTarget& OutVT, float DeltaT
 	{
 		if (URPGCameraComponent* CameraComp = Pawn->FindComponentByClass<URPGCameraComponent>())
 		{
-			FRPGCameraModeView CameraView;
-			CameraComp->GetCameraView(DeltaTime, CameraView);
+			FMinimalViewInfo MinimalViewInfo;
+			CameraComp->GetCameraView(DeltaTime, MinimalViewInfo);
 
-			OutVT.POV.Location = CameraView.Location;
-			OutVT.POV.Rotation = CameraView.Rotation;
-			OutVT.POV.FOV = CameraView.FieldOfView;
+			OutVT.POV.Location = MinimalViewInfo.Location;
+			OutVT.POV.Rotation = MinimalViewInfo.Rotation;
+			OutVT.POV.FOV = MinimalViewInfo.FOV;
+			OutVT.POV.PostProcessBlendWeight = MinimalViewInfo.PostProcessBlendWeight;
+			OutVT.POV.PostProcessSettings = MinimalViewInfo.PostProcessSettings;
+			// 필요에 따라 추가 필드 복사
+
 			return;
 		}
 	}

@@ -6,7 +6,7 @@
 #include "Components/WidgetSwitcher.h"
 #include "UI/Inventory/Spatial/RPGInventoryGrid.h"
 #include "UI/RPGInventoryTooltip.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGUIFunctionLibrary.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
@@ -53,7 +53,7 @@ void URPGSpatialInventory::NativeTick(const FGeometry& MyGeometry, float InDelta
 
 FSlotAvailabilityResult URPGSpatialInventory::HasSpaceForItem(ARPGPickUpBase* ItemPickup) const
 {
-	switch (URPGFunctionLibrary::GetItemCategoryFromItemPickup(ItemPickup))
+	switch (URPGUIFunctionLibrary::GetItemCategoryFromItemPickup(ItemPickup))
 	{
 		case EItemCategory::Equip:
 			return Grid_Equip->HasSpaceForItem(ItemPickup);
@@ -147,8 +147,8 @@ void URPGSpatialInventory::SetItemTooltipSizeAndPosition(URPGInventoryTooltip* D
 	const FVector2D ItemToolTipSize = ItemToolTip->GetBoxSize();
 	ItemTooltipCPS->SetSize(ItemToolTipSize);
 
-	FVector2D ClampedPosition = URPGFunctionLibrary::GetClampedWidgetPosition(
-		URPGFunctionLibrary::GetWidgetSize(Canvas),
+	FVector2D ClampedPosition = URPGUIFunctionLibrary::GetClampedWidgetPosition(
+		URPGUIFunctionLibrary::GetWidgetSize(Canvas),
 		ItemToolTipSize,
 		UWidgetLayoutLibrary::GetMousePositionOnViewport(GetOwningPlayer()));
 

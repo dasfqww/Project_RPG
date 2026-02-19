@@ -2,7 +2,7 @@
 
 #include "Attribute/RPGAttributeSet.h"
 #include "GameplayEffectExtension.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "RPGGameplayTags.h"
 #include "Interface/PawnUIInterface.h"
 #include "Component/UI/PawnUIComponent.h"
@@ -100,19 +100,19 @@ void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 
 		if (GetCurrentRage() == GetMaxRage())
 		{
-			URPGFunctionLibrary::AddGameplayTagToActorIfNone
+			URPGAbilityFunctionLibrary::AddGameplayTagToActorIfNone
 				(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Rage_Full);
 		}
 		else if (GetCurrentRage() == 0.f)
 		{
-			URPGFunctionLibrary::AddGameplayTagToActorIfNone
+			URPGAbilityFunctionLibrary::AddGameplayTagToActorIfNone
 				(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Rage_None);
 		}
 		else
 		{
-			URPGFunctionLibrary::RemoveGameplayTagFromActorIfFound
+			URPGAbilityFunctionLibrary::RemoveGameplayTagFromActorIfFound
 				(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Rage_Full);
-			URPGFunctionLibrary::RemoveGameplayTagFromActorIfFound
+			URPGAbilityFunctionLibrary::RemoveGameplayTagFromActorIfFound
 				(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Rage_None);
 		}
 
@@ -130,16 +130,16 @@ void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		// 게이지 상태에 따른 태그 관리
 		if (GetCurrentIdentityGauge() == GetMaxIdentityGauge())
 		{
-			URPGFunctionLibrary::AddGameplayTagToActorIfNone(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Identity_Full);
+			URPGAbilityFunctionLibrary::AddGameplayTagToActorIfNone(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Identity_Full);
 		}
 		else if (GetCurrentIdentityGauge() == 0.f)
 		{
-			URPGFunctionLibrary::AddGameplayTagToActorIfNone(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Identity_None);
+			URPGAbilityFunctionLibrary::AddGameplayTagToActorIfNone(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Identity_None);
 		}
 		else
 		{
-			URPGFunctionLibrary::RemoveGameplayTagFromActorIfFound(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Identity_Full);
-			URPGFunctionLibrary::RemoveGameplayTagFromActorIfFound(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Identity_None);
+			URPGAbilityFunctionLibrary::RemoveGameplayTagFromActorIfFound(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Identity_Full);
+			URPGAbilityFunctionLibrary::RemoveGameplayTagFromActorIfFound(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Identity_None);
 		}
 
 		// UI 업데이트
@@ -222,7 +222,7 @@ void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		//TODO: notify the ui
 		if (GetCurrentHealth() == 0.f)
 		{
-			URPGFunctionLibrary::AddGameplayTagToActorIfNone(
+			URPGAbilityFunctionLibrary::AddGameplayTagToActorIfNone(
 				Data.Target.GetAvatarActor(), 
 				RPGGameplayTags::Shared_Status_Death
 			);

@@ -13,7 +13,7 @@
 #include "UI/RPGItemNameWidget.h"
 #include "Components/WidgetComponent.h"
 #include "Components/TextBlock.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 #include "Net/UnrealNetwork.h"
 #include "Manager/PoolManager.h"
 
@@ -186,9 +186,9 @@ void ARPGPickUpBase::UpdateInteractableData()
 
 void ARPGPickUpBase::TakePickup(APlayerController* PlayerController)
 { 
-    //URPGInventoryComponent* InventoryComp = URPGFunctionLibrary::GetInventoryComponent(PlayerController);
+    //URPGInventoryComponent* InventoryComp = URPGCoreFunctionLibrary::GetInventoryComponent(PlayerController);
     URPGInventoryComponent* InventoryComp = 
-        URPGFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(PlayerController);
+        URPGCoreFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(PlayerController);
 
     if (/*!IsValid(ItemComp) ||*/ !IsValid(InventoryComp)) return;
     

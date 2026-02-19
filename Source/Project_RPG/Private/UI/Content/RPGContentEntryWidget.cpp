@@ -11,7 +11,7 @@
 #include "GameMode/RPGGameModeBase.h"
 #include "UI/MessageBox/RPGMessageBox.h"
 #include "GameInstance/RPGGameInstance.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 #include "Manager/UIManager.h"
 
 URPGContentEntryWidget::URPGContentEntryWidget(const FObjectInitializer& ObjectInitializer)
@@ -25,7 +25,7 @@ void URPGContentEntryWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	URPGFunctionLibrary::ToggleInputMode(GetWorld(), ERPGInputMode::UIOnly);
+	URPGCoreFunctionLibrary::ToggleInputMode(GetWorld(), ERPGInputMode::UIOnly);
 
 	//UpdateRewardUIByDifficulty(GameDifficulty);
 }
@@ -137,7 +137,7 @@ void URPGContentEntryWidget::OnEntryButtonClicked()
 		MessageBox->AddToViewport();
 	}
 	
-	URPGGameInstance* GI = URPGFunctionLibrary::GetRPGGameInstance(GetWorld());
+	URPGGameInstance* GI = URPGCoreFunctionLibrary::GetRPGGameInstance(GetWorld());
 
 	if (GI)
 	{
@@ -149,5 +149,5 @@ void URPGContentEntryWidget::OnCloseButtonClicked()
 {
 	UUIManager::Get()->RemoveUI(this);
 
-	URPGFunctionLibrary::ToggleInputMode(GetWorld(), ERPGInputMode::GameOnly);
+	URPGCoreFunctionLibrary::ToggleInputMode(GetWorld(), ERPGInputMode::GameOnly);
 }

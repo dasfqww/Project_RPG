@@ -9,7 +9,7 @@
 #include "Components/TextBlock.h"
 #include "UI/DragItemVisual.h"
 #include "UI/ItemDragDropOperation.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGUIFunctionLibrary.h"
 
 URPGInventoryItemSlot::URPGInventoryItemSlot()
 {
@@ -81,14 +81,14 @@ FReply URPGInventoryItemSlot::NativeOnMouseButtonDown(const FGeometry& InGeometr
 void URPGInventoryItemSlot::NativeOnMouseEnter(const FGeometry& MyGeometry,
     const FPointerEvent& MouseEvent)
 {
-    URPGFunctionLibrary::ItemHovered(GetOwningPlayer(), InvenItem.Get());
+    URPGUIFunctionLibrary::ItemHovered(GetOwningPlayer(), InvenItem.Get());
 }
 
 void URPGInventoryItemSlot::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
 {
     //Super::NativeOnMouseLeave(InMouseEvent);
 
-    URPGFunctionLibrary::ItemUnhovered(GetOwningPlayer());
+    URPGUIFunctionLibrary::ItemUnhovered(GetOwningPlayer());
 }
 
 //void URPGInventoryItemSlot::NativeOnDragDetected(const FGeometry& InGeometry, 

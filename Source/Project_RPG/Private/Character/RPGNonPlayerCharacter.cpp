@@ -10,7 +10,7 @@
 #include "Components/WidgetComponent.h"
 #include "Components/BoxComponent.h"
 #include "UI/RPGWidgetBase.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGCombatFunctionLibrary.h"
 #include "GameMode/RPGGameModeBase.h"
 
 #include "RPGDebugHelper.h"
@@ -111,7 +111,7 @@ void ARPGNonPlayerCharacter::OnBodyCollisionBoxBeginOverlap(UPrimitiveComponent*
 {
 	if (APawn* HitPawn = Cast<APawn>(OtherActor))
 	{
-		if (URPGFunctionLibrary::IsTargetPawnHostile(this, HitPawn))
+		if (URPGCombatFunctionLibrary::IsTargetPawnHostile(this, HitPawn))
 		{
 			NPCCombatComponent->OnHitTargetActor(HitPawn);
 		}

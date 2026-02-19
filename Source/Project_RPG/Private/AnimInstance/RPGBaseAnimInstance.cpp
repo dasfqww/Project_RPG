@@ -2,13 +2,13 @@
 
 
 #include "AnimInstance/RPGBaseAnimInstance.h"
-#include "RPGFunctionLibrary.h"
+#include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 
 bool URPGBaseAnimInstance::DoesOwnerHaveTag(FGameplayTag TagToCheck) const
 {
 	if (APawn* OwningPawn = TryGetPawnOwner())
 	{
-		return URPGFunctionLibrary::NativeDoesActorHaveTag(OwningPawn, TagToCheck);
+		return URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(OwningPawn, TagToCheck);
 	}
 	return false;
 }
