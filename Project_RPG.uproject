@@ -15,7 +15,8 @@
 				"NiagaraAnimNotifies",
 				"CoreUObject",
 				"ModularGameplay",
-				"ModularGameplayActors"
+				"ModularGameplayActors",
+				"GameFeatures"
 			]
 		},
 		{

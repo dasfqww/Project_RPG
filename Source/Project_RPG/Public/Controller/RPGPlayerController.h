@@ -45,6 +45,10 @@ class PROJECT_RPG_API ARPGPlayerController : public APlayerController, public IG
 public:
 	ARPGPlayerController();
 
+    // Ability input wrappers (made public so they can be bound by external code)
+    void Input_AbilityInputPressed(FGameplayTag InInputTag);
+    void Input_AbilityInputReleased(FGameplayTag InInputTag);
+
 	virtual FGenericTeamId GetGenericTeamId()const;
 	
 	void UpdateInteractionWidget() const;
@@ -153,8 +157,7 @@ private:
 	UFUNCTION()
 	void Input_ShowEquipmentWidget(const FInputActionValue& Value);
 
-	void Input_AbilityInputPressed(FGameplayTag InInputTag);
-	void Input_AbilityInputReleased(FGameplayTag InInputTag);
+    // moved to public
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void ToggleInventory();

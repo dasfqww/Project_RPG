@@ -10,14 +10,14 @@ public class Project_RPG : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "NetCore", "StructUtils",
+        PublicDependencyModuleNames.AddRange(new string[] { "Core", "NetCore", "StructUtils",
             "CoreUObject", "Engine", "InputCore",
             "Slate", "SlateCore","GameplayTags", "EnhancedInput", "GameplayAbilities",
-			"UMG", "GameplayTasks", "AnimGraphRuntime",
+            "UMG", "GameplayTasks", "AnimGraphRuntime",
             "MotionWarping", "Niagara", "NavigationSystem", "AIModule",
             "AnimationCore", "HTTP", "Json", "JsonUtilities", "MoviePlayer", "AssetRegistry",
             "IrisCore", "ModelViewViewModel",
-            "CommonUI", "CommonInput", "CommonCoroutine" });
+            "CommonUI", "CommonInput", "CommonCoroutine", "CommonUser","UIExtension", "GameFeatures", "CommonGame" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 

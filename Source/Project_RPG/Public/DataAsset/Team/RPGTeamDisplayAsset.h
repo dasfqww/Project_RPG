@@ -40,6 +40,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visuals")
 	TObjectPtr<UNiagaraSystem> TeamEffect; // 팀 전용 이펙트 (발밑 오라 등)
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parameters")
+	TMap<FName, float> ScalarParameters;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parameters")
+	TMap<FName, FLinearColor> ColorParameters;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parameters")
+	TMap<FName, TObjectPtr<class UTexture>> TextureParameters;
+
 public:
 	/** 메쉬 컴포넌트의 특정 파라미터(예: 외곽선 색상)만 업데이트합니다. */
 	UFUNCTION(BlueprintCallable, Category = "RPG|Teams")
