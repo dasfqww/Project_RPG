@@ -29,15 +29,15 @@ protected:
 	void SetTeamDisplayAsset(TObjectPtr<URPGTeamDisplayAsset> NewDisplayAsset);
 
 private:
-	// UI/HUD¿¡ Ç¥½ÃÇÒ ÆÀ ¾ÆÀÌÄÜ/»ö»ó 
+	// UI/HUDï¿½ï¿½ Ç¥ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ 
 	UPROPERTY(ReplicatedUsing=OnRep_TeamDisplayAsset) 
 	TObjectPtr<URPGTeamDisplayAsset> TeamDisplayAsset; 
-	// ÆÄÆ¼/Áø¿µ ÀÌ¸§ (¿É¼Ç)
+	// ï¿½ï¿½Æ¼/ï¿½ï¿½ï¿½ï¿½ ï¿½Ì¸ï¿½ (ï¿½É¼ï¿½)
 	UPROPERTY(EditDefaultsOnly, Category="Team")
 	FString TeamName;
 
 public:
-	FORCEINLINE URPGTeamDisplayAsset* GetDisplayAsset() const { return DisplayAsset; }
+	FORCEINLINE URPGTeamDisplayAsset* GetDisplayAsset() const { return TeamDisplayAsset; }
 	FORCEINLINE FString GetTeamName() const { return TeamName; }
 
 };

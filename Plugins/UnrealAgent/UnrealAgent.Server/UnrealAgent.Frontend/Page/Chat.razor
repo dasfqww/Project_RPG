@@ -1,0 +1,8 @@
+@page "/"
+@using UnrealAgent.Frontend.UI.Messages
+
+<Header OnSettingsClick="ToggleSettings" />
+<SettingsPanel bIsVisible="bShowSettings" OnClose="ToggleSettings" />
+<AgentTabBar/>
+<ChatMessages Messages="AgentRunner.Store.Messages" bIsReceiving="AgentRunner.Store.bIsReceiving"/>
+<ChatInput OnSend="AgentRunner.EnqueueMessage"/>

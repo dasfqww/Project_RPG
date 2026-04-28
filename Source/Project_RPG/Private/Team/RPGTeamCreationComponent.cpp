@@ -24,6 +24,7 @@ void URPGTeamCreationComponent::ServerCreateFactionTeam(int32 FactionId, URPGTea
 {
 }
 
+#if WITH_SERVER_CODE
 void URPGTeamCreationComponent::ServerCreateTeams()
 {
 }
@@ -35,3 +36,4 @@ void URPGTeamCreationComponent::OnPlayerInitialized(AGameModeBase* GameMode, ACo
 void URPGTeamCreationComponent::ServerCreateTeam(int32 TeamId, URPGTeamDisplayAsset* DisplayAsset)
 {
 }
+#endif

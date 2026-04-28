@@ -40,7 +40,7 @@
 		},
 		{
 			"Name": "NiagaraUIRenderer",
-			"Enabled": true,
+			"Enabled": false,
 			"SupportedTargetPlatforms": [
 				"Win64",
 				"Android"
@@ -67,6 +67,10 @@
 		},
 		{
 			"Name": "CommonUI",
+			"Enabled": true
+		},
+		{
+			"Name": "UIExtension",
 			"Enabled": true
 		},
 		{

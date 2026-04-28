@@ -25,9 +25,7 @@
 		{
 			"Name": "CommonUI",
 			"Enabled": true
-		}
-	],
-	"Plugins": [
+		},
 		{
 			"Name": "CommonGame",
 			"Enabled": true
