@@ -36,7 +36,6 @@ private:
 	TObjectPtr<UTextBlock> QuantityText;
 
 	int32 PrevGridIndex;
-	FIntPoint GridDimensions;
 	TWeakObjectPtr<URPGItemBase> InvenItem;
 	bool bIsStackable = false;
 	int32 Quantity = 0;
@@ -47,7 +46,5 @@ public:
 	FORCEINLINE bool IsStackable() { return bIsStackable; }
 	FORCEINLINE int32 GetPrevGridIndex() { return PrevGridIndex; }
 	FORCEINLINE void SetPrevGridIndex(int32 Index) { PrevGridIndex=Index; }
-	FORCEINLINE FIntPoint GetGridDimensions() { return GridDimensions; }
-	FORCEINLINE void SetGridDimensions(const FIntPoint& Dimension) { GridDimensions=Dimension; }
 	
 };

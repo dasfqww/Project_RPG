@@ -29,12 +29,24 @@ void URPGInventoryGrid::NativeOnInitialized()
 
 	count++;*/
 
-	ConstructGrid();
 	UE_LOG(LogTemp, Warning, TEXT("NativeOnInitialized called on: %s"), *GetName());
 	InventoryComponent = URPGCoreFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(GetOwningPlayer());
+	if (!InventoryComponent.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Inventory grid %s has no inventory component."), *GetName());
+		return;
+	}
+
+	Columns = FMath::Max(Columns, 1);
+	const int32 AuthoritativeCapacity =
+		InventoryComponent->GetSlotCapacity(ItemCategory);
+	Rows = FMath::Max(FMath::DivideAndRoundUp(AuthoritativeCapacity, Columns), 1);
+	ConstructGrid();
 	//��������Ʈ �ߺ� ���..
 	InventoryComponent->OnItemAdded.AddDynamic(this, &ThisClass::AddItem);
-	InventoryComponent->OnQuantityChanged.AddDynamic(this, &ThisClass::AddQuantity);
+	InventoryComponent->OnItemRemoved.AddDynamic(this, &ThisClass::RemoveItem);
+	InventoryComponent->OnItemUpdated.AddDynamic(this, &ThisClass::RefreshItem);
+	InventoryComponent->OnInventoryRebuilt.AddDynamic(this, &ThisClass::RebuildInventory);
 
 	// [Fix] 이미 인벤토리에 있는 아이템들을 UI에 표시 (로드 후 UI가 열릴 경우 대비)
 	TArray<URPGItemBase*> ExistingItems = InventoryComponent->GetAllItems();
@@ -45,6 +57,20 @@ void URPGInventoryGrid::NativeOnInitialized()
 			AddItem(Item);
 		}
 	}
+}
+
+void URPGInventoryGrid::NativeDestruct()
+{
+	if (InventoryComponent.IsValid())
+	{
+		InventoryComponent->OnItemAdded.RemoveDynamic(this, &ThisClass::AddItem);
+		InventoryComponent->OnItemRemoved.RemoveDynamic(this, &ThisClass::RemoveItem);
+		InventoryComponent->OnItemUpdated.RemoveDynamic(this, &ThisClass::RefreshItem);
+		InventoryComponent->OnInventoryRebuilt.RemoveDynamic(
+			this, &ThisClass::RebuildInventory);
+	}
+
+	Super::NativeDestruct();
 }
 
 void URPGInventoryGrid::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -79,11 +105,14 @@ void URPGInventoryGrid::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 
 void URPGInventoryGrid::ConstructGrid()
 {
-	GridSlots.Reserve(Rows*Columns);
+	const int32 Capacity = InventoryComponent.IsValid()
+		? InventoryComponent->GetSlotCapacity(ItemCategory)
+		: Rows * Columns;
+	GridSlots.Reserve(Capacity);
 
-	for (int32 j = 0; j < Rows; j++)
+	for (int32 j = 0; j < Rows && GridSlots.Num() < Capacity; j++)
 	{
-		for (int i = 0; i < Columns; i++)
+		for (int i = 0; i < Columns && GridSlots.Num() < Capacity; i++)
 		{
 			URPGGridSlot* GridSlot = CreateWidget<URPGGridSlot>(this, GridSlotClass);
 			CanvasPanel->AddChild(GridSlot);
@@ -269,7 +298,7 @@ void URPGInventoryGrid::SetOwningCanvas(UCanvasPanel* OwningCanvas)
 
 void URPGInventoryGrid::AddItem(URPGItemBase* Item)
 {
-	if (!MatchesCategory(Item)) return;
+	if (!IsValid(Item) || !MatchesCategory(Item) || Item->GetTotalQuantity() <= 0) return;
 
 	//Debug::Print("InventoryGrid::AddItem");
 
@@ -295,6 +324,59 @@ void URPGInventoryGrid::AddItem(URPGItemBase* Item)
 
 	FSlotAvailabilityResult Result = HasSpaceForItem(Item);
 	AddItemToIndices(Result, Item);
+}
+
+void URPGInventoryGrid::RemoveItem(URPGItemBase* Item)
+{
+	if (!IsValid(Item) || !MatchesCategory(Item))
+	{
+		return;
+	}
+
+	for (int32 SlotIndex = 0; SlotIndex < GridSlots.Num(); ++SlotIndex)
+	{
+		if (GridSlots[SlotIndex]->GetInvenItem().Get() == Item)
+		{
+			RemoveItemFromGrid(Item, SlotIndex);
+		}
+	}
+}
+
+void URPGInventoryGrid::RefreshItem(URPGItemBase* Item)
+{
+	if (!IsValid(Item) || !MatchesCategory(Item))
+	{
+		return;
+	}
+
+	RemoveItem(Item);
+	if (Item->GetTotalQuantity() > 0)
+	{
+		AddItem(Item);
+	}
+}
+
+void URPGInventoryGrid::RebuildInventory()
+{
+	ClearHoverItem();
+
+	for (int32 SlotIndex = 0; SlotIndex < GridSlots.Num(); ++SlotIndex)
+	{
+		if (URPGItemBase* Item = GridSlots[SlotIndex]->GetInvenItem().Get())
+		{
+			RemoveItemFromGrid(Item, SlotIndex);
+		}
+	}
+
+	if (!InventoryComponent.IsValid())
+	{
+		return;
+	}
+
+	for (URPGItemBase* Item : InventoryComponent->GetAllItems())
+	{
+		AddItem(Item);
+	}
 }
 
 void URPGInventoryGrid::OnGridSlotChanged(int32 GridIndex, const FPointerEvent& MouseEvent, EGridSlotState SlotState)
@@ -341,7 +423,6 @@ void URPGInventoryGrid::OnPopUpMenuDrop(int32 Index)
 	InventoryComponent->Server_DropItem(ClickedItem, QuantityToDrop);
 	
 	// UI 업데이트 (인벤토리 그리드에서 제거)
-	RemoveItemFromGrid(ClickedItem, Index);
 }
 
 void URPGInventoryGrid::OnPopUpMenuConsume(int32 Index)
@@ -357,19 +438,7 @@ void URPGInventoryGrid::OnPopUpMenuConsume(int32 Index)
 	ItemsInSlot.FindChecked(UpperLeftIndex)->UpdateItemQuantity(NewQuantity);*/
 
 	// 1x1 �̹Ƿ� UpperLeftIndex�� �ڱ� �ڽ��� �ε����� �����ϴ�.
-	URPGGridSlot* GridSlot = GridSlots[Index];
-	const int32 NewQuantity = GridSlot->GetQuantity() - 1;
-
-	GridSlot->SetQuantity(NewQuantity);
-	ItemsInSlot.FindChecked(Index)->UpdateItemQuantity(NewQuantity);
-
-	// TODO: Tell the server we're consuming an item
 	InventoryComponent->Server_ConsumeItem(ClickedItem);
-
-	if (NewQuantity <= 0)
-	{
-		RemoveItemFromGrid(ClickedItem, Index);
-	}
 }
 
 bool URPGInventoryGrid::MatchesCategory(const URPGItemBase* Item) const
@@ -1011,23 +1080,22 @@ void URPGInventoryGrid::ChangeHoverType(const int32 Index,
 
 void URPGInventoryGrid::PutDownOnIndex(const int32 Index)
 {
-	const int32 PrevIndex = HoverItem->GetPrevGridIndex();
-	
-	if (GridSlots.IsValidIndex(PrevIndex) && PrevIndex != Index)
-	{
-		RemoveItemFromGrid(HoverItem->GetInvenItem(), PrevIndex);
-	}
-
 	// [Fix] 아이템 데이터의 슬롯 인덱스 업데이트
 	if (URPGItemBase* Item = HoverItem->GetInvenItem())
 	{
-		Item->SlotIndex = Index;
-	
-		InventoryComponent->Server_MoveItem(Item, Index);		
+		const int32 HoverQuantity = HoverItem->GetQuantity();
+		if (Item->IsStackable()
+			&& HoverQuantity > 0
+			&& HoverQuantity < Item->GetTotalQuantity())
+		{
+			InventoryComponent->Server_SplitItem(Item, HoverQuantity, Index);
+		}
+		else
+		{
+			InventoryComponent->Server_MoveItem(Item, Index);
+		}
 	}
 
-	AddItemAtIndex(HoverItem->GetInvenItem(), Index, HoverItem->IsStackable(), HoverItem->GetQuantity());
-	UpdateGridSlots(HoverItem->GetInvenItem(), Index, HoverItem->IsStackable(), HoverItem->GetQuantity());
 	ClearHoverItem();
 }
 
@@ -1049,11 +1117,14 @@ void URPGInventoryGrid::ClearHoverItem()
 
 bool URPGInventoryGrid::IsSameStackable(const URPGItemBase* ClickedInventoryItem) const
 {
-	const bool bIsSameItem = ClickedInventoryItem == HoverItem->GetInvenItem();
-	const bool bIsStackable = ClickedInventoryItem->IsStackable();
-
-	return bIsSameItem&&bIsStackable&&HoverItem->
-		GetItemTag().MatchesTagExact(ClickedInventoryItem->GetItemManifest().GetItemTag());
+	return IsValid(ClickedInventoryItem)
+		&& IsValid(HoverItem)
+		&& IsValid(HoverItem->GetInvenItem())
+		&& ClickedInventoryItem != HoverItem->GetInvenItem()
+		&& ClickedInventoryItem->IsStackable()
+		&& HoverItem->IsStackable()
+		&& HoverItem->GetItemTag().MatchesTagExact(
+			ClickedInventoryItem->GetItemManifest().GetItemTag());
 }
 
 void URPGInventoryGrid::SwapWithHoverItem(URPGItemBase* ClickedInventoryItem, const int32 ClickedGridIndex)
@@ -1063,101 +1134,22 @@ void URPGInventoryGrid::SwapWithHoverItem(URPGItemBase* ClickedInventoryItem, co
 	// 1. �ӽ� ������ ���� ��� �ִ� ������(HoverItem)�� ������ �����մϴ�.
 	// �� ������ HoverItem ��� �������� ���� �����ɴϴ�.
 	URPGItemBase* HoveredItem = HoverItem->GetInvenItem();
-	const int32 HoveredQuantity = HoverItem->GetQuantity();
-	const bool bHoveredIsStackable = HoverItem->IsStackable();
-	const int32 PrevHoveredIndex = HoverItem->GetPrevGridIndex(); // ���� �߿�!
 
 	// ���� Ŭ���� �������� ������ �̸� ������ �Ӵϴ�.
 	// RemoveItemFromGrid�� ȣ���ϸ� GridSlot���� ������ ������ �� ���� �Ǳ� �����Դϴ�.
-	const int32 ClickedItemQuantity = GridSlots[ClickedGridIndex]->GetQuantity();
-	const bool bClickedIsStackable = ClickedInventoryItem->IsStackable();
 	
 	InventoryComponent->Server_MoveItem(HoveredItem, ClickedGridIndex);
-	InventoryComponent->Server_MoveItem(ClickedInventoryItem, PrevHoveredIndex);
-	
-	HoveredItem->SlotIndex = ClickedGridIndex;
-	ClickedInventoryItem->SlotIndex = PrevHoveredIndex;
 
 	// 2. ������ ��� �ִ� �������� �ִ� �ڸ��� ���� ���ϴ�.
-	RemoveItemFromGrid(HoveredItem, PrevHoveredIndex);
 
 	// 3. ���� Ŭ���� �������� �ִ� �ڸ��� ���ϴ�.
-	RemoveItemFromGrid(ClickedInventoryItem, ClickedGridIndex);
 
 	// 4. ������ ��� �ִ� ������(HoveredItem)�� ���� Ŭ���� �������� ��ġ(ClickedGridIndex)�� �����ϴ�.
-	AddItemAtIndex(HoveredItem, ClickedGridIndex, bHoveredIsStackable, HoveredQuantity);
-	UpdateGridSlots(HoveredItem, ClickedGridIndex, bHoveredIsStackable, HoveredQuantity);
 
 	// 5. ���� Ŭ���ߴ� ������(ClickedInventoryItem)�� ������ ��� �ִ� �������� ��ġ(PrevHoveredIndex)�� �����ϴ�.
-	AddItemAtIndex(ClickedInventoryItem, PrevHoveredIndex, bClickedIsStackable, ClickedItemQuantity);
-	UpdateGridSlots(ClickedInventoryItem, PrevHoveredIndex, bClickedIsStackable, ClickedItemQuantity);
 
 	// 6. ��� ������ �������Ƿ� HoverItem�� �����ϰ� ���콺 Ŀ���� ������� �ǵ����ϴ�.
 	ClearHoverItem();
-}
-
-bool URPGInventoryGrid::ShouldSwapQuantity(const int32 SpaceInClickedSlot,
-	const int32 HoveredQuantity, const int32 MaxQuantity) const
-{
-	return SpaceInClickedSlot == 0 && HoveredQuantity < MaxQuantity;
-}
-
-void URPGInventoryGrid::SwapQuantity(const int32 ClickedQuantity, 
-	const int32 HoveredQuantity, const int32 Index)
-{
-	URPGGridSlot* GridSlot = GridSlots[Index];
-	GridSlot->SetQuantity(HoveredQuantity);
-
-	URPGInventoryItemSlot* ClickedSlotItem = ItemsInSlot.FindChecked(Index);
-	ClickedSlotItem->UpdateItemQuantity(HoveredQuantity);
-
-	HoverItem->UpdateQuantity(ClickedQuantity);
-}
-
-bool URPGInventoryGrid::ShouldConsumeHoverItemQuantity(const int32 HoveredQuantity,
-	const int32 SpaceClickedSlot) const
-{
-	return SpaceClickedSlot>=HoveredQuantity;
-}
-
-void URPGInventoryGrid::ConsumeHoverItemQuantity(const int32 ClickedQuantity, 
-	const int32 HoveredQuantity, const int32 Index)
-{
-	const int32 AmountToTransfer = HoveredQuantity;
-	const int32 NewClickedQuantity = ClickedQuantity + AmountToTransfer;
-
-	GridSlots[Index]->SetQuantity(NewClickedQuantity);
-	ItemsInSlot.FindChecked(Index)->UpdateItemQuantity(NewClickedQuantity);
-	ClearHoverItem();
-	SetVisibleCursor();
-
-	/*const FGridFragment* GridFragment
-		= GridSlots[Index]->GetInvenItem()->GetItemManifest().GetFragmentOfType<FGridFragment>();
-	const FIntPoint Dimensions = GridFragment ? GridFragment->GetGridSize() : FIntPoint(1, 1);
-	HighlightSlots(Index, Dimensions);*/
-
-	if (GridSlots.IsValidIndex(Index))
-	{
-		GridSlots[Index]->SetSlotTexture(EGridSlotState::Occupied);
-	}
-}
-
-bool URPGInventoryGrid::ShouldFillInStack(const int32 SpaceInClickedSlot, const int32 HoveredQuantity) const
-{
-	return SpaceInClickedSlot < HoveredQuantity;
-}
-
-void URPGInventoryGrid::FillInQuantity(const int32 FillAmount, const int32 Remainder, const int32 Index)
-{
-	URPGGridSlot* GridSlot = GridSlots[Index];
-	const int32 NewQuantity = GridSlot->GetQuantity() + FillAmount;
-
-	GridSlot->SetQuantity(NewQuantity);
-
-	URPGInventoryItemSlot* ClickedSlottedItem=ItemsInSlot.FindChecked(Index);
-	ClickedSlottedItem->UpdateItemQuantity(NewQuantity);
-
-	HoverItem->UpdateQuantity(Remainder);
 }
 
 void URPGInventoryGrid::CreateItemPopUp(const int32 GridIndex)
@@ -1231,30 +1223,6 @@ UUserWidget* URPGInventoryGrid::GetCursorWidget()
 	return CursorWidget;
 }
 
-void URPGInventoryGrid::AddQuantity(const FSlotAvailabilityResult& Result)
-{
-	if (!MatchesCategory(Result.Item.Get())) return;
-
-	for (const auto& Availability : Result.SlotAvailabilities)
-	{
-		if (Availability.bItemAtIndex)
-		{
-			const auto& GridSlot = GridSlots[Availability.Index];
-			const auto& ItemInSlot = ItemsInSlot.FindChecked(Availability.Index);
-			ItemInSlot->UpdateItemQuantity(GridSlot->GetQuantity() + Availability.AmountToFill);
-			GridSlot->SetQuantity(GridSlot->GetQuantity() + Availability.AmountToFill);
-		}
-		
-		else
-		{
-			AddItemAtIndex(Result.Item.Get(), Availability.Index, 
-				Result.bStackable, Availability.AmountToFill);
-			UpdateGridSlots(Result.Item.Get(), Availability.Index,
-				Result.bStackable, Availability.AmountToFill);
-		}
-	}
-}
-
 void URPGInventoryGrid::OnSlotItemClicked(int32 GridIndex, const FPointerEvent& MouseEvent)
 {
 	//Debug::Print("Clicked on item at index : %d", GridIndex);
@@ -1282,37 +1250,31 @@ void URPGInventoryGrid::OnSlotItemClicked(int32 GridIndex, const FPointerEvent& 
 		return;
 	}
 
+	if (IsValid(HoverItem)
+		&& ClickedInvenItem == HoverItem->GetInvenItem())
+	{
+		RebuildInventory();
+		return;
+	}
+
 	if (IsSameStackable(ClickedInvenItem))
 	{
-		const int32 ClickedQuantity = GridSlots[GridIndex]->GetQuantity();
 		const FStackableFragment* StackableFragment 
 			= ClickedInvenItem->GetItemManifest().GetFragmentOfType<FStackableFragment>();
 		const int32 MaxQuantity = StackableFragment->GetMaxQuantity();
-		const int32 SpaceInClickedSlot = MaxQuantity - ClickedQuantity;
+		const int32 SpaceInClickedSlot =
+			MaxQuantity - ClickedInvenItem->GetTotalQuantity();
 		const int32 HoveredQuantity = HoverItem->GetQuantity();
 
-		if (ShouldSwapQuantity(SpaceInClickedSlot, HoveredQuantity, MaxQuantity))
+		if (SpaceInClickedSlot > 0)
 		{
-			SwapQuantity(ClickedQuantity, HoveredQuantity, GridIndex);
+			InventoryComponent->Server_TransferItemQuantity(
+				HoverItem->GetInvenItem(),
+				ClickedInvenItem,
+				FMath::Min(HoveredQuantity, SpaceInClickedSlot));
+			ClearHoverItem();
 			return;
 		}
-
-		if (ShouldConsumeHoverItemQuantity(HoveredQuantity, SpaceInClickedSlot))
-		{
-			ConsumeHoverItemQuantity(ClickedQuantity, HoveredQuantity, GridIndex);
-			return;
-		}
-
-		if (ShouldFillInStack(SpaceInClickedSlot, HoveredQuantity))
-		{
-			FillInQuantity(SpaceInClickedSlot, HoveredQuantity - SpaceInClickedSlot, GridIndex);
-			return;
-		}
-
-		if (SpaceInClickedSlot==0)
-		{
-			return;
-		}		
 	}
 
 	SwapWithHoverItem(ClickedInvenItem, GridIndex);

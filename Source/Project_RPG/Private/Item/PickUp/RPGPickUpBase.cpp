@@ -15,7 +15,8 @@
 #include "Components/TextBlock.h"
 #include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 #include "Net/UnrealNetwork.h"
-#include "Manager/PoolManager.h"
+#include "Manager/ObjectManager.h"
+#include "Item/Fragment/RPGItemFragment.h"
 
 #include "RPGDebugHelper.h"
 
@@ -38,6 +39,7 @@ ARPGPickUpBase::ARPGPickUpBase()
     ItemTextWidgetComponent->SetupAttachment(GetRootComponent());
 
     bReplicates = true;
+    SetReplicateMovement(true);
 }
 
 void ARPGPickUpBase::BeginPlay()
@@ -53,11 +55,17 @@ void ARPGPickUpBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
     Super::GetLifetimeReplicatedProps(OutLifetimeProps); 
 
     DOREPLIFETIME(ThisClass, ItemManifest);
+    DOREPLIFETIME(ThisClass, bIsAvailableForPickup);
 }
 
-void ARPGPickUpBase::InitItemManifest(FItemManifest CopyOfManifest)
+void ARPGPickUpBase::InitItemManifest(FItemManifest CopyOfManifest, FName InPoolName)
 {
     ItemManifest = CopyOfManifest;
+    OwningPoolName = InPoolName;
+    bIsAvailableForPickup = true;
+    SetActorHiddenInGame(false);
+    SetActorEnableCollision(true);
+    ForceNetUpdate();
 }
 
 //void ARPGPickUpBase::InitializePickUp(const TSubclassOf<URPGItemBase> BaseClass, const int32 InQuantity)
@@ -186,6 +194,8 @@ void ARPGPickUpBase::UpdateInteractableData()
 
 void ARPGPickUpBase::TakePickup(APlayerController* PlayerController)
 { 
+    if (!bIsAvailableForPickup) return;
+
     //URPGInventoryComponent* InventoryComp = URPGCoreFunctionLibrary::GetInventoryComponent(PlayerController);
     URPGInventoryComponent* InventoryComp = 
         URPGCoreFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(PlayerController);
@@ -238,12 +248,63 @@ void ARPGPickUpBase::TakePickup(APlayerController* PlayerController)
 
 void ARPGPickUpBase::PickedUp()
 {
-    //OnPickedUp();
-	//TODO: object pooling
-	FName PoolName = FName("Item");
-    
-	UPoolManager::Get<UPoolManager>(this)->ReleaseToPool(PoolName, this);
-    //Destroy();
+    if (!HasAuthority()) return;
+
+    bIsAvailableForPickup = false;
+    ForceNetUpdate();
+
+    if (!OwningPoolName.IsNone())
+    {
+        UObjectManager::Get<UObjectManager>(this)->Despawn(
+            OwningPoolName, this, true);
+    }
+    else
+    {
+        Destroy();
+    }
+}
+
+bool ARPGPickUpBase::TryClaimPickup()
+{
+    if (!HasAuthority() || !bIsAvailableForPickup || IsHidden())
+    {
+        return false;
+    }
+
+    bIsAvailableForPickup = false;
+    ForceNetUpdate();
+    return true;
+}
+
+void ARPGPickUpBase::ReleasePickupClaim()
+{
+    if (!HasAuthority() || IsHidden())
+    {
+        return;
+    }
+
+    bIsAvailableForPickup = true;
+    ForceNetUpdate();
+}
+
+void ARPGPickUpBase::SetPickupQuantity(int32 Quantity)
+{
+    if (!HasAuthority())
+    {
+        return;
+    }
+
+    if (FStackableFragment* Stackable =
+        ItemManifest.GetFragmentOfTypeMutable<FStackableFragment>())
+    {
+        Stackable->SetQuantity(FMath::Max(Quantity, 1));
+        ForceNetUpdate();
+    }
+}
+
+void ARPGPickUpBase::OnRep_PickupAvailability()
+{
+    SetActorEnableCollision(bIsAvailableForPickup && !IsHidden());
 }
 
 //#if WITH_EDITOR

@@ -55,59 +55,106 @@ void ARPGProjectileBase::BeginPlay()
 
 void ARPGProjectileBase::OnProjectileHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	BP_OnSpawnProjectileHitFX(Hit.ImpactPoint);
+	ProcessProjectileImpact(OtherActor, OtherComp, Hit);
+}
+
+void ARPGProjectileBase::OnProjectileBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	if (ProjectileDamagePolicy != EProjectileDamagePolicy::OnBeginOverlap)
+	{
+		return;
+	}
+	ProcessProjectileImpact(OtherActor, OtherComp, SweepResult);
+}
+
+void ARPGProjectileBase::ProcessProjectileImpact(
+	AActor* OtherActor,
+	UPrimitiveComponent* OtherComponent,
+	const FHitResult& HitResult)
+{
+	if (bImpactHandled || !IsValid(OtherActor) || OtherActor == GetInstigator())
+	{
+		return;
+	}
+	bImpactHandled = true;
+
+	FVector ImpactPoint(HitResult.ImpactPoint);
+	if (ImpactPoint.ContainsNaN() ||
+		(ImpactPoint.IsNearlyZero() &&
+		 !OtherActor->GetActorLocation().IsNearlyZero()))
+	{
+		ImpactPoint = OtherActor->GetActorLocation();
+	}
+	FVector ImpactNormal(HitResult.ImpactNormal);
+	if (ImpactNormal.ContainsNaN())
+	{
+		ImpactNormal = (ImpactPoint - GetActorLocation()).GetSafeNormal();
+	}
+	const FHitResult ServerHit(
+		OtherActor,
+		OtherComponent,
+		ImpactPoint,
+		ImpactNormal);
+
+	BP_OnSpawnProjectileHitFX(ImpactPoint);
+	if (!HasAuthority())
+	{
+		// Predicted projectiles only present impact FX. The server copy owns
+		// collision admission, block events, damage, and destruction.
+		Destroy();
+		return;
+	}
 
 	APawn* HitPawn = Cast<APawn>(OtherActor);
-
-	if (!HitPawn || !URPGCombatFunctionLibrary::IsTargetPawnHostile(GetInstigator(), HitPawn))
+	if (!HitPawn ||
+		!URPGCombatFunctionLibrary::IsTargetPawnHostile(GetInstigator(), HitPawn))
 	{
 		Destroy();
 		return;
 	}
 
-	bool bIsValidBlock = false;
-
 	const bool bIsPlayerBlocking =
-		URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(HitPawn,
-		RPGGameplayTags::Player_Status_Blocking);
-
-	if (bIsPlayerBlocking)
-	{
-		bIsValidBlock = URPGCombatFunctionLibrary::IsValidBlock(this, HitPawn);
-	}
+		URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(
+			HitPawn,
+			RPGGameplayTags::Player_Status_Blocking);
+	const bool bIsValidBlock = bIsPlayerBlocking &&
+		URPGCombatFunctionLibrary::IsValidBlock(this, HitPawn);
 
 	FGameplayEventData Data;
 	Data.Instigator = this;
 	Data.Target = HitPawn;
-
 	if (bIsValidBlock)
 	{
 		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(
 			HitPawn,
 			RPGGameplayTags::Player_Event_SuccessfulBlock,
-			Data
-		);
+			Data);
 	}
 	else
 	{
-		//Apply projectile damage
-		HandleApplyProjectileDamage(HitPawn, Data);
+		HandleApplyProjectileDamage(HitPawn, ServerHit, Data);
 	}
 
 	Destroy();
 }
 
-void ARPGProjectileBase::OnProjectileBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+void ARPGProjectileBase::HandleApplyProjectileDamage(
+	APawn* InHitPawn,
+	const FHitResult& ServerHit,
+	const FGameplayEventData& InPayload)
 {
-}
+	if (!HasAuthority() || !IsValid(InHitPawn) ||
+		!ProjectileDamageEffectSpecHandle.IsValid())
+	{
+		return;
+	}
 
-void ARPGProjectileBase::HandleApplyProjectileDamage(APawn* InHitPawn, const FGameplayEventData& InPayload)
-{
-	checkf(ProjectileDamageEffectSpecHandle.IsValid(), 
-		TEXT("Forgot to assign a valid spec handle to the projectile: %s"), *GetActorNameOrLabel());
-
-	const bool bWasApplied = URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToTargetActor
-		(GetInstigator(), InHitPawn, ProjectileDamageEffectSpecHandle);
+	const bool bWasApplied =
+		URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
+			GetInstigator(),
+			ServerHit,
+			ProjectileDamageEffectSpecHandle,
+			SecurityProfile);
 
 	if (bWasApplied)
 	{

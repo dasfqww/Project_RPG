@@ -1,8 +1,9 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+ï»¿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Type/RPGStructTypes.h"
 #include "UI/RPGWidgetBase.h"
 #include "RPGQuickSlotWidget.generated.h"
 
@@ -10,6 +11,7 @@ class UImage;
 class UTextBlock;
 class URPGItemBase;
 class UDragQuickSlotItemVisual;
+class UQuickSlotComponent;
 
 
 
@@ -24,8 +26,8 @@ public:
 	URPGQuickSlotWidget();
 	
 	virtual void NativeOnInitialized() override;
-
-	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry,
 		const FPointerEvent& InMouseEvent) override;
@@ -46,20 +48,30 @@ public:
 
 	void SetInputKeyText(FText InText);
 
-	// ¾ÆÀÌÅÛÀÇ ÀÌ¹ÌÁö ¹× ¼ö·®À» ¾÷µ¥ÀÌÆ®ÇÏ´Â ÇÔ¼ö
+	// ì•„ì´í…œì˜ ì´ë¯¸ì§€ ë° ìˆ˜ëŸ‰ì„ ì—…ë°ì´íŠ¸í•˜ëŠ” í•¨ìˆ˜
 	//void UpdateSlotUI();
 
 	void SetImageAlpha(UImage* InImage, float InAlpha);
 
-	// Äü½½·ÔÀÇ ¾ÆÀÌÅÛÀ» »ç¿ëÇÒ ¶§ È£ÃâµÇ´Â ÇÔ¼ö
+	// í€µìŠ¬ë¡¯ì˜ ì•„ì´í…œì„ ì‚¬ìš©í•  ë•Œ í˜¸ì¶œë˜ëŠ” í•¨ìˆ˜
 	UFUNCTION(BlueprintCallable)
 	void UseSlotItem(URPGItemBase* UseItem);
 
 	void UpdateQuickSlotItemQuantity(int32 ItemCount);
 	void UpdateQuickSlotItemImageAlpha();
 
+private:
+	void BindToQuickSlot();
+	void UnbindFromQuickSlot();
+
+	UFUNCTION()
+	void HandleSlotChanged(int32 ChangedSlotIndex, const FRPGQuickSlotContent& Content);
+
+	UFUNCTION()
+	void HandleQuantityChanged(URPGItemBase* Item, int32 NewQuantity);
+
 protected:
-	// ½½·Ô¿¡ ¾ÆÀÌÅÛÀ» ¹èÄ¡ÇÒ ÅØ½ºÆ®/ÀÌ¹ÌÁö ºí·Ï
+	// ìŠ¬ë¡¯ì— ì•„ì´í…œì„ ë°°ì¹˜í•  í…ìŠ¤íŠ¸/ì´ë¯¸ì§€ ë¸”ë¡
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UImage> SlotItemImage;
 
@@ -76,10 +88,16 @@ protected:
 	TSubclassOf<UDragItemVisual> DragVisualClass;
 
 	UPROPERTY()
-	TObjectPtr<URPGItemBase> SlotItem; // ½½·Ô¿¡ ¹èÄ¡µÈ ¾ÆÀÌÅÛ °´Ã¼
+	TObjectPtr<URPGItemBase> SlotItem; // ìŠ¬ë¡¯ì— ë°°ì¹˜ëœ ì•„ì´í…œ ê°ì²´
 
 	UPROPERTY(EditAnywhere, Category = "SlotIndex")
-	int32 SlotIndex; // ÀÌ ½½·ÔÀÇ ÀÎµ¦½º (¿¹: Ã¹ ¹øÂ° ½½·Ô, µÎ ¹øÂ° ½½·Ô)
+	int32 SlotIndex; // ì´ ìŠ¬ë¡¯ì˜ ì¸ë±ìŠ¤ (ì˜ˆ: ì²« ë²ˆì§¸ ìŠ¬ë¡¯, ë‘ ë²ˆì§¸ ìŠ¬ë¡¯)
+
+	UPROPERTY(EditAnywhere, Category = "SlotIndex")
+	bool bIsSkillSlot = false;
+
+	UPROPERTY()
+	TWeakObjectPtr<UQuickSlotComponent> LinkedQuickSlotComponent;
 
 public:
 	FORCEINLINE URPGItemBase* GetSlotItem() const { return SlotItem; }

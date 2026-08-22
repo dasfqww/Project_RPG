@@ -4,6 +4,8 @@
 #include "Manager/DataManager.h"
 #include "JsonObjectConverter.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Item/Definition/RPGItemDefinition.h"
+#include "Item/Legacy/RPGLegacyItemDefinitionAdapter.h"
 #include "Item/PickUp/RPGPickUpBase.h"
 
 UDataManager* UDataManager::Instance = nullptr;
@@ -16,7 +18,7 @@ void UDataManager::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 	Instance = this;
-	
+
 	// 초기화 시 아이템 캐시 구축
 	RefreshItemCache();
 	UE_LOG(LogTemp, Log, TEXT("DataManager Initialized and Item Cache Refreshed."));
@@ -46,6 +48,9 @@ UDataManager* UDataManager::Get()
 void UDataManager::RefreshItemCache()
 {
 	ItemManifestCache.Empty();
+	ItemDefinitionRegistry.Reset();
+	ItemActionPolicyRegistry.Reset();
+	NativeItemDefinitions.Reset();
 
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	TArray<FAssetData> AssetData;
@@ -70,12 +75,101 @@ void UDataManager::RefreshItemCache()
 				if (Manifest.GetItemTag().IsValid())
 				{
 					ItemManifestCache.Add(Manifest.GetItemTag(), Manifest);
+
+					FRPGItemDefinitionView DefinitionView;
+					FString AdapterError;
+					if (FRPGLegacyItemDefinitionAdapter::TryBuildDefinitionView(
+						Manifest,
+						DefinitionView,
+						&AdapterError))
+					{
+						ItemDefinitionRegistry.RegisterDefinitionView(
+							DefinitionView);
+					}
+					else
+					{
+						UE_LOG(
+							LogTemp,
+							Warning,
+							TEXT("Legacy item %s was not registered: %s"),
+							*Manifest.GetItemTag().ToString(),
+							*AdapterError);
+					}
 				}
 			}
 		}
 	}
-	
-	UE_LOG(LogTemp, Log, TEXT("Item Cache Refreshed. Found %d items."), ItemManifestCache.Num());
+
+	TArray<FAssetData> DefinitionAssetData;
+	FARFilter DefinitionFilter;
+	DefinitionFilter.ClassPaths.Add(
+		URPGItemDefinition::StaticClass()->GetClassPathName());
+	DefinitionFilter.bRecursiveClasses = true;
+	DefinitionFilter.bRecursivePaths = true;
+	DefinitionFilter.PackagePaths.Add(TEXT("/Game"));
+	AssetRegistryModule.Get().GetAssets(
+		DefinitionFilter,
+		DefinitionAssetData);
+	for (const FAssetData& Data : DefinitionAssetData)
+	{
+		URPGItemDefinition* Definition =
+			Cast<URPGItemDefinition>(Data.GetAsset());
+		if (!Definition)
+		{
+			continue;
+		}
+
+		const bool bDefinitionRegistered =
+			ItemDefinitionRegistry.RegisterDefinition(*Definition);
+		const bool bActionPolicyRegistered =
+			ItemActionPolicyRegistry.RegisterDefinition(*Definition);
+		if (!bDefinitionRegistered || !bActionPolicyRegistered)
+		{
+			UE_LOG(
+				LogTemp,
+				Warning,
+				TEXT("Native item definition %s has an invalid runtime snapshot or action policy."),
+				*Definition->GetPathName());
+		}
+		if (bDefinitionRegistered)
+		{
+			NativeItemDefinitions.Add(
+				Definition->GetPrimaryAssetId().PrimaryAssetName,
+				Definition);
+		}
+	}
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("Item Cache Refreshed. Found %d legacy and %d native definitions."),
+		ItemManifestCache.Num(),
+		DefinitionAssetData.Num());
+}
+
+const URPGItemDefinition* UDataManager::FindNativeItemDefinition(
+	const FPrimaryAssetId& DefinitionId) const
+{
+	if (DefinitionId.PrimaryAssetType !=
+		URPGItemDefinition::PrimaryAssetType)
+	{
+		return nullptr;
+	}
+	const TObjectPtr<URPGItemDefinition>* Definition =
+		NativeItemDefinitions.Find(DefinitionId.PrimaryAssetName);
+	return Definition ? Definition->Get() : nullptr;
+}
+
+bool UDataManager::TryGetItemDefinitionViewByTag(
+	const FGameplayTag& Tag,
+	FRPGItemDefinitionView& OutView) const
+{
+	const FPrimaryAssetId DefinitionId =
+		URPGItemDefinition::MakePrimaryAssetIdForTag(Tag);
+	return DefinitionId.IsValid() &&
+		ItemDefinitionRegistry.TryFindDefinitionView(
+			DefinitionId,
+			OutView);
 }
 
 bool UDataManager::GetItemManifestByTag(const FGameplayTag& Tag, FItemManifest& OutManifest)
@@ -108,7 +202,7 @@ bool UDataManager::LoadSoundOptionsFromJson(FSoundSaveData& OutData)
 		return false;
 	}
 
-	//  
+	// Volumes and mute state are persisted independently.
 	OutData.MasterVolume = JsonObject->GetNumberField(TEXT("MasterVolume"));
 	OutData.bMasterMuted = JsonObject->GetBoolField(TEXT("bMasterMuted"));
 
@@ -118,7 +212,7 @@ bool UDataManager::LoadSoundOptionsFromJson(FSoundSaveData& OutData)
 	{
 		for (const auto& Elem : (*VolumesObject)->Values)
 		{
-			OutData.Volumes.Add(Elem.Key, (float)(Elem.Value->AsNumber()));
+			OutData.Volumes.Add(FString(Elem.Key), (float)(Elem.Value->AsNumber()));
 		}
 	}
 
@@ -128,7 +222,7 @@ bool UDataManager::LoadSoundOptionsFromJson(FSoundSaveData& OutData)
 	{
 		for (const auto& Elem : (*MutesObject)->Values)
 		{
-			OutData.Mutes.Add(Elem.Key, Elem.Value->AsBool());
+			OutData.Mutes.Add(FString(Elem.Key), Elem.Value->AsBool());
 		}
 	}
 

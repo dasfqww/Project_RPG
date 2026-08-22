@@ -6,6 +6,8 @@
 #include "Components/WidgetSwitcher.h"
 #include "UI/Inventory/Spatial/RPGInventoryGrid.h"
 #include "UI/RPGInventoryTooltip.h"
+#include "Component/RPGInventoryComponent.h"
+#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 #include "FunctionLibrary/RPGUIFunctionLibrary.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
@@ -118,6 +120,31 @@ void URPGSpatialInventory::ShowConsumeInven()
 void URPGSpatialInventory::ShowCraftInven()
 {
 	SetActiveGrid(Grid_Craft, Button_Craft);
+}
+
+void URPGSpatialInventory::OrganizeActiveCategory()
+{
+	if (!ActiveGrid.IsValid())
+	{
+		return;
+	}
+
+	if (URPGInventoryComponent* InventoryComponent =
+		URPGCoreFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(
+			GetOwningPlayer()))
+	{
+		InventoryComponent->OrganizeInventory(ActiveGrid->GetItemCategory());
+	}
+}
+
+void URPGSpatialInventory::OrganizeAllCategories()
+{
+	if (URPGInventoryComponent* InventoryComponent =
+		URPGCoreFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(
+			GetOwningPlayer()))
+	{
+		InventoryComponent->OrganizeInventory();
+	}
 }
 
 void URPGSpatialInventory::DisableButton(UButton* Button)

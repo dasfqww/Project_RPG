@@ -44,6 +44,14 @@ protected:
 	UFUNCTION(BlueprintCallable)
 	void ShowCraftInven();
 
+	/** Organizes the currently visible inventory category. */
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	void OrganizeActiveCategory();
+
+	/** Organizes every inventory category. */
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	void OrganizeAllCategories();
+
 	void DisableButton(UButton* Button);
 	void SetActiveGrid(URPGInventoryGrid* Grid, UButton* Button);
 	void SetItemTooltipSizeAndPosition(URPGInventoryTooltip* Description, UCanvasPanel* Canvas) const;

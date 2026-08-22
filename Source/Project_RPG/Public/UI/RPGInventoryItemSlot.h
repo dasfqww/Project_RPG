@@ -64,7 +64,6 @@ private:
 	TObjectPtr<UImage> ItemIcon;
 
 	int32 GridIndex;
-	FIntPoint GridDimensions;
 
 	TWeakObjectPtr<URPGItemBase> InvenItem;
 
@@ -79,6 +78,4 @@ public:
 	FORCEINLINE void SetIsStackable(bool bStackable) { bIsStackable = bStackable; }
 	FORCEINLINE int32 GetGridIndex() const{ return GridIndex; }
 	FORCEINLINE void SetGridIndex(int32 Index) { GridIndex = Index; }
-	FORCEINLINE FIntPoint GetGridDimensions()const { return GridDimensions; }
-	FORCEINLINE void SetGridDimensions(const FIntPoint& Dimensions){ GridDimensions = Dimensions; }
 };

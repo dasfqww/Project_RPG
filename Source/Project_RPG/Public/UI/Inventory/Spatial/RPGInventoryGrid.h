@@ -32,6 +32,7 @@ class PROJECT_RPG_API URPGInventoryGrid : public UUserWidget
 	GENERATED_BODY()
 public:
 	virtual void NativeOnInitialized() override;
+	virtual void NativeDestruct() override;
 
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	/*virtual FReply NativeOnMouseButtonDoubleClick(
@@ -41,10 +42,10 @@ public:
 
 	void ConstructGrid();
 
-	//«»æ˜Ω√ «ÿ¥Á æ∆¿Ã≈€ µ•¿Ã≈Õ πﬁæ∆º≠ √ﬂ∞°
+	//ÌîΩÏóÖÏãú Ìï¥Îãπ ÏïÑÏù¥ÌÖú Îç∞Ïù¥ÌÑ∞ Î∞õÏïÑÏÑú Ï∂îÍ∞Ä
 	FSlotAvailabilityResult HasSpaceForItem(const ARPGPickUpBase* ItemPickup);
 
-	//æ∆¿Ã≈€ µ•¿Ã≈Õ∏∏ πﬁæ∆º≠ √ﬂ∞°
+	//ÏïÑÏù¥ÌÖú Îç∞Ïù¥ÌÑ∞Îßå Î∞õÏïÑÏÑú Ï∂îÍ∞Ä
 	FSlotAvailabilityResult HasSpaceForItem(const URPGItemBase* Item);
 	FSlotAvailabilityResult HasSpaceForItem(const FItemManifest& Manifest);
 	void AddItemToIndices(const FSlotAvailabilityResult& Result, URPGItemBase* NewItem);
@@ -55,6 +56,15 @@ public:
 
 	UFUNCTION()
 	void AddItem(URPGItemBase* Item);
+
+	UFUNCTION()
+	void RemoveItem(URPGItemBase* Item);
+
+	UFUNCTION()
+	void RefreshItem(URPGItemBase* Item);
+
+	UFUNCTION()
+	void RebuildInventory();
 	
 	void DropItem();
 	bool HasHoverItem() const;
@@ -141,8 +151,8 @@ private:
 
 	float LastClickTime = 0.f;
 	FVector2D LastClickPosition;
-	float DoubleClickThreshold = 0.25f; // 0.25√  ¿Ã≥ª
-	float DoubleClickMaxDistance = 10.f; // 10px ¿Ã≥ª
+	float DoubleClickThreshold = 0.25f; // 0.25Ï¥à Ïù¥ÎÇ¥
+	float DoubleClickMaxDistance = 10.f; // 10px Ïù¥ÎÇ¥
 
 	bool MatchesCategory(const URPGItemBase* Item) const;
 	//FVector2D GetDrawSize(const FGridFragment* GridFragment) const;
@@ -220,23 +230,10 @@ private:
 	bool IsSameStackable(const URPGItemBase* ClickedInventoryItem) const;
 	void SwapWithHoverItem(URPGItemBase* ClickedInventoryItem, const int32 ClickedGridIndex);
 
-	bool ShouldSwapQuantity(const int32 SpaceInClickedSlot, 
-		const int32 HoveredQuantity, const int32 MaxQuantity) const;
-	void SwapQuantity(const int32 ClickedQuantity, const int32 HoveredQuantity, const int32 Index);
-
-	bool ShouldConsumeHoverItemQuantity(const int32 HoveredQuantity, const int32 SpaceClickedSlot) const;
-	void ConsumeHoverItemQuantity(const int32 ClickedQuantity, 
-		const int32 HoveredQuantity, const int32 Index);
-
-	bool ShouldFillInStack(const int32 SpaceInClickedSlot, const int32 HoveredQuantity) const;
-	void FillInQuantity(const int32 FillAmount, const int32 Remainder, const int32 Index);
 	void CreateItemPopUp(const int32 GridIndex);
 	
 
 	UUserWidget* GetCursorWidget();
-
-	UFUNCTION()
-	void AddQuantity(const FSlotAvailabilityResult& Result);
 
 	UFUNCTION()
 	void OnSlotItemClicked(int32 GridIndex, const FPointerEvent& MouseEvent);

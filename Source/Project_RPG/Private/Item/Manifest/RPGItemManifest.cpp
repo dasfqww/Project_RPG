@@ -8,7 +8,7 @@
 #include "UI/Composite/RPGCompositeBase.h"
 #include "Manager/ObjectManager.h"
 
-URPGItemBase* FItemManifest::Manifest(UObject* NewOuter)
+URPGItemBase* FItemManifest::Manifest(UObject* NewOuter) const
 {
 	URPGItemBase* Item = NewObject<URPGItemBase>(NewOuter, URPGItemBase::StaticClass());
 	Item->SetItemManifest(*this);
@@ -35,26 +35,35 @@ void FItemManifest::AssimilateInventoryFragments(URPGCompositeBase* Composite) c
 	}
 }
 
-void FItemManifest::SpawnPickupActor(const UObject* WorldContextObject,
+bool FItemManifest::SpawnPickupActor(const UObject* WorldContextObject,
 	const FVector& SpawnLocation, const FRotator& SpawnRotation)
 {
-	if (!IsValid(PickupActorClass) || !IsValid(WorldContextObject)) return;
+	if (!IsValid(PickupActorClass) || !IsValid(WorldContextObject))
+	{
+		return false;
+	}
 
-	// ItemTag의 태그 이름을 Pool 이름으로 사용 (예: "GameItems.Sword" -> "Sword")
-	FName PoolName = TagName;
+	const FName PoolName = TagName.IsNone() ? ItemTag.GetTagName() : TagName;
 	
 	/*UObjectManager* ObjectManager = UObjectManager::Get<UObjectManager>(const_cast<UObject*>(WorldContextObject));
 	if (!IsValid(ObjectManager)) return;*/
 
 	AActor* SpawnedActor = UObjectManager::Get<UObjectManager>(const_cast<UObject*>(WorldContextObject))
-		->SpawnObject(TagName, PickupActorClass, SpawnLocation, SpawnRotation, true);
+		->SpawnObject(PoolName, PickupActorClass, SpawnLocation, SpawnRotation, true);
 
-	if (!IsValid(SpawnedActor)) return;
+	if (!IsValid(SpawnedActor))
+	{
+		return false;
+	}
 
 	ARPGPickUpBase* ItemPickup = Cast<ARPGPickUpBase>(SpawnedActor);
-	if (!IsValid(ItemPickup)) return;
+	if (!IsValid(ItemPickup))
+	{
+		return false;
+	}
 
-	ItemPickup->InitItemManifest(*this);
+	ItemPickup->InitItemManifest(*this, PoolName);
+	return true;
 }
 
 void FItemManifest::ClearFragments()

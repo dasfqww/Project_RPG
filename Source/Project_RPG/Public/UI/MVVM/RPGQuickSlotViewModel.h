@@ -25,6 +25,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RPG|ViewModel")
 	void Initialize(int32 InSlotIndex, UQuickSlotComponent* InComponent, bool bIsSkillSlot);
 
+	virtual void BeginDestroy() override;
+
 private:
 	/** 슬롯 내용물 변경 처리 */
 	UFUNCTION()
@@ -36,6 +38,7 @@ private:
 
 	/** 데이터를 UI용 정보로 변환 (통합 처리) */
 	void UpdateFromContent(const FRPGQuickSlotContent& InContent);
+	void UnbindFromComponent();
 
 private:
 	// --- UI 바인딩용 프로퍼티 (FieldNotify) ---
@@ -70,8 +73,8 @@ public:
 	void SetInputKeyText(FText InText);
 
 private:
-	int32 TargetSlotIndex;
-	bool bIsSkillSlotViewModel;
+	int32 TargetSlotIndex = INDEX_NONE;
+	bool bIsSkillSlotViewModel = false;
 
 	UPROPERTY()
 	TWeakObjectPtr<UQuickSlotComponent> LinkedComponent;

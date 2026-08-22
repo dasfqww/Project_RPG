@@ -12,8 +12,12 @@
 #include "Type/RPGStructTypes.h"
 #include "JsonObjectConverter.h"
 #include "Subsystems/GameInstanceSubsystem.h" // 추가
+#include "Item/Definition/RPGItemDefinitionCatalog.h"
 #include "Item/Manifest/RPGItemManifest.h"
+#include "Item/Policy/RPGItemActionPolicy.h"
 #include "DataManager.generated.h"
+
+class URPGItemDefinition;
 
 /**
  *
@@ -42,6 +46,28 @@ public:
 
 	// [NEW] 태그로 아이템 Manifest 데이터 찾기
 	bool GetItemManifestByTag(const FGameplayTag& Tag, FItemManifest& OutManifest);
+
+	const IRPGItemDefinitionCatalog& GetItemDefinitionCatalog() const
+	{
+		return ItemDefinitionRegistry;
+	}
+
+	const IRPGItemDefinitionViewCatalog& GetItemDefinitionViewCatalog() const
+	{
+		return ItemDefinitionRegistry;
+	}
+
+	const IRPGItemActionPolicyCatalog& GetItemActionPolicyCatalog() const
+	{
+		return ItemActionPolicyRegistry;
+	}
+
+	const URPGItemDefinition* FindNativeItemDefinition(
+		const FPrimaryAssetId& DefinitionId) const;
+
+	bool TryGetItemDefinitionViewByTag(
+		const FGameplayTag& Tag,
+		FRPGItemDefinitionView& OutView) const;
 	
 	// 전체 아이템 캐시 갱신 (블루프린트 검색)
 	void RefreshItemCache();
@@ -53,6 +79,11 @@ public:
 private:
 	// 태그 - Manifest 매핑 캐시
 	TMap<FGameplayTag, FItemManifest> ItemManifestCache;
+	FRPGItemDefinitionRegistry ItemDefinitionRegistry;
+	FRPGItemActionPolicyRegistry ItemActionPolicyRegistry;
+
+	UPROPERTY(Transient)
+	TMap<FName, TObjectPtr<URPGItemDefinition>> NativeItemDefinitions;
 
 	static UDataManager* Instance;
 

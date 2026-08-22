@@ -164,6 +164,75 @@ URPGItemBase* URPGEquipComponent::GetItemInSlot(EEquipmentSlotType SlotType) con
 	return nullptr;
 }
 
+AActor* URPGEquipComponent::GetSpawnedActorInSlot(const EEquipmentSlotType SlotType) const
+{
+	for (const FRPGEquipEntry& Entry : EquipList.Entries)
+	{
+		if (Entry.EquipmentSlotType == SlotType)
+		{
+			return Entry.SpawnedActor;
+		}
+	}
+
+	return nullptr;
+}
+
+bool URPGEquipComponent::FindEquippedWeapon(const EWeaponHandType HandType,
+	URPGItemBase*& OutItem, AActor*& OutSpawnedActor, EEquipmentSlotType& OutSlotType) const
+{
+	OutItem = nullptr;
+	OutSpawnedActor = nullptr;
+	OutSlotType = EEquipmentSlotType::None;
+
+	TArray<EEquipmentSlotType, TInlineAllocator<4>> CandidateSlots;
+	const auto AddWeaponSet = [&CandidateSlots](const bool bPrimary)
+	{
+		CandidateSlots.Add(bPrimary
+			? EEquipmentSlotType::Weapon_Primary_L
+			: EEquipmentSlotType::Weapon_Secondary_L);
+		CandidateSlots.Add(bPrimary
+			? EEquipmentSlotType::Weapon_Primary_R
+			: EEquipmentSlotType::Weapon_Secondary_R);
+	};
+
+	if (CurrentEquipState == EEquipState::WeaponSet_Secondary)
+	{
+		AddWeaponSet(false);
+		AddWeaponSet(true);
+	}
+	else
+	{
+		AddWeaponSet(true);
+		AddWeaponSet(false);
+	}
+
+	for (const EEquipmentSlotType CandidateSlot : CandidateSlots)
+	{
+		const bool bIsLeftSlot = CandidateSlot == EEquipmentSlotType::Weapon_Primary_L ||
+			CandidateSlot == EEquipmentSlotType::Weapon_Secondary_L;
+		if ((HandType == EWeaponHandType::LeftHand && !bIsLeftSlot) ||
+			(HandType == EWeaponHandType::RightHand && bIsLeftSlot))
+		{
+			continue;
+		}
+
+		for (const FRPGEquipEntry& Entry : EquipList.Entries)
+		{
+			if (Entry.EquipmentSlotType != CandidateSlot || !Entry.ItemInstance)
+			{
+				continue;
+			}
+
+			OutItem = Entry.ItemInstance;
+			OutSpawnedActor = Entry.SpawnedActor;
+			OutSlotType = Entry.EquipmentSlotType;
+			return true;
+		}
+	}
+
+	return false;
+}
+
 const TArray<EEquipmentSlotType>& URPGEquipComponent::GetSlotsForState(EEquipState State)
 {
 	static TMap<EEquipState, TArray<EEquipmentSlotType>> StateToSlots;

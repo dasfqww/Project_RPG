@@ -1,8 +1,9 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+ï»¿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "UI/RPGQuickSlotWidget.h"
 #include "Item/RPGItemBase.h"
+#include "Item/Fragment/RPGItemFragment.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
 #include "UI/ItemDragDropOperation.h"
@@ -13,8 +14,42 @@
 #include "UI/DragItemVisual.h"
 #include "Component/RPGInventoryComponent.h"
 #include "UI/Inventory/Hover/RPGHoverItem.h"
+#include "Controller/RPGPlayerController.h"
 
+#include "RPGGameplayTags.h"
 #include "RPGDebugHelper.h"
+
+namespace
+{
+FText ResolveQuickSlotInputKeyText(
+	const UQuickSlotComponent* Component,
+	bool bIsSkillSlot,
+	int32 SlotIndex,
+	const FText& FallbackText)
+{
+	const TCHAR* SlotType = bIsSkillSlot ? TEXT("Skill") : TEXT("Item");
+	const FString TagName = FString::Printf(
+		TEXT("InputTag.Quick%s.%d"),
+		SlotType,
+		SlotIndex + 1);
+	const FGameplayTag InputTag =
+		FGameplayTag::RequestGameplayTag(FName(*TagName), false);
+
+	const APawn* OwnerPawn = Component ? Cast<APawn>(Component->GetOwner()) : nullptr;
+	const ARPGPlayerController* PlayerController =
+		OwnerPawn ? Cast<ARPGPlayerController>(OwnerPawn->GetController()) : nullptr;
+	if (PlayerController && InputTag.IsValid())
+	{
+		const FKey Key = PlayerController->GetCurrentKeyForTag(InputTag);
+		if (Key.IsValid())
+		{
+			return Key.GetDisplayName(false);
+		}
+	}
+
+	return FallbackText;
+}
+}
 
 URPGQuickSlotWidget::URPGQuickSlotWidget()
 	:SlotItem(nullptr),
@@ -25,23 +60,128 @@ URPGQuickSlotWidget::URPGQuickSlotWidget()
 
 void URPGQuickSlotWidget::NativeOnInitialized()
 {
+	Super::NativeOnInitialized();
+
 	SetInputKeyText(InputText);
 	SetImageAlpha(SlotItemImage, 0.f);
-
-
 }
 
-void URPGQuickSlotWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+void URPGQuickSlotWidget::NativeConstruct()
 {
-	Super::NativeTick(MyGeometry, InDeltaTime);
+	Super::NativeConstruct();
+	BindToQuickSlot();
+}
 
-	//ÀÓ½Ã·Î ±¸Çö. ³ªÁß¿¡ ±¸Çö ¹æ½Ä ´Ù½Ã »ı°¢ÇØº¼°Í.
-	if (SlotItem)
+void URPGQuickSlotWidget::NativeDestruct()
+{
+	UnbindFromQuickSlot();
+	Super::NativeDestruct();
+}
+
+void URPGQuickSlotWidget::BindToQuickSlot()
+{
+	UnbindFromQuickSlot();
+
+	ARPGPlayer* Player = Cast<ARPGPlayer>(GetOwningPlayerPawn());
+	UQuickSlotComponent* Component = Player ? Player->GetQuickSlotComponent() : nullptr;
+	if (!Component)
 	{
-		//UpdateQuickSlotItemQuantity(SlotItem->Quantity);
+		ClearSlotItem();
+		return;
 	}
 
-	UpdateQuickSlotItemImageAlpha();
+	LinkedQuickSlotComponent = Component;
+	SetInputKeyText(ResolveQuickSlotInputKeyText(
+		Component, bIsSkillSlot, SlotIndex, InputText));
+	if (bIsSkillSlot)
+	{
+		Component->OnSkillSlotChanged.AddUniqueDynamic(
+			this, &URPGQuickSlotWidget::HandleSlotChanged);
+		if (const FRPGQuickSlotContent* Content =
+			Component->GetSkillSlotContent(SlotIndex))
+		{
+			HandleSlotChanged(SlotIndex, *Content);
+		}
+	}
+	else
+	{
+		Component->OnItemSlotChanged.AddUniqueDynamic(
+			this, &URPGQuickSlotWidget::HandleSlotChanged);
+		Component->OnQuickSlotQuantityChanged.AddUniqueDynamic(
+			this, &URPGQuickSlotWidget::HandleQuantityChanged);
+		if (const FRPGQuickSlotContent* Content =
+			Component->GetItemSlotContent(SlotIndex))
+		{
+			HandleSlotChanged(SlotIndex, *Content);
+		}
+	}
+}
+
+void URPGQuickSlotWidget::UnbindFromQuickSlot()
+{
+	if (UQuickSlotComponent* Component = LinkedQuickSlotComponent.Get())
+	{
+		Component->OnSkillSlotChanged.RemoveDynamic(
+			this, &URPGQuickSlotWidget::HandleSlotChanged);
+		Component->OnItemSlotChanged.RemoveDynamic(
+			this, &URPGQuickSlotWidget::HandleSlotChanged);
+		Component->OnQuickSlotQuantityChanged.RemoveDynamic(
+			this, &URPGQuickSlotWidget::HandleQuantityChanged);
+	}
+
+	LinkedQuickSlotComponent.Reset();
+}
+
+void URPGQuickSlotWidget::HandleSlotChanged(
+	int32 ChangedSlotIndex, const FRPGQuickSlotContent& Content)
+{
+	if (ChangedSlotIndex != SlotIndex)
+	{
+		return;
+	}
+
+	if (Content.Item)
+	{
+		SetSlotItem(Content.Item, Content.Item->GetTotalQuantity());
+		return;
+	}
+
+	SlotItem = nullptr;
+	if (Content.AbilityTag.IsValid())
+	{
+		UTexture2D* SkillIcon = LinkedQuickSlotComponent.IsValid()
+			? LinkedQuickSlotComponent->GetSkillIcon(Content.AbilityTag)
+			: nullptr;
+		if (SlotItemImage)
+		{
+			SlotItemImage->SetBrushFromTexture(SkillIcon);
+		}
+		if (SlotItemCountText)
+		{
+			SlotItemCountText->SetText(FText::GetEmpty());
+		}
+		SetImageAlpha(SlotItemImage, SkillIcon ? 1.f : 0.f);
+		return;
+	}
+
+	ClearSlotItem();
+}
+
+void URPGQuickSlotWidget::HandleQuantityChanged(URPGItemBase* Item, int32 NewQuantity)
+{
+	if (Item != SlotItem)
+	{
+		return;
+	}
+
+	if (NewQuantity > 0)
+	{
+		UpdateQuickSlotItemQuantity(NewQuantity);
+	}
+	else
+	{
+		ClearSlotItem();
+	}
 }
 
 FReply URPGQuickSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
@@ -108,14 +248,14 @@ FReply URPGQuickSlotWidget::NativeOnMouseButtonUp(const FGeometry& InGeometry,
 //bool URPGQuickSlotWidget::NativeOnDrop(const FGeometry& InGeometry,
 //	const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 //{
-//	// µå·¡±×µÈ ¾ÆÀÌÅÛÀ» ½½·Ô¿¡ ³Ö´Â Ã³¸®
+//	// ë“œë˜ê·¸ëœ ì•„ì´í…œì„ ìŠ¬ë¡¯ì— ë„£ëŠ” ì²˜ë¦¬
 //	const UItemDragDropOperation* ItemDragDrop = Cast<UItemDragDropOperation>(InOperation);
 //	if (ItemDragDrop && ItemDragDrop->SourceItem)
 //	{
 //		
 //		 
 //		//URPGQuickSlotWidget* SourceWidget = Cast<URPGQuickSlotWidget>(ItemDragDrop->SourceQuickSlot);
-//		//if (!SourceWidget || SourceWidget == this) return false; // °°Àº ½½·ÔÀÌ¸é ¹«½Ã
+//		//if (!SourceWidget || SourceWidget == this) return false; // ê°™ì€ ìŠ¬ë¡¯ì´ë©´ ë¬´ì‹œ
 //
 //		SetImageAlpha(SlotItemImage, 1.f);
 //		//SetSlotItem(ItemDragDrop->SourceItem, ItemDragDrop->SourceItem->Quantity);
@@ -133,14 +273,14 @@ FReply URPGQuickSlotWidget::NativeOnMouseButtonUp(const FGeometry& InGeometry,
 //		return true;
 //	}
 //
-//	//TODO:Äü½½·Ô ÀÌ¹ÌÁö ¹× ¼ö·® ½º¿Ò ±¸Çö
-//	//Äü½½·Ô ÄÄÆ÷³ÍÆ®¿¡¼­ ±¸ÇöÇØº¸ÀÚ.
+//	//TODO:í€µìŠ¬ë¡¯ ì´ë¯¸ì§€ ë° ìˆ˜ëŸ‰ ìŠ¤ì™‘ êµ¬í˜„
+//	//í€µìŠ¬ë¡¯ ì»´í¬ë„ŒíŠ¸ì—ì„œ êµ¬í˜„í•´ë³´ì.
 //	const UQuickSlotDragDropOperation* QuickSlotDragDrop = Cast<UQuickSlotDragDropOperation>(InOperation);
 //	if (QuickSlotDragDrop&&QuickSlotDragDrop->SourceInventory&&QuickSlotDragDrop->SourceQuickSlot)
 //	{
-//		//¿©±â¼­ ½º¿Ò ±â´ÉÀ» ½ÇÇàÇÑ´Ù.
+//		//ì—¬ê¸°ì„œ ìŠ¤ì™‘ ê¸°ëŠ¥ì„ ì‹¤í–‰í•œë‹¤.
 //		URPGQuickSlotWidget* SourceQuickSlot = Cast<URPGQuickSlotWidget>(QuickSlotDragDrop->SourceQuickSlot);
-//		if (!SourceQuickSlot || SourceQuickSlot == this) return false; // °°Àº ½½·ÔÀÌ¸é ¹«½Ã
+//		if (!SourceQuickSlot || SourceQuickSlot == this) return false; // ê°™ì€ ìŠ¬ë¡¯ì´ë©´ ë¬´ì‹œ
 //
 //		ARPGPlayer* Player = Cast<ARPGPlayer>(GetOwningPlayerPawn());
 //		if (Player)
@@ -165,21 +305,32 @@ FReply URPGQuickSlotWidget::NativeOnMouseButtonUp(const FGeometry& InGeometry,
 
 void URPGQuickSlotWidget::SetSlotItem(URPGItemBase* NewItem, int32 ItemCount)
 {
-	//SlotItem = NewItem;
-	//if (SlotItem)
-	//{
-	//	UTexture2D* ItemTexture = SlotItem->AssetData.Icon;
-	//	if (SlotItemImage)
-	//	{
-	//		SlotItemImage->SetBrushFromTexture(ItemTexture);
-	//	}
+	if (!IsValid(NewItem) || ItemCount <= 0)
+	{
+		ClearSlotItem();
+		return;
+	}
 
-	//	// ¾ÆÀÌÅÛ ¼ö·® ÅØ½ºÆ® ¾÷µ¥ÀÌÆ®
-	//	if (SlotItemCountText)
-	//	{
-	//		SlotItemCountText->SetText(FText::AsNumber(ItemCount));
-	//	}
-	//}
+	SlotItem = NewItem;
+	UTexture2D* ItemTexture = nullptr;
+	if (const FImageFragment* ImageFragment =
+		GetFragment<FImageFragment>(
+			NewItem, RPGGameplayTags::Fragment_IconFragment))
+	{
+		ItemTexture = ImageFragment->GetIcon();
+	}
+
+	if (SlotItemImage)
+	{
+		SlotItemImage->SetBrushFromTexture(ItemTexture);
+	}
+
+	if (SlotItemCountText)
+	{
+		SlotItemCountText->SetText(FText::AsNumber(ItemCount));
+	}
+
+	SetImageAlpha(SlotItemImage, 1.f);
 }
 
 void URPGQuickSlotWidget::ClearSlotItem()
@@ -191,13 +342,13 @@ void URPGQuickSlotWidget::ClearSlotItem()
 		SlotItemImage->SetBrushFromTexture(nullptr);
 	}
 
-	// ¾ÆÀÌÅÛ ¼ö·® ÅØ½ºÆ® ¾÷µ¥ÀÌÆ®
+	// ì•„ì´í…œ ìˆ˜ëŸ‰ í…ìŠ¤íŠ¸ ì—…ë°ì´íŠ¸
 	if (SlotItemCountText)
 	{
 		SlotItemCountText->SetText(FText::GetEmpty());
 	}
 
-	//SetImageAlpha(SlotItemImage, 0.f);
+	SetImageAlpha(SlotItemImage, 0.f);
 }
 
 void URPGQuickSlotWidget::SetInputKeyText(FText InText)
@@ -217,7 +368,7 @@ void URPGQuickSlotWidget::SetInputKeyText(FText InText)
 //
 //	else
 //	{
-//		// ¾ÆÀÌÅÛÀÌ ¾ø´Ù¸é ½½·ÔÀ» ºñ¿î´Ù.
+//		// ì•„ì´í…œì´ ì—†ë‹¤ë©´ ìŠ¬ë¡¯ì„ ë¹„ìš´ë‹¤.
 //		if (SlotItemImage) SlotItemImage->SetBrushFromTexture(nullptr);
 //		if (SlotItemCountText) SlotItemCountText->SetText(FText::FromString(TEXT("")));
 //	}
@@ -225,6 +376,11 @@ void URPGQuickSlotWidget::SetInputKeyText(FText InText)
 
 void URPGQuickSlotWidget::SetImageAlpha(UImage* InImage, float InAlpha)
 {
+	if (!InImage)
+	{
+		return;
+	}
+
 	FLinearColor NewColor = InImage->GetColorAndOpacity();
 	NewColor.A = InAlpha;
 	InImage->SetColorAndOpacity(NewColor);
@@ -232,50 +388,28 @@ void URPGQuickSlotWidget::SetImageAlpha(UImage* InImage, float InAlpha)
 
 void URPGQuickSlotWidget::UseSlotItem(URPGItemBase* UseItem)
 {
-	SlotItem = UseItem;
-
-	if (!SlotItem)
+	if (!IsValid(UseItem) || UseItem != SlotItem)
 	{
 		Debug::Print("No Item In QuickSlot..");
 		return;
 	}
 
-	//if (SlotItem&&SlotItem->Quantity>0)
-	//{
-	//	ARPGPlayer* Player = Cast<ARPGPlayer>(GetOwningPlayerPawn());
-	//	//SlotItem->Use(Player);
-	//	
-	//	//SlotItem->SetQuantity(SlotItem->Quantity -1);
-	//	SetSlotItem(SlotItem, SlotItem->Quantity-1);
-	//	//UpdateQuickSlotItemQuantity(SlotItem->Quantity - 1);
-	//}
-
-	//else if(SlotItem->Quantity <= 0)
-	//{
-	//	Debug::Print("No Item to use...");
-	//	//UpdateQuickSlotItemQuantity(0);
-	//}
+	if (UQuickSlotComponent* Component = LinkedQuickSlotComponent.Get())
+	{
+		Component->UseItemSlot(SlotIndex, GetOwningPlayer());
+	}
 }
 
 void URPGQuickSlotWidget::UpdateQuickSlotItemQuantity(int32 ItemCount)
 {
 	if (SlotItem&&SlotItemCountText)
 	{
-		SlotItemCountText->SetText(FText::AsNumber(ItemCount));
+		SlotItemCountText->SetText(
+			ItemCount > 0 ? FText::AsNumber(ItemCount) : FText::GetEmpty());
 	}
 }
 
 void URPGQuickSlotWidget::UpdateQuickSlotItemImageAlpha()
 {
-	if (!SlotItemImage) return;
-
-	//// ÇöÀç ¾ÆÀÌÅÛÀÌ ¾ø´Â °æ¿ì Åõ¸íµµ Á¶Àı
-	//if (!SlotItem || SlotItem->Quantity <= 0)
-	//{
-	//	SetImageAlpha(SlotItemImage, 0.5f); // Åõ¸íÇÏ°Ô Ã³¸®
-	//}
-	//else
-	//{
-	//	SetImageAlpha(SlotItemImage, 1.0f); // ¿ø·¡´ë·Î Ç¥½Ã
-	//}
+	SetImageAlpha(SlotItemImage, IsValid(SlotItem) ? 1.f : 0.f);
 }

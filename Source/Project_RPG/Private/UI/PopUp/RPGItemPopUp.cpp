@@ -59,20 +59,32 @@ void URPGItemPopUp::ConsumeItem()
 
 void URPGItemPopUp::OnPopUpMenuSplit(int32 SplitAmount, int32 Index)
 {
-	URPGItemBase* ClickedItem = GridSlots[Index]->GetInvenItem().Get();
+	if (!GridSlots.IsValidIndex(Index)) return;
+
+	URPGGridSlot* GridSlot = GridSlots[Index];
+	URPGItemBase* ClickedItem = GridSlot->GetInvenItem().Get();
 	if (!IsValid(ClickedItem)) return;
 	if (!ClickedItem->IsStackable()) return;
 
-	const int32 UpperLeftIndex = GridSlots[Index]->GetUpperLeftIndex();
-	URPGGridSlot* UpperLeftGridSlot = GridSlots[UpperLeftIndex];
-	const int32 Quantity = UpperLeftGridSlot->GetQuantity();
+	TObjectPtr<URPGInventoryItemSlot>* ItemSlot = ItemsInSlot.Find(Index);
+	if (!ItemSlot || !IsValid(ItemSlot->Get())) return;
+
+	const int32 Quantity = GridSlot->GetQuantity();
+	if (SplitAmount <= 0 || SplitAmount >= Quantity) return;
+
 	const int32 NewQuantity = Quantity - SplitAmount;
 
-	UpperLeftGridSlot->SetQuantity(NewQuantity);
-	ItemsInSlot.FindChecked(UpperLeftIndex)->UpdateItemQuantity(NewQuantity);
-	
-	OnAssignHoverItem.Execute(ClickedItem, UpperLeftIndex, UpperLeftIndex, this);
-	HoverItem->UpdateQuantity(SplitAmount);
+	GridSlot->SetQuantity(NewQuantity);
+	(*ItemSlot)->UpdateItemQuantity(NewQuantity);
+
+	if (OnAssignHoverItem.IsBound())
+	{
+		OnAssignHoverItem.Execute(ClickedItem, Index, Index, this);
+		if (IsValid(HoverItem))
+		{
+			HoverItem->UpdateQuantity(SplitAmount);
+		}
+	}
 }
 
 void URPGItemPopUp::CollapseSplitButton() const

@@ -18,7 +18,7 @@ struct PROJECT_RPG_API FItemManifest
 	GENERATED_BODY()
 
 	TArray<TInstancedStruct<FItemFragment>>& GetFragmentsMutable() { return Fragments; }
-	URPGItemBase* Manifest(UObject* NewOuter);
+	URPGItemBase* Manifest(UObject* NewOuter) const;
 	EItemCategory GetItemCategory() const { return ItemCategory; }
 	FGameplayTag GetItemTag() const { return ItemTag; }
 	void AssimilateInventoryFragments(URPGCompositeBase* Composite) const;
@@ -35,7 +35,7 @@ struct PROJECT_RPG_API FItemManifest
 	template<typename T> requires std::derived_from<T, FItemFragment>
 	TArray<const T*> GetAllFragmentsOfType() const;
 
-	void SpawnPickupActor(const UObject* WorldContextObject,
+	bool SpawnPickupActor(const UObject* WorldContextObject,
 		const FVector& SpawnLocation, const FRotator& SpawnRotation);
 
 private:

@@ -92,6 +92,7 @@ void URPGItemBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(ThisClass, ItemManifest);
 	DOREPLIFETIME(ThisClass, TotalQuantity);
 	DOREPLIFETIME(ThisClass, SlotIndex);
+	DOREPLIFETIME(ThisClass, InstanceId);
 }
 
 void URPGItemBase::SetItemManifest(const FItemManifest& Manifest)
@@ -108,4 +109,22 @@ bool URPGItemBase::IsStackable() const
 bool URPGItemBase::IsConsumable() const
 {
 	return GetItemManifest().GetItemCategory()==EItemCategory::Consume;
+}
+
+void URPGItemBase::OnRep_TotalQuantity()
+{
+	NotifyOwningInventory();
+}
+
+void URPGItemBase::OnRep_SlotIndex()
+{
+	NotifyOwningInventory();
+}
+
+void URPGItemBase::NotifyOwningInventory()
+{
+	if (IsValid(OwningInventory))
+	{
+		OwningInventory->NotifyItemUpdated(this);
+	}
 }

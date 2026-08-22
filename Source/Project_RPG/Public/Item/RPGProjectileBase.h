@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GameplayEffectTypes.h"
+#include "Security/RPGSecurityTypes.h"
 #include "RPGProjectileBase.generated.h"
 
 class UBoxComponent;
@@ -47,6 +48,11 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "Projectile", meta = (ExposeOnSpawn = "true"))
 		FGameplayEffectSpecHandle ProjectileDamageEffectSpecHandle;
 
+	/** Server collision, damage, and range limits for this projectile family. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Security",
+		meta = (ShowOnlyInnerProperties))
+	FRPGSkillSecurityProfile SecurityProfile;
+
 	UFUNCTION()
 		virtual void OnProjectileHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
 			UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
@@ -60,5 +66,14 @@ protected:
 		void BP_OnSpawnProjectileHitFX(const FVector& HitLocation);
 
 private:
-	void HandleApplyProjectileDamage(APawn* InHitPawn, const FGameplayEventData& InPayload);
+	void ProcessProjectileImpact(
+		AActor* OtherActor,
+		UPrimitiveComponent* OtherComponent,
+		const FHitResult& HitResult);
+	void HandleApplyProjectileDamage(
+		APawn* InHitPawn,
+		const FHitResult& ServerHit,
+		const FGameplayEventData& InPayload);
+
+	bool bImpactHandled = false;
 };

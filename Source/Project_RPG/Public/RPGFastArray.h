@@ -16,7 +16,7 @@ class ARPGPickUpBase;
 /**
  * 
  */
-//ÀÎº¥Åä¸®¿¡ µé¾î°¥ ´ÜÀÏ ¿£Æ®¸®
+//ì¸ë²¤í† ë¦¬ì— ë“¤ì–´ê°ˆ ë‹¨ì¼ ì—”íŠ¸ë¦¬
 USTRUCT(BlueprintType)
 struct FInventoryEntry : public FFastArraySerializerItem
 {
@@ -32,7 +32,7 @@ private:
 	TObjectPtr<URPGItemBase> Item = nullptr;
 };
 
-//ÀÎº¥Åä¸®ÀÇ ¾ÆÀÌÅÛ ¸®½ºÆ®
+//ì¸ë²¤í† ë¦¬ì˜ ì•„ì´í…œ ë¦¬ìŠ¤íŠ¸
 USTRUCT(BlueprintType)
 struct FInventoryFastArray : public FFastArraySerializer
 {
@@ -55,9 +55,10 @@ struct FInventoryFastArray : public FFastArraySerializer
 		return FastArrayDeltaSerialize<FInventoryEntry, FInventoryFastArray>(Entries, DeltaParams, *this);
 	}
 
-	URPGItemBase* AddEntry(ARPGPickUpBase* ItemPickup);
 	URPGItemBase* AddEntry(URPGItemBase* Item);
-	void RemoveEntry(URPGItemBase* Item);
+	bool RemoveEntry(URPGItemBase* Item);
+	void ClearEntries();
+	bool Contains(const URPGItemBase* Item) const;
 	URPGItemBase* FindFirstItemType(const FGameplayTag& ItemTag);
 
 private:
@@ -70,7 +71,7 @@ private:
 	TObjectPtr<UActorComponent> OwnerComponent = nullptr;
 };
 
-//ÀÎº¥Åä¸®ÀÇ ¾ÆÀÌÅÛ ¸®½ºÆ®
+//ì¸ë²¤í† ë¦¬ì˜ ì•„ì´í…œ ë¦¬ìŠ¤íŠ¸
 template<>
 struct TStructOpsTypeTraits<FInventoryFastArray>: public TStructOpsTypeTraitsBase2<FInventoryFastArray>
 {

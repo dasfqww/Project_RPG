@@ -133,6 +133,13 @@ public:
 	URPGItemBase* GetItemInSlot(EEquipmentSlotType SlotType) const;
 
 	UFUNCTION(BlueprintPure, Category = "RPG|Equip")
+	AActor* GetSpawnedActorInSlot(EEquipmentSlotType SlotType) const;
+
+	/** Resolve the active weapon entry that best matches a D1 hand requirement. */
+	bool FindEquippedWeapon(EWeaponHandType HandType, URPGItemBase*& OutItem,
+		AActor*& OutSpawnedActor, EEquipmentSlotType& OutSlotType) const;
+
+	UFUNCTION(BlueprintPure, Category = "RPG|Equip")
 	EEquipState GetCurrentEquipState() const { return CurrentEquipState; }
 
 	static const TArray<EEquipmentSlotType>& GetSlotsForState(EEquipState State);

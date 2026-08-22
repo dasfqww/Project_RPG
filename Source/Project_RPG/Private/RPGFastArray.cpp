@@ -29,7 +29,11 @@ void FInventoryFastArray::PostReplicatedAdd(const TArrayView<int32> AddedIndices
 
 	for (int32 Index : AddedIndices)
 	{
-		InventoryComp->OnItemAdded.Broadcast(Entries[Index].Item);
+		if (URPGItemBase* Item = Entries[Index].Item)
+		{
+			Item->OwningInventory = InventoryComp;
+			InventoryComp->OnItemAdded.Broadcast(Item);
+		}
 	}
 }
 
@@ -45,25 +49,6 @@ void FInventoryFastArray::PreReplicatedRemove(const TArrayView<int32> RemovedInd
 	}
 }
 
-URPGItemBase* FInventoryFastArray::AddEntry(ARPGPickUpBase* ItemPickup)
-{
-	check(OwnerComponent);
-
-	AActor* OwningActor = OwnerComponent->GetOwner();
-	check(OwningActor->HasAuthority());
-
-	URPGInventoryComponent* InvenComp = Cast<URPGInventoryComponent>(OwnerComponent);
-	if (!IsValid(InvenComp)) return nullptr;
-
-	FInventoryEntry& NewEntry = Entries.AddDefaulted_GetRef();
-	NewEntry.Item = ItemPickup->GetItemManifest().Manifest(OwningActor);
-
-	InvenComp->AddRepSubObj(NewEntry.Item);
-	MarkItemDirty(NewEntry);
-
-	return NewEntry.Item;
-}
-
 URPGItemBase* FInventoryFastArray::AddEntry(URPGItemBase* Item)
 {
 	check(OwnerComponent);
@@ -75,6 +60,7 @@ URPGItemBase* FInventoryFastArray::AddEntry(URPGItemBase* Item)
 
 	FInventoryEntry& NewEntry = Entries.AddDefaulted_GetRef();
 	NewEntry.Item = Item;
+	NewEntry.Item->OwningInventory = InvenComp;
 
 	InvenComp->AddRepSubObj(NewEntry.Item);
 	MarkItemDirty(NewEntry);
@@ -82,17 +68,46 @@ URPGItemBase* FInventoryFastArray::AddEntry(URPGItemBase* Item)
 	return NewEntry.Item;
 }
 
-void FInventoryFastArray::RemoveEntry(URPGItemBase* Item)
+bool FInventoryFastArray::RemoveEntry(URPGItemBase* Item)
 {
 	for (auto EntryIt=Entries.CreateIterator(); EntryIt; EntryIt++)
 	{
 		FInventoryEntry& Entry = *EntryIt;
 		if (Entry.Item==Item)
 		{
+			if (URPGInventoryComponent* InventoryComp = Cast<URPGInventoryComponent>(OwnerComponent))
+			{
+				InventoryComp->RemoveRepSubObj(Entry.Item);
+			}
 			EntryIt.RemoveCurrent();
 			MarkArrayDirty();
+			return true;
 		}
 	}
+
+	return false;
+}
+
+void FInventoryFastArray::ClearEntries()
+{
+	if (URPGInventoryComponent* InventoryComp = Cast<URPGInventoryComponent>(OwnerComponent))
+	{
+		for (const FInventoryEntry& Entry : Entries)
+		{
+			InventoryComp->RemoveRepSubObj(Entry.Item);
+		}
+	}
+
+	Entries.Reset();
+	MarkArrayDirty();
+}
+
+bool FInventoryFastArray::Contains(const URPGItemBase* Item) const
+{
+	return Entries.ContainsByPredicate([Item](const FInventoryEntry& Entry)
+	{
+		return Entry.Item == Item;
+	});
 }
 
 URPGItemBase* FInventoryFastArray::FindFirstItemType(const FGameplayTag& ItemTag)

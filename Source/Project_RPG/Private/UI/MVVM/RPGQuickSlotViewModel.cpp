@@ -3,13 +3,67 @@
 
 #include "UI/MVVM/RPGQuickSlotViewModel.h"
 #include "Item/RPGItemBase.h"
+#include "Item/Fragment/RPGItemFragment.h"
 #include "Component/UI/QuickSlotComponent.h"
-#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
+#include "Controller/RPGPlayerController.h"
 #include "RPGGameplayTags.h"
+
+namespace
+{
+FText ResolveInputKeyText(
+	const UQuickSlotComponent* Component, bool bIsSkillSlot, int32 SlotIndex)
+{
+	const TCHAR* SlotType = bIsSkillSlot ? TEXT("Skill") : TEXT("Item");
+	const FString TagName = FString::Printf(
+		TEXT("InputTag.Quick%s.%d"),
+		SlotType,
+		SlotIndex + 1);
+	const FGameplayTag InputTag =
+		FGameplayTag::RequestGameplayTag(FName(*TagName), false);
+
+	const APawn* OwnerPawn = Component ? Cast<APawn>(Component->GetOwner()) : nullptr;
+	const ARPGPlayerController* PlayerController =
+		OwnerPawn ? Cast<ARPGPlayerController>(OwnerPawn->GetController()) : nullptr;
+	if (PlayerController && InputTag.IsValid())
+	{
+		const FKey Key = PlayerController->GetCurrentKeyForTag(InputTag);
+		if (Key.IsValid())
+		{
+			return Key.GetDisplayName(false);
+		}
+	}
+
+	if (!bIsSkillSlot)
+	{
+		return FText::Format(
+			NSLOCTEXT("RPGQuickSlot", "FunctionKeyFormat", "F{0}"),
+			FText::AsNumber(SlotIndex + 1));
+	}
+
+	static const TCHAR* SkillKeyFallbacks[] = {
+		TEXT("Q"), TEXT("E"), TEXT("R"), TEXT("F"),
+		TEXT("1"), TEXT("2"), TEXT("3"), TEXT("4")
+	};
+	return SlotIndex < UE_ARRAY_COUNT(SkillKeyFallbacks)
+		? FText::FromString(SkillKeyFallbacks[SlotIndex])
+		: FText::AsNumber(SlotIndex + 1);
+}
+}
 
 void URPGQuickSlotViewModel::Initialize(int32 InSlotIndex, UQuickSlotComponent* InComponent, bool bIsSkillSlot)
 {
-	if (!InComponent) return;
+	UnbindFromComponent();
+
+	const int32 SlotCount = InComponent
+		? (bIsSkillSlot ? InComponent->GetMaxSkillSlots() : InComponent->GetMaxItemSlots())
+		: 0;
+	if (!InComponent || InSlotIndex < 0 || InSlotIndex >= SlotCount)
+	{
+		TargetSlotIndex = INDEX_NONE;
+		SetInputKeyText(FText::GetEmpty());
+		UpdateFromContent(FRPGQuickSlotContent());
+		return;
+	}
 
 	TargetSlotIndex = InSlotIndex;
 	LinkedComponent = InComponent;
@@ -18,12 +72,10 @@ void URPGQuickSlotViewModel::Initialize(int32 InSlotIndex, UQuickSlotComponent* 
 	// 타입에 맞는 델리게이트 구독
 	if (bIsSkillSlotViewModel)
 	{
-		InComponent->OnSkillSlotChanged.AddDynamic(this, &URPGQuickSlotViewModel::HandleSlotChanged);
-		
-		// 스킬 슬롯 키 텍스트 설정 (Q, E, R, F, 1, 2, 3, 4)
-		TArray<FText> SkillKeys = { FText::FromString("Q"), FText::FromString("E"), FText::FromString("R"), FText::FromString("F"), 
-									 FText::FromString("1"), FText::FromString("2"), FText::FromString("3"), FText::FromString("4") };
-		if (SkillKeys.IsValidIndex(InSlotIndex)) SetInputKeyText(SkillKeys[InSlotIndex]);
+		InComponent->OnSkillSlotChanged.AddUniqueDynamic(
+			this, &URPGQuickSlotViewModel::HandleSlotChanged);
+		SetInputKeyText(ResolveInputKeyText(
+			InComponent, bIsSkillSlotViewModel, InSlotIndex));
 
 		// 초기 데이터 반영
 		if (const FRPGQuickSlotContent* Content = InComponent->GetSkillSlotContent(InSlotIndex))
@@ -33,11 +85,13 @@ void URPGQuickSlotViewModel::Initialize(int32 InSlotIndex, UQuickSlotComponent* 
 	}
 	else
 	{
-		InComponent->OnItemSlotChanged.AddDynamic(this, &URPGQuickSlotViewModel::HandleSlotChanged);
-		InComponent->OnQuickSlotQuantityChanged.AddDynamic(this, &URPGQuickSlotViewModel::HandleQuantityChanged);
+		InComponent->OnItemSlotChanged.AddUniqueDynamic(
+			this, &URPGQuickSlotViewModel::HandleSlotChanged);
+		InComponent->OnQuickSlotQuantityChanged.AddUniqueDynamic(
+			this, &URPGQuickSlotViewModel::HandleQuantityChanged);
 
-		// 아이템 슬롯 키 텍스트 설정 (F1 ~ F8)
-		SetInputKeyText(FText::FromString(FString::Printf(TEXT("F%d"), InSlotIndex + 1)));
+		SetInputKeyText(ResolveInputKeyText(
+			InComponent, bIsSkillSlotViewModel, InSlotIndex));
 
 		// 초기 데이터 반영
 		if (const FRPGQuickSlotContent* Content = InComponent->GetItemSlotContent(InSlotIndex))
@@ -45,6 +99,27 @@ void URPGQuickSlotViewModel::Initialize(int32 InSlotIndex, UQuickSlotComponent* 
 			UpdateFromContent(*Content);
 		}
 	}
+}
+
+void URPGQuickSlotViewModel::BeginDestroy()
+{
+	UnbindFromComponent();
+	Super::BeginDestroy();
+}
+
+void URPGQuickSlotViewModel::UnbindFromComponent()
+{
+	if (UQuickSlotComponent* Component = LinkedComponent.Get())
+	{
+		Component->OnSkillSlotChanged.RemoveDynamic(
+			this, &URPGQuickSlotViewModel::HandleSlotChanged);
+		Component->OnItemSlotChanged.RemoveDynamic(
+			this, &URPGQuickSlotViewModel::HandleSlotChanged);
+		Component->OnQuickSlotQuantityChanged.RemoveDynamic(
+			this, &URPGQuickSlotViewModel::HandleQuantityChanged);
+	}
+
+	LinkedComponent.Reset();
 }
 
 void URPGQuickSlotViewModel::HandleSlotChanged(int32 SlotIndex, const FRPGQuickSlotContent& NewContent)
@@ -78,9 +153,10 @@ void URPGQuickSlotViewModel::HandleQuantityChanged(URPGItemBase* Item, int32 New
 
 void URPGQuickSlotViewModel::UpdateFromContent(const FRPGQuickSlotContent& InContent)
 {
+	SetItemIcon(nullptr);
+
 	if (InContent.IsEmpty())
 	{
-		SetItemIcon(nullptr);
 		SetQuantityText(FText::GetEmpty());
 		SetIsSlotActive(false);
 		return;
@@ -89,18 +165,23 @@ void URPGQuickSlotViewModel::UpdateFromContent(const FRPGQuickSlotContent& InCon
 	if (InContent.Item)
 	{
 		// 아이템인 경우
-		// SetItemIcon(InContent.Item->GetIcon()); // 아이템 아이콘 설정
+		if (const FImageFragment* ImageFragment =
+			GetFragment<FImageFragment>(
+				InContent.Item, RPGGameplayTags::Fragment_IconFragment))
+		{
+			SetItemIcon(ImageFragment->GetIcon());
+		}
+
 		SetQuantityText(FText::AsNumber(InContent.Item->GetTotalQuantity()));
 		SetIsSlotActive(true);
 	}
 	else if (InContent.AbilityTag.IsValid())
 	{
-		// 스킬인 경우
-		// 스킬 태그를 통해 아이콘을 가져오는 로직 (데이터 에셋 등에서 조회 필요)
-		// UTexture2D* SkillIcon = URPGFunctionLibrary::GetIconForSkillTag(GetWorld(), InContent.AbilityTag);
-		// SetItemIcon(SkillIcon);
-		
-		SetQuantityText(FText::GetEmpty()); // 스킬은 개수 표시 안함
+		SetItemIcon(
+			LinkedComponent.IsValid()
+				? LinkedComponent->GetSkillIcon(InContent.AbilityTag)
+				: nullptr);
+		SetQuantityText(FText::GetEmpty());
 		SetIsSlotActive(true);
 	}
 }

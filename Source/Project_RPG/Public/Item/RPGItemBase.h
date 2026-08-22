@@ -34,11 +34,14 @@ public:
 	bool IsStackable() const;
 	bool IsConsumable() const;
 
-	UPROPERTY(Replicated)
+	UPROPERTY(ReplicatedUsing = OnRep_TotalQuantity)
 	int32 TotalQuantity = 0;
 
-	UPROPERTY(Replicated)
+	UPROPERTY(ReplicatedUsing = OnRep_SlotIndex)
 	int32 SlotIndex = -1;
+
+	UPROPERTY(Replicated)
+	FGuid InstanceId;
 
 protected:
 	/*bool operator==(const FName& OtherID) const
@@ -51,12 +54,24 @@ private:
 	UPROPERTY(VisibleAnywhere, meta = (BaseStruct = "/Script/Project_RPG.RPGItemManifest"), Replicated)
 	FInstancedStruct ItemManifest;
 
+	UFUNCTION()
+	void OnRep_TotalQuantity();
+
+	UFUNCTION()
+	void OnRep_SlotIndex();
+
+	void NotifyOwningInventory();
+
 public:
 
 	FORCEINLINE const FItemManifest& GetItemManifest() const { return ItemManifest.Get<FItemManifest>(); }
 	FORCEINLINE FItemManifest& GetItemManifestMutable() { return ItemManifest.GetMutable<FItemManifest>(); }
 	FORCEINLINE int32 GetTotalQuantity() const { return TotalQuantity; }
 	FORCEINLINE void SetTotalQuantity(int32 InQuantity) { TotalQuantity= InQuantity; }
+	FORCEINLINE int32 GetSlotIndex() const { return SlotIndex; }
+	FORCEINLINE void SetSlotIndex(int32 InSlotIndex) { SlotIndex = InSlotIndex; }
+	FORCEINLINE const FGuid& GetInstanceId() const { return InstanceId; }
+	FORCEINLINE void SetInstanceId(const FGuid& InInstanceId) { InstanceId = InInstanceId; }
 };
 
 template<typename FragmentType>

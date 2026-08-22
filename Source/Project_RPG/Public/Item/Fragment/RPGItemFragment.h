@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
 #include "StructUtils/InstancedStruct.h"
+#include "Type/RPGEnumTypes.h"
 #include "RPGItemFragment.generated.h"
 
 class APlayerController;
@@ -213,7 +214,31 @@ struct FEquipmentFragment : public FInventoryItemFragment
 	void OnEquip(APlayerController* PC);
 	void OnUnequip(APlayerController* PC);
 	virtual void Assimilate(URPGCompositeBase* Composite) const override;
+
+	ERPGGladiatorEquipmentType GetEquipmentType() const { return EquipmentType; }
+	EWeaponHandType GetWeaponHandType() const { return WeaponHandType; }
+	ERPGGladiatorWeaponType GetWeaponType() const { return WeaponType; }
+	ERPGGladiatorUtilityType GetUtilityType() const { return UtilityType; }
+
 private:
+	/**
+	 * Optional D1 compatibility metadata. Count values deliberately mean "not migrated yet";
+	 * equipment abilities may then use their explicitly marked compatibility path.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Inventory|Equipment")
+	ERPGGladiatorEquipmentType EquipmentType = ERPGGladiatorEquipmentType::Count;
+
+	UPROPERTY(EditAnywhere, Category = "Inventory|Equipment",
+		meta = (EditCondition = "EquipmentType == ERPGGladiatorEquipmentType::Weapon", EditConditionHides))
+	EWeaponHandType WeaponHandType = EWeaponHandType::Count;
+
+	UPROPERTY(EditAnywhere, Category = "Inventory|Equipment",
+		meta = (EditCondition = "EquipmentType == ERPGGladiatorEquipmentType::Weapon", EditConditionHides))
+	ERPGGladiatorWeaponType WeaponType = ERPGGladiatorWeaponType::Count;
+
+	UPROPERTY(EditAnywhere, Category = "Inventory|Equipment",
+		meta = (EditCondition = "EquipmentType == ERPGGladiatorEquipmentType::Utility", EditConditionHides))
+	ERPGGladiatorUtilityType UtilityType = ERPGGladiatorUtilityType::Count;
 
 	UPROPERTY(EditAnywhere, Category = "Inventory")
 	TArray<TInstancedStruct<FEquipModifier>> EquipModifiers;

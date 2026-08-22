@@ -29,13 +29,17 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	void InitItemManifest(FItemManifest CopyOfManifest);
+	void InitItemManifest(FItemManifest CopyOfManifest, FName InPoolName = NAME_None);
 
 	//void InitializePickUp(const TSubclassOf<URPGItemBase> BaseClass, const int32 InQuantity);
 
 	void InitializeDrop(URPGItemBase* ItemToDrop, const int32 InQuantity);
 
 	void PickedUp();
+	bool TryClaimPickup();
+	void ReleasePickupClaim();
+	void SetPickupQuantity(int32 Quantity);
+	bool IsAvailableForPickup() const { return bIsAvailableForPickup; }
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Pickup | Components")
@@ -68,6 +72,12 @@ protected:
 	UPROPERTY(Replicated, EditAnywhere, Category = "Inventory")
 	FItemManifest ItemManifest;
 
+	UPROPERTY(ReplicatedUsing = OnRep_PickupAvailability)
+	bool bIsAvailableForPickup = true;
+
+	UFUNCTION()
+	void OnRep_PickupAvailability();
+
 	UFUNCTION()
 	/*virtual void OnPickUpCollisionSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, 
 		AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, 
@@ -82,6 +92,8 @@ protected:
 	void UpdateInteractableData();
 
 	void TakePickup(APlayerController* PlayerController);
+
+	FName OwningPoolName = NAME_None;
 
 	/*UFUNCTION(BlueprintImplementableEvent, Category = "Inventory")
 	void OnPickedUp();*/
