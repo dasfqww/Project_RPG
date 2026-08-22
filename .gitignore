@@ -72,3 +72,18 @@ Plugins/**/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+# .NET backend build outputs
+**/bin/
+**/obj/
+
+# Local dungeon allocator runtime state and server logs
+Backend/Tools/logs/
+
+# Locally generated IDE workspaces and UnrealAgent runtime state
+*.slnx
+*.DotSettings.user
+.unrealagent/settings.local.json
+
+# UnrealAgent server publish output
+Plugins/UnrealAgent/UnrealAgent.Server/Build/
