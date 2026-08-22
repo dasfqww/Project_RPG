@@ -45,7 +45,6 @@ public:
 private:
 	int32 TileIndex=INDEX_NONE;
 	int32 Quantity=0;
-	int32 UpperLeftIndex = INDEX_NONE;
 
 	bool bAvailiable = true;
 
@@ -78,8 +77,6 @@ public:
 	FORCEINLINE void SetTileIndex(int Index) { TileIndex = Index; }
 	FORCEINLINE int32 GetQuantity() const { return Quantity; }
 	FORCEINLINE void SetQuantity(int Amount) { Quantity = Amount; }
-	FORCEINLINE int32 GetUpperLeftIndex() const { return UpperLeftIndex; }
-	FORCEINLINE void SetUpperLeftIndex(int Index) { UpperLeftIndex = Index; }
 	FORCEINLINE bool IsAvailiable() const { return bAvailiable; }
 	FORCEINLINE void SetAvailable(bool bIsAvailiable) { bAvailiable = bIsAvailiable; }
 	FORCEINLINE EGridSlotState GetGridSlotState() const { return GridSlotState; }

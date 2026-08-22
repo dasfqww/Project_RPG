@@ -6,9 +6,75 @@
 #include "Component/Combat/PawnCombatComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "FunctionLibrary/RPGCombatFunctionLibrary.h"
+#include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "RPGGameplayTags.h"
 #include "Character/RPGBaseCharacter.h"
+#include "Controller/RPGPlayerController.h"
+#include "Component/RPGSecurityValidationComponent.h"
 #include"Attribute/RPGAttributeSet.h"
+
+bool URPGGameplayAbility::CanActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayTagContainer* SourceTags,
+	const FGameplayTagContainer* TargetTags,
+	FGameplayTagContainer* OptionalRelevantTags) const
+{
+	if (!Super::CanActivateAbility(
+		Handle,
+		ActorInfo,
+		SourceTags,
+		TargetTags,
+		OptionalRelevantTags))
+	{
+		return false;
+	}
+
+	AActor* AvatarActor = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
+	if (!AvatarActor || !AvatarActor->HasAuthority())
+	{
+		return true;
+	}
+	if (!ShouldApplyServerActivationRateLimit())
+	{
+		return true;
+	}
+
+	URPGSecurityValidationComponent* Security =
+		AvatarActor->FindComponentByClass<URPGSecurityValidationComponent>();
+	FString RejectionReason;
+	return !Security || Security->CanAcceptAbilityActivation(
+		GetClass(),
+		RejectionReason);
+}
+
+void URPGGameplayAbility::ActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	const FGameplayEventData* TriggerEventData)
+{
+	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+
+	AActor* AvatarActor = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
+	if (AvatarActor && AvatarActor->HasAuthority() &&
+		ShouldApplyServerActivationRateLimit())
+	{
+		if (URPGSecurityValidationComponent* Security =
+			AvatarActor->FindComponentByClass<URPGSecurityValidationComponent>())
+		{
+			Security->RecordAbilityActivation(GetClass());
+		}
+	}
+}
+
+bool URPGGameplayAbility::ShouldApplyServerActivationRateLimit() const
+{
+	return bCountTowardServerActivationRateLimit &&
+		AbilityActivationPolicy == ERPGAbilityActivationPolicy::OnTriggered &&
+		ActivationPolicy != ERPGGladiatorAbilityActivationPolicy::OnSpawn &&
+		NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalPredicted;
+}
 
 void URPGGameplayAbility::OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
 {
@@ -45,6 +111,11 @@ void URPGGameplayAbility::OnAvatarSet(const FGameplayAbilityActorInfo* ActorInfo
 		// ���� �� ���� ĳ��
 		CachedAttributeSet = ActorInfo->AbilitySystemComponent->GetSet<URPGAttributeSet>();
 	}
+
+	if (ActivationPolicy == ERPGGladiatorAbilityActivationPolicy::OnSpawn && ActorInfo && !Spec.IsActive())
+	{
+		ActorInfo->AbilitySystemComponent->TryActivateAbility(Spec.Handle);
+	}
 }
 
 UPawnCombatComponent* URPGGameplayAbility::GetPawnCombatComponentFromActorInfo() const
@@ -53,33 +124,72 @@ UPawnCombatComponent* URPGGameplayAbility::GetPawnCombatComponentFromActorInfo()
 }
 
 URPGAbilitySystemComponent* URPGGameplayAbility::GetRPGAbilitySystemComponentFromActorInfo() const
-{	 
+{
 	return Cast<URPGAbilitySystemComponent>(CurrentActorInfo->AbilitySystemComponent);
+}
+
+ARPGPlayerController* URPGGameplayAbility::GetLyraPlayerControllerFromActorInfo() const
+{
+	return CurrentActorInfo ? Cast<ARPGPlayerController>(CurrentActorInfo->PlayerController.Get()) : nullptr;
 }
 
 FActiveGameplayEffectHandle URPGGameplayAbility::NativeApplyEffectSpecHandleToTarget(AActor* TargetActor, const FGameplayEffectSpecHandle& InSpecHandle)
 {
+	AActor* AvatarActor = GetAvatarActorFromActorInfo();
+	if (!AvatarActor || !AvatarActor->HasAuthority() ||
+		!IsValid(TargetActor) || !InSpecHandle.IsValid())
+	{
+		return FActiveGameplayEffectHandle();
+	}
+
 	UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor);
-
-	check(TargetASC&&InSpecHandle.IsValid());
-
-	return GetRPGAbilitySystemComponentFromActorInfo()->ApplyGameplayEffectSpecToTarget(*InSpecHandle.Data, TargetASC);
+	if (!TargetASC)
+	{
+		return FActiveGameplayEffectHandle();
+	}
+	URPGAbilitySystemComponent* SourceASC =
+		GetRPGAbilitySystemComponentFromActorInfo();
+	return SourceASC
+		? SourceASC->ApplyGameplayEffectSpecToTarget(
+			*InSpecHandle.Data,
+			TargetASC)
+		: FActiveGameplayEffectHandle();
 }
 
 FActiveGameplayEffectHandle URPGGameplayAbility::BP_ApplyEffectSpecHandleToTarget
 	(AActor* TargetActor, const FGameplayEffectSpecHandle& InSpecHandle, ERPGSuccessType& OutSuccessType)
 {
-	FActiveGameplayEffectHandle ActiveGameplayEffectHandle = NativeApplyEffectSpecHandleToTarget(TargetActor, InSpecHandle);
-
-	OutSuccessType = ActiveGameplayEffectHandle.WasSuccessfullyApplied() ? 
-		ERPGSuccessType::Successful : ERPGSuccessType::Failed;
-
+	AActor* SourceActor = GetAvatarActorFromActorInfo();
+	FActiveGameplayEffectHandle ActiveGameplayEffectHandle;
+	bool bApplied = false;
+	if (IsValid(SourceActor) && IsValid(TargetActor))
+	{
+		const FVector ImpactPoint = TargetActor->GetActorLocation();
+		const FHitResult ServerHit(
+			TargetActor,
+			nullptr,
+			ImpactPoint,
+			(ImpactPoint - SourceActor->GetActorLocation()).GetSafeNormal());
+		const FRPGSkillSecurityProfile CompatibilityProfile;
+		bApplied =
+			URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
+				SourceActor,
+				ServerHit,
+				InSpecHandle,
+				CompatibilityProfile,
+				&ActiveGameplayEffectHandle);
+	}
+	OutSuccessType = bApplied
+		? ERPGSuccessType::Successful
+		: ERPGSuccessType::Failed;
 	return ActiveGameplayEffectHandle;
 }
 
 void URPGGameplayAbility::ApplyGameplayEffectSpecHandleToHitResults(const FGameplayEffectSpecHandle& InSpecHandle, const TArray<FHitResult>& InHitResults)
 {
-	if (InHitResults.IsEmpty())
+	AActor* AvatarActor = GetAvatarActorFromActorInfo();
+	if (!AvatarActor || !AvatarActor->HasAuthority() ||
+		!InSpecHandle.IsValid() || InHitResults.IsEmpty())
 	{
 		return;
 	}
@@ -92,9 +202,12 @@ void URPGGameplayAbility::ApplyGameplayEffectSpecHandleToHitResults(const FGamep
 		{
 			if (URPGCombatFunctionLibrary::IsTargetPawnHostile(OwningPawn, HitPawn))
 			{
-				FActiveGameplayEffectHandle ActiveGameplayEffectHandle = NativeApplyEffectSpecHandleToTarget(HitPawn, InSpecHandle);
-
-				if (ActiveGameplayEffectHandle.WasSuccessfullyApplied())
+				const FRPGSkillSecurityProfile CompatibilityProfile;
+				if (URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
+					OwningPawn,
+					Hit,
+					InSpecHandle,
+					CompatibilityProfile))
 				{
 					FGameplayEventData Data;
 					Data.Instigator = OwningPawn;

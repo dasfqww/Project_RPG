@@ -5,7 +5,9 @@
 #include "Character/RPGPlayer.h"
 #include "Controller/RPGPlayerController.h"
 #include "Component/RPGAbilitySystemComponent.h"
+#include "Component/RPGSecurityValidationComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemGlobals.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
 #include "Component/Combat/PlayerCombatComponent.h"
 #include "Component/UI/PlayerUIComponent.h"
@@ -15,10 +17,158 @@
 #include "FunctionLibrary/RPGCombatFunctionLibrary.h"
 #include "Manager/SoundManager.h"
 #include "GameInstance/RPGGameInstance.h"
+#include "GameplayEffect/GE_CoolDown.h"
 #include "NiagaraFunctionLibrary.h"
 
 #include "RPGGameplayTags.h"
 #include "RPGDebugHelper.h"
+
+namespace
+{
+FGameplayEffectQuery MakeRPGCooldownQuery(const UObject* CooldownSource)
+{
+	FGameplayEffectQuery Query;
+	Query.EffectDefinition = UGE_CoolDown::StaticClass();
+	Query.EffectSource = CooldownSource;
+	return Query;
+}
+}
+
+bool URPGPlayerGameplayAbility::CheckCooldown(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	FGameplayTagContainer* OptionalRelevantTags) const
+{
+	if (!Super::CheckCooldown(
+		Handle,
+		ActorInfo,
+		OptionalRelevantTags))
+	{
+		return false;
+	}
+
+	const UAbilitySystemComponent* ASC =
+		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+	if (!ASC || ASC->GetActiveEffects(
+		MakeRPGCooldownQuery(GetRPGCooldownSourceObject())).IsEmpty())
+	{
+		return true;
+	}
+
+	if (OptionalRelevantTags)
+	{
+		const FGameplayTag& FailureTag =
+			UAbilitySystemGlobals::Get().ActivateFailCooldownTag;
+		if (FailureTag.IsValid())
+		{
+			OptionalRelevantTags->AddTag(FailureTag);
+		}
+	}
+	return false;
+}
+
+void URPGPlayerGameplayAbility::ApplyCooldown(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo) const
+{
+	// Preserve any longer, asset-authored legacy cooldown.
+	Super::ApplyCooldown(Handle, ActorInfo, ActivationInfo);
+
+	const float CooldownDuration =
+		GetRPGCooldownDuration(Handle, ActorInfo);
+	if (CooldownDuration <= 0.0f)
+	{
+		return;
+	}
+
+	FGameplayEffectSpecHandle CooldownSpec =
+		MakeOutgoingGameplayEffectSpec(
+			Handle,
+			ActorInfo,
+			ActivationInfo,
+			UGE_CoolDown::StaticClass(),
+			GetAbilityLevel(Handle, ActorInfo));
+	if (!CooldownSpec.IsValid())
+	{
+		return;
+	}
+
+	CooldownSpec.Data->SetDuration(CooldownDuration, true);
+	CooldownSpec.Data->GetContext().AddSourceObject(
+		GetRPGCooldownSourceObject());
+	ApplyGameplayEffectSpecToOwner(
+		Handle,
+		ActorInfo,
+		ActivationInfo,
+		CooldownSpec);
+}
+
+float URPGPlayerGameplayAbility::GetCooldownTimeRemaining(
+	const FGameplayAbilityActorInfo* ActorInfo) const
+{
+	float TimeRemaining =
+		Super::GetCooldownTimeRemaining(ActorInfo);
+	const UAbilitySystemComponent* ASC =
+		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+	if (!ASC)
+	{
+		return TimeRemaining;
+	}
+
+	for (const float GuardTime :
+		ASC->GetActiveEffectsTimeRemaining(
+			MakeRPGCooldownQuery(GetRPGCooldownSourceObject())))
+	{
+		TimeRemaining = FMath::Max(TimeRemaining, GuardTime);
+	}
+	return TimeRemaining;
+}
+
+void URPGPlayerGameplayAbility::GetCooldownTimeRemainingAndDuration(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	float& TimeRemaining,
+	float& CooldownDuration) const
+{
+	Super::GetCooldownTimeRemainingAndDuration(
+		Handle,
+		ActorInfo,
+		TimeRemaining,
+		CooldownDuration);
+
+	const UAbilitySystemComponent* ASC =
+		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+	if (!ASC)
+	{
+		return;
+	}
+
+	for (const TPair<float, float>& GuardCooldown :
+		ASC->GetActiveEffectsTimeRemainingAndDuration(
+			MakeRPGCooldownQuery(GetRPGCooldownSourceObject())))
+	{
+		if (GuardCooldown.Key > TimeRemaining)
+		{
+			TimeRemaining = GuardCooldown.Key;
+			CooldownDuration = GuardCooldown.Value;
+		}
+	}
+}
+
+float URPGPlayerGameplayAbility::GetRPGCooldownDuration(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo) const
+{
+	return FMath::IsFinite(MinimumRepeatCooldown)
+		? FMath::Max(MinimumRepeatCooldown, 1.0f)
+		: 1.0f;
+}
+
+const UObject* URPGPlayerGameplayAbility::GetRPGCooldownSourceObject() const
+{
+	return GetClass();
+}
 
 bool URPGPlayerGameplayAbility::CanActivateAbility(const FGameplayAbilitySpecHandle Handle, 
 	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags, 
@@ -48,7 +198,7 @@ bool URPGPlayerGameplayAbility::CanActivateAbility(const FGameplayAbilitySpecHan
 		}
 		
 		// ���� ���� üũ: Player.Status.Rage.Activating �±װ� �ִ��� Ȯ��
-		if (AbilityTags.HasTag(FGameplayTag::RequestGameplayTag(FName("Player.Ability.IdentitySkill"))))
+		if (GetAssetTags().HasTag(FGameplayTag::RequestGameplayTag(FName("Player.Ability.IdentitySkill"))))
 		{
 			// IdentitySkill �±װ� �̹� ���� ���� ���� �Ұ�
 			if (ASC->HasMatchingGameplayTag(FGameplayTag::RequestGameplayTag(FName("Player.Status.Rage.Active"))))
@@ -63,10 +213,14 @@ bool URPGPlayerGameplayAbility::CanActivateAbility(const FGameplayAbilitySpecHan
 		}		
 	}
 
-	const UAbilitySystemComponent* AbilitySystemComponent = ActorInfo->AbilitySystemComponent.Get();
-	const URPGAttributeSet* AttributeSet = AbilitySystemComponent->GetSet<URPGAttributeSet>();
+	const UAbilitySystemComponent* AbilitySystemComponent =
+		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+	const URPGAttributeSet* AttributeSet =
+		AbilitySystemComponent
+			? AbilitySystemComponent->GetSet<URPGAttributeSet>()
+			: nullptr;
 
-	if (AttributeSet)
+	if (bUseLegacyManualManaCost && AttributeSet)
 	{
 		float CurrentMana = AttributeSet->GetCurrentMana();       // ���� ���� ��������
 		float ManaCost = RequireManaCost;                    // ���� �Ҹ� �������� (�Լ��� ���� ����)
@@ -115,7 +269,7 @@ void URPGPlayerGameplayAbility::ActivateAbility(const FGameplayAbilitySpecHandle
 
 	
 
-	AttackSpeed = CachedAttributeSet->GetAttackSpeed();
+	AttackSpeed = CachedAttributeSet ? CachedAttributeSet->GetAttackSpeed() : 1.0f;
 
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 }
@@ -162,7 +316,21 @@ UPlayerCombatComponent* URPGPlayerGameplayAbility::GetPlayerCombatComponentFromA
 FGameplayEffectSpecHandle URPGPlayerGameplayAbility::MakePlayerDamageEffectSpecHandle
 	(TSubclassOf<UGameplayEffect> EffectClass, float InDamage)
 {
-	check(EffectClass);
+	AActor* SourceActor = GetAvatarActorFromActorInfo();
+	if (!SourceActor || !SourceActor->HasAuthority() || !EffectClass ||
+		!FMath::IsFinite(InDamage) || InDamage <= 0.0f)
+	{
+		return FGameplayEffectSpecHandle();
+	}
+	if (URPGSecurityValidationComponent* Security =
+		SourceActor->FindComponentByClass<URPGSecurityValidationComponent>())
+	{
+		FString RejectionReason;
+		if (!Security->ValidateDamage(InDamage, RejectionReason))
+		{
+			return FGameplayEffectSpecHandle();
+		}
+	}
 
 	FGameplayEffectContextHandle ContextHandle = GetRPGAbilitySystemComponentFromActorInfo()->MakeEffectContext();
 	ContextHandle.SetAbility(this);
@@ -174,6 +342,10 @@ FGameplayEffectSpecHandle URPGPlayerGameplayAbility::MakePlayerDamageEffectSpecH
 		GetAbilityLevel(),
 		ContextHandle
 	);
+	if (!EffectSpecHandle.IsValid())
+	{
+		return FGameplayEffectSpecHandle();
+	}
 
 	EffectSpecHandle.Data->SetSetByCallerMagnitude(
 		RPGGameplayTags::Shared_SetByCaller_BaseDamage,
@@ -306,6 +478,24 @@ void URPGPlayerGameplayAbility::HandleApplyDamage(const FGameplayEventData& InGa
 	//Super::HandleApplyDamage(InGameplayEventData);
 
 	AActor* CachedTargetActor = const_cast<AActor*>(InGameplayEventData.Target.Get());
+	AActor* SourceActor = GetAvatarActorFromActorInfo();
+	const APawn* SourcePawn = Cast<APawn>(SourceActor);
+	const APawn* TargetPawn = Cast<APawn>(CachedTargetActor);
+	if (!SourceActor || !SourceActor->HasAuthority() ||
+		!SourcePawn || !TargetPawn ||
+		!URPGCombatFunctionLibrary::IsTargetPawnHostile(
+			const_cast<APawn*>(SourcePawn),
+			const_cast<APawn*>(TargetPawn)))
+	{
+		return;
+	}
+
+	const FVector ImpactPoint = CachedTargetActor->GetActorLocation();
+	const FHitResult ServerHit(
+		CachedTargetActor,
+		nullptr,
+		ImpactPoint,
+		(ImpactPoint - SourceActor->GetActorLocation()).GetSafeNormal());
 
 	if (URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(CachedTargetActor, RPGGameplayTags::Shared_Status_Invincible))
 	{
@@ -324,9 +514,14 @@ void URPGPlayerGameplayAbility::HandleApplyDamage(const FGameplayEventData& InGa
 
 	//ERPGSuccessType SuccessType;
 
-	NativeApplyEffectSpecHandleToTarget(CachedTargetActor, GameplayEffectSpecHandle);
-
-	UE_LOG(LogTemp, Log, TEXT("Effect applied successfully."));
+	if (!URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
+		SourceActor,
+		ServerHit,
+		GameplayEffectSpecHandle,
+		BuildLegacyDamageSecurityProfile()))
+	{
+		return;
+	}
 
 	FGameplayEffectContextHandle EmptyContext;
 	K2_ExecuteGameplayCue(WeaponHitSoundCueTag, EmptyContext);
@@ -349,6 +544,11 @@ void URPGPlayerGameplayAbility::HandleApplyDamage(const FGameplayEventData& InGa
 
 void URPGPlayerGameplayAbility::HandleApplyAOEDamage(const FGameplayEventData& InGameplayEventData)
 {
+	AActor* SourceActor = GetAvatarActorFromActorInfo();
+	if (!SourceActor || !SourceActor->HasAuthority())
+	{
+		return;
+	}
 	TArray<FHitResult> HitResults;
 
 	FVector Origin = GetAvatarActorFromActorInfo()->GetActorLocation();
@@ -381,35 +581,73 @@ void URPGPlayerGameplayAbility::HandleApplyAOEDamage(const FGameplayEventData& I
 
 	//Debug::Print("AOE Damage: ", WeaponBaseDamage);
 
-	FGameplayEffectSpecHandle GameplayEffectSpecHandle;
+	const FGameplayEffectSpecHandle GameplayEffectSpecHandle =
+		MakePlayerDamageEffectSpecHandle(DamageEffectClass, Damage);
+	if (!GameplayEffectSpecHandle.IsValid())
+	{
+		return;
+	}
 
+	const FRPGSkillSecurityProfile SecurityProfile =
+		BuildLegacyDamageSecurityProfile();
+	TSet<TWeakObjectPtr<AActor>> AppliedActors;
+	int32 AppliedTargetCount = 0;
 	for (const FHitResult& Hit : HitResults)
 	{
 		AActor* HitActor = Hit.GetActor();
-		if (HitActor)
+		if (!HitActor || AppliedActors.Contains(HitActor) ||
+			AppliedTargetCount >= SecurityProfile.MaximumTargetsPerQuery)
 		{
-			FGameplayEffectContextHandle EmptyContext;
-			K2_ExecuteGameplayCue(WeaponHitSoundCueTag, EmptyContext);
+			continue;
+		}
+		if (!URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
+			SourceActor,
+			Hit,
+			GameplayEffectSpecHandle,
+			SecurityProfile))
+		{
+			continue;
+		}
 
-			//float CalcDamage = CalculateCriticalDamage(HitActor, Damage);
-			
-			GameplayEffectSpecHandle =
-				MakePlayerDamageEffectSpecHandle(DamageEffectClass, Damage);
-
-			UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), HitEffect, HitActor->GetActorLocation());
+		AppliedActors.Add(HitActor);
+		++AppliedTargetCount;
+		FGameplayEffectContextHandle EmptyContext;
+		K2_ExecuteGameplayCue(WeaponHitSoundCueTag, EmptyContext);
+		if (HitEffect)
+		{
+			UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+				GetWorld(), HitEffect, HitActor->GetActorLocation());
 		}
 	}
 
-	ApplyGameplayEffectSpecHandleToHitResults(GameplayEffectSpecHandle, HitResults);
-
-	if (HitResults.Num()>0)
+	if (AppliedTargetCount > 0)
 	{
 		GainIdentity();
 	}
 }
 
+FRPGSkillSecurityProfile
+URPGPlayerGameplayAbility::BuildLegacyDamageSecurityProfile() const
+{
+	FRPGSkillSecurityProfile Profile;
+	Profile.MaximumServerHitDistance = LegacyServerDirectHitDistance;
+	Profile.HitLocationTolerance = LegacyServerHitLocationTolerance;
+	Profile.MaximumTargetsPerQuery = FMath::Max(
+		1,
+		LegacyMaximumTargetsPerDamageEvent);
+	Profile.MaximumHitsPerActivation = Profile.MaximumTargetsPerQuery;
+	Profile.MaximumDamagePerHit = LegacyMaximumDamagePerHit;
+	return Profile;
+}
+
 void URPGPlayerGameplayAbility::GainIdentity()
 {
+	AActor* SourceActor = GetAvatarActorFromActorInfo();
+	if (!SourceActor || !SourceActor->HasAuthority())
+	{
+		return;
+	}
+
 	UAbilitySystemComponent* ASC = CurrentActorInfo->AbilitySystemComponent.Get();
 
 	// IdentitySkill �±װ� �̹� ���� ���� ���� �Ұ�
@@ -474,12 +712,23 @@ void URPGPlayerGameplayAbility::CoolDown()
 		GetPlayerUIComponent()->
 		OnAbilityCooldownBegin.Broadcast(
 			InputTag, 
-			GetCooldownTimeRemaining(),
-			GetCooldownTimeRemaining());
+			GetCooldownTimeRemaining(CurrentActorInfo),
+			GetCooldownTimeRemaining(CurrentActorInfo));
 }
 
 bool URPGPlayerGameplayAbility::ApplyManaCost(const FGameplayAbilityActorInfo* ActorInfo)
 {
+	if (!bUseLegacyManualManaCost)
+	{
+		return true;
+	}
+	AActor* AvatarActor = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
+	if (!AvatarActor || !AvatarActor->HasAuthority())
+	{
+		// Predicted clients wait for the authoritative replicated attribute.
+		return AvatarActor != nullptr;
+	}
+
 	UAbilitySystemComponent* AbilitySystemComponent = ActorInfo->AbilitySystemComponent.Get();
 	const URPGAttributeSet* AttributeSet = AbilitySystemComponent->GetSet<URPGAttributeSet>();
 

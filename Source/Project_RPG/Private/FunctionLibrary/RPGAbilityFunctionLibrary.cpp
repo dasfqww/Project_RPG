@@ -3,8 +3,42 @@
 #include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "Component/RPGAbilitySystemComponent.h"
+#include "FunctionLibrary/RPGSecurityBlueprintLibrary.h"
 #include "ScalableFloat.h"
 #include "GameplayEffect.h"
+#include "RPGGameplayTags.h"
+
+namespace RPGAbilityFunctionLibrary
+{
+	bool TryGetDamageMagnitude(
+		const FGameplayEffectSpec& Spec,
+		float& OutDamage)
+	{
+		const FGameplayTag D1DamageTag = FGameplayTag::RequestGameplayTag(
+			TEXT("SetByCaller.BaseDamage"), false);
+		const FGameplayTag DamageTags[] = {
+			RPGGameplayTags::Shared_SetByCaller_BaseDamage,
+			D1DamageTag
+		};
+
+		for (const FGameplayTag& DamageTag : DamageTags)
+		{
+			if (!DamageTag.IsValid())
+			{
+				continue;
+			}
+			if (const float* Magnitude =
+				Spec.SetByCallerTagMagnitudes.Find(DamageTag))
+			{
+				OutDamage = *Magnitude;
+				return true;
+			}
+		}
+
+		OutDamage = 0.0f;
+		return false;
+	}
+}
 
 URPGAbilitySystemComponent* URPGAbilityFunctionLibrary::NativeGetWarriorASCFromActor(AActor* InActor)
 {
@@ -53,15 +87,78 @@ float URPGAbilityFunctionLibrary::GetScalableFloatValueAtLevel(const FScalableFl
 
 bool URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToTargetActor(AActor* InInstigator, AActor* InTargetActor, const FGameplayEffectSpecHandle& InSpecHandle)
 {
-	if (!InSpecHandle.Data.IsValid()) return false;
+	if (!IsValid(InInstigator) || !InInstigator->HasAuthority() ||
+		!IsValid(InTargetActor) || !InSpecHandle.Data.IsValid())
+	{
+		return false;
+	}
 
-	URPGAbilitySystemComponent* SourceASC = NativeGetWarriorASCFromActor(InInstigator);
-	URPGAbilitySystemComponent* TargetASC = NativeGetWarriorASCFromActor(InTargetActor);
+	const FVector ImpactPoint = InTargetActor->GetActorLocation();
+	const FHitResult ServerHit(
+		InTargetActor,
+		nullptr,
+		ImpactPoint,
+		(ImpactPoint - InInstigator->GetActorLocation()).GetSafeNormal());
+	const FRPGSkillSecurityProfile CompatibilityProfile;
+	return ApplyGameplayEffectSpecHandleToServerHit(
+		InInstigator,
+		ServerHit,
+		InSpecHandle,
+		CompatibilityProfile);
+}
 
-	if (!SourceASC || !TargetASC) return false;
+bool URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
+	AActor* InInstigator,
+	const FHitResult& ServerHit,
+	const FGameplayEffectSpecHandle& InSpecHandle,
+	const FRPGSkillSecurityProfile& SecurityProfile,
+	FActiveGameplayEffectHandle* OutActiveHandle)
+{
+	if (OutActiveHandle)
+	{
+		*OutActiveHandle = FActiveGameplayEffectHandle();
+	}
+	AActor* TargetActor = ServerHit.GetActor();
+	if (!IsValid(InInstigator) || !InInstigator->HasAuthority() ||
+		!IsValid(TargetActor) || TargetActor == InInstigator ||
+		!InSpecHandle.Data.IsValid())
+	{
+		return false;
+	}
 
-	FActiveGameplayEffectHandle ActiveGameplayEffectHandle = 
-		SourceASC->ApplyGameplayEffectSpecToTarget(*InSpecHandle.Data, TargetASC);
+	float Damage = 0.0f;
+	if (RPGAbilityFunctionLibrary::TryGetDamageMagnitude(
+		*InSpecHandle.Data,
+		Damage))
+	{
+		FText RejectionReason;
+		if (!URPGSecurityBlueprintLibrary::ValidateAuthorizedServerHit(
+			InInstigator,
+			ServerHit,
+			Damage,
+			SecurityProfile,
+			RejectionReason))
+		{
+			return false;
+		}
+	}
 
+	URPGAbilitySystemComponent* SourceASC =
+		NativeGetWarriorASCFromActor(InInstigator);
+	URPGAbilitySystemComponent* TargetASC =
+		NativeGetWarriorASCFromActor(TargetActor);
+	if (!SourceASC || !TargetASC || SourceASC == TargetASC)
+	{
+		return false;
+	}
+
+	const FActiveGameplayEffectHandle ActiveGameplayEffectHandle =
+		SourceASC->ApplyGameplayEffectSpecToTarget(
+			*InSpecHandle.Data,
+			TargetASC);
+	if (OutActiveHandle)
+	{
+		*OutActiveHandle = ActiveGameplayEffectHandle;
+	}
 	return ActiveGameplayEffectHandle.WasSuccessfullyApplied();
 }

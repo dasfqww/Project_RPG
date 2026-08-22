@@ -34,6 +34,7 @@ class URPGItemBase;
 class ARPGPickUpBase;
 class URPGInventoryComponent;
 class UQuickSlotComponent;
+class URPGItemCommandComponent;
 
 /**
  * 
@@ -64,11 +65,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	FKey GetCurrentKeyForTag(FGameplayTag InTag) const;
 
+	/** Shared lock-on state consumed by independent skill targeting policies. */
+	void SetSkillLockedTarget(AActor* InTarget);
+
+	UFUNCTION(BlueprintPure, Category = "RPG|Skill|Targeting")
+	AActor* GetSkillLockedTarget() const;
+
 protected:
 	virtual void SetupInputComponent() override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void OnPossess(APawn* InPawn) override;
+	virtual void OnRep_Pawn() override;
 
 	//void PerformInteractionCheck_LineTrace();
 	void PerformInteractionCheck_Around();
@@ -81,11 +89,13 @@ protected:
 	
 	// 퀵슬롯 입력 처리
 	UFUNCTION()
-	void UseSkillSlot(int32 SlotIndex);
+	void PressSkillSlot(int32 SlotIndex);
+	void ReleaseSkillSlot(int32 SlotIndex);
 
 	UFUNCTION()
 	void UseItemSlot(int32 SlotIndex);
 
+	void RefreshControlledPawnReferences();
 	void EnableCameraZoom();
 
 private:
@@ -104,6 +114,9 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "QuickSlot")
 	TObjectPtr<UQuickSlotComponent> QuickSlotComponent;
 
+	UPROPERTY(VisibleAnywhere, Category = "Item")
+	TObjectPtr<URPGItemCommandComponent> ItemCommandComponent;
+
 	UPROPERTY(EditDefaultsOnly)
 	float PickupCheckRadius = 40.f;
 
@@ -121,6 +134,9 @@ private:
 
 	UPROPERTY()
 		ARPGPlayer* PlayerCharacter;
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<AActor> SkillLockedTarget;
 
 	FGenericTeamId PlayerTeamID;
 

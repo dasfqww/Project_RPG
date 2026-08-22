@@ -1,130 +1,369 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "Component/Skill/RPGPlayerSkillComponent.h"
+
+#include "Net/UnrealNetwork.h"
 #include "RPGDebugHelper.h"
 
 URPGPlayerSkillComponent::URPGPlayerSkillComponent()
 {
+	SetIsReplicatedByDefault(true);
 }
 
-bool URPGPlayerSkillComponent::TryLevelUpSkill(FGameplayTag SkillTag)
+void URPGPlayerSkillComponent::GetLifetimeReplicatedProps(
+	TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
-	FRPGSkillSaveData& Data = SkillDataMap.FindOrAdd(SkillTag);
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME_CONDITION(
+		URPGPlayerSkillComponent,
+		ReplicatedSkillData,
+		COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(
+		URPGPlayerSkillComponent,
+		ReplicatedSkillDataRevision,
+		COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(
+		URPGPlayerSkillComponent,
+		TotalSP,
+		COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(
+		URPGPlayerSkillComponent,
+		UsedSP,
+		COND_OwnerOnly);
+}
 
-	if (Data.SkillLevel >= 12) return false; // 최대 레벨 제한
-
-	int32 NextLevel = Data.SkillLevel + 1;
-	int32 Cost = GetRequiredSPForLevel(NextLevel);
-
-	if (GetRemainingSP() >= Cost)
+bool URPGPlayerSkillComponent::TryLevelUpSkill(const FGameplayTag SkillTag)
+{
+	const bool bSucceeded = ApplyLevelUpSkill(SkillTag);
+	if (!IsAuthorityOwner() && bSucceeded)
 	{
-		Data.SkillLevel = NextLevel;
-		UsedSP += Cost;
-		Debug::Print(SkillTag.ToString() + TEXT(" Level Up! Current: "), Data.SkillLevel);
-		return true;
+		ServerTryLevelUpSkill(SkillTag);
+	}
+	return bSucceeded;
+}
+
+bool URPGPlayerSkillComponent::ApplyLevelUpSkill(
+	const FGameplayTag SkillTag)
+{
+	if (!SkillTag.IsValid())
+	{
+		return false;
 	}
 
-	Debug::Print(TEXT("Not enough SP for Level "), NextLevel);
-	return false;
-}
+	FRPGSkillSaveData& Data = SkillDataMap.FindOrAdd(SkillTag);
+	if (Data.SkillLevel >= 12)
+	{
+		return false;
+	}
 
-bool URPGPlayerSkillComponent::TryLevelDownSkill(FGameplayTag SkillTag)
-{
-	if (!SkillDataMap.Contains(SkillTag)) return false;
+	const int32 NextLevel = Data.SkillLevel + 1;
+	const int32 Cost = GetRequiredSPForLevel(NextLevel);
+	if (GetRemainingSP() < Cost)
+	{
+		Debug::Print(TEXT("Not enough SP for Level "), NextLevel);
+		return false;
+	}
 
-	FRPGSkillSaveData& Data = SkillDataMap[SkillTag];
-	if (Data.SkillLevel <= 1) return false;
-
-	int32 Refund = GetRequiredSPForLevel(Data.SkillLevel);
-	Data.SkillLevel--;
-	UsedSP -= Refund;
-
-	// 레벨이 낮아지면 해당 티어의 트라이포드 선택도 취소해야 함 (로아 규칙)
-	if (Data.SkillLevel < 10) Data.SelectedTripodIndices[2] = -1;
-	if (Data.SkillLevel < 7)  Data.SelectedTripodIndices[1] = -1;
-	if (Data.SkillLevel < 4)  Data.SelectedTripodIndices[0] = -1;
-
+	Data.SkillLevel = NextLevel;
+	UsedSP += Cost;
+	PublishAuthoritativeSkillData(SkillTag);
+	OnSkillDataChanged.Broadcast(SkillTag);
+	Debug::Print(
+		SkillTag.ToString() + TEXT(" Level Up! Current: "),
+		Data.SkillLevel);
 	return true;
 }
 
-void URPGPlayerSkillComponent::LevelUpToMax(FGameplayTag SkillTag, int32 TargetGoalLevel)
+bool URPGPlayerSkillComponent::TryLevelDownSkill(
+	const FGameplayTag SkillTag)
 {
-	if (!SkillDataMap.Contains(SkillTag))
+	const bool bSucceeded = ApplyLevelDownSkill(SkillTag);
+	if (!IsAuthorityOwner() && bSucceeded)
 	{
-		// 데이터가 없으면 새로 생성해서 시작
-		SkillDataMap.Add(SkillTag, FRPGSkillSaveData());
+		ServerTryLevelDownSkill(SkillTag);
+	}
+	return bSucceeded;
+}
+
+bool URPGPlayerSkillComponent::ApplyLevelDownSkill(
+	const FGameplayTag SkillTag)
+{
+	FRPGSkillSaveData* Data = SkillDataMap.Find(SkillTag);
+	if (!Data || Data->SkillLevel <= 1)
+	{
+		return false;
 	}
 
-	FRPGSkillSaveData& Data = SkillDataMap[SkillTag];
-	int32 CurrentLevel = Data.SkillLevel;
-
-	// 1. 현재 레벨이 목표보다 낮으면 -> 레벨업 시도
-	if (CurrentLevel < TargetGoalLevel)
+	const int32 Refund = GetRequiredSPForLevel(Data->SkillLevel);
+	--Data->SkillLevel;
+	UsedSP = FMath::Max(0, UsedSP - Refund);
+	if (Data->SelectedTripodIndices.Num() < 3)
 	{
-		for (int32 i = CurrentLevel; i < TargetGoalLevel; ++i)
-		{
-			if (!TryLevelUpSkill(SkillTag)) break; // SP 부족 시 중단
-		}
+		Data->SelectedTripodIndices.SetNum(3);
 	}
-	// 2. 현재 레벨이 목표보다 높으면 -> 레벨다운 시도
-	else if (CurrentLevel > TargetGoalLevel)
+	if (Data->SkillLevel < 10)
 	{
-		for (int32 i = CurrentLevel; i > TargetGoalLevel; --i)
-		{
-			if (!TryLevelDownSkill(SkillTag)) break;
-		}
+		Data->SelectedTripodIndices[2] = INDEX_NONE;
+	}
+	if (Data->SkillLevel < 7)
+	{
+		Data->SelectedTripodIndices[1] = INDEX_NONE;
+	}
+	if (Data->SkillLevel < 4)
+	{
+		Data->SelectedTripodIndices[0] = INDEX_NONE;
+	}
+
+	PublishAuthoritativeSkillData(SkillTag);
+	OnSkillDataChanged.Broadcast(SkillTag);
+	return true;
+}
+
+void URPGPlayerSkillComponent::LevelUpToMax(
+	const FGameplayTag SkillTag,
+	const int32 TargetGoalLevel)
+{
+	ApplyLevelUpToMax(SkillTag, TargetGoalLevel);
+	if (!IsAuthorityOwner())
+	{
+		ServerLevelUpToMax(SkillTag, TargetGoalLevel);
 	}
 }
 
-void URPGPlayerSkillComponent::ResetSkillLevel(FGameplayTag SkillTag)
+void URPGPlayerSkillComponent::ApplyLevelUpToMax(
+	const FGameplayTag SkillTag,
+	const int32 TargetGoalLevel)
 {
-	// 1레벨이 될 때까지 레벨다운 반복 (SP 환급 및 트라이포드 해제 자동 처리됨)
-	while (TryLevelDownSkill(SkillTag))
+	if (!SkillTag.IsValid())
 	{
-		// 반복
+		return;
+	}
+
+	const int32 ClampedGoalLevel = FMath::Clamp(TargetGoalLevel, 1, 12);
+	FRPGSkillSaveData& Data = SkillDataMap.FindOrAdd(SkillTag);
+	while (Data.SkillLevel < ClampedGoalLevel && ApplyLevelUpSkill(SkillTag))
+	{
+	}
+	while (Data.SkillLevel > ClampedGoalLevel && ApplyLevelDownSkill(SkillTag))
+	{
 	}
 }
 
-bool URPGPlayerSkillComponent::SelectTripod(FGameplayTag SkillTag, int32 TierIndex, int32 OptionIndex)
+void URPGPlayerSkillComponent::ResetSkillLevel(
+	const FGameplayTag SkillTag)
 {
-	if (!SkillDataMap.Contains(SkillTag)) return false;
-	FRPGSkillSaveData& Data = SkillDataMap[SkillTag];
+	ApplyResetSkillLevel(SkillTag);
+	if (!IsAuthorityOwner())
+	{
+		ServerResetSkillLevel(SkillTag);
+	}
+}
 
-	// 티어별 해금 레벨 체크 (로아 규칙: 4, 7, 10레벨)
-	int32 RequiredLevel = (TierIndex == 0) ? 4 : (TierIndex == 1) ? 7 : 10;
-	
-	if (Data.SkillLevel < RequiredLevel)
+void URPGPlayerSkillComponent::ApplyResetSkillLevel(
+	const FGameplayTag SkillTag)
+{
+	while (ApplyLevelDownSkill(SkillTag))
+	{
+	}
+}
+
+bool URPGPlayerSkillComponent::SelectTripod(
+	const FGameplayTag SkillTag,
+	const int32 TierIndex,
+	const int32 OptionIndex)
+{
+	const bool bSucceeded = ApplySelectTripod(
+		SkillTag,
+		TierIndex,
+		OptionIndex);
+	if (!IsAuthorityOwner() && bSucceeded)
+	{
+		ServerSelectTripod(SkillTag, TierIndex, OptionIndex);
+	}
+	return bSucceeded;
+}
+
+bool URPGPlayerSkillComponent::ApplySelectTripod(
+	const FGameplayTag SkillTag,
+	const int32 TierIndex,
+	const int32 OptionIndex)
+{
+	if (!SkillTag.IsValid() || TierIndex < 0 || TierIndex >= 3 ||
+		OptionIndex < INDEX_NONE)
+	{
+		return false;
+	}
+
+	FRPGSkillSaveData* Data = SkillDataMap.Find(SkillTag);
+	if (!Data)
+	{
+		return false;
+	}
+
+	static constexpr int32 RequiredLevels[] = {4, 7, 10};
+	if (Data->SkillLevel < RequiredLevels[TierIndex])
 	{
 		Debug::Print(TEXT("Skill Level too low for Tier "), TierIndex + 1);
 		return false;
 	}
 
-	if (TierIndex >= 0 && TierIndex < 3)
+	if (Data->SelectedTripodIndices.Num() < 3)
 	{
-		Data.SelectedTripodIndices[TierIndex] = OptionIndex;
-		Debug::Print(TEXT("Tripod Selected! Tier: "), TierIndex + 1);
-		return true;
+		Data->SelectedTripodIndices.SetNum(3);
 	}
-
-	return false;
+	Data->SelectedTripodIndices[TierIndex] = OptionIndex;
+	PublishAuthoritativeSkillData(SkillTag);
+	OnSkillDataChanged.Broadcast(SkillTag);
+	Debug::Print(TEXT("Tripod Selected! Tier: "), TierIndex + 1);
+	return true;
 }
 
-FRPGSkillSaveData URPGPlayerSkillComponent::GetSkillSaveData(FGameplayTag SkillTag) const
+FRPGSkillSaveData URPGPlayerSkillComponent::GetSkillSaveData(
+	const FGameplayTag SkillTag) const
 {
-	if (SkillDataMap.Contains(SkillTag))
+	if (const FRPGSkillSaveData* Data = SkillDataMap.Find(SkillTag))
 	{
-		return SkillDataMap[SkillTag];
+		return *Data;
 	}
-	return FRPGSkillSaveData(); // 기본값 (1레벨, 선택 없음)
+	return FRPGSkillSaveData();
 }
 
-int32 URPGPlayerSkillComponent::GetRequiredSPForLevel(int32 TargetLevel) const
+int32 URPGPlayerSkillComponent::GetRequiredSPForLevel(
+	const int32 TargetLevel) const
 {
-	// 로아식 SP 소모 테이블 (예시)
-	// 2~4렙: 1 / 5~7렙: 2 / 8~10렙: 4 / 11~12렙: 6
-	if (TargetLevel <= 4) return 1;
-	if (TargetLevel <= 7) return 2;
-	if (TargetLevel <= 10) return 4;
+	if (TargetLevel <= 4)
+	{
+		return 1;
+	}
+	if (TargetLevel <= 7)
+	{
+		return 2;
+	}
+	if (TargetLevel <= 10)
+	{
+		return 4;
+	}
 	return 6;
+}
+
+void URPGPlayerSkillComponent::AddTotalSP(const int32 Amount)
+{
+	if (!IsAuthorityOwner() || Amount <= 0)
+	{
+		return;
+	}
+	TotalSP = FMath::Max(0, TotalSP + Amount);
+	TouchAuthoritativeRevision();
+}
+
+void URPGPlayerSkillComponent::ServerTryLevelUpSkill_Implementation(
+	const FGameplayTag SkillTag)
+{
+	ApplyLevelUpSkill(SkillTag);
+	TouchAuthoritativeRevision();
+}
+
+void URPGPlayerSkillComponent::ServerTryLevelDownSkill_Implementation(
+	const FGameplayTag SkillTag)
+{
+	ApplyLevelDownSkill(SkillTag);
+	TouchAuthoritativeRevision();
+}
+
+void URPGPlayerSkillComponent::ServerLevelUpToMax_Implementation(
+	const FGameplayTag SkillTag,
+	const int32 TargetGoalLevel)
+{
+	ApplyLevelUpToMax(SkillTag, TargetGoalLevel);
+	TouchAuthoritativeRevision();
+}
+
+void URPGPlayerSkillComponent::ServerResetSkillLevel_Implementation(
+	const FGameplayTag SkillTag)
+{
+	ApplyResetSkillLevel(SkillTag);
+	TouchAuthoritativeRevision();
+}
+
+void URPGPlayerSkillComponent::ServerSelectTripod_Implementation(
+	const FGameplayTag SkillTag,
+	const int32 TierIndex,
+	const int32 OptionIndex)
+{
+	ApplySelectTripod(SkillTag, TierIndex, OptionIndex);
+	TouchAuthoritativeRevision();
+}
+
+void URPGPlayerSkillComponent::OnRep_ReplicatedSkillData()
+{
+	TMap<FGameplayTag, FRPGSkillSaveData> PreviousData = SkillDataMap;
+	SkillDataMap.Reset();
+	for (const FRPGReplicatedSkillSaveEntry& Entry : ReplicatedSkillData)
+	{
+		if (Entry.SkillTag.IsValid())
+		{
+			SkillDataMap.Add(Entry.SkillTag, Entry.SaveData);
+		}
+	}
+
+	for (const TPair<FGameplayTag, FRPGSkillSaveData>& Entry : SkillDataMap)
+	{
+		const FRPGSkillSaveData* Previous = PreviousData.Find(Entry.Key);
+		if (!Previous || Previous->SkillLevel != Entry.Value.SkillLevel ||
+			Previous->SelectedTripodIndices !=
+				Entry.Value.SelectedTripodIndices)
+		{
+			OnSkillDataChanged.Broadcast(Entry.Key);
+		}
+		PreviousData.Remove(Entry.Key);
+	}
+	for (const TPair<FGameplayTag, FRPGSkillSaveData>& Removed : PreviousData)
+	{
+		OnSkillDataChanged.Broadcast(Removed.Key);
+	}
+}
+
+void URPGPlayerSkillComponent::PublishAuthoritativeSkillData(
+	const FGameplayTag SkillTag)
+{
+	if (!IsAuthorityOwner())
+	{
+		return;
+	}
+
+	const FRPGSkillSaveData* SaveData = SkillDataMap.Find(SkillTag);
+	if (!SaveData)
+	{
+		return;
+	}
+
+	FRPGReplicatedSkillSaveEntry* Entry =
+		ReplicatedSkillData.FindByPredicate(
+			[SkillTag](const FRPGReplicatedSkillSaveEntry& Candidate)
+			{
+				return Candidate.SkillTag == SkillTag;
+			});
+	if (!Entry)
+	{
+		Entry = &ReplicatedSkillData.AddDefaulted_GetRef();
+		Entry->SkillTag = SkillTag;
+	}
+	Entry->SaveData = *SaveData;
+}
+
+void URPGPlayerSkillComponent::TouchAuthoritativeRevision()
+{
+	if (!IsAuthorityOwner())
+	{
+		return;
+	}
+	++ReplicatedSkillDataRevision;
+	if (AActor* Owner = GetOwner())
+	{
+		Owner->ForceNetUpdate();
+	}
+}
+
+bool URPGPlayerSkillComponent::IsAuthorityOwner() const
+{
+	const AActor* Owner = GetOwner();
+	return Owner && Owner->HasAuthority();
 }

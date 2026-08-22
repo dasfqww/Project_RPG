@@ -4,7 +4,8 @@
 #include "AnimNotify/RPGAnimNotify_CustomPlaySound.h"
 #include "Manager/SoundManager.h"
 
-void URPGAnimNotify_CustomPlaySound::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
+void URPGAnimNotify_CustomPlaySound::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation,
+	const FAnimNotifyEventReference& EventReference)
 {
 	if (Sound&&MeshComp)
 	{

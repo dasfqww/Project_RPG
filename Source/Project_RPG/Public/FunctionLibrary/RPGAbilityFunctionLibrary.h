@@ -10,6 +10,7 @@
 #include "RPGAbilityFunctionLibrary.generated.h"
 
 class URPGAbilitySystemComponent;
+struct FRPGSkillSecurityProfile;
 struct FScalableFloat;
 struct FGameplayEffectSpecHandle;
 
@@ -37,7 +38,20 @@ public:
 	UFUNCTION(BlueprintPure, Category = "RPG|AbilityFunctionLibrary", meta = (CompactNodeTitle = "Get Value At Level"))
 		static float GetScalableFloatValueAtLevel(const FScalableFloat& InScalableFloat, float InLevel = 1.f);
 
-	UFUNCTION(BlueprintCallable, Category = "RPG|AbilityFunctionLibrary")
+	/**
+	 * Legacy BP compatibility entry point. Damage-tagged specs are automatically
+	 * routed through server hit and damage validation before application.
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly,
+		Category = "RPG|AbilityFunctionLibrary")
 		static bool ApplyGameplayEffectSpecHandleToTargetActor(AActor* InInstigator, AActor* InTargetActor, 
 			const FGameplayEffectSpecHandle& InSpecHandle);
+
+	/** Native path for server-owned traces and projectile collisions. */
+	static bool ApplyGameplayEffectSpecHandleToServerHit(
+		AActor* InInstigator,
+		const FHitResult& ServerHit,
+		const FGameplayEffectSpecHandle& InSpecHandle,
+		const FRPGSkillSecurityProfile& SecurityProfile,
+		FActiveGameplayEffectHandle* OutActiveHandle = nullptr);
 };

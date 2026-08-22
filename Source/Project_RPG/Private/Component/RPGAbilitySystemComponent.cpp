@@ -8,6 +8,29 @@
 
 #include "RPGDebugHelper.h"
 
+FActiveGameplayEffect* URPGAbilitySystemComponent::GetActiveGameplayEffectMutable(const FActiveGameplayEffectHandle Handle)
+{
+	return ActiveGameplayEffects.GetActiveGameplayEffect(Handle);
+}
+
+TArray<FActiveGameplayEffectHandle> URPGAbilitySystemComponent::GetAllActiveEffectHandles() const
+{
+	return ActiveGameplayEffects.GetAllActiveEffectHandles();
+}
+
+void URPGAbilitySystemComponent::MarkActiveGameplayEffectDirty(FActiveGameplayEffect* ActiveGameplayEffect)
+{
+	if (ActiveGameplayEffect)
+	{
+		ActiveGameplayEffects.MarkItemDirty(*ActiveGameplayEffect);
+	}
+}
+
+void URPGAbilitySystemComponent::CheckActiveEffectDuration(const FActiveGameplayEffectHandle Handle)
+{
+	ActiveGameplayEffects.CheckDuration(Handle);
+}
+
 void URPGAbilitySystemComponent::OnAbilityInputPressed(const FGameplayTag& InInputTag)
 {
 	if (!InInputTag.IsValid())
@@ -15,36 +38,157 @@ void URPGAbilitySystemComponent::OnAbilityInputPressed(const FGameplayTag& InInp
 		return;
 	}
 
-	for (const FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
+	for (FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
 	{
-		if (!AbilitySpec.DynamicAbilityTags.HasTagExact(InInputTag)) continue;
+		if (!AbilitySpec.GetDynamicSpecSourceTags().HasTagExact(InInputTag)) continue;
 
 		if (InInputTag.MatchesTag(RPGGameplayTags::InputTag_Toggleable)&& AbilitySpec.IsActive())
 		{
 			CancelAbilityHandle(AbilitySpec.Handle);
 		}
-
 		else
 		{
-			TryActivateAbility(AbilitySpec.Handle);
+			OnAbilitySpecInputPressed(AbilitySpec.Handle);
 		}
 	}
 }
 
 void URPGAbilitySystemComponent::OnAbilityInputReleased(const FGameplayTag& InInputTag)
 {
-	if (!InInputTag.IsValid() || !InInputTag.MatchesTag(RPGGameplayTags::InputTag_MustBeHeld))
+	if (!InInputTag.IsValid())
 	{
 		return;
 	}
 
-	for (const FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
+	for (FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
 	{
-		if (AbilitySpec.DynamicAbilityTags.HasTagExact(InInputTag) && AbilitySpec.IsActive())
+		if (AbilitySpec.GetDynamicSpecSourceTags().HasTagExact(InInputTag))
 		{
-			CancelAbilityHandle(AbilitySpec.Handle);
+			OnAbilitySpecInputReleased(AbilitySpec.Handle);
 		}
 	}
+}
+
+void URPGAbilitySystemComponent::OnAbilitySpecInputPressed(
+	const FGameplayAbilitySpecHandle SpecHandle)
+{
+	FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(SpecHandle);
+	if (!AbilitySpec)
+	{
+		return;
+	}
+
+	AbilitySpec->InputPressed = true;
+	if (AbilitySpec->IsActive())
+	{
+		AbilitySpecInputPressed(*AbilitySpec);
+		return;
+	}
+
+	TryActivateAbility(AbilitySpec->Handle);
+}
+
+void URPGAbilitySystemComponent::OnAbilitySpecInputReleased(
+	const FGameplayAbilitySpecHandle SpecHandle)
+{
+	FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(SpecHandle);
+	if (!AbilitySpec)
+	{
+		return;
+	}
+
+	AbilitySpec->InputPressed = false;
+	if (AbilitySpec->IsActive())
+	{
+		AbilitySpecInputReleased(*AbilitySpec);
+	}
+}
+
+FGameplayAbilitySpecHandle URPGAbilitySystemComponent::FindUniqueAbilitySpecHandleByTag(
+	const FGameplayTag& AbilityTag)
+{
+	if (!AbilityTag.IsValid())
+	{
+		return FGameplayAbilitySpecHandle();
+	}
+
+	TArray<FGameplayAbilitySpec*> MatchingAbilitySpecs;
+	GetActivatableGameplayAbilitySpecsByAllMatchingTags(
+		AbilityTag.GetSingleTagContainer(), MatchingAbilitySpecs);
+	if (MatchingAbilitySpecs.Num() != 1 || !MatchingAbilitySpecs[0])
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("Expected exactly one ability for tag %s, found %d."),
+			*AbilityTag.ToString(),
+			MatchingAbilitySpecs.Num());
+		return FGameplayAbilitySpecHandle();
+	}
+
+	return MatchingAbilitySpecs[0]->Handle;
+}
+
+bool URPGAbilitySystemComponent::IsAbilitySpecInputPressed(
+	const FGameplayAbilitySpecHandle SpecHandle) const
+{
+	const FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(SpecHandle);
+	return AbilitySpec && AbilitySpec->InputPressed;
+}
+
+void URPGAbilitySystemComponent::AbilitySpecInputPressed(FGameplayAbilitySpec& Spec)
+{
+	UGameplayAbility* AbilityInstance = Spec.GetPrimaryInstance();
+	if (AbilityInstance)
+	{
+		bool bShouldReplicateInput = true;
+		if (URPGGameplayAbility* RPGAbility =
+			Cast<URPGGameplayAbility>(AbilityInstance))
+		{
+			bShouldReplicateInput =
+				RPGAbility->PreReplicateAbilityInputPressed();
+		}
+
+		// Notify GAS input tasks first. A policy may end the ability from its
+		// direct InputPressed callback, which would otherwise destroy the task
+		// before it can forward the event to a remote server.
+		if (bShouldReplicateInput)
+		{
+			InvokeReplicatedEvent(
+				EAbilityGenericReplicatedEvent::InputPressed,
+				Spec.Handle,
+				AbilityInstance->GetCurrentActivationInfo()
+					.GetActivationPredictionKey());
+		}
+	}
+
+	Super::AbilitySpecInputPressed(Spec);
+}
+
+void URPGAbilitySystemComponent::AbilitySpecInputReleased(FGameplayAbilitySpec& Spec)
+{
+	UGameplayAbility* AbilityInstance = Spec.GetPrimaryInstance();
+	if (AbilityInstance)
+	{
+		bool bShouldReplicateInput = true;
+		if (URPGGameplayAbility* RPGAbility =
+			Cast<URPGGameplayAbility>(AbilityInstance))
+		{
+			bShouldReplicateInput =
+				RPGAbility->PreReplicateAbilityInputReleased();
+		}
+
+		// The replicated task must observe release before a local policy can
+		// synchronously end the ability and tear that task down.
+		if (bShouldReplicateInput)
+		{
+			InvokeReplicatedEvent(
+				EAbilityGenericReplicatedEvent::InputReleased,
+				Spec.Handle,
+				AbilityInstance->GetCurrentActivationInfo()
+					.GetActivationPredictionKey());
+		}
+	}
+
+	Super::AbilitySpecInputReleased(Spec);
 }
 
 void URPGAbilitySystemComponent::GrantPlayerWeaponAbilities(const TArray<FRPGPlayerAbilitySet> InDefaultWeaponAbilities, 
@@ -63,7 +207,7 @@ void URPGAbilitySystemComponent::GrantPlayerWeaponAbilities(const TArray<FRPGPla
 		FGameplayAbilitySpec AbilitySpec(AbilitySet.AbilityToGrant);
 		AbilitySpec.SourceObject = GetAvatarActor();
 		AbilitySpec.Level = ApplyLevel;
-		AbilitySpec.DynamicAbilityTags.AddTag(AbilitySet.InputTag);
+		AbilitySpec.GetDynamicSpecSourceTags().AddTag(AbilitySet.InputTag);
 
 		OutGrantedAbilitySpecHandles.AddUnique(GiveAbility(AbilitySpec));
 	}
@@ -75,7 +219,7 @@ void URPGAbilitySystemComponent::GrantPlayerWeaponAbilities(const TArray<FRPGPla
 		FGameplayAbilitySpec AbilitySpec(AbilitySet.AbilityToGrant);
 		AbilitySpec.SourceObject = GetAvatarActor();
 		AbilitySpec.Level = ApplyLevel;
-		AbilitySpec.DynamicAbilityTags.AddTag(AbilitySet.InputTag);
+		AbilitySpec.GetDynamicSpecSourceTags().AddTag(AbilitySet.InputTag);
 
 		OutGrantedAbilitySpecHandles.AddUnique(GiveAbility(AbilitySpec));
 	}
@@ -101,24 +245,7 @@ void URPGAbilitySystemComponent::RemovedGrantedPlayerWeaponAbilities(UPARAM(ref)
 
 bool URPGAbilitySystemComponent::TryActivateAbilityByTag(FGameplayTag AbilityTagToActivate)
 {
-	check(AbilityTagToActivate.IsValid());
-
-	TArray<FGameplayAbilitySpec*> FoundAbilitySpecs;
-
-	GetActivatableGameplayAbilitySpecsByAllMatchingTags(AbilityTagToActivate.GetSingleTagContainer(), FoundAbilitySpecs);
-
-	if (!FoundAbilitySpecs.IsEmpty())
-	{
-		const int32 RandomAbilityIndex = FMath::RandRange(0,FoundAbilitySpecs.Num()-1);
-		FGameplayAbilitySpec* SpecToActivate = FoundAbilitySpecs[RandomAbilityIndex];
-
-		check(SpecToActivate);
-
-		if (!SpecToActivate->IsActive())
-		{
-			return TryActivateAbility(SpecToActivate->Handle);
-		}
-	}
-
-	return false;
+	const FGameplayAbilitySpecHandle SpecHandle =
+		FindUniqueAbilitySpecHandleByTag(AbilityTagToActivate);
+	return SpecHandle.IsValid() && TryActivateAbility(SpecHandle);
 }

@@ -15,6 +15,7 @@
 #include "Components/WidgetComponent.h"
 #include "Component/UI/QuickSlotComponent.h"
 #include "Component/RPGInventoryComponent.h"
+#include "Component/RPGSecurityValidationComponent.h"
 #include "GameMode/RPGGameModeBase.h"
 
 #include "RPGGameplayTags.h"
@@ -52,6 +53,9 @@ ARPGPlayer::ARPGPlayer():
 
 	PlayerCombatComponent = CreateDefaultSubobject<UPlayerCombatComponent>(TEXT("PlayerCombatComp"));
 	PlayerUIComponent = CreateDefaultSubobject<UPlayerUIComponent>(TEXT("PlayerUIComp"));
+	SecurityValidationComponent =
+		CreateDefaultSubobject<URPGSecurityValidationComponent>(
+			TEXT("SecurityValidationComponent"));
 	
 	/*PlayerInventory = CreateDefaultSubobject<URPGInventoryComponent>(TEXT("PlayerInventory"));
 	PlayerInventory->SetSlotsCapacity(20);

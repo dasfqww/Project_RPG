@@ -44,6 +44,7 @@ protected:
 
 	void CancelTargetLockAbility();
 	void CleanUp();
+	void PublishLockedTarget();
 	void ResetTargetLockMovement();
 	void ResetTargetLockMappingContext();
 

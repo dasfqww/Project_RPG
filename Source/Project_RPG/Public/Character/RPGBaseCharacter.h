@@ -11,8 +11,10 @@
 
 class URPGAbilitySystemComponent;
 class URPGAttributeSet;
+class URPGHealthComponent;
 class URPGEquipComponent;
 class URPGEquipmentComponent;
+class URPGAuthoritativeEquipmentComponent;
 class UDataAsset_StartUpDataBase;
 class UMotionWarpingComponent;
 class UDamageFontWidget;
@@ -59,11 +61,18 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AbilitySystem")
 		TObjectPtr<URPGAttributeSet> RPGAttributeSet;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Health")
+		TObjectPtr<URPGHealthComponent> RPGHealthComponent;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
 		TObjectPtr<URPGEquipComponent> EquipComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
 		TObjectPtr<URPGEquipmentComponent> EquipmentComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
+		TObjectPtr<URPGAuthoritativeEquipmentComponent>
+			AuthoritativeEquipmentComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MotionWarping")
 		TObjectPtr<UMotionWarpingComponent> MotionWarpingComponent;
@@ -85,6 +94,7 @@ protected:
 public:
 	FORCEINLINE URPGAbilitySystemComponent* GetRPGAbilitySystemComponent() const { return RPGAbilitySystemComponent; }
 	FORCEINLINE URPGAttributeSet* GetRPGAttributeSet() const { return RPGAttributeSet; }
+	FORCEINLINE URPGHealthComponent* GetRPGHealthComponent() const { return RPGHealthComponent; }
 	//FORCEINLINE TSubclassOf<UGameplayEffect> GetHealingEffect() const { return HealingEffect; }
 	FORCEINLINE USceneComponent* GetNS_SceneComponent() const { return NS_SceneComponent; }
 };

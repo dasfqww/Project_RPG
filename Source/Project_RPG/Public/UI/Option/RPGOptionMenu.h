@@ -64,7 +64,7 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "Tab Button", meta = (BindWidget))
 	TObjectPtr<UButton> InputOptionButton;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<class URPGInputOptionMenu> InputOptionMenu;
 
 	UPROPERTY(meta = (BindWidget))

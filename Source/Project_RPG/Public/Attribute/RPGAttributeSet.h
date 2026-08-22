@@ -70,6 +70,20 @@ public:
 	UFUNCTION()
 	void OnRep_MaxMana(const FGameplayAttributeData& OldValue);
 
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_CurrentStamina, Category = "Stamina")
+	FGameplayAttributeData CurrentStamina;
+	ATTRIBUTE_ACCESSORS(URPGAttributeSet, CurrentStamina);
+
+	UFUNCTION()
+	void OnRep_CurrentStamina(const FGameplayAttributeData& OldValue);
+
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MaxStamina, Category = "Stamina")
+	FGameplayAttributeData MaxStamina;
+	ATTRIBUTE_ACCESSORS(URPGAttributeSet, MaxStamina);
+
+	UFUNCTION()
+	void OnRep_MaxStamina(const FGameplayAttributeData& OldValue);
+
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_CurrentRage, Category = "Rage")
 		FGameplayAttributeData CurrentRage;
 	ATTRIBUTE_ACCESSORS(URPGAttributeSet, CurrentRage);
@@ -119,6 +133,40 @@ public:
 
 	UFUNCTION()
 	void OnRep_Defense(const FGameplayAttributeData& OldValue);
+
+	/** Percentage modifiers used by the imported Gladiator class effects. */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MoveSpeedPercent, Category = "Gladiator|Combat")
+	FGameplayAttributeData MoveSpeedPercent;
+	ATTRIBUTE_ACCESSORS(URPGAttributeSet, MoveSpeedPercent);
+
+	UFUNCTION()
+	void OnRep_MoveSpeedPercent(const FGameplayAttributeData& OldValue);
+
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_AttackSpeedPercent, Category = "Gladiator|Combat")
+	FGameplayAttributeData AttackSpeedPercent;
+	ATTRIBUTE_ACCESSORS(URPGAttributeSet, AttackSpeedPercent);
+
+	UFUNCTION()
+	void OnRep_AttackSpeedPercent(const FGameplayAttributeData& OldValue);
+
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_DrainLifePercent, Category = "Gladiator|Combat")
+	FGameplayAttributeData DrainLifePercent;
+	ATTRIBUTE_ACCESSORS(URPGAttributeSet, DrainLifePercent);
+
+	UFUNCTION()
+	void OnRep_DrainLifePercent(const FGameplayAttributeData& OldValue);
+
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_DamageReductionPercent, Category = "Gladiator|Combat")
+	FGameplayAttributeData DamageReductionPercent;
+	ATTRIBUTE_ACCESSORS(URPGAttributeSet, DamageReductionPercent);
+
+	UFUNCTION()
+	void OnRep_DamageReductionPercent(const FGameplayAttributeData& OldValue);
+
+	/** Temporary capture channel used by D1's active-effect duration execution. */
+	UPROPERTY(BlueprintReadOnly, Category = "Gladiator|Combat", meta = (HideFromModifiers))
+	FGameplayAttributeData ActiveEffectDuration;
+	ATTRIBUTE_ACCESSORS(URPGAttributeSet, ActiveEffectDuration);
 
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_TakeDamage, Category = "Damage")
 		FGameplayAttributeData TakeDamage;

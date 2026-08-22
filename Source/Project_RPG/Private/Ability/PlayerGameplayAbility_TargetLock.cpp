@@ -96,6 +96,7 @@ void UPlayerGameplayAbility_TargetLock::SwitchTarget(const FGameplayTag& InSwitc
 	if (NewTargetToLock)
 	{
 		CurrentLockedActor = NewTargetToLock;
+		PublishLockedTarget();
 	}
 }
 
@@ -113,6 +114,7 @@ void UPlayerGameplayAbility_TargetLock::TryLockOnTarget()
 
 	if (CurrentLockedActor)
 	{
+		PublishLockedTarget();
 		DrawTargetLockWidget();
 
 		SetTargetLockWidgetPosition();
@@ -274,6 +276,11 @@ void UPlayerGameplayAbility_TargetLock::CleanUp()
 {
 	AvailableActorsToLock.Empty();
 
+	if (ARPGPlayerController* PlayerController =
+		GetPlayerControllerFromActorInfo())
+	{
+		PlayerController->SetSkillLockedTarget(nullptr);
+	}
 	CurrentLockedActor = nullptr;
 
 	if (DrawnTargetLockWidget)
@@ -286,6 +293,15 @@ void UPlayerGameplayAbility_TargetLock::CleanUp()
 	TargetLockWidgetSize = FVector2D::ZeroVector;
 
 	CachedDefaultMaxWalkSpeed = 0.f;
+}
+
+void UPlayerGameplayAbility_TargetLock::PublishLockedTarget()
+{
+	if (ARPGPlayerController* PlayerController =
+		GetPlayerControllerFromActorInfo())
+	{
+		PlayerController->SetSkillLockedTarget(CurrentLockedActor);
+	}
 }
 
 void UPlayerGameplayAbility_TargetLock::ResetTargetLockMovement()

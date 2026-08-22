@@ -17,7 +17,7 @@ void UDataAsset_PlayerStartUpData::GiveToAbilitySystemComponent(URPGAbilitySyste
 		FGameplayAbilitySpec AbilitySpec(AbilitySet.AbilityToGrant);
 		AbilitySpec.SourceObject = InASCToGive->GetAvatarActor();
 		AbilitySpec.Level = ApplyLevel;
-		AbilitySpec.DynamicAbilityTags.AddTag(AbilitySet.InputTag);
+		AbilitySpec.GetDynamicSpecSourceTags().AddTag(AbilitySet.InputTag);
 
 		InASCToGive->GiveAbility(AbilitySpec);
 	}
@@ -28,7 +28,7 @@ void UDataAsset_PlayerStartUpData::GiveToAbilitySystemComponent(URPGAbilitySyste
 		FGameplayAbilitySpec IdentitySpec(IdentityData.IdentityAbility);
 		IdentitySpec.SourceObject = InASCToGive->GetAvatarActor();
 		IdentitySpec.Level = ApplyLevel;
-		IdentitySpec.DynamicAbilityTags.AddTag(RPGGameplayTags::InputTag_IdentitySkill);
+		IdentitySpec.GetDynamicSpecSourceTags().AddTag(RPGGameplayTags::InputTag_IdentitySkill);
 
 		InASCToGive->GiveAbility(IdentitySpec);
 	}

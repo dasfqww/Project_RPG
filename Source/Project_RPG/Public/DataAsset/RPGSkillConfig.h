@@ -16,6 +16,8 @@ class UNiagaraSystem;
 /**
  * 로스트아크식 스킬 정보를 담는 데이터 에셋
  */
+// Legacy prototype retained for existing assets. New skills use
+// URPGSkillDefinition as the canonical definition.
 UCLASS(BlueprintType)
 class PROJECT_RPG_API URPGSkillConfig : public UPrimaryDataAsset
 {

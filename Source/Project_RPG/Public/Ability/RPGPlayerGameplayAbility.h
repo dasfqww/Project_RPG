@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Ability/RPGGameplayAbility.h"
+#include "Security/RPGSecurityTypes.h"
 #include "Type/RPGStructTypes.h"
 #include "Type/RPGEnumTypes.h"
 #include "RPGPlayerGameplayAbility.generated.h"
@@ -26,6 +27,19 @@ public:
 	virtual bool CanActivateAbility(const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags,
 		const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const override;
+	virtual bool CheckCooldown(const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
+	virtual void ApplyCooldown(const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo) const override;
+	virtual float GetCooldownTimeRemaining(
+		const FGameplayAbilityActorInfo* ActorInfo) const override;
+	virtual void GetCooldownTimeRemainingAndDuration(
+		FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		float& TimeRemaining,
+		float& CooldownDuration) const override;
 
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
@@ -56,7 +70,24 @@ public:
 	void OnInterruptedCallback();
 
 protected:
-	
+	/**
+	 * Compatibility switch for legacy abilities that mutate mana directly.
+	 * New skill containers use GAS Cost GameplayEffects through CommitAbility.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Skill|Legacy")
+	bool bUseLegacyManualManaCost = true;
+
+	/** Hard lower bound for the per-skill GAS repeat-input guard. */
+	static constexpr float MinimumRepeatCooldown = 1.0f;
+
+	/** Derived skill systems may resolve an authored cooldown above the guard. */
+	virtual float GetRPGCooldownDuration(
+		const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo) const;
+
+	/** Stable identity used to keep each skill's cooldown independent. */
+	virtual const UObject* GetRPGCooldownSourceObject() const;
+
 	virtual void PlaySkillMontage();
 
 	//float CalculateCriticalDamage(AActor* InCachedTargetActor, float InDamage);
@@ -71,6 +102,8 @@ protected:
 	void HandleApplyDamage(const FGameplayEventData& InGameplayEventData);
 	
 	void HandleApplyAOEDamage(const FGameplayEventData& InGameplayEventData);
+
+	FRPGSkillSecurityProfile BuildLegacyDamageSecurityProfile() const;
 
 	void GainIdentity();
 
@@ -126,6 +159,23 @@ protected:
 	
 	UPROPERTY(EditDefaultsOnly, Category = "Skill", meta = (AllowPrivateAccess = "true"))
 	FName SkillName;
+
+	/** Compatibility range for legacy overlap-event melee skills. */
+	UPROPERTY(EditDefaultsOnly, Category = "Skill|Legacy|Security",
+		meta = (ClampMin = "1.0", Units = "cm"))
+	float LegacyServerDirectHitDistance = 1200.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Skill|Legacy|Security",
+		meta = (ClampMin = "0.0", Units = "cm"))
+	float LegacyServerHitLocationTolerance = 250.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Skill|Legacy|Security",
+		meta = (ClampMin = "1"))
+	int32 LegacyMaximumTargetsPerDamageEvent = 32;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Skill|Legacy|Security",
+		meta = (ClampMin = "1.0"))
+	float LegacyMaximumDamagePerHit = 10000000.0f;
 
 	float RequireManaCost;
 	

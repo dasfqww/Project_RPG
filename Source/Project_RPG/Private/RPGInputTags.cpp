@@ -20,7 +20,7 @@ namespace RPGGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_Skill3, "InputTag.Skill3");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_IdentitySkill, "InputTag.IdentitySkill");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_ToggleMenu, "InputTag.ToggleMenu");
-	UE_DEFINE_GAMEPLAY_TAG(InputTag_ToggleOptionMenu, "InputTag.ToggleMenu");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_ToggleOptionMenu, "InputTag.ToggleOptionMenu");
 
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_QuickSkill_1, "InputTag.QuickSkill.1");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_QuickSkill_2, "InputTag.QuickSkill.2");
@@ -39,6 +39,7 @@ namespace RPGGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_QuickItem_6, "InputTag.QuickItem.6");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_QuickItem_7, "InputTag.QuickItem.7");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_QuickItem_8, "InputTag.QuickItem.8");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_QuickItem_F1, "InputTag.QuickItem.F1");
 
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_PickUp_Items, "InputTag.PickUp.Items");
 
@@ -47,8 +48,8 @@ namespace RPGGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_MustBeHeld_Charge, "InputTag.MustBeHeld.Charge");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_MustBeHeld_Charge_IdentitySkill, "InputTag.MustBeHeld.Charge.IdentitySkill");
 
-	UE_DEFINE_GAMEPLAY_TAG(InputTag_Toggleable, "InputTag.Toggleadble");
-	UE_DEFINE_GAMEPLAY_TAG(InputTag_Toggleable_TargetLock, "InputTag.Toggleadble.TargetLock");
-	UE_DEFINE_GAMEPLAY_TAG(InputTag_Toggleable_Rage, "InputTag.Toggleadble.Rage");
-	UE_DEFINE_GAMEPLAY_TAG(InputTag_Toggleable_ToggleSkill, "InputTag.Toggleadble.ToggleSkill");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Toggleable, "InputTag.Toggleable");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Toggleable_TargetLock, "InputTag.Toggleable.TargetLock");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Toggleable_Rage, "InputTag.Toggleable.Rage");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_Toggleable_ToggleSkill, "InputTag.Toggleable.ToggleSkill");
 }

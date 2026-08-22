@@ -26,6 +26,7 @@ public:
 	virtual void StartAction() override;
 	virtual void CancelAction() override;
 	virtual void EndAction() override;
+	virtual void OnInputReleased() override;
 
 protected:
 	void UpdateChargeTime();

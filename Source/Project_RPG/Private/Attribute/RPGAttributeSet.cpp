@@ -19,6 +19,8 @@ URPGAttributeSet::URPGAttributeSet()
 	InitMaxHealth(1.f);
 	InitCurrentMana(1.f);
 	InitMaxMana(1.f);
+	InitCurrentStamina(100.f);
+	InitMaxStamina(100.f);
 	InitCurrentRage(1.f);
 	InitMaxRage(1.f);
 	InitCurrentIdentityGauge(0.f);
@@ -26,6 +28,11 @@ URPGAttributeSet::URPGAttributeSet()
 	InitIdentityGainMultiplier(1.f);
 	InitAttack(1.f);
 	InitDefense(1.f);
+	InitMoveSpeedPercent(0.f);
+	InitAttackSpeedPercent(0.f);
+	InitDrainLifePercent(0.f);
+	InitDamageReductionPercent(0.f);
+	InitActiveEffectDuration(0.f);
 	InitCriticalChance(0.3f);
 	InitCriticalDamage(2.f);
 }
@@ -40,6 +47,8 @@ void URPGAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, CurrentMana, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, MaxMana, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, CurrentStamina, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, MaxStamina, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, CurrentRage, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, MaxRage, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, CurrentIdentityGauge, COND_None, REPNOTIFY_Always);
@@ -47,6 +56,10 @@ void URPGAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, IdentityGainMultiplier, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, Attack, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, Defense, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, MoveSpeedPercent, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, AttackSpeedPercent, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, DrainLifePercent, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, DamageReductionPercent, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, TakeDamage, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, CriticalChance, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, CriticalDamage, COND_None, REPNOTIFY_Always);
@@ -90,6 +103,11 @@ void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 
 		FString ManaText = FString::Printf(TEXT("%.0f/%.0f"), NewCurrentMana, GetMaxMana());
 		PawnUIComponent->OnManaTextChanged.Broadcast(ManaText);
+	}
+
+	if (Data.EvaluatedData.Attribute == GetCurrentStaminaAttribute())
+	{
+		SetCurrentStamina(FMath::Clamp(GetCurrentStamina(), 0.f, GetMaxStamina()));
 	}
 
 	if (Data.EvaluatedData.Attribute==GetCurrentRageAttribute())
@@ -261,6 +279,16 @@ void URPGAttributeSet::OnRep_MaxMana(const FGameplayAttributeData& OldValue)
 	GAMEPLAYATTRIBUTE_REPNOTIFY(URPGAttributeSet, MaxMana, OldValue);
 }
 
+void URPGAttributeSet::OnRep_CurrentStamina(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(URPGAttributeSet, CurrentStamina, OldValue);
+}
+
+void URPGAttributeSet::OnRep_MaxStamina(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(URPGAttributeSet, MaxStamina, OldValue);
+}
+
 void URPGAttributeSet::OnRep_CurrentRage(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(URPGAttributeSet, CurrentRage, OldValue);
@@ -294,6 +322,26 @@ void URPGAttributeSet::OnRep_Attack(const FGameplayAttributeData& OldValue)
 void URPGAttributeSet::OnRep_Defense(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(URPGAttributeSet, Defense, OldValue);
+}
+
+void URPGAttributeSet::OnRep_MoveSpeedPercent(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(URPGAttributeSet, MoveSpeedPercent, OldValue);
+}
+
+void URPGAttributeSet::OnRep_AttackSpeedPercent(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(URPGAttributeSet, AttackSpeedPercent, OldValue);
+}
+
+void URPGAttributeSet::OnRep_DrainLifePercent(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(URPGAttributeSet, DrainLifePercent, OldValue);
+}
+
+void URPGAttributeSet::OnRep_DamageReductionPercent(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(URPGAttributeSet, DamageReductionPercent, OldValue);
 }
 
 void URPGAttributeSet::OnRep_TakeDamage(const FGameplayAttributeData& OldValue)

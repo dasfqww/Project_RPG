@@ -34,4 +34,8 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Charge")
 	TMap<int32, FChargeLevelNiagaraOptionData> ChargeLevelSettings;
+
+protected:
+	virtual void ApplyDefinitionExecutionDefaults(
+		FRPGSkillRuntimeSpec& OutSpec) const override;
 };

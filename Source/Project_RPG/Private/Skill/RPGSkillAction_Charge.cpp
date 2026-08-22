@@ -24,10 +24,10 @@ void URPGSkillAction_Charge::StartAction()
 	if (!ChargeDef || !Container) return;
 
 	ARPGPlayer* Player = Cast<ARPGPlayer>(GetCharacter());
-	if (Player && ChargeDef->SkillVFX)
+	if (Player && RuntimeSpec.VFX)
 	{
 		NiagaraComp = UNiagaraFunctionLibrary::SpawnSystemAttached(
-			ChargeDef->SkillVFX,
+			RuntimeSpec.VFX,
 			Player->GetNS_SceneComponent(),
 			NAME_None,
 			FVector::ZeroVector,
@@ -56,7 +56,11 @@ void URPGSkillAction_Charge::UpdateChargeTime()
 	float Elapsed = GetWorld()->GetTimeSeconds() - StartTime;
 	ChargeTime = Elapsed;
 
-	float FinalChargeTimePerLevel = ChargeDef->ChargeTimePerLevel; // 원래는 공속 계산 로직 필요
+	static const FGameplayTag ChargeTimeStatTag =
+		FGameplayTag::RequestGameplayTag(TEXT("Shared.Stat.ChargeTime"), false);
+	const float ChargeTimeScalar = RuntimeSpec.GetStatScalar(ChargeTimeStatTag);
+	const float FinalChargeTimePerLevel =
+		FMath::Max(0.01f, ChargeDef->ChargeTimePerLevel * ChargeTimeScalar);
 	FString TimeText = FString::Printf(TEXT("%.1fs"), ChargeTime);
 
 	if (ChargeTime >= FinalChargeTimePerLevel)
@@ -122,6 +126,8 @@ void URPGSkillAction_Charge::CancelAction()
 
 void URPGSkillAction_Charge::EndAction()
 {
+	GetWorld()->GetTimerManager().ClearTimer(ChargeTimerHandle);
+
 	if (NiagaraComp) NiagaraComp->DestroyComponent();
 	
 	if (URPGGameplayAbility_SkillContainer* Container = Cast<URPGGameplayAbility_SkillContainer>(OwnerAbility))
@@ -132,6 +138,19 @@ void URPGSkillAction_Charge::EndAction()
 	Super::EndAction();
 }
 
+void URPGSkillAction_Charge::OnInputReleased()
+{
+	GetWorld()->GetTimerManager().ClearTimer(ChargeTimerHandle);
+	PlayMontageSection(1);
+
+	if (URPGGameplayAbility_SkillContainer* Container =
+		Cast<URPGGameplayAbility_SkillContainer>(OwnerAbility))
+	{
+		Container->HiddenProgressBar_Internal();
+		Container->ExecuteWaitEvent_Internal();
+	}
+}
+
 void URPGSkillAction_Charge::HandleChargeLevelChanged(int32 NewLevel)
 {
 	URPGSkillDefinition_Charge* ChargeDef = Cast<URPGSkillDefinition_Charge>(SkillDefinition);
@@ -140,8 +159,8 @@ void URPGSkillAction_Charge::HandleChargeLevelChanged(int32 NewLevel)
 	if (ChargeDef->ChargeLevelSettings.Contains(NewLevel))
 	{
 		const FChargeLevelNiagaraOptionData& Data = ChargeDef->ChargeLevelSettings[NewLevel];
-		NiagaraComp->SetNiagaraVariableBool(TEXT("AddDetail"), Data.bAddDetail);
-		NiagaraComp->SetNiagaraVariableBool(TEXT("Simple"), Data.bSimple);
+		NiagaraComp->SetVariableBool(FName(TEXT("AddDetail")), Data.bAddDetail);
+		NiagaraComp->SetVariableBool(FName(TEXT("Simple")), Data.bSimple);
 	}
 	Debug::Print(TEXT("New Charge Level: "), NewLevel);
 }
@@ -149,7 +168,7 @@ void URPGSkillAction_Charge::HandleChargeLevelChanged(int32 NewLevel)
 void URPGSkillAction_Charge::PlayMontageSection(int32 SectionIndex)
 {
 	URPGSkillDefinition_Charge* ChargeDef = Cast<URPGSkillDefinition_Charge>(SkillDefinition);
-	if (!ChargeDef || !ChargeDef->SkillMontage) return;
+	if (!ChargeDef || !RuntimeSpec.Montage) return;
 
 	FName SectionName = NAME_None;
 	if (ChargeDef->MontageSections.SectionNamesToPlay.Contains(SectionIndex))
@@ -161,7 +180,7 @@ void URPGSkillAction_Charge::PlayMontageSection(int32 SectionIndex)
 	PlayAttackTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
 		OwnerAbility,
 		NAME_None,
-		ChargeDef->SkillMontage,
+		RuntimeSpec.Montage,
 		1.0f,
 		SectionName
 	);

@@ -60,6 +60,12 @@ inline void URPGInputComponent::BindNativeInputActions(const UDataAsset_InputCon
 
 		// 1. 태그로부터 함수 이름 생성 (예: InputTag.Move -> Input_Move)
 		FString TagString = Config.InputTag.ToString();
+		if (TagString.StartsWith(TEXT("InputTag.QuickSkill.")) ||
+			TagString.StartsWith(TEXT("InputTag.QuickItem.")))
+		{
+			continue;
+		}
+
 		FString FuncNameStr = TagString.Replace(TEXT("InputTag."), TEXT("Input_"));
 		FName FuncName = FName(*FuncNameStr);
 

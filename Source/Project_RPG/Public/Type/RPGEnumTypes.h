@@ -1,5 +1,8 @@
 #pragma once
 
+#include "CoreMinimal.h"
+#include "RPGEnumTypes.generated.h"
+
 UENUM(BlueprintType)
 enum class ERPGTeamID : uint8
 {
@@ -9,7 +12,6 @@ enum class ERPGTeamID : uint8
 
 	NoTeam = 255
 };
-
 UENUM()
 enum class ERPGConfirmType : uint8
 {
@@ -117,6 +119,42 @@ enum class EWeaponHandType : uint8
 	Count	UMETA(Hidden)
 };
 
+/** D1 equipment categories retained for imported ability and item metadata. */
+UENUM(BlueprintType)
+enum class ERPGGladiatorEquipmentType : uint8
+{
+	Armor,
+	Weapon,
+	Utility,
+
+	Count UMETA(Hidden)
+};
+
+/** D1 weapon identities. Count means the current item/actor has no strict metadata yet. */
+UENUM(BlueprintType)
+enum class ERPGGladiatorWeaponType : uint8
+{
+	Unarmed,
+	OneHandSword,
+	TwoHandSword,
+	GreatSword,
+	Shield,
+	Staff,
+	Bow,
+
+	Count UMETA(Hidden)
+};
+
+/** D1 utility identities retained for serialized equipment requirements. */
+UENUM(BlueprintType)
+enum class ERPGGladiatorUtilityType : uint8
+{
+	Drink,
+	LightSource,
+
+	Count UMETA(Hidden)
+};
+
 UENUM(BlueprintType)
 enum class EOverlayTargetType : uint8
 {
@@ -186,4 +224,3 @@ enum class EEquipmentSlotType : uint8
     Count UMETA(Hidden),
     None UMETA(Hidden)
 };
-	

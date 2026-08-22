@@ -7,12 +7,15 @@
 #include "DataAsset/Input/DataAsset_InputConfig.h"
 #include "Component/RPGInputComponent.h"
 #include "RPGGameplayTags.h"
+#include "RPGInputTags.h"
 #include "Character/RPGPlayer.h"
 #include "Component/RPGAbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "UI/HUD/RPGHUD.h"
 #include "UI/Inventory/Equipment/RPGEquipmentWidget.h"
 #include "Component/RPGInventoryComponent.h"
+#include "Component/RPGInventoryProjectionComponent.h"
+#include "Component/RPGItemCommandComponent.h"
 #include "Item/PickUp/RPGPickUpBase.h"
 #include "Components/WidgetComponent.h"
 #include "UI/RPGItemNameWidget.h"
@@ -29,6 +32,10 @@
 ARPGPlayerController::ARPGPlayerController()
 {
 	PlayerTeamID = FGenericTeamId(0);
+	CreateDefaultSubobject<URPGInventoryProjectionComponent>(
+		TEXT("InventoryProjection"));
+	ItemCommandComponent = CreateDefaultSubobject<URPGItemCommandComponent>(
+		TEXT("ItemCommands"));
 }
 
 void ARPGPlayerController::UpdateInputMappings()
@@ -117,9 +124,27 @@ FGenericTeamId ARPGPlayerController::GetGenericTeamId() const
 	return PlayerTeamID;
 }
 
+void ARPGPlayerController::SetSkillLockedTarget(AActor* InTarget)
+{
+	SkillLockedTarget = IsValid(InTarget) ? InTarget : nullptr;
+}
+
+AActor* ARPGPlayerController::GetSkillLockedTarget() const
+{
+	return SkillLockedTarget.IsValid() ? SkillLockedTarget.Get() : nullptr;
+}
+
 void ARPGPlayerController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
+	SkillLockedTarget.Reset();
+	RefreshControlledPawnReferences();
+}
+
+void ARPGPlayerController::OnRep_Pawn()
+{
+	Super::OnRep_Pawn();
+	RefreshControlledPawnReferences();
 }
 
 void ARPGPlayerController::PerformInteractionCheck_Around()
@@ -219,12 +244,21 @@ void ARPGPlayerController::Interact()
 	if (IsValid(TargetInteractable.GetObject())) TargetInteractable->Interact(this);
 }
 
-void ARPGPlayerController::UseSkillSlot(int32 SlotIndex)
+void ARPGPlayerController::PressSkillSlot(const int32 SlotIndex)
 {
 	if (APawn* PlayerPawn = GetPawn())
 	{
 		if (UQuickSlotComponent* QuickSlotComp = PlayerPawn->FindComponentByClass<UQuickSlotComponent>())
-			QuickSlotComp->UseSkillSlot(SlotIndex);
+			QuickSlotComp->BeginUseSkillSlot(SlotIndex);
+	}
+}
+
+void ARPGPlayerController::ReleaseSkillSlot(const int32 SlotIndex)
+{
+	if (APawn* PlayerPawn = GetPawn())
+	{
+		if (UQuickSlotComponent* QuickSlotComp = PlayerPawn->FindComponentByClass<UQuickSlotComponent>())
+			QuickSlotComp->EndUseSkillSlot(SlotIndex);
 	}
 }
 
@@ -260,12 +294,22 @@ void ARPGPlayerController::SetupInputComponent()
 	RPGInputComponent->BindNativeInputActions(InputConfigDataAsset, this);
 
 	// 2. 퀵슬롯 루프 바인딩
+	RPGInputComponent->BindNativeInputAction(
+		InputConfigDataAsset,
+		RPGGameplayTags::InputTag_QuickItem_F1,
+		ETriggerEvent::Started,
+		this,
+		&ThisClass::UseItemSlot,
+		0);
+
 	for (int32 i = 0; i < 8; ++i)
 	{
 		FGameplayTag SkillTag = FGameplayTag::RequestGameplayTag(FName(*FString::Printf(TEXT("InputTag.QuickSkill.%d"), i + 1)));
 		FGameplayTag ItemTag = FGameplayTag::RequestGameplayTag(FName(*FString::Printf(TEXT("InputTag.QuickItem.%d"), i + 1)));
 
-		RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, SkillTag, ETriggerEvent::Started, this, &ThisClass::UseSkillSlot, i);
+		RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, SkillTag, ETriggerEvent::Started, this, &ThisClass::PressSkillSlot, i);
+		RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, SkillTag, ETriggerEvent::Completed, this, &ThisClass::ReleaseSkillSlot, i);
+		RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, SkillTag, ETriggerEvent::Canceled, this, &ThisClass::ReleaseSkillSlot, i);
 		RPGInputComponent->BindNativeInputAction(InputConfigDataAsset, ItemTag, ETriggerEvent::Started, this, &ThisClass::UseItemSlot, i);
 	}
 
@@ -278,10 +322,24 @@ void ARPGPlayerController::SetupInputComponent()
 void ARPGPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
-	PlayerCharacter = Cast<ARPGPlayer>(GetPawn());
 	HUD = Cast<ARPGHUD>(GetHUD());
+	RefreshControlledPawnReferences();
+}
+
+void ARPGPlayerController::RefreshControlledPawnReferences()
+{
+	PlayerCharacter = Cast<ARPGPlayer>(GetPawn());
 	InventoryComponent = FindComponentByClass<URPGInventoryComponent>();
 	QuickSlotComponent = GetPawn() ? GetPawn()->FindComponentByClass<UQuickSlotComponent>() : nullptr;
+
+	if (QuickSlotComponent)
+	{
+		QuickSlotComponent->BindInventory(InventoryComponent.Get());
+	}
+	if (ItemCommandComponent)
+	{
+		ItemCommandComponent->HandlePawnChanged();
+	}
 }
 
 void ARPGPlayerController::Tick(float DeltaSeconds)

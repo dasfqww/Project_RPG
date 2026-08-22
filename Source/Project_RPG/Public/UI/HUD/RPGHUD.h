@@ -9,6 +9,7 @@
 
 class URPGInteractionWidget;
 class URPGMainMenuWidget;
+class URPGClassSelectionWidget;
 
 /**
  * �ڵ� �ĺ��� �ʿ�� �����丵 �����Ұ�.
@@ -30,6 +31,10 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Widgets")
 	TSubclassOf<URPGInteractionWidget> InteractionWidgetClass;
+
+	/** Class selection supplied by the GladiatorCore game feature. */
+	UPROPERTY(EditDefaultsOnly, Category = "Widgets|Class Selection")
+	TSoftClassPtr<URPGClassSelectionWidget> ClassSelectionWidgetClass;
 	
 	/*UPROPERTY(EditDefaultsOnly, Category = "Widgets")
 	TSubclassOf<URPGInteractionWidget> InteractionWidgetClass;*/
@@ -47,6 +52,15 @@ public:
 
 	void ShowInteractionWidget();
 	void HideInteractionWidget();
+
+	UFUNCTION(BlueprintCallable, Category = "Widgets|Class Selection")
+	void DisplayClassSelection();
+
+	UFUNCTION(BlueprintCallable, Category = "Widgets|Class Selection")
+	void HideClassSelection();
+
+	UFUNCTION(BlueprintCallable, Category = "Widgets|Class Selection")
+	void ToggleClassSelection();
 	//void UpdateInteractionWidget(const FInteractableData* InteractableData);
 
 protected:
@@ -58,4 +72,12 @@ protected:
 
 	UPROPERTY()
 	URPGInteractionWidget* InteractionWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<URPGClassSelectionWidget> ClassSelectionWidget;
+
+private:
+	bool CreateClassSelectionWidget();
+	void HandleClassSelectionDeactivated();
+	void TryDisplayInitialClassSelection();
 };

@@ -4,6 +4,7 @@
 
 #include "GameplayTagContainer.h"
 #include "ScalableFloat.h"
+#include "StructUtils/InstancedStruct.h"
 #include "Type/RPGEnumTypes.h"
 #include "RPGStructTypes.generated.h"
 
@@ -14,6 +15,8 @@ class URPGItemBase;
 class UNiagaraSystem;
 class UAnimMontage;
 class URPGSkillAction;
+class URPGSkillExecutionPolicy;
+class URPGSkillTargetingPolicy;
 
 /**
  * 유저의 개별 스킬 성장 데이터
@@ -117,6 +120,22 @@ struct FRPGSkillTripodOption
 	/** 3. 로직 자체 교체: 차징->즉발 등 (새 기능) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic")
 	TSubclassOf<URPGSkillAction> OverrideActionClass;
+
+	/** Preferred replacement path for runtime input/execution behavior. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic")
+	TSubclassOf<URPGSkillExecutionPolicy> OverrideExecutionPolicyClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic",
+		meta = (BaseStruct = "/Script/Project_RPG.RPGSkillExecutionConfig"))
+	FInstancedStruct OverrideExecutionConfig;
+
+	/** Optional replacement of crosshair, soft-target, or ground-point behavior. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic")
+	TSubclassOf<URPGSkillTargetingPolicy> OverrideTargetingPolicyClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic",
+		meta = (BaseStruct = "/Script/Project_RPG.RPGSkillTargetingConfig"))
+	FInstancedStruct OverrideTargetingConfig;
 
 	/** 4. 비주얼 오버라이드 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
@@ -306,6 +325,9 @@ struct FItemSaveData
 
 	UPROPERTY()
 	FString Category;
+
+	UPROPERTY()
+	FString InstanceId;
 };
 
 

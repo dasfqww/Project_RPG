@@ -14,5 +14,6 @@ class PROJECT_RPG_API URPGAnimNotify_CustomPlaySound : public UAnimNotify_PlaySo
 {
 	GENERATED_BODY()
 public:
-	virtual void Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation) override;
+	virtual void Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation,
+		const FAnimNotifyEventReference& EventReference) override;
 };

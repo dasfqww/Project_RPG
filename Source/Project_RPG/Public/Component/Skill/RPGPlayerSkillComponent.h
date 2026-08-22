@@ -9,6 +9,24 @@
 #include "RPGPlayerSkillComponent.generated.h"
 
 class URPGSkillDefinition;
+class FLifetimeProperty;
+
+USTRUCT()
+struct FRPGReplicatedSkillSaveEntry
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FGameplayTag SkillTag;
+
+	UPROPERTY()
+	FRPGSkillSaveData SaveData;
+};
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FRPGSkillDataChangedSignature,
+	FGameplayTag,
+	SkillTag);
 
 /**
  * URPGPlayerSkillComponent
@@ -23,6 +41,8 @@ class PROJECT_RPG_API URPGPlayerSkillComponent : public UPawnExtensionComponentB
 
 public:
 	URPGPlayerSkillComponent();
+	virtual void GetLifetimeReplicatedProps(
+		TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	// ---------------------------------------------------
 	// 1. 스킬 관리 API
@@ -59,22 +79,64 @@ public:
 	UFUNCTION(BlueprintPure, Category = "RPG|Skill")
 	int32 GetRemainingSP() const { return TotalSP - UsedSP; }
 
-	UFUNCTION(BlueprintCallable, Category = "RPG|Skill")
-	void AddTotalSP(int32 Amount) { TotalSP += Amount; }
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "RPG|Skill")
+	void AddTotalSP(int32 Amount);
 
 	// 스킬 레벨에 따른 소모 SP 계산 (로아 방식: 고레벨일수록 많이 필요)
 	UFUNCTION(BlueprintPure, Category = "RPG|Skill")
 	int32 GetRequiredSPForLevel(int32 TargetLevel) const;
 
+	UPROPERTY(BlueprintAssignable, Category = "RPG|Skill")
+	FRPGSkillDataChangedSignature OnSkillDataChanged;
+
 protected:
+	UFUNCTION(Server, Reliable)
+	void ServerTryLevelUpSkill(FGameplayTag SkillTag);
+
+	UFUNCTION(Server, Reliable)
+	void ServerTryLevelDownSkill(FGameplayTag SkillTag);
+
+	UFUNCTION(Server, Reliable)
+	void ServerLevelUpToMax(FGameplayTag SkillTag, int32 TargetGoalLevel);
+
+	UFUNCTION(Server, Reliable)
+	void ServerResetSkillLevel(FGameplayTag SkillTag);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSelectTripod(
+		FGameplayTag SkillTag,
+		int32 TierIndex,
+		int32 OptionIndex);
+
+	UFUNCTION()
+	void OnRep_ReplicatedSkillData();
 	
 private:
+	bool ApplyLevelUpSkill(FGameplayTag SkillTag);
+	bool ApplyLevelDownSkill(FGameplayTag SkillTag);
+	void ApplyLevelUpToMax(FGameplayTag SkillTag, int32 TargetGoalLevel);
+	void ApplyResetSkillLevel(FGameplayTag SkillTag);
+	bool ApplySelectTripod(
+		FGameplayTag SkillTag,
+		int32 TierIndex,
+		int32 OptionIndex);
+	void PublishAuthoritativeSkillData(FGameplayTag SkillTag);
+	void TouchAuthoritativeRevision();
+	bool IsAuthorityOwner() const;
+
 	// 유저의 스킬 정보 맵 (태그 -> 데이터)
 	UPROPERTY()
 	TMap<FGameplayTag, FRPGSkillSaveData> SkillDataMap;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Skill")
+	UPROPERTY(ReplicatedUsing = OnRep_ReplicatedSkillData)
+	TArray<FRPGReplicatedSkillSaveEntry> ReplicatedSkillData;
+
+	UPROPERTY(ReplicatedUsing = OnRep_ReplicatedSkillData)
+	uint32 ReplicatedSkillDataRevision = 0;
+
+	UPROPERTY(EditDefaultsOnly, Replicated, Category = "RPG|Skill")
 	int32 TotalSP = 50; // 기본 지급 SP
 
+	UPROPERTY(Replicated)
 	int32 UsedSP = 0;
 };

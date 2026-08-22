@@ -16,7 +16,7 @@ public:
 		{
 			AActor* NewActor = World->SpawnActor<AActor>(ActorClass);
 			NewActor->SetActorHiddenInGame(true);
-			//NewActor->SetActorEnableCollision(false);
+			NewActor->SetActorEnableCollision(false);
 			ActorPool.Add(NewActor);
 		}
 	}
@@ -28,7 +28,7 @@ public:
 			if (Actor->IsHidden())
 			{
 				Actor->SetActorHiddenInGame(false);
-				//Actor->SetActorEnableCollision(true);
+				Actor->SetActorEnableCollision(true);
 				return Actor;
 			}
 		}
@@ -43,7 +43,7 @@ public:
 
 		Actor->SetActorHiddenInGame(true);
 		Actor->SetActorLocation(FVector::ZeroVector);
-		//Actor->SetActorEnableCollision(false);
+		Actor->SetActorEnableCollision(false);
 	}
 
 private:

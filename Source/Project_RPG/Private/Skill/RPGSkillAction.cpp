@@ -6,6 +6,7 @@
 #include "Skill/RPGSkillDefinition.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemComponent.h"
+#include "Combat/HitQuery/RPGHitQuerySubsystem.h"
 #include "Component/RPGAbilitySystemComponent.h"
 
 URPGSkillAction::URPGSkillAction()
@@ -13,10 +14,14 @@ URPGSkillAction::URPGSkillAction()
 	bIsActive = false;
 }
 
-void URPGSkillAction::Initialize(URPGGameplayAbility* InAbility, URPGSkillDefinition* InDefinition)
+void URPGSkillAction::Initialize(
+	URPGGameplayAbility* InAbility,
+	URPGSkillDefinition* InDefinition,
+	const FRPGSkillRuntimeSpec& InRuntimeSpec)
 {
 	OwnerAbility = InAbility;
 	SkillDefinition = InDefinition;
+	RuntimeSpec = InRuntimeSpec;
 }
 
 void URPGSkillAction::StartAction()
@@ -42,6 +47,47 @@ void URPGSkillAction::CancelAction()
 void URPGSkillAction::TickAction(float DeltaTime)
 {
 	// 필요시 구현
+}
+
+void URPGSkillAction::OnInputPressed()
+{
+}
+
+void URPGSkillAction::OnInputReleased()
+{
+}
+
+bool URPGSkillAction::ExecuteHitQuery(
+	const FTransform& QueryTransform,
+	const TArray<AActor*>& AlreadyHitActors,
+	TArray<FRPGHitQueryResult>& OutResults,
+	const bool bForceDebug) const
+{
+	OutResults.Reset();
+
+	ACharacter* SourceCharacter = GetCharacter();
+	UWorld* World = GetWorld();
+	URPGHitQuerySubsystem* HitQuerySubsystem =
+		World ? World->GetSubsystem<URPGHitQuerySubsystem>() : nullptr;
+	if (!SourceCharacter || !HitQuerySubsystem)
+	{
+		return false;
+	}
+
+	FRPGHitQueryContext Context;
+	Context.SourceActor = SourceCharacter;
+	Context.QueryTransform = QueryTransform;
+	Context.Profile = RuntimeSpec.TargetingProfile;
+	Context.Profile.bDrawDebug |= bForceDebug;
+	for (AActor* AlreadyHitActor : AlreadyHitActors)
+	{
+		if (AlreadyHitActor)
+		{
+			Context.AlreadyHitActors.Add(AlreadyHitActor);
+		}
+	}
+
+	return HitQuerySubsystem->ExecuteHitQuery(Context, OutResults);
 }
 
 ACharacter* URPGSkillAction::GetCharacter() const

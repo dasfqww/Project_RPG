@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Skill/RPGSkillRuntimeTypes.h"
 #include "UObject/NoExportTypes.h"
 #include "RPGSkillAction.generated.h"
 
@@ -10,6 +11,7 @@ class URPGGameplayAbility;
 class URPGSkillDefinition;
 class ACharacter;
 class URPGAbilitySystemComponent;
+struct FRPGHitQueryResult;
 
 /**
  * URPGSkillAction
@@ -26,7 +28,8 @@ public:
 	URPGSkillAction();
 
 	// 초기화 (Ability에서 실행 전 호출)
-	virtual void Initialize(URPGGameplayAbility* InAbility, URPGSkillDefinition* InDefinition);
+	virtual void Initialize(URPGGameplayAbility* InAbility, URPGSkillDefinition* InDefinition,
+		const FRPGSkillRuntimeSpec& InRuntimeSpec);
 
 	// 액션 시작 (진입점)
 	virtual void StartAction();
@@ -40,9 +43,23 @@ public:
 	// 매 프레임 업데이트 (필요한 경우)
 	virtual void TickAction(float DeltaTime);
 
+	virtual void OnInputPressed();
+	virtual void OnInputReleased();
+
 protected:
 	// 헬퍼 함수들
 	ACharacter* GetCharacter() const;
+	/**
+	 * Execute the activation-frozen targeting profile.
+	 * Damage and Gameplay Effect application remain the caller's responsibility.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "RPG|Skill|Targeting")
+	bool ExecuteHitQuery(
+		const FTransform& QueryTransform,
+		const TArray<AActor*>& AlreadyHitActors,
+		TArray<FRPGHitQueryResult>& OutResults,
+		bool bForceDebug = false) const;
+
 	URPGAbilitySystemComponent* GetAbilitySystemComponent() const;
 	UWorld* GetWorld() const override;
 
@@ -55,6 +72,10 @@ protected:
 
 	UPROPERTY(Transient)
 	TObjectPtr<URPGSkillDefinition> SkillDefinition;
+
+	/** Activation-local copy; actions never read mutable UI selection state. */
+	UPROPERTY(Transient)
+	FRPGSkillRuntimeSpec RuntimeSpec;
 
 	bool bIsActive;
 };

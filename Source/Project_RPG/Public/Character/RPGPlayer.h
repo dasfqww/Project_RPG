@@ -11,6 +11,7 @@ class UCameraComponent;
 class UDataAsset_InputConfig;
 struct FInputActionValue;
 class URPGInventoryComponent;
+class URPGSecurityValidationComponent;
 class UQuickSlotComponent;
 class UWidgetComponent;
 
@@ -78,6 +79,10 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat", meta = (AllowPrivateAccess = "true"))
 		TObjectPtr<UPlayerUIComponent> PlayerUIComponent;
 
+	/** Server-owned movement and combat anomaly monitor. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Security", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<URPGSecurityValidationComponent> SecurityValidationComponent;
+
 	/*UPROPERTY(VisibleAnywhere, Category = "Character | Inventory")
 		TObjectPtr<URPGInventoryComponent> PlayerInventory;*/
 		
@@ -99,6 +104,7 @@ public:
 #pragma endregion
 
 	FORCEINLINE UPlayerCombatComponent* GetPlayerCombatComponent() const { return PlayerCombatComponent; }
+	FORCEINLINE URPGSecurityValidationComponent* GetSecurityValidationComponent() const { return SecurityValidationComponent; }
 	FORCEINLINE USceneComponent* GetDamageFontComponent() const { return DamageFontComponent; }
 	//FORCEINLINE URPGInventoryComponent* GetRPGInventory() const { return PlayerInventory; }
 	FORCEINLINE UQuickSlotComponent* GetQuickSlotComponent() const { return QuickSlotComponent; }

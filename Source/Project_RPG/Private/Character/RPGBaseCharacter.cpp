@@ -3,9 +3,11 @@
 
 #include "Character/RPGBaseCharacter.h"
 #include "Component/RPGAbilitySystemComponent.h"
+#include "Component/RPGHealthComponent.h"
 #include "Attribute/RPGAttributeSet.h"
 #include "Component/Equipment/RPGEquipComponent.h"
 #include "Component/Equipment/RPGEquipmentComponent.h"
+#include "Component/Equipment/RPGAuthoritativeEquipmentComponent.h"
 #include "MotionWarpingComponent.h"
 #include "UI/DamageFontWidget.h"
 #include "Blueprint/UserWidget.h"
@@ -27,9 +29,15 @@ ARPGBaseCharacter::ARPGBaseCharacter()
 
 	RPGAttributeSet = CreateDefaultSubobject<URPGAttributeSet>(TEXT("RPGAttributeSet"));
 
+	RPGHealthComponent = CreateDefaultSubobject<URPGHealthComponent>(TEXT("RPGHealthComponent"));
+
 	EquipComponent = CreateDefaultSubobject<URPGEquipComponent>(TEXT("EquipComponent"));
 
 	EquipmentComponent = CreateDefaultSubobject<URPGEquipmentComponent>(TEXT("EquipmentComponent"));
+
+	AuthoritativeEquipmentComponent =
+		CreateDefaultSubobject<URPGAuthoritativeEquipmentComponent>(
+			TEXT("AuthoritativeEquipmentComponent"));
 
 	MotionWarpingComponent = CreateDefaultSubobject<UMotionWarpingComponent>(TEXT("MotionWarpingComponent"));
 

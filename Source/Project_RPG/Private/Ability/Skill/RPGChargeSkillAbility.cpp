@@ -26,36 +26,36 @@ void URPGChargeSkillAbility::ActivateAbility(const FGameplayAbilitySpecHandle Ha
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	// Ä³¸¯ÅÍ°¡ ÇÃ·¹ÀÌ¾îÀÎÁö È®ÀÎ (º¸Åë ACharacter Å¸ÀÔ)
+	// ìºë¦­í„°ê°€ í”Œë ˆì´ì–´ì¸ì§€ í™•ì¸ (ë³´í†µ ACharacter íƒ€ì…)
 	ARPGPlayer* PlayerCharacter = Cast<ARPGPlayer>(ActorInfo->OwnerActor);
 
 	if (PlayerCharacter)
 	{
-		// ÇÃ·¹ÀÌ¾î Ä³¸¯ÅÍÀÇ ¾À ÄÄÆ÷³ÍÆ® °¡Á®¿À±â (¿¹: NS_SceneComponent)
+		// í”Œë ˆì´ì–´ ìºë¦­í„°ì˜ ì”¬ ì»´í¬ë„ŒíŠ¸ ê°€ì ¸ì˜¤ê¸° (ì˜ˆ: NS_SceneComponent)
 		USceneComponent* PlayerSceneComponent = PlayerCharacter->GetNS_SceneComponent();
 
 		if (PlayerSceneComponent)
 		{
-			// Niagara ½Ã½ºÅÛÀÌ ÀÌ¹Ì »ı¼ºµÇ¾ú´ÂÁö È®ÀÎ
+			// Niagara ì‹œìŠ¤í…œì´ ì´ë¯¸ ìƒì„±ë˜ì—ˆëŠ”ì§€ í™•ì¸
 			if (!NiagaraComp || !NiagaraComp->IsActive())
 			{
-				// Niagara ½Ã½ºÅÛ »ı¼º
+				// Niagara ì‹œìŠ¤í…œ ìƒì„±
 				NiagaraComp = UNiagaraFunctionLibrary::SpawnSystemAttached(
-					ChargeNS,                       // »ç¿ëÇÏ°í ½ÍÀº Niagara ½Ã½ºÅÛ
-					PlayerSceneComponent,           // ºÎÂøÇÒ ¾À ÄÄÆ÷³ÍÆ®
-					NAME_None,                      // Attach Name (º¸ÅëÀº None)
-					FVector::ZeroVector,            // »ó´ëÀûÀÎ À§Ä¡
-					FRotator::ZeroRotator,          // »ó´ëÀûÀÎ È¸Àü
-					EAttachLocation::KeepRelativeOffset, // ºÎÂø À§Ä¡ À¯Áö
-					true,                           // È°¼ºÈ­
-					true                            // ½ºÆù ÈÄ ÀÚµ¿À¸·Î Á¦°Å
+					ChargeNS,                       // ì‚¬ìš©í•˜ê³  ì‹¶ì€ Niagara ì‹œìŠ¤í…œ
+					PlayerSceneComponent,           // ë¶€ì°©í•  ì”¬ ì»´í¬ë„ŒíŠ¸
+					NAME_None,                      // Attach Name (ë³´í†µì€ None)
+					FVector::ZeroVector,            // ìƒëŒ€ì ì¸ ìœ„ì¹˜
+					FRotator::ZeroRotator,          // ìƒëŒ€ì ì¸ íšŒì „
+					EAttachLocation::KeepRelativeOffset, // ë¶€ì°© ìœ„ì¹˜ ìœ ì§€
+					true,                           // í™œì„±í™”
+					true                            // ìŠ¤í° í›„ ìë™ìœ¼ë¡œ ì œê±°
 				);
 
-				// Niagara º¯¼ö ¼³Á¤
+				// Niagara ë³€ìˆ˜ ì„¤ì •
 				if (NiagaraComp)
 				{
-					NiagaraComp->SetNiagaraVariableBool(TEXT("AddDetail"), false);
-					NiagaraComp->SetNiagaraVariableBool(TEXT("Simple"), true);
+					NiagaraComp->SetVariableBool(FName(TEXT("AddDetail")), false);
+					NiagaraComp->SetVariableBool(FName(TEXT("Simple")), true);
 				}
 			}
 		}
@@ -96,28 +96,28 @@ void URPGChargeSkillAbility::EndAbility(const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
 	bool bReplicateEndAbility, bool bWasCancelled)
 {
-	// ÇÃ·¹ÀÌ¾î Ä³¸¯ÅÍ °¡Á®¿À±â
+	// í”Œë ˆì´ì–´ ìºë¦­í„° ê°€ì ¸ì˜¤ê¸°
 	ARPGBaseCharacter* PlayerCharacter = Cast<ARPGBaseCharacter>(ActorInfo->OwnerActor);
 
 	if (PlayerCharacter && PlayerCharacter->GetNS_SceneComponent())
 	{
-		// Niagara ÄÄÆ÷³ÍÆ®¸¦ ¾À ÄÄÆ÷³ÍÆ® ÀÚ½ÄÀ¸·Î °¡Á®¿À±â
+		// Niagara ì»´í¬ë„ŒíŠ¸ë¥¼ ì”¬ ì»´í¬ë„ŒíŠ¸ ìì‹ìœ¼ë¡œ ê°€ì ¸ì˜¤ê¸°
 		USceneComponent* SceneComp = PlayerCharacter->GetNS_SceneComponent();
 		if (SceneComp)
 		{
 			NiagaraComp = nullptr;
 
-			// ÀÚ½Ä ÄÄÆ÷³ÍÆ® Áß NiagaraComponent¸¦ Ã£¾Æ¼­ Ä³½ºÆÃ
+			// ìì‹ ì»´í¬ë„ŒíŠ¸ ì¤‘ NiagaraComponentë¥¼ ì°¾ì•„ì„œ ìºìŠ¤íŒ…
 			for (USceneComponent* Child : SceneComp->GetAttachChildren())
 			{
 				NiagaraComp = Cast<UNiagaraComponent>(Child);
 				if (NiagaraComp)
 				{
-					// ÇØ´ç Niagara ÄÄÆ÷³ÍÆ®°¡ ¹ß°ßµÇ¾úÀ¸¸é ºñÈ°¼ºÈ­
-					//NiagaraComp->Deactivate();  // ºñÈ°¼ºÈ­
+					// í•´ë‹¹ Niagara ì»´í¬ë„ŒíŠ¸ê°€ ë°œê²¬ë˜ì—ˆìœ¼ë©´ ë¹„í™œì„±í™”
+					//NiagaraComp->Deactivate();  // ë¹„í™œì„±í™”
 					//Debug::Print("niagara disabled..");
-					NiagaraComp->DestroyComponent();  // ¿ÏÀü Á¦°Å (¿øÇÒ °æ¿ì ÀÌ ¶óÀÎ »ç¿ë)
-					break; // ´õ ÀÌ»ó ÀÚ½Ä ÄÄÆ÷³ÍÆ®¸¦ Ã£Áö ¾ÊÀ½
+					NiagaraComp->DestroyComponent();  // ì™„ì „ ì œê±° (ì›í•  ê²½ìš° ì´ ë¼ì¸ ì‚¬ìš©)
+					break; // ë” ì´ìƒ ìì‹ ì»´í¬ë„ŒíŠ¸ë¥¼ ì°¾ì§€ ì•ŠìŒ
 				}
 			}
 		}
@@ -168,7 +168,7 @@ void URPGChargeSkillAbility::UpdateChargeTime()
 {
 	float Elapsed = (GetWorld()->GetTimeSeconds() - StartTime) * AttackSpeed;
 
-    ChargeTime = Elapsed; // Å¸ÀÌ¸Ó ÁÖ±â¿¡ ¸Â°Ô Áõ°¡
+    ChargeTime = Elapsed; // íƒ€ì´ë¨¸ ì£¼ê¸°ì— ë§ê²Œ ì¦ê°€
 
 	FString TimeText = FString::Printf(TEXT("%.1fs"), ChargeTime);
 
@@ -199,7 +199,7 @@ void URPGChargeSkillAbility::UpdateChargeTime()
 	
 	ShowProcessBarFilling(TimeText, ChargeTime, FinalChargeTimePerLevel);
 
-    // ÃÖ´ë Â÷Áö ´Ü°è¿¡¼­ ¿Ï·á Ã³¸®
+    // ìµœëŒ€ ì°¨ì§€ ë‹¨ê³„ì—ì„œ ì™„ë£Œ ì²˜ë¦¬
     if (CurrentChargeLevel == MaxChargeLevel)
     {
         OnChargeCompleted();
@@ -212,10 +212,10 @@ void URPGChargeSkillAbility::OnChargeCompleted()
 	Debug::Print("ChargeCompleted..");
 	GetWorld()->GetTimerManager().ClearTimer(ChargeTimerHandle);
 
-	// AbilityActorInfo¸¦ »ç¿ëÇÏ¿© ActorInfo °¡Á®¿À±â
+	// AbilityActorInfoë¥¼ ì‚¬ìš©í•˜ì—¬ ActorInfo ê°€ì ¸ì˜¤ê¸°
 	ProgessCompleted();
 
-	//TODO:¿À¹öÂ÷Áö »óÅÂ°¡ µÇ¾ú´Ù¸é ¸î ÃÊÈÄ °­Á¦·Î EndAbility¸¦ È£ÃâÇÒ°Í.
+	//TODO:ì˜¤ë²„ì°¨ì§€ ìƒíƒœê°€ ë˜ì—ˆë‹¤ë©´ ëª‡ ì´ˆí›„ ê°•ì œë¡œ EndAbilityë¥¼ í˜¸ì¶œí• ê²ƒ.
 
 	float OverchargeDuration = 2.0f;
 	GetWorld()->GetTimerManager().SetTimer(ChargeTimerHandle,
@@ -253,15 +253,15 @@ void URPGChargeSkillAbility::OnOverchargeExpired()
 
 void URPGChargeSkillAbility::HandleChargeLevelChanged(int32 Chargelevel)
 {
-	// TMap¿¡¼­ ÇØ´ç Â÷Áö ´Ü°èÀÇ µ¥ÀÌÅÍ¸¦ °¡Á®¿É´Ï´Ù.
+	// TMapì—ì„œ í•´ë‹¹ ì°¨ì§€ ë‹¨ê³„ì˜ ë°ì´í„°ë¥¼ ê°€ì ¸ì˜µë‹ˆë‹¤.
 	if (ChargeLevelSettings.Contains(Chargelevel))
 	{
 		FChargeLevelNiagaraOptionData& LevelData = ChargeLevelSettings[Chargelevel];
 
 		if (NiagaraComp)
 		{
-			NiagaraComp->SetNiagaraVariableBool(TEXT("AddDetail"), LevelData.bAddDetail);
-			NiagaraComp->SetNiagaraVariableBool(TEXT("Simple"), LevelData.bSimple);
+			NiagaraComp->SetVariableBool(FName(TEXT("AddDetail")), LevelData.bAddDetail);
+			NiagaraComp->SetVariableBool(FName(TEXT("Simple")), LevelData.bSimple);
 		}
 	}
 }

@@ -8,9 +8,12 @@
 #include "AttributeSet.h"
 #include "Engine/DataTable.h"
 #include "Type/RPGStructTypes.h"
+#include "Skill/RPGSkillRuntimeTypes.h"
 #include "RPGSkillDefinition.generated.h"
 
 class URPGSkillAction;
+class URPGSkillExecutionPolicy;
+class URPGSkillTargetingPolicy;
 class UAnimMontage;
 class UNiagaraSystem;
 
@@ -33,6 +36,20 @@ struct FSkillModeOverride
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	TSubclassOf<URPGSkillAction> NewActionClass = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TSubclassOf<URPGSkillExecutionPolicy> NewExecutionPolicyClass = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+		meta = (BaseStruct = "/Script/Project_RPG.RPGSkillExecutionConfig"))
+	FInstancedStruct NewExecutionConfig;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TSubclassOf<URPGSkillTargetingPolicy> NewTargetingPolicyClass = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+		meta = (BaseStruct = "/Script/Project_RPG.RPGSkillTargetingConfig"))
+	FInstancedStruct NewTargetingConfig;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float DamageMultiplier = 1.0f;
@@ -62,6 +79,14 @@ class PROJECT_RPG_API URPGSkillDefinition : public UDataAsset
 	GENERATED_BODY()
 	
 public:
+	URPGSkillDefinition(
+		const FObjectInitializer& ObjectInitializer =
+			FObjectInitializer::Get());
+
+	/** Build the immutable configuration consumed during one activation. */
+	void BuildRuntimeSpec(AActor* InActor, const FRPGSkillSaveData& SaveData,
+		FRPGSkillRuntimeSpec& OutSpec) const;
+
 	// 현재 캐릭터 상태와 선택된 트라이포드에 맞는 데이터를 반환
 	void GetSkillDataForContext(AActor* InActor, const TArray<int32>& SelectedTripods, UTexture2D*& OutIcon, UAnimMontage*& OutMontage, TSubclassOf<URPGSkillAction>& OutActionClass) const;
 
@@ -88,6 +113,22 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Action")
 	TSubclassOf<URPGSkillAction> DefaultActionClass;
 
+	/** New execution path. Legacy ActionClass remains available during asset migration. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Execution")
+	TSubclassOf<URPGSkillExecutionPolicy> DefaultExecutionPolicyClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Execution",
+		meta = (BaseStruct = "/Script/Project_RPG.RPGSkillExecutionConfig"))
+	FInstancedStruct DefaultExecutionConfig;
+
+	/** Third-person aim selection, intentionally independent from input timing. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Targeting")
+	TSubclassOf<URPGSkillTargetingPolicy> DefaultTargetingPolicyClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Targeting",
+		meta = (BaseStruct = "/Script/Project_RPG.RPGSkillTargetingConfig"))
+	FInstancedStruct DefaultTargetingConfig;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<UAnimMontage> SkillMontage;
 
@@ -95,7 +136,16 @@ public:
 	TObjectPtr<UNiagaraSystem> SkillVFX;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooldown")
-	float BaseCooldown = 5.0f;
+	float BaseCooldown = 1.0f;
+
+	/** Spatial targeting shared with AI and boss pattern execution. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Targeting")
+	FRPGHitQueryProfile TargetingProfile;
+
+	/** Server-only limits consumed by safe BP hit, damage, and movement nodes. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Security",
+		meta = (ShowOnlyInnerProperties))
+	FRPGSkillSecurityProfile SecurityProfile;
 
 	// ---------------------------------------------------
 	// 3. 변이 및 트라이포드
@@ -109,4 +159,8 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Config")
 	int32 MaxSkillLevel = 12;
+
+protected:
+	/** Derived legacy definitions can translate their authored fields into the new runtime shape. */
+	virtual void ApplyDefinitionExecutionDefaults(FRPGSkillRuntimeSpec& OutSpec) const;
 };
