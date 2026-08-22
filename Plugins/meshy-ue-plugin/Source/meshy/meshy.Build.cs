@@ -14,36 +14,6 @@ public class meshy : ModuleRules
 		// 使用 ENGINE_MAJOR_VERSION 和 ENGINE_MINOR_VERSION 进行条件编译
 		// 这些宏在引擎中已经定义，可以直接在 C++ 代码中使用
 		
-		PublicIncludePaths.AddRange(
-			new string[] {
-				"Runtime/Core/Public",
-				"Runtime/CoreUObject/Public",
-				"Runtime/Engine/Classes",
-				"Runtime/Slate/Public",
-				"Runtime/SlateCore/Public",
-				"Runtime/AssetRegistry/Public",
-				"Runtime/AssetTools/Public",
-				"Runtime/Json/Public",
-				"Runtime/JsonUtilities/Public",
-				"Runtime/Networking/Public",
-				"Runtime/Sockets/Public"
-			}
-		);
-				
-		
-		PrivateIncludePaths.AddRange(
-			new string[] {
-				"Editor/UnrealEd/Public",
-				"Editor/UnrealEd/Private",
-				"Editor/EditorStyle/Public",
-				"Editor/LevelEditor/Public",
-				"Editor/LevelEditor/Private",
-				"Editor/ToolMenus/Public",
-				"Editor/ToolMenus/Private"
-			}
-		);
-			
-		
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
@@ -82,14 +52,6 @@ public class meshy : ModuleRules
 		);
 
 		// 添加插件依赖
-		PrivateDependencyModuleNames.AddRange(
-			new string[]
-			{
-				"UnrealEd",
-				"AssetTools"
-			}
-		);
-
 		// 配置minizip支持 - 跨平台方案
 		ConfigureMinizipSupport(Target);
 	}
