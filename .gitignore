@@ -80,10 +80,6 @@ DerivedDataCache/*
 # Local dungeon allocator runtime state and server logs
 Backend/Tools/logs/
 
-# Locally generated IDE workspaces and UnrealAgent runtime state
+# Locally generated IDE workspaces
 *.slnx
 *.DotSettings.user
-.unrealagent/settings.local.json
-
-# UnrealAgent server publish output
-Plugins/UnrealAgent/UnrealAgent.Server/Build/

@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="UnrealAgent.Backend/UnrealAgent.Backend.csproj" />
-  <Project Path="UnrealAgent.Frontend/UnrealAgent.Frontend.csproj" />
-</Solution>
