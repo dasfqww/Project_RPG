@@ -181,9 +181,22 @@ POSTGRES_CONNECTION_STRING
 `POSTGRES_CONNECTION_STRING`이 있으면 PostgreSQL 저장소로 전환되며 시작 시
 `Database/schema.sql`을 적용한다. 연결 문자열과 비밀키는 저장소에 커밋하지 않는다.
 
+## PostgreSQL 통합 검증
+
+개발용 PostgreSQL을 실행하고 전체 API·정산 원자성·백엔드 재시작 영속성을 검증한다.
+
+```powershell
+docker compose -f Backend/compose.postgres.yml up -d --wait
+Backend/postgres-integration-test.ps1
+```
+
+테스트는 실행마다 별도의 Steam ID, 서버 ID, 재화 코드를 사용하므로 같은 개발 DB에서
+반복 실행할 수 있다. 세부 옵션과 데이터 제거 방법은
+[`POSTGRES_INTEGRATION.md`](POSTGRES_INTEGRATION.md)를 참고한다.
+
 ## 운영 전 남은 작업
 
 - 다중 호스트 allocator 조정, graceful drain, 서버 시작 health timeout
-- 실제 PostgreSQL에 대한 통합/부하 테스트
+- CI 및 운영 사양 PostgreSQL에 대한 통합/부하 테스트
 - TLS, secret manager, rate limit, 관측성
 - 재접속 유예와 전용 서버 장애 복구 정책

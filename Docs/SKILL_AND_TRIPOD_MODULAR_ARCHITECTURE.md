@@ -15,7 +15,7 @@
 
 ## 2. 현재 확인된 문제
 
-- `RPGGladiatorSkillAbilities.cpp` 하나가 여러 직업 스킬의 수명주기, 타기팅, 피해, 상태이상, 연출을 함께 소유한다.
+- `RPGPlayerSkillAbilities.cpp` 하나가 여러 플레이어 직업 스킬의 수명주기, 타기팅, 피해, 상태이상, 연출을 함께 소유한다.
 - `URPGSkillDefinition`, `URPGSkillAction`, 트라이포드 UI가 존재하지만 D1 이식 Ability와 연결되지 않았다.
 - `URPGSkillConfig`와 `URPGSkillDefinition`이 비슷한 데이터를 중복 정의한다.
 - `FRPGSkillModifier`, `TripodTag`, Montage/VFX Override 데이터가 실행 경로에서 실제로 소비되지 않았다.
@@ -112,7 +112,7 @@ GameplayAbility Container (수명주기/예측/커밋)
 - [ ] Whirlwind Slash를 첫 파일럿으로 RuntimeSpec/Feature 구조에 연결
 - [ ] Shield Bash와 Ground Breaker의 범위 판정 모듈화
 - [ ] Projectile/Targeting/AOE 스킬을 공통 모듈로 전환
-- [ ] `RPGGladiatorSkillAbilities.cpp`를 스킬별 얇은 조정 클래스로 분해
+- [ ] `RPGPlayerSkillAbilities.cpp`를 스킬별 얇은 조정 클래스로 분해
 
 ### 단계 E — 검증 자동화
 

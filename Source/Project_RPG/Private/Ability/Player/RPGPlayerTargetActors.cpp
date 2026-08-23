@@ -1,10 +1,10 @@
-#include "Ability/Gladiator/RPGGladiatorTargetActors.h"
+#include "Ability/Player/RPGPlayerTargetActors.h"
 
 #include "Components/MeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "GameFramework/Character.h"
 
-#include UE_INLINE_GENERATED_CPP_BY_NAME(RPGGladiatorTargetActors)
+#include UE_INLINE_GENERATED_CPP_BY_NAME(RPGPlayerTargetActors)
 
 ARPGGameplayAbilityTargetActor_LineTraceHighlight::ARPGGameplayAbilityTargetActor_LineTraceHighlight(
 	const FObjectInitializer& ObjectInitializer)
@@ -20,7 +20,7 @@ void ARPGGameplayAbilityTargetActor_LineTraceHighlight::EndPlay(const EEndPlayRe
 
 FHitResult ARPGGameplayAbilityTargetActor_LineTraceHighlight::PerformTrace(AActor* InSourceActor)
 {
-	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(RPGGladiatorLineTraceHighlight), false);
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(RPGPlayerLineTraceHighlight), false);
 	QueryParams.bReturnPhysicalMaterial = true;
 	QueryParams.AddIgnoredActor(InSourceActor);
 

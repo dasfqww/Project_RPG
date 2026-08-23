@@ -83,7 +83,7 @@ Content Browser의 `Validate Assets`를 실행하면 유효하지 않은 보안 
 
 충돌과 피해 적용은 서버 복제본만 담당한다. 클라이언트 복제본은 피격 연출만 표시하며, `OnHit`와 `OnBeginOverlap` 모두 같은 서버 검증 경로를 사용한다. 한 투사체는 첫 유효 충돌만 처리한다.
 
-Gladiator 계열은 다음 위치도 함께 설정한다.
+Player 호환 계열은 다음 위치도 함께 설정한다.
 
 - 근접 Ability의 `Maximum Server Damage Per Hit`
 - Projectile Element의 `Security Profile`

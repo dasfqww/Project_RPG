@@ -1,6 +1,6 @@
-#include "Ability/Gladiator/RPGGameplayAbility_Weapon_Melee.h"
+#include "Ability/Player/RPGGameplayAbility_Weapon_Melee.h"
 
-#include "Ability/Gladiator/RPGGladiatorEffectActors.h"
+#include "Ability/Combat/RPGCombatEffectActors.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
@@ -152,7 +152,7 @@ bool URPGGameplayAbility_Weapon_Melee::TryProcessHitResult(
 	SecurityProfile.MaximumServerHitDistance = MaximumServerHitDistance;
 	SecurityProfile.HitLocationTolerance = ServerHitLocationTolerance;
 	SecurityProfile.MaximumDamagePerHit = MaximumServerDamagePerHit;
-	if (!RPGGladiatorEffectActors::ApplyDamage(
+	if (!RPGCombatEffectActors::ApplyDamage(
 		SourceActor,
 		TargetActor,
 		ContextHitResult,

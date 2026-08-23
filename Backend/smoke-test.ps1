@@ -1,6 +1,7 @@
 param(
     [string]$BaseUrl = 'http://127.0.0.1:3000',
-    [string]$AdminToken = $env:PROJECT_RPG_BACKEND_ADMIN_TOKEN
+    [string]$AdminToken = $env:PROJECT_RPG_BACKEND_ADMIN_TOKEN,
+    [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,6 +9,13 @@ $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($AdminToken)) {
     throw 'PROJECT_RPG_BACKEND_ADMIN_TOKEN or -AdminToken is required.'
 }
+if ($RunId -notmatch '^[a-fA-F0-9]{8,24}$') {
+    throw 'RunId must contain 8 to 24 hexadecimal characters.'
+}
+
+$RunId = $RunId.ToLowerInvariant()
+$runNumber = [Convert]::ToUInt32($RunId.Substring(0, 8), 16)
+$steamIdBase = [uint64]76561190000000000 + ([uint64]$runNumber * 10)
 
 function Invoke-ExpectedStatus {
     param(
@@ -46,7 +54,7 @@ function Invoke-ExpectedStatus {
 function New-SmokePlayer {
     param([int]$Index)
 
-    $steamId = "7656119800000000$Index"
+    $steamId = ($steamIdBase + [uint64]$Index).ToString()
     $authBody = @{ ticket = "dev:$steamId" } | ConvertTo-Json -Compress
     $auth = Invoke-RestMethod `
         -Method Post `
@@ -73,11 +81,11 @@ function New-SmokePlayer {
 
 $players = @(1..5 | ForEach-Object { New-SmokePlayer -Index $_ })
 $leader = $players[0]
-$serverId = 'smoke-server-a'
-$wrongServerId = 'smoke-server-b'
+$serverId = "smoke-server-a-$RunId"
+$wrongServerId = "smoke-server-b-$RunId"
 $serverAddress = '127.0.0.1:7777'
 $adminHeaders = @{ Authorization = "Bearer $AdminToken" }
-$currencyCode = 'Gold.Smoke'
+$currencyCode = "Gold.Smoke.$RunId"
 
 $currencyDefinitionBody = @{
     currencyCode = $currencyCode
@@ -576,7 +584,7 @@ $rollbackSession = Invoke-RestMethod `
     -Headers $rollbackPlayer.Headers `
     -ContentType 'application/json' `
     -Body $rollbackSessionBody
-$rollbackServerId = 'smoke-rollback-server'
+$rollbackServerId = "smoke-rollback-server-$RunId"
 $rollbackActivateBody = @{
     serverId = $rollbackServerId
     serverAddress = '127.0.0.1:7781'
@@ -744,7 +752,7 @@ if ($resumedNextSession.dungeonSessionId -ne $nextSession.dungeonSessionId) {
     throw 'Active dungeon lookup did not restore the replacement session.'
 }
 
-$claimServerId = 'smoke-claim-server'
+$claimServerId = "smoke-claim-server-$RunId"
 $claimServerAddress = '127.0.0.1:7780'
 $claimBody = @{
     serverId = $claimServerId
@@ -781,6 +789,7 @@ if ([int]$emptyClaimResponse.StatusCode -ne 204) {
 }
 
 [pscustomobject]@{
+    RunId = $RunId
     SteamId = $leader.SteamId
     CharacterId = $leader.Character.characterId
     DungeonSessionId = $dungeonSession.dungeonSessionId

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Abilities/GameplayAbilityTargetActor_Trace.h"
-#include "RPGGladiatorTargetActors.generated.h"
+#include "RPGPlayerTargetActors.generated.h"
 
 /** D1-compatible line trace target actor that highlights the actor under the reticle. */
 UCLASS()

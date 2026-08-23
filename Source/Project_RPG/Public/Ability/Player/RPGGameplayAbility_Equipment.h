@@ -14,22 +14,22 @@ struct PROJECT_RPG_API FRPGGladiatorEquipmentInfo
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, Category = "RPG|Gladiator|Equipment")
+	UPROPERTY(EditAnywhere, Category = "RPG|Player|Equipment")
 	ERPGGladiatorEquipmentType EquipmentType = ERPGGladiatorEquipmentType::Count;
 
-	UPROPERTY(EditAnywhere, Category = "RPG|Gladiator|Equipment",
+	UPROPERTY(EditAnywhere, Category = "RPG|Player|Equipment",
 		meta = (EditCondition = "EquipmentType == ERPGGladiatorEquipmentType::Armor", EditConditionHides))
 	ERPGGladiatorArmorType RequiredArmorType = ERPGGladiatorArmorType::Count;
 
-	UPROPERTY(EditAnywhere, Category = "RPG|Gladiator|Equipment",
+	UPROPERTY(EditAnywhere, Category = "RPG|Player|Equipment",
 		meta = (EditCondition = "EquipmentType == ERPGGladiatorEquipmentType::Weapon", EditConditionHides))
 	EWeaponHandType WeaponHandType = EWeaponHandType::Count;
 
-	UPROPERTY(EditAnywhere, Category = "RPG|Gladiator|Equipment",
+	UPROPERTY(EditAnywhere, Category = "RPG|Player|Equipment",
 		meta = (EditCondition = "EquipmentType == ERPGGladiatorEquipmentType::Weapon", EditConditionHides))
 	ERPGGladiatorWeaponType RequiredWeaponType = ERPGGladiatorWeaponType::Count;
 
-	UPROPERTY(EditAnywhere, Category = "RPG|Gladiator|Equipment",
+	UPROPERTY(EditAnywhere, Category = "RPG|Player|Equipment",
 		meta = (EditCondition = "EquipmentType == ERPGGladiatorEquipmentType::Utility", EditConditionHides))
 	ERPGGladiatorUtilityType RequiredUtilityType = ERPGGladiatorUtilityType::Count;
 
@@ -53,19 +53,19 @@ class PROJECT_RPG_API URPGGameplayAbility_Equipment : public URPGGameplayAbility
 public:
 	URPGGameplayAbility_Equipment(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
-	UFUNCTION(BlueprintPure, Category = "RPG|Gladiator|Equipment")
+	UFUNCTION(BlueprintPure, Category = "RPG|Player|Equipment")
 	AActor* GetFirstEquipmentActor() const;
 
-	UFUNCTION(BlueprintPure, Category = "RPG|Gladiator|Equipment")
+	UFUNCTION(BlueprintPure, Category = "RPG|Player|Equipment")
 	URPGItemBase* GetEquipmentItemInstance(const AActor* InEquipmentActor) const;
 
-	UFUNCTION(BlueprintPure, Category = "RPG|Gladiator|Equipment")
+	UFUNCTION(BlueprintPure, Category = "RPG|Player|Equipment")
 	int32 GetEquipmentStatValue(FGameplayTag InStatTag, const AActor* InEquipmentActor) const;
 
-	UFUNCTION(BlueprintPure, Category = "RPG|Gladiator|Equipment")
+	UFUNCTION(BlueprintPure, Category = "RPG|Player|Equipment")
 	float GetSnapshottedAttackRate() const { return SnapshottedAttackRate; }
 
-	UFUNCTION(BlueprintPure, Category = "RPG|Gladiator|Equipment")
+	UFUNCTION(BlueprintPure, Category = "RPG|Player|Equipment")
 	bool UsedEquipmentCompatibilityFallback() const { return bUsedCompatibilityFallback; }
 
 protected:
@@ -80,14 +80,14 @@ protected:
 		const FGameplayTagContainer* TargetTags,
 		FGameplayTagContainer* OptionalRelevantTags) const override;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Equipment")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Equipment")
 	TArray<FRPGGladiatorEquipmentInfo> EquipmentInfos;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Equipment", meta = (ClampMin = "0.0"))
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Equipment", meta = (ClampMin = "0.0"))
 	float DefaultAttackRate = 1.0f;
 
 	/** Remove this fallback after class default equipment actors and item metadata are fully migrated. */
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Equipment|Compatibility")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Equipment|Compatibility")
 	bool bAllowIncompleteEquipmentCompatibility = true;
 
 private:

@@ -14,6 +14,7 @@ class URPGItemBase;
 class ARPGPlayer;
 class URPGContentClearPanel;
 class URPGDungeonRewardDefinition;
+class FDataValidationContext;
 
 UENUM(BlueprintType)
 enum class EGameModeType : uint8
@@ -44,6 +45,11 @@ public:
 		const FUniqueNetIdRepl& UniqueId,
 		const FString& Options,
 		const FString& Portal = TEXT("")) override;
+
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(
+		FDataValidationContext& Context) const override;
+#endif
 
 	UFUNCTION(BlueprintCallable)
 	void SetGameDifficulty(ERPGGameDifficulty InGameDifficulty);
@@ -100,6 +106,7 @@ protected:
 
 	void SendDungeonSessionHeartbeat();
 	void SendPendingDungeonRewardSettlement();
+	void FailDungeonForInvalidReward(const FString& Reason);
 
 	/** Enforced only by a true Dedicated Server process. */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Online|Admission")

@@ -142,6 +142,25 @@ URPGItemConsumableDefinitionFragment::ValidateDefinition(
 			"A Consumable fragment must specify a Gameplay Effect."));
 		Result = EDataValidationResult::Invalid;
 	}
+	for (const TPair<FGameplayTag, float>& Pair : SetByCallerMagnitudes)
+	{
+		if (!Pair.Key.IsValid())
+		{
+			Context.AddError(NSLOCTEXT(
+				"RPGItemDefinition",
+				"InvalidConsumableSetByCallerTag",
+				"Consumable SetByCaller magnitude tags must be valid."));
+			Result = EDataValidationResult::Invalid;
+		}
+		if (!FMath::IsFinite(Pair.Value))
+		{
+			Context.AddError(NSLOCTEXT(
+				"RPGItemDefinition",
+				"InvalidConsumableSetByCallerMagnitude",
+				"Consumable SetByCaller magnitudes must be finite."));
+			Result = EDataValidationResult::Invalid;
+		}
+	}
 	if (QuantityPerUse < 1)
 	{
 		Context.AddError(NSLOCTEXT("RPGItemDefinition", "InvalidQuantityPerUse",

@@ -663,6 +663,226 @@ URPGSkillExecutionPolicy_Holding::GetHoldingConfig() const
 		.GetPtr<FRPGSkillHoldingExecutionConfig>();
 }
 
+bool URPGSkillExecutionPolicy_Casting::StartExecution()
+{
+	const FRPGSkillCastingExecutionConfig* Config = GetCastingConfig();
+	UWorld* World = GetWorld();
+	FText ValidationError;
+	if (!Super::StartExecution() ||
+		!ValidateExecutionConfig(
+			GetRuntimeSpec().ExecutionConfig,
+			ValidationError) ||
+		!Config || !World || !GetRuntimeSpec().Montage)
+	{
+		return false;
+	}
+
+	CastingStartTime = World->GetTimeSeconds();
+	bResolved = false;
+	bFinishAsCancelled = false;
+
+	GetHost()->ShowSkillProgress();
+	GetHost()->StartSkillPersistentVFX();
+	if (!GetHost()->PlaySkillMontage(Config->CastingSection))
+	{
+		CleanupCasting();
+		return false;
+	}
+
+	World->GetTimerManager().SetTimer(
+		CastingUpdateTimerHandle,
+		this,
+		&ThisClass::UpdateCasting,
+		1.0f / 30.0f,
+		true);
+	UpdateCasting();
+	return true;
+}
+
+bool URPGSkillExecutionPolicy_Casting::ValidateExecutionConfig(
+	const FInstancedStruct& Config,
+	FText& OutError) const
+{
+	const FRPGSkillCastingExecutionConfig* CastingConfig =
+		Config.GetPtr<FRPGSkillCastingExecutionConfig>();
+	if (!CastingConfig)
+	{
+		OutError = FText::FromString(
+			TEXT("Casting policy requires a Casting execution config."));
+		return false;
+	}
+
+	const bool bValid =
+		FMath::IsFinite(CastingConfig->CastDuration) &&
+		CastingConfig->CastDuration > 0.0f &&
+		CastingConfig->CastDuration <= 60.0f &&
+		!CastingConfig->CompleteSection.IsNone();
+	if (!bValid)
+	{
+		OutError = FText::FromString(
+			TEXT("Casting duration or completion section is invalid."));
+		return false;
+	}
+
+	OutError = FText::GetEmpty();
+	return true;
+}
+
+bool URPGSkillExecutionPolicy_Casting::ValidateRuntimeSpec(
+	FText& OutError) const
+{
+	if (!Super::ValidateRuntimeSpec(OutError))
+	{
+		return false;
+	}
+	const FRPGSkillCastingExecutionConfig* Config = GetCastingConfig();
+	if (!Config || !GetRuntimeSpec().Montage ||
+		!HasMontageSection(GetRuntimeSpec().Montage, Config->CastingSection) ||
+		!HasMontageSection(GetRuntimeSpec().Montage, Config->CompleteSection) ||
+		!HasMontageSection(GetRuntimeSpec().Montage, Config->CancelSection))
+	{
+		return FailRuntimeValidation(
+			OutError,
+			TEXT("Casting policy references a missing montage or section."));
+	}
+	OutError = FText::GetEmpty();
+	return true;
+}
+
+void URPGSkillExecutionPolicy_Casting::OnInputReleased()
+{
+	const FRPGSkillCastingExecutionConfig* Config = GetCastingConfig();
+	if (!bResolved && Config && Config->bCancelOnInputRelease)
+	{
+		CancelCasting();
+	}
+}
+
+void URPGSkillExecutionPolicy_Casting::OnMontageCompleted()
+{
+	CleanupCasting();
+	if (GetHost())
+	{
+		GetHost()->FinishSkillExecution(
+			!bResolved || bFinishAsCancelled);
+	}
+}
+
+void URPGSkillExecutionPolicy_Casting::OnMontageInterrupted()
+{
+	CleanupCasting();
+	Super::OnMontageInterrupted();
+}
+
+void URPGSkillExecutionPolicy_Casting::EndExecution()
+{
+	CleanupCasting();
+	Super::EndExecution();
+}
+
+void URPGSkillExecutionPolicy_Casting::CancelExecution()
+{
+	CleanupCasting();
+	Super::CancelExecution();
+}
+
+void URPGSkillExecutionPolicy_Casting::UpdateCasting()
+{
+	UWorld* World = GetWorld();
+	if (!World || bResolved)
+	{
+		return;
+	}
+
+	const float CastDuration = GetScaledCastDuration();
+	const float Elapsed =
+		FMath::Max(0.0f, World->GetTimeSeconds() - CastingStartTime);
+	GetHost()->UpdateSkillProgress(
+		FMath::Min(Elapsed, CastDuration),
+		CastDuration);
+	if (Elapsed >= CastDuration)
+	{
+		CompleteCasting();
+	}
+}
+
+void URPGSkillExecutionPolicy_Casting::CompleteCasting()
+{
+	if (bResolved || !GetHost())
+	{
+		return;
+	}
+
+	bResolved = true;
+	bFinishAsCancelled = false;
+	const FRPGSkillCastingExecutionConfig* Config = GetCastingConfig();
+	GetHost()->NotifySkillProgressCompleted();
+	CleanupCasting();
+	if (!Config ||
+		!GetHost()->JumpToSkillMontageSection(Config->CompleteSection))
+	{
+		GetHost()->FinishSkillExecution(true);
+	}
+}
+
+void URPGSkillExecutionPolicy_Casting::CancelCasting()
+{
+	if (bResolved || !GetHost())
+	{
+		return;
+	}
+
+	bResolved = true;
+	bFinishAsCancelled = true;
+	const FRPGSkillCastingExecutionConfig* Config = GetCastingConfig();
+	CleanupCasting();
+	if (!Config || Config->CancelSection.IsNone() ||
+		!GetHost()->JumpToSkillMontageSection(Config->CancelSection))
+	{
+		GetHost()->FinishSkillExecution(true);
+	}
+}
+
+void URPGSkillExecutionPolicy_Casting::CleanupCasting()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(CastingUpdateTimerHandle);
+	}
+	if (GetHost())
+	{
+		GetHost()->StopSkillPersistentVFX();
+		GetHost()->HideSkillProgress();
+	}
+}
+
+float URPGSkillExecutionPolicy_Casting::GetScaledCastDuration() const
+{
+	const FRPGSkillCastingExecutionConfig* Config = GetCastingConfig();
+	if (!Config)
+	{
+		return 0.01f;
+	}
+
+	static const FGameplayTag CastTimeStatTag =
+		FGameplayTag::RequestGameplayTag(
+			TEXT("Shared.Stat.CastTime"),
+			false);
+	const float AuthoredScalar =
+		GetRuntimeSpec().GetStatScalar(CastTimeStatTag);
+	const float SafeScalar = FMath::IsFinite(AuthoredScalar)
+		? FMath::Max(AuthoredScalar, 0.01f)
+		: 1.0f;
+	return FMath::Max(0.01f, Config->CastDuration * SafeScalar);
+}
+
+const FRPGSkillCastingExecutionConfig*
+URPGSkillExecutionPolicy_Casting::GetCastingConfig() const
+{
+	return GetRuntimeSpec().ExecutionConfig
+		.GetPtr<FRPGSkillCastingExecutionConfig>();
+}
+
 bool URPGSkillExecutionPolicy_Combo::StartExecution()
 {
 	const FRPGSkillComboExecutionConfig* Config = GetComboConfig();
@@ -793,4 +1013,212 @@ const FRPGSkillComboExecutionConfig*
 URPGSkillExecutionPolicy_Combo::GetComboConfig() const
 {
 	return GetRuntimeSpec().ExecutionConfig.GetPtr<FRPGSkillComboExecutionConfig>();
+}
+
+bool URPGSkillExecutionPolicy_Chain::StartExecution()
+{
+	const FRPGSkillChainExecutionConfig* Config = GetChainConfig();
+	FText ValidationError;
+	if (!Super::StartExecution() ||
+		!ValidateExecutionConfig(
+			GetRuntimeSpec().ExecutionConfig,
+			ValidationError) ||
+		!Config || !GetRuntimeSpec().Montage ||
+		!GetExecutionEventTag().IsValid())
+	{
+		return false;
+	}
+
+	CurrentChainIndex = 0;
+	bLinkWindowOpen = false;
+	bInputBuffered = false;
+	return GetHost()->PlaySkillMontage(Config->ChainSections[0]);
+}
+
+bool URPGSkillExecutionPolicy_Chain::ValidateExecutionConfig(
+	const FInstancedStruct& Config,
+	FText& OutError) const
+{
+	const FRPGSkillChainExecutionConfig* ChainConfig =
+		Config.GetPtr<FRPGSkillChainExecutionConfig>();
+	if (!ChainConfig || ChainConfig->ChainSections.Num() < 2)
+	{
+		OutError = FText::FromString(
+			TEXT("Chain policy requires at least two chain sections."));
+		return false;
+	}
+
+	if (!FMath::IsFinite(ChainConfig->LinkWindowDuration) ||
+		ChainConfig->LinkWindowDuration < 0.05f ||
+		ChainConfig->LinkWindowDuration > 5.0f)
+	{
+		OutError = FText::FromString(
+			TEXT("Chain link-window duration must be between 0.05 and 5 seconds."));
+		return false;
+	}
+
+	for (const FName Section : ChainConfig->ChainSections)
+	{
+		if (Section.IsNone())
+		{
+			OutError = FText::FromString(
+				TEXT("Chain sections cannot contain None."));
+			return false;
+		}
+	}
+
+	OutError = FText::GetEmpty();
+	return true;
+}
+
+bool URPGSkillExecutionPolicy_Chain::ValidateRuntimeSpec(
+	FText& OutError) const
+{
+	if (!Super::ValidateRuntimeSpec(OutError))
+	{
+		return false;
+	}
+	const FRPGSkillChainExecutionConfig* Config = GetChainConfig();
+	if (!Config || !GetRuntimeSpec().Montage ||
+		!GetExecutionEventTag().IsValid())
+	{
+		return FailRuntimeValidation(
+			OutError,
+			TEXT("Chain policy requires a montage and a valid window event tag."));
+	}
+	for (const FName Section : Config->ChainSections)
+	{
+		if (!HasMontageSection(GetRuntimeSpec().Montage, Section))
+		{
+			return FailRuntimeValidation(
+				OutError,
+				TEXT("Chain policy references a missing montage section."));
+		}
+	}
+	OutError = FText::GetEmpty();
+	return true;
+}
+
+void URPGSkillExecutionPolicy_Chain::OnInputPressed()
+{
+	const FRPGSkillChainExecutionConfig* Config = GetChainConfig();
+	if (!Config ||
+		!Config->ChainSections.IsValidIndex(CurrentChainIndex + 1))
+	{
+		return;
+	}
+
+	if (bLinkWindowOpen)
+	{
+		AdvanceChain();
+	}
+	else if (Config->bAllowEarlyPressBuffer)
+	{
+		bInputBuffered = true;
+	}
+}
+
+FGameplayTag URPGSkillExecutionPolicy_Chain::GetExecutionEventTag() const
+{
+	const FRPGSkillChainExecutionConfig* Config = GetChainConfig();
+	if (Config && Config->LinkWindowEventTag.IsValid())
+	{
+		return Config->LinkWindowEventTag;
+	}
+
+	return FGameplayTag::RequestGameplayTag(
+		TEXT("GameplayEvent.Skill.Chain.Window"),
+		false);
+}
+
+void URPGSkillExecutionPolicy_Chain::OnExecutionEvent(
+	const FGameplayEventData& Payload)
+{
+	const FRPGSkillChainExecutionConfig* Config = GetChainConfig();
+	UWorld* World = GetWorld();
+	if (!Config || !World || Payload.EventTag != GetExecutionEventTag() ||
+		!Config->ChainSections.IsValidIndex(CurrentChainIndex + 1))
+	{
+		return;
+	}
+
+	World->GetTimerManager().ClearTimer(LinkWindowTimerHandle);
+	bLinkWindowOpen = true;
+	const bool bAdvanceFromHeldInput =
+		Config->bAdvanceWhileInputHeld &&
+		GetHost() && GetHost()->IsSkillInputPressed();
+	if (bAdvanceFromHeldInput || bInputBuffered)
+	{
+		AdvanceChain();
+		return;
+	}
+
+	World->GetTimerManager().SetTimer(
+		LinkWindowTimerHandle,
+		this,
+		&ThisClass::CloseLinkWindow,
+		Config->LinkWindowDuration,
+		false);
+}
+
+void URPGSkillExecutionPolicy_Chain::OnMontageCompleted()
+{
+	CleanupChain();
+	Super::OnMontageCompleted();
+}
+
+void URPGSkillExecutionPolicy_Chain::EndExecution()
+{
+	CleanupChain();
+	Super::EndExecution();
+}
+
+void URPGSkillExecutionPolicy_Chain::CancelExecution()
+{
+	CleanupChain();
+	Super::CancelExecution();
+}
+
+void URPGSkillExecutionPolicy_Chain::AdvanceChain()
+{
+	const FRPGSkillChainExecutionConfig* Config = GetChainConfig();
+	if (!Config || !GetHost() ||
+		!Config->ChainSections.IsValidIndex(CurrentChainIndex + 1))
+	{
+		CloseLinkWindow();
+		return;
+	}
+
+	const int32 NextChainIndex = CurrentChainIndex + 1;
+	CloseLinkWindow();
+	if (!GetHost()->JumpToSkillMontageSection(
+		Config->ChainSections[NextChainIndex]))
+	{
+		GetHost()->FinishSkillExecution(true);
+		return;
+	}
+	CurrentChainIndex = NextChainIndex;
+}
+
+void URPGSkillExecutionPolicy_Chain::CloseLinkWindow()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(LinkWindowTimerHandle);
+	}
+	bLinkWindowOpen = false;
+	bInputBuffered = false;
+}
+
+void URPGSkillExecutionPolicy_Chain::CleanupChain()
+{
+	CloseLinkWindow();
+	CurrentChainIndex = INDEX_NONE;
+}
+
+const FRPGSkillChainExecutionConfig*
+URPGSkillExecutionPolicy_Chain::GetChainConfig() const
+{
+	return GetRuntimeSpec().ExecutionConfig
+		.GetPtr<FRPGSkillChainExecutionConfig>();
 }

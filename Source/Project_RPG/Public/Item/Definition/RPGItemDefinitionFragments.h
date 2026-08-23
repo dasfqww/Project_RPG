@@ -99,6 +99,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Consumable")
 	TSubclassOf<UGameplayEffect> GameplayEffect;
 
+	/** Per-definition values supplied to SetByCaller magnitudes on GameplayEffect. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Consumable")
+	TMap<FGameplayTag, float> SetByCallerMagnitudes;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Consumable",
 		meta = (ClampMin = "1"))
 	int32 QuantityPerUse = 1;

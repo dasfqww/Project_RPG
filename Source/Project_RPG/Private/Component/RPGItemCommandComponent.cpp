@@ -393,12 +393,21 @@ bool URPGItemCommandComponent::EnqueueFirstCommitEffect(
 		return true;
 	}
 
-	const UGameplayEffect* Effect =
-		Fragment->GameplayEffect->GetDefaultObject<UGameplayEffect>();
-	AbilitySystem->ApplyGameplayEffectToSelf(
-		Effect,
+	FGameplayEffectSpecHandle EffectSpec = AbilitySystem->MakeOutgoingSpec(
+		Fragment->GameplayEffect,
 		1.0f,
 		AbilitySystem->MakeEffectContext());
+	if (!EffectSpec.IsValid())
+	{
+		OutError = TEXT("The consumable Gameplay Effect spec could not be created.");
+		return false;
+	}
+	for (const TPair<FGameplayTag, float>& Pair :
+		Fragment->SetByCallerMagnitudes)
+	{
+		EffectSpec.Data->SetSetByCallerMagnitude(Pair.Key, Pair.Value);
+	}
+	AbilitySystem->ApplyGameplayEffectSpecToSelf(*EffectSpec.Data.Get());
 	AppliedFirstCommitEffects.Add(Result.RequestId);
 	PendingFirstCommitEffects.Remove(Result.RequestId);
 	return true;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Ability/Gladiator/RPGGameplayAbility_Equipment.h"
+#include "Ability/Player/RPGGameplayAbility_Equipment.h"
 #include "Abilities/GameplayAbilityTargetTypes.h"
 #include "RPGGameplayAbility_Weapon_Melee.generated.h"
 
@@ -22,19 +22,19 @@ public:
 	URPGGameplayAbility_Weapon_Melee(
 		const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
-	UFUNCTION(BlueprintCallable, Category = "RPG|Gladiator|Melee")
+	UFUNCTION(BlueprintCallable, Category = "RPG|Player|Melee")
 	void ParseTargetData(const FGameplayAbilityTargetDataHandle& InTargetDataHandle,
 		TArray<int32>& OutCharacterHitIndexes, TArray<int32>& OutBlockHitIndexes);
 
 	/** Historical D1 signature retained for imported ability Blueprints. */
-	UFUNCTION(BlueprintCallable, Category = "RPG|Gladiator|Melee")
+	UFUNCTION(BlueprintCallable, Category = "RPG|Player|Melee")
 	void ProcessHitResult(FHitResult HitResult, float Damage, bool bBlockingHit,
 		UAnimMontage* BackwardMontage, AActor* WeaponActor);
 
-	UFUNCTION(BlueprintCallable, Category = "RPG|Gladiator|Melee")
+	UFUNCTION(BlueprintCallable, Category = "RPG|Player|Melee")
 	void ResetHitActors();
 
-	UFUNCTION(BlueprintPure, Category = "RPG|Gladiator|Melee")
+	UFUNCTION(BlueprintPure, Category = "RPG|Player|Melee")
 	bool IsCharacterBlockingHit(AActor* TargetActor) const;
 
 protected:
@@ -52,28 +52,28 @@ protected:
 	bool TryProcessHitResult(const FHitResult& HitResult, float Damage,
 		bool bBlockingHit, UAnimMontage* BackwardMontage, AActor* WeaponActor);
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Melee",
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Melee",
 		meta = (ClampMin = "0.0", ClampMax = "180.0"))
 	float BlockingAngle = 60.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Melee",
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Melee",
 		meta = (ClampMin = "0.0"))
 	float BlockHitDamageMultiplier = 0.3f;
 
 	/** Defense-in-depth range check applied again immediately before server damage. */
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Melee|Security",
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Melee|Security",
 		meta = (ClampMin = "1.0", Units = "cm"))
 	float MaximumServerHitDistance = 1200.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Melee|Security",
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Melee|Security",
 		meta = (ClampMin = "0.0", Units = "cm"))
 	float ServerHitLocationTolerance = 250.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Melee|Security",
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Melee|Security",
 		meta = (ClampMin = "1.0"))
 	float MaximumServerDamagePerHit = 10000000.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Melee|Debug")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Melee|Debug")
 	bool bShowDebug = false;
 
 private:

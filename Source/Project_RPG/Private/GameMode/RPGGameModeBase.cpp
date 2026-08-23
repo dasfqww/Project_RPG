@@ -14,13 +14,29 @@
 #include "TimerManager.h"
 #include "UI/RPGContentClearPanel.h"
 #include "GameInstance/RPGGameInstance.h"
+#include "GameState/RPGGameStateBase.h"
 #include "Manager/HttpWebManager.h"
 #include "Player/RPGPlayerState.h"
 
 #include "RPGDebugHelper.h"
 
+#if WITH_EDITOR
+#include "Misc/DataValidation.h"
+#endif
+
 namespace
 {
+	bool IsLocalNetworkTestModeEnabled()
+	{
+#if UE_BUILD_SHIPPING
+		return false;
+#else
+		return FParse::Param(
+			FCommandLine::Get(),
+			TEXT("RPGNetTestMode"));
+#endif
+	}
+
 	bool IsRewardIdentifier(const FString& Value)
 	{
 		if (Value.IsEmpty() || Value.Len() > 64)
@@ -43,18 +59,97 @@ namespace
 		}
 		return true;
 	}
+
+	bool IsBoundedBackendText(const FString& Value, const int32 MaximumLength)
+	{
+		if (Value.IsEmpty() || Value.Len() > MaximumLength)
+		{
+			return false;
+		}
+		for (const TCHAR Character : Value)
+		{
+			if (Character < TEXT(' ') || Character == TEXT('\x7f'))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
 }
 
 ARPGGameModeBase::ARPGGameModeBase()
 {
+	GameStateClass = ARPGGameStateBase::StaticClass();
 	PlayerStateClass = ARPGPlayerState::StaticClass();
+	GameNetDriverReplicationSystem = EReplicationSystem::Iris;
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.bStartWithTickEnabled = true;
 }
 
+#if WITH_EDITOR
+EDataValidationResult ARPGGameModeBase::IsDataValid(
+	FDataValidationContext& Context) const
+{
+	EDataValidationResult Result = Super::IsDataValid(Context);
+	if (!bGiveReward)
+	{
+		return Result;
+	}
+
+	const ERPGGameDifficulty SupportedDifficulties[] =
+	{
+		ERPGGameDifficulty::Easy,
+		ERPGGameDifficulty::Normal,
+		ERPGGameDifficulty::Hard,
+		ERPGGameDifficulty::Hell
+	};
+	for (const ERPGGameDifficulty Difficulty : SupportedDifficulties)
+	{
+		const TObjectPtr<URPGDungeonRewardDefinition>* RewardDefinition =
+			DungeonClearRewardsByDifficulty.Find(Difficulty);
+		if (!RewardDefinition || !IsValid(RewardDefinition->Get()))
+		{
+			Context.AddError(FText::Format(
+				NSLOCTEXT("RPGGameModeBase", "MissingDungeonReward",
+					"Reward-enabled GameMode is missing a dungeon reward for difficulty {0}."),
+				FText::AsNumber(static_cast<int32>(Difficulty))));
+			Result = EDataValidationResult::Invalid;
+			continue;
+		}
+
+		FString RewardVersion;
+		TArray<FRPGCurrencyChange> CurrencyChanges;
+		TArray<FRPGDungeonItemReward> ItemRewards;
+		FString Error;
+		if (!RewardDefinition->Get()->BuildSettlement(
+			RewardVersion,
+			CurrencyChanges,
+			ItemRewards,
+			Error))
+		{
+			Context.AddError(FText::Format(
+				NSLOCTEXT("RPGGameModeBase", "InvalidDungeonReward",
+					"Dungeon reward for difficulty {0} is invalid: {1}"),
+				FText::AsNumber(static_cast<int32>(Difficulty)),
+				FText::FromString(Error)));
+			Result = EDataValidationResult::Invalid;
+		}
+	}
+	return Result;
+}
+#endif
+
 void ARPGGameModeBase::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (IsLocalNetworkTestModeEnabled())
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("RPG_NETTEST LOCAL_ADMISSION_BYPASS_ENABLED Development builds only."));
+	}
 
 	if (IsRunningDedicatedServer())
 	{
@@ -162,7 +257,9 @@ void ARPGGameModeBase::PreLoginAsync(
 	const FUniqueNetIdRepl& UniqueId,
 	const FOnPreLoginCompleteDelegate& OnComplete)
 {
-	if (!IsRunningDedicatedServer() || !bRequireBackendJoinTicket)
+	if (!IsRunningDedicatedServer()
+		|| !bRequireBackendJoinTicket
+		|| IsLocalNetworkTestModeEnabled())
 	{
 		Super::PreLoginAsync(
 			Options,
@@ -226,7 +323,8 @@ FString ARPGGameModeBase::InitNewPlayer(
 		Portal);
 	if (!ErrorMessage.IsEmpty()
 		|| !IsRunningDedicatedServer()
-		|| !bRequireBackendJoinTicket)
+		|| !bRequireBackendJoinTicket
+		|| IsLocalNetworkTestModeEnabled())
 	{
 		return ErrorMessage;
 	}
@@ -336,7 +434,11 @@ void ARPGGameModeBase::SendDungeonSessionHeartbeat()
 		if (UHttpWebManager* WebManager =
 				GameInstance->GetSubsystem<UHttpWebManager>())
 		{
-			if (bRewardSettlementRequested)
+			if (!bDungeonStartConfirmed)
+			{
+				WebManager->StartConfiguredDungeonSession();
+			}
+			else if (bRewardSettlementRequested)
 			{
 				WebManager->HeartbeatConfiguredDungeonSession();
 				SendPendingDungeonRewardSettlement();
@@ -345,10 +447,6 @@ void ARPGGameModeBase::SendDungeonSessionHeartbeat()
 			{
 				WebManager->FinishConfiguredDungeonSession(
 					bRequestedDungeonCleared);
-			}
-			else if (!bDungeonStartConfirmed)
-			{
-				WebManager->StartConfiguredDungeonSession();
 			}
 			else
 			{
@@ -361,7 +459,9 @@ void ARPGGameModeBase::SendDungeonSessionHeartbeat()
 void ARPGGameModeBase::SendPendingDungeonRewardSettlement()
 {
 	if (!bRewardSettlementRequested
-		|| bRewardSettlementRequestInFlight)
+		|| bRewardSettlementRequestInFlight
+		|| !bDungeonStartConfirmed
+		|| DungeonMemberCharacterIds.IsEmpty())
 	{
 		return;
 	}
@@ -380,6 +480,20 @@ void ARPGGameModeBase::SendPendingDungeonRewardSettlement()
 		PendingRewardVersion,
 		PendingCurrencyChanges,
 		PendingItemRewards);
+}
+
+void ARPGGameModeBase::FailDungeonForInvalidReward(const FString& Reason)
+{
+	UE_LOG(LogTemp, Error,
+		TEXT("Dungeon clear reward is invalid; failing the session: %s"),
+		*Reason);
+
+	bRewardSettlementRequested = false;
+	bRewardSettlementRequestInFlight = false;
+	PendingRewardVersion.Reset();
+	PendingCurrencyChanges.Reset();
+	PendingItemRewards.Reset();
+	ReportDungeonFinished(false);
 }
 
 void ARPGGameModeBase::ReportDungeonFinished(bool bCleared)
@@ -416,7 +530,10 @@ void ARPGGameModeBase::ReportDungeonFinished(bool bCleared)
 
 	bDungeonFinishRequested = true;
 	bRequestedDungeonCleared = false;
-	WebManager->FinishConfiguredDungeonSession(false);
+	if (bDungeonStartConfirmed)
+	{
+		WebManager->FinishConfiguredDungeonSession(false);
+	}
 }
 
 void ARPGGameModeBase::ReportDungeonClearedWithCurrencyReward(
@@ -447,10 +564,9 @@ void ARPGGameModeBase::ReportConfiguredDungeonClear()
 		DungeonClearRewardsByDifficulty.Find(CurrentGameDifficulty);
 	if (!RewardDefinition || !IsValid(RewardDefinition->Get()))
 	{
-		UE_LOG(LogTemp, Error,
-			TEXT("Cannot settle dungeon clear: no reward definition is "
-				"configured for difficulty %d."),
-			static_cast<int32>(CurrentGameDifficulty));
+		FailDungeonForInvalidReward(FString::Printf(
+			TEXT("No reward definition is configured for difficulty %d."),
+			static_cast<int32>(CurrentGameDifficulty)));
 		return;
 	}
 
@@ -464,10 +580,10 @@ void ARPGGameModeBase::ReportConfiguredDungeonClear()
 		ItemRewards,
 		ValidationError))
 	{
-		UE_LOG(LogTemp, Error,
-			TEXT("Cannot settle dungeon clear with reward definition %s: %s"),
+		FailDungeonForInvalidReward(FString::Printf(
+			TEXT("Reward definition %s failed validation: %s"),
 			*RewardDefinition->Get()->GetPathName(),
-			*ValidationError);
+			*ValidationError));
 		return;
 	}
 
@@ -483,7 +599,6 @@ void ARPGGameModeBase::ReportDungeonClearedWithRewards(
 	const TArray<FRPGDungeonItemReward>& ItemRewards)
 {
 	if (!IsRunningDedicatedServer()
-		|| !bDungeonStartConfirmed
 		|| bDungeonFinishRequested
 		|| bDungeonFinishReported
 		|| bRewardSettlementRequested)
@@ -491,14 +606,18 @@ void ARPGGameModeBase::ReportDungeonClearedWithRewards(
 		return;
 	}
 
-	if (DungeonMemberCharacterIds.IsEmpty()
-		|| !IsRewardIdentifier(RewardVersion.TrimStartAndEnd())
+	if (!IsRewardIdentifier(RewardVersion.TrimStartAndEnd())
 		|| CurrencyChanges.Num() > 16
 		|| ItemRewards.Num() > 16)
 	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("Cannot settle dungeon currency rewards: members, reward "
-				"version, or currency changes are invalid."));
+		FailDungeonForInvalidReward(
+			TEXT("Reward version or reward entry count is invalid."));
+		return;
+	}
+	if (bDungeonStartConfirmed && DungeonMemberCharacterIds.IsEmpty())
+	{
+		FailDungeonForInvalidReward(
+			TEXT("The confirmed dungeon session contains no reward members."));
 		return;
 	}
 
@@ -514,9 +633,8 @@ void ARPGGameModeBase::ReportDungeonClearedWithRewards(
 			|| Change.Delta <= 0
 			|| CurrencyCodes.Contains(CurrencyCode))
 		{
-			UE_LOG(LogTemp, Warning,
-				TEXT("Cannot settle dungeon currency rewards: changes must "
-					"use unique ASCII identifiers and positive deltas."));
+			FailDungeonForInvalidReward(
+				TEXT("Currency changes require unique identifiers and positive deltas."));
 			return;
 		}
 		CurrencyCodes.Add(CurrencyCode);
@@ -525,23 +643,40 @@ void ARPGGameModeBase::ReportDungeonClearedWithRewards(
 	int64 TotalItemQuantity = 0;
 	for (const FRPGDungeonItemReward& Reward : ItemRewards)
 	{
-		if (Reward.DefinitionType.IsNone()
-			|| Reward.DefinitionName.IsNone()
+		const FString DefinitionType = Reward.DefinitionType.ToString();
+		const FString DefinitionName = Reward.DefinitionName.ToString();
+		if (!IsBoundedBackendText(DefinitionType, 64)
+			|| !IsBoundedBackendText(DefinitionName, 128)
 			|| Reward.DefinitionVersion < 1
 			|| Reward.Quantity < 1
-			|| !Reward.Durability.IsValid())
+			|| !Reward.Durability.IsValid()
+			|| Reward.InstanceTags.Num() > 64
+			|| Reward.StatValues.Num() > 128
+			|| !StaticEnum<ERPGItemBindState>()->IsValidEnumValue(
+				static_cast<int64>(Reward.BindState)))
 		{
-			UE_LOG(LogTemp, Warning,
-				TEXT("Cannot settle dungeon item rewards: an item definition, "
-					"quantity, or durability value is invalid."));
+			FailDungeonForInvalidReward(
+				TEXT("An item definition, quantity, bind state, durability, or metadata count is invalid."));
 			return;
+		}
+
+		TArray<FGameplayTag> InstanceTags;
+		Reward.InstanceTags.GetGameplayTagArray(InstanceTags);
+		for (const FGameplayTag& InstanceTag : InstanceTags)
+		{
+			if (!IsBoundedBackendText(InstanceTag.ToString(), 128))
+			{
+				FailDungeonForInvalidReward(
+					TEXT("An item instance tag exceeds the backend text limit."));
+				return;
+			}
 		}
 
 		TotalItemQuantity += Reward.Quantity;
 		if (TotalItemQuantity > MAX_int32)
 		{
-			UE_LOG(LogTemp, Warning,
-				TEXT("Cannot settle dungeon item rewards: total quantity is too large."));
+			FailDungeonForInvalidReward(
+				TEXT("The total item reward quantity is too large."));
 			return;
 		}
 
@@ -549,12 +684,12 @@ void ARPGGameModeBase::ReportDungeonClearedWithRewards(
 		for (const FRPGDungeonItemRewardStat& Stat : Reward.StatValues)
 		{
 			if (!Stat.StatTag.IsValid()
+				|| !IsBoundedBackendText(Stat.StatTag.ToString(), 128)
 				|| !FMath::IsFinite(Stat.Value)
 				|| StatTags.Contains(Stat.StatTag))
 			{
-				UE_LOG(LogTemp, Warning,
-					TEXT("Cannot settle dungeon item rewards: stat tags must be "
-						"valid and unique with finite values."));
+				FailDungeonForInvalidReward(
+					TEXT("Item stat tags must be bounded, unique, and have finite values."));
 				return;
 			}
 			StatTags.Add(Stat.StatTag);
@@ -564,9 +699,8 @@ void ARPGGameModeBase::ReportDungeonClearedWithRewards(
 	if (!WebManager
 		|| !WebManager->IsConfiguredForDungeonServer())
 	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("Cannot settle dungeon currency rewards: the backend "
-				"assignment is invalid."));
+		FailDungeonForInvalidReward(
+			TEXT("The backend dungeon assignment is invalid."));
 		return;
 	}
 
@@ -643,7 +777,7 @@ void ARPGGameModeBase::HandleDungeonSessionUpdated(
 	}
 
 	const UGameInstance* GameInstance = GetGameInstance();
-	const UHttpWebManager* WebManager = GameInstance
+	UHttpWebManager* WebManager = GameInstance
 		? GameInstance->GetSubsystem<UHttpWebManager>()
 		: nullptr;
 	if (!WebManager
@@ -665,6 +799,26 @@ void ARPGGameModeBase::HandleDungeonSessionUpdated(
 			if (!Member.CharacterId.IsEmpty())
 			{
 				DungeonMemberCharacterIds.Add(Member.CharacterId);
+			}
+		}
+
+		if (!bDungeonFinishReported)
+		{
+			if (bDungeonFinishRequested)
+			{
+				WebManager->FinishConfiguredDungeonSession(false);
+			}
+			else if (bRewardSettlementRequested)
+			{
+				if (DungeonMemberCharacterIds.IsEmpty())
+				{
+					FailDungeonForInvalidReward(
+						TEXT("The confirmed dungeon session contains no reward members."));
+				}
+				else
+				{
+					SendPendingDungeonRewardSettlement();
+				}
 			}
 		}
 	}
@@ -713,6 +867,11 @@ void ARPGGameModeBase::SetGameDifficulty(ERPGGameDifficulty InGameDifficulty)
 
 void ARPGGameModeBase::GiveContentReward(ARPGPlayer* Player)
 {
+	// Existing content Blueprints call this once per player. The first server
+	// call queues the party-wide backend settlement; subsequent calls are
+	// ignored by the GameMode settlement state guards.
+	ReportConfiguredDungeonClear();
+
 	//if (!RewardDataTable || !Player) return;
 
 	//URPGInventoryComponent* PlayerInventory = Player->GetRPGInventory();

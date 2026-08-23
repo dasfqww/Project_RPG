@@ -1,4 +1,4 @@
-#include "Ability/Gladiator/RPGGameplayAbility_Equipment.h"
+#include "Ability/Player/RPGGameplayAbility_Equipment.h"
 
 #include "Attribute/RPGAttributeSet.h"
 #include "Component/Combat/PawnCombatComponent.h"

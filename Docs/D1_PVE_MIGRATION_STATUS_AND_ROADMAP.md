@@ -355,8 +355,8 @@
 
 관련 파일:
 
-- `Source/Project_RPG/Public/Ability/Gladiator/RPGGladiatorSkillAbilities.h`
-- `Source/Project_RPG/Private/Ability/Gladiator/RPGGladiatorSkillAbilities.cpp`
+- `Source/Project_RPG/Public/Ability/Player/RPGPlayerSkillAbilities.h`
+- `Source/Project_RPG/Private/Ability/Player/RPGPlayerSkillAbilities.cpp`
 
 검증된 Blueprint 스킬 10종:
 
@@ -525,8 +525,8 @@
 
 관련 파일:
 
-- `Source/Project_RPG/Public/Ability/Gladiator/RPGGladiatorTargetActors.h`
-- `Source/Project_RPG/Private/Ability/Gladiator/RPGGladiatorTargetActors.cpp`
+- `Source/Project_RPG/Public/Ability/Player/RPGPlayerTargetActors.h`
+- `Source/Project_RPG/Private/Ability/Player/RPGPlayerTargetActors.cpp`
 
 남은 작업:
 
@@ -558,8 +558,8 @@
 
 관련 파일:
 
-- `Source/Project_RPG/Public/Ability/Gladiator/RPGGladiatorEffectActors.h`
-- `Source/Project_RPG/Private/Ability/Gladiator/RPGGladiatorEffectActors.cpp`
+- `Source/Project_RPG/Public/Ability/Combat/RPGCombatEffectActors.h`
+- `Source/Project_RPG/Private/Ability/Combat/RPGCombatEffectActors.cpp`
 
 남은 작업:
 
@@ -651,7 +651,7 @@
 - `URPGPlayerSkillComponent`를 Player에 구성하고 서버 RPC/FastArray/Iris 복제 적용
 - Target/Effect/Presentation Feature Module 인터페이스 정의
 - Whirlwind Slash를 첫 D1 파일럿으로 모듈 실행 경로에 연결
-- `RPGGladiatorSkillAbilities.cpp`를 스킬별 얇은 조정 클래스로 분리
+- `RPGPlayerSkillAbilities.cpp`를 스킬별 얇은 조정 클래스로 분리
 
 ## 5. 현재 사용하는 임시 호환 구현
 
@@ -727,7 +727,7 @@ Equipment Ability 구현 직후 전체 에디터 빌드 결과:
 Weapon Melee 기반 구현 후 에디터 타깃 증분 빌드 결과:
 
 - UnrealHeaderTool 성공
-- `RPGGameplayAbility_Weapon_Melee.cpp`, `RPGGladiatorSkillAbilities.cpp`, `RPGGladiatorEffectActors.cpp` 컴파일 성공
+- `RPGGameplayAbility_Weapon_Melee.cpp`, `RPGPlayerSkillAbilities.cpp`, `RPGCombatEffectActors.cpp` 컴파일 성공
 - 전체 37개 액션 중 컴파일 및 정적 라이브러리 링크 성공
 - 실행 중인 `UnrealEditor.exe`의 DLL 점유로 최종 모듈 DLL 링크만 `LNK1104` 실패
 - 에디터 종료 후 동일 명령으로 최종 링크 및 Blueprint 로딩을 다시 검증해야 함
@@ -737,7 +737,7 @@ EffectCauser 및 Shield Bash 공통화 보강 후 컴파일 전용 증분 빌드
 - Target: `Project_RPGEditor Win64 Development -NoLink`
 - Result: `Succeeded`
 - UnrealHeaderTool 성공
-- `RPGGameplayAbility_Weapon_Melee.cpp`, `RPGGladiatorEffectActors.cpp`, `RPGGladiatorSkillAbilities.cpp`, 관련 Unity 모듈 컴파일 성공
+- `RPGGameplayAbility_Weapon_Melee.cpp`, `RPGCombatEffectActors.cpp`, `RPGPlayerSkillAbilities.cpp`, 관련 Unity 모듈 컴파일 성공
 
 ### 6.2 직업 스킬 Blueprint 로딩
 
@@ -839,8 +839,8 @@ Equipment Ability 검증 로그:
 
 관련 파일:
 
-- `Source/Project_RPG/Public/Ability/Gladiator/RPGGameplayAbility_Equipment.h`
-- `Source/Project_RPG/Private/Ability/Gladiator/RPGGameplayAbility_Equipment.cpp`
+- `Source/Project_RPG/Public/Ability/Player/RPGGameplayAbility_Equipment.h`
+- `Source/Project_RPG/Private/Ability/Player/RPGGameplayAbility_Equipment.cpp`
 - `Source/Project_RPG/Public/Component/Equipment/RPGEquipComponent.h`
 - `Source/Project_RPG/Private/Component/Equipment/RPGEquipComponent.cpp`
 - `Source/Project_RPG/Public/Item/Fragment/RPGItemFragment.h`
@@ -900,7 +900,7 @@ Equipment Ability 검증 로그:
 - `RPGGameplayTags::Player_Status_Blocking`
 - `Status.Block` 호환 태그
 - `RPGGameplayTags::Shared_Event_HitReact`
-- `RPGGladiatorEffectActors::ApplyDamage`
+- `RPGCombatEffectActors::ApplyDamage`
 - 현재 `ARPGWeaponBase` 충돌 컴포넌트
 
 교체한 임시 코드:
@@ -911,12 +911,12 @@ Equipment Ability 검증 로그:
 
 관련 파일:
 
-- `Source/Project_RPG/Public/Ability/Gladiator/RPGGameplayAbility_Weapon_Melee.h`
-- `Source/Project_RPG/Private/Ability/Gladiator/RPGGameplayAbility_Weapon_Melee.cpp`
-- `Source/Project_RPG/Public/Ability/Gladiator/RPGGladiatorSkillAbilities.h`
-- `Source/Project_RPG/Private/Ability/Gladiator/RPGGladiatorSkillAbilities.cpp`
-- `Source/Project_RPG/Public/Ability/Gladiator/RPGGladiatorEffectActors.h`
-- `Source/Project_RPG/Private/Ability/Gladiator/RPGGladiatorEffectActors.cpp`
+- `Source/Project_RPG/Public/Ability/Player/RPGGameplayAbility_Weapon_Melee.h`
+- `Source/Project_RPG/Private/Ability/Player/RPGGameplayAbility_Weapon_Melee.cpp`
+- `Source/Project_RPG/Public/Ability/Player/RPGPlayerSkillAbilities.h`
+- `Source/Project_RPG/Private/Ability/Player/RPGPlayerSkillAbilities.cpp`
+- `Source/Project_RPG/Public/Ability/Combat/RPGCombatEffectActors.h`
+- `Source/Project_RPG/Private/Ability/Combat/RPGCombatEffectActors.cpp`
 
 남은 검증:
 

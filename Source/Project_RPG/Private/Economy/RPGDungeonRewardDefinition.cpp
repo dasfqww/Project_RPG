@@ -36,6 +36,22 @@ namespace RPGDungeonRewardDefinition
 		}
 		return true;
 	}
+
+	bool IsBoundedBackendText(const FString& Value, const int32 MaximumLength)
+	{
+		if (Value.IsEmpty() || Value.Len() > MaximumLength)
+		{
+			return false;
+		}
+		for (const TCHAR Character : Value)
+		{
+			if (Character < TEXT(' ') || Character == TEXT('\x7f'))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
 }
 
 bool URPGDungeonRewardDefinition::BuildSettlement(
@@ -104,7 +120,19 @@ bool URPGDungeonRewardDefinition::BuildSettlement(
 		}
 
 		const FPrimaryAssetId DefinitionId = Definition->GetPrimaryAssetId();
-		if (!DefinitionId.IsValid() || Definition->GetDefinitionVersion() < 1)
+		const FString DefinitionType = DefinitionId.PrimaryAssetType.ToString();
+		const FString DefinitionName = DefinitionId.PrimaryAssetName.ToString();
+		if (!DefinitionId.IsValid()
+			|| !RPGDungeonRewardDefinition::IsBoundedBackendText(
+				DefinitionType,
+				64)
+			|| !RPGDungeonRewardDefinition::IsBoundedBackendText(
+				DefinitionName,
+				128)
+			|| Definition->DefinitionVersion < 1
+			|| Definition->MaxStackSize < 1
+			|| !StaticEnum<ERPGItemBindState>()->IsValidEnumValue(
+				static_cast<int64>(Entry.BindState)))
 		{
 			OutError = FString::Printf(
 				TEXT("Item reward %d has an invalid persistent definition identity."),
@@ -112,12 +140,12 @@ bool URPGDungeonRewardDefinition::BuildSettlement(
 			return false;
 		}
 		if (Entry.Quantity < 1
-			|| Entry.Quantity > Definition->GetMaxStackSize())
+			|| Entry.Quantity > Definition->MaxStackSize)
 		{
 			OutError = FString::Printf(
 				TEXT("Item reward %d quantity must be within the definition's stack limit (1-%d)."),
 				Index,
-				Definition->GetMaxStackSize());
+				Definition->MaxStackSize);
 			return false;
 		}
 		if (!Entry.Durability.IsValid())
@@ -137,11 +165,28 @@ bool URPGDungeonRewardDefinition::BuildSettlement(
 				Index);
 			return false;
 		}
+		TArray<FGameplayTag> InstanceTags;
+		Entry.InstanceTags.GetGameplayTagArray(InstanceTags);
+		for (const FGameplayTag& InstanceTag : InstanceTags)
+		{
+			if (!RPGDungeonRewardDefinition::IsBoundedBackendText(
+				InstanceTag.ToString(),
+				128))
+			{
+				OutError = FString::Printf(
+					TEXT("Item reward %d has an instance tag that exceeds the backend limit."),
+					Index);
+				return false;
+			}
+		}
 
 		TSet<FGameplayTag> StatTags;
 		for (const FRPGDungeonItemRewardStat& Stat : Entry.StatValues)
 		{
 			if (!Stat.StatTag.IsValid()
+				|| !RPGDungeonRewardDefinition::IsBoundedBackendText(
+					Stat.StatTag.ToString(),
+					128)
 				|| !FMath::IsFinite(Stat.Value)
 				|| StatTags.Contains(Stat.StatTag))
 			{
@@ -157,7 +202,7 @@ bool URPGDungeonRewardDefinition::BuildSettlement(
 		Reward.DefinitionType =
 			FName(*DefinitionId.PrimaryAssetType.ToString());
 		Reward.DefinitionName = DefinitionId.PrimaryAssetName;
-		Reward.DefinitionVersion = Definition->GetDefinitionVersion();
+		Reward.DefinitionVersion = Definition->DefinitionVersion;
 		Reward.Quantity = Entry.Quantity;
 		Reward.BindState = Entry.BindState;
 		Reward.Durability = Entry.Durability;

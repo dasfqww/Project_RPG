@@ -3,7 +3,7 @@
 #include "GameFramework/Actor.h"
 #include "GameplayTagContainer.h"
 #include "Security/RPGSecurityTypes.h"
-#include "RPGGladiatorEffectActors.generated.h"
+#include "RPGCombatEffectActors.generated.h"
 
 class UArrowComponent;
 class UCameraShakeBase;
@@ -17,7 +17,7 @@ class USphereComponent;
 class UStaticMeshComponent;
 class UTimelineComponent;
 
-namespace RPGGladiatorEffectActors
+namespace RPGCombatEffectActors
 {
 	/** Shared D1-compatible damage path used by projectiles, AOE elements, and class skills. */
 	PROJECT_RPG_API bool ApplyDamage(AActor* SourceActor, AActor* TargetActor,
@@ -71,7 +71,7 @@ protected:
 	float Damage = 0.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-		Category = "RPG|Gladiator|Projectile|Security",
+		Category = "RPG|Combat|Projectile|Security",
 		meta = (ShowOnlyInnerProperties))
 	FRPGSkillSecurityProfile SecurityProfile;
 
@@ -127,19 +127,19 @@ protected:
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<USphereComponent> SphereComponent;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Combat|AOE")
 	TSubclassOf<AActor> AOEElementClass;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Combat|AOE")
 	float StartDelay = 2.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Combat|AOE")
 	float AttackTotalTime = 10.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Combat|AOE")
 	int32 TargetAttackCount = 5;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Combat|AOE")
 	TSubclassOf<UCameraShakeBase> CameraShakeClass;
 
 private:
@@ -179,23 +179,23 @@ protected:
 		TArray<FHitResult>& OutHitResults);
 	void HandleCollisionDetection(const FHitResult& HitResult);
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE Element")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Combat|AOE Element")
 	float Damage = 40.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE Element|Security",
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Combat|AOE Element|Security",
 		meta = (ShowOnlyInnerProperties))
 	FRPGSkillSecurityProfile SecurityProfile;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE Element")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Combat|AOE Element")
 	TSubclassOf<UGameplayEffect> AdditionalEffect;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE Element")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Combat|AOE Element")
 	ERPGGladiatorAOEElementType ElementType = ERPGGladiatorAOEElementType::Projectile;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE Element")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Combat|AOE Element")
 	TObjectPtr<UCurveFloat> CurveData;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE Element")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Combat|AOE Element")
 	TObjectPtr<UNiagaraSystem> HitNiagaraEffect;
 
 	UPROPERTY(VisibleAnywhere)

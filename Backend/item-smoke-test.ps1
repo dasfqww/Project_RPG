@@ -78,7 +78,7 @@ function New-ItemRecord {
     $isTerminal = $LifecycleState -ne 'Active'
     return @{
         definitionType = 'RPGItemDefinition'
-        definitionName = 'Smoke.Potion'
+        definitionName = 'GameItem.Consume.Potion.Red.Large'
         definitionVersion = 1
         owner = @{
             type = 'Character'
@@ -402,28 +402,53 @@ if ($sourceResult.revision -ne 2 `
     throw 'The two-record stack transfer was not committed atomically.'
 }
 
-$consumeBody = New-CommitRequest `
+$partialConsumeBody = New-CommitRequest `
     -RequestId ([Guid]::NewGuid()) `
     -CharacterId $characterId `
     -Operation 'ConsumeItem' `
-    -Fingerprint "consume|$itemId|15|3" `
+    -Fingerprint "consume|$itemId|1|3" `
     -ExpectedRevision 3 `
     -Record (New-ItemRecord `
         -ItemId $itemId `
         -CharacterId $characterId `
         -Revision 3 `
+        -Quantity 14 `
+        -SlotIndex 1) `
+    -AffectedQuantity 1
+$partiallyConsumed = Invoke-JsonRequest `
+    -Method Post `
+    -Uri "$BaseUrl/api/item-transactions/commit" `
+    -Headers $serverHeaders `
+    -Body $partialConsumeBody `
+    -ExpectedStatus 200
+if ($partiallyConsumed.records[0].revision -ne 4 `
+    -or $partiallyConsumed.records[0].state.quantity -ne 14 `
+    -or $partiallyConsumed.records[0].lifecycleState -ne 'Active') {
+    throw 'Partial consumption did not preserve an active revisioned stack.'
+}
+
+$consumeBody = New-CommitRequest `
+    -RequestId ([Guid]::NewGuid()) `
+    -CharacterId $characterId `
+    -Operation 'ConsumeItem' `
+    -Fingerprint "consume|$itemId|14|4" `
+    -ExpectedRevision 4 `
+    -Record (New-ItemRecord `
+        -ItemId $itemId `
+        -CharacterId $characterId `
+        -Revision 4 `
         -Quantity 0 `
         -SlotIndex -1 `
         -LifecycleState 'Consumed' `
         -IsLocked $true) `
-    -AffectedQuantity 15
+    -AffectedQuantity 14
 $consumed = Invoke-JsonRequest `
     -Method Post `
     -Uri "$BaseUrl/api/item-transactions/commit" `
     -Headers $serverHeaders `
     -Body $consumeBody `
     -ExpectedStatus 200
-if ($consumed.records[0].revision -ne 4 -or $consumed.records[0].lifecycleState -ne 'Consumed') {
+if ($consumed.records[0].revision -ne 5 -or $consumed.records[0].lifecycleState -ne 'Consumed') {
     throw 'Full consumption did not persist a revisioned terminal tombstone.'
 }
 
@@ -466,4 +491,4 @@ if ($finished.state -ne 'Cleared') {
     throw 'Item smoke dungeon did not finish cleanly.'
 }
 
-Write-Host 'Item V2 smoke test passed: CAS, idempotency, atomicity, location uniqueness, owner read, and tombstones.'
+Write-Host 'Item V2 smoke test passed: CAS, idempotency, atomicity, location uniqueness, owner read, partial consumption, and tombstones.'

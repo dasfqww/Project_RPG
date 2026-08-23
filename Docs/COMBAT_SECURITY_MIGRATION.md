@@ -6,7 +6,7 @@
 - 서버 HitResult의 대상 일치, 적대 관계, 거리, 피격점 검증
 - 레거시 플레이어 단일 타격과 AOE의 대상 중복 제거 및 수 제한
 - Projectile `OnHit`/`OnBeginOverlap` 공통 서버 판정과 1회 충돌 처리
-- Gladiator 근접, Projectile, AOE의 보안 프로필 및 타격 예산 적용
+- Player 호환 근접 Ability와 공용 Projectile/AOE의 보안 프로필 및 타격 예산 적용
 - 클라이언트 TargetData의 대상 수·거리·시야 서버 재검증
 - 지면 지정 좌표의 서버 지면 Trace·거리·시야 재검증
 - GameplayEffect 적용 실패 시 직접 Attribute 피해로 우회하던 경로 제거
@@ -18,8 +18,8 @@
 
 - 레거시 플레이어 스킬: `Skill > Legacy > Security`
 - `RPGProjectileBase` 파생 BP: `Projectile > Security`
-- Gladiator 근접 Ability: `Maximum Server Damage Per Hit`
-- Gladiator Projectile/AOE Element: `Security Profile`
+- Player 근접 Ability: `Maximum Server Damage Per Hit`
+- Combat Projectile/AOE Element: `Security Profile`
 - SkillContainer 기반 스킬: `RPGSkillDefinition.Security`
 
 호환 기본값은 마이그레이션 중 기존 스킬을 보존하기 위한 값이다. Dedicated Server 플레이테스트에서 정상 최대값을 측정한 뒤 스킬별 상한을 낮춰야 한다.

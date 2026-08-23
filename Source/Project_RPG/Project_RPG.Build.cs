@@ -22,6 +22,11 @@ public class Project_RPG : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 
+		// Registers this module's native FastArray serializers with Iris.
+		// Without this, replicated RPG FastArray properties are rejected when
+		// the GameNetDriver builds its Iris replication descriptors.
+		SetupIrisSupport(Target);
+
 
         // Uncomment if you are using Slate UI
         // PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

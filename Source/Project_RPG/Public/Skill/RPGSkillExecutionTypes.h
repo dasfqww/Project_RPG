@@ -116,3 +116,67 @@ struct PROJECT_RPG_API FRPGSkillComboExecutionConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combo")
 	bool bAllowRepeatedPressBuffer = true;
 };
+
+/**
+ * Casting starts from one press and resolves automatically after CastDuration.
+ * Input does not need to remain held unless cancellation-on-release is authored.
+ */
+USTRUCT(BlueprintType)
+struct PROJECT_RPG_API FRPGSkillCastingExecutionConfig
+	: public FRPGSkillExecutionConfig
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Casting",
+		meta = (ClampMin = "0.01", ClampMax = "60.0", Units = "s"))
+	float CastDuration = 1.0f;
+
+	/** Optional. Releasing input before completion cancels this cast. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Casting")
+	bool bCancelOnInputRelease = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Montage")
+	FName CastingSection = NAME_None;
+
+	/** Required section entered when the cast timer completes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Montage")
+	FName CompleteSection = NAME_None;
+
+	/** Optional section entered when the cast is cancelled by input release. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Montage")
+	FName CancelSection = NAME_None;
+};
+
+/**
+ * Chain opens a timed input window at each authored Anim Notify.
+ * Unlike Combo, a held key does not advance by default; each link expects a
+ * deliberate additional press, while an early press may be buffered once.
+ */
+USTRUCT(BlueprintType)
+struct PROJECT_RPG_API FRPGSkillChainExecutionConfig
+	: public FRPGSkillExecutionConfig
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain")
+	TArray<FName> ChainSections;
+
+	/**
+	 * Event emitted by RPGAnimNotify_SendGameplayEvent to open each link window.
+	 * Invalid uses GameplayEvent.Skill.Chain.Window.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain")
+	FGameplayTag LinkWindowEventTag;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain",
+		meta = (ClampMin = "0.05", ClampMax = "5.0", Units = "s"))
+	float LinkWindowDuration = 0.75f;
+
+	/** Accept one press made before the authored link-window notify. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain")
+	bool bAllowEarlyPressBuffer = true;
+
+	/** Optional accessibility behavior; false preserves discrete chain inputs. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chain")
+	bool bAdvanceWhileInputHeld = false;
+};

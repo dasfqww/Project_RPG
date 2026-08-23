@@ -127,6 +127,58 @@ bool FRPGSkillRuntimeSpecExecutionOverrideTest::RunTest(
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRPGSkillRuntimeSpecCastingChainOverrideTest,
+	"ProjectRPG.Skill.RuntimeSpec.CastingChainOverride",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRPGSkillRuntimeSpecCastingChainOverrideTest::RunTest(
+	const FString& Parameters)
+{
+	URPGSkillDefinition* Definition = NewObject<URPGSkillDefinition>();
+	Definition->DefaultExecutionPolicyClass =
+		URPGSkillExecutionPolicy_Casting::StaticClass();
+	FRPGSkillCastingExecutionConfig CastingConfig;
+	CastingConfig.CastDuration = 1.5f;
+	CastingConfig.CompleteSection = TEXT("CastComplete");
+	Definition->DefaultExecutionConfig.InitializeAs<
+		FRPGSkillCastingExecutionConfig>(CastingConfig);
+
+	FRPGSkillTripodTier& Tier = Definition->TripodTiers.AddDefaulted_GetRef();
+	Tier.RequiredSkillLevel = 1;
+	FRPGSkillTripodOption& Option = Tier.Options.AddDefaulted_GetRef();
+	Option.OverrideExecutionPolicyClass =
+		URPGSkillExecutionPolicy_Chain::StaticClass();
+	FRPGSkillChainExecutionConfig ChainConfig;
+	ChainConfig.ChainSections = {TEXT("Chain01"), TEXT("Chain02")};
+	ChainConfig.LinkWindowDuration = 0.6f;
+	Option.OverrideExecutionConfig.InitializeAs<
+		FRPGSkillChainExecutionConfig>(ChainConfig);
+
+	FRPGSkillSaveData SaveData;
+	SaveData.SkillLevel = 1;
+	SaveData.SelectedTripodIndices = {0, INDEX_NONE, INDEX_NONE};
+
+	FRPGSkillRuntimeSpec RuntimeSpec;
+	Definition->BuildRuntimeSpec(nullptr, SaveData, RuntimeSpec);
+	TestEqual(
+		TEXT("A tripod can replace Casting with Chain"),
+		RuntimeSpec.ExecutionPolicyClass.Get(),
+		URPGSkillExecutionPolicy_Chain::StaticClass());
+	const FRPGSkillChainExecutionConfig* ResolvedConfig =
+		RuntimeSpec.ExecutionConfig.GetPtr<FRPGSkillChainExecutionConfig>();
+	TestNotNull(TEXT("Chain config is frozen into the activation"), ResolvedConfig);
+	if (ResolvedConfig)
+	{
+		TestEqual(TEXT("Chain section count"),
+			ResolvedConfig->ChainSections.Num(), 2);
+		TestEqual(TEXT("Chain link window"),
+			ResolvedConfig->LinkWindowDuration, 0.6f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRPGChargeDefinitionRuntimeTranslationTest,
 	"ProjectRPG.Skill.RuntimeSpec.LegacyChargeDefinitionTranslation",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -179,6 +231,10 @@ bool FRPGSkillExecutionConfigValidationTest::RunTest(
 		GetDefault<URPGSkillExecutionPolicy_Holding>();
 	const URPGSkillExecutionPolicy_Combo* ComboPolicy =
 		GetDefault<URPGSkillExecutionPolicy_Combo>();
+	const URPGSkillExecutionPolicy_Casting* CastingPolicy =
+		GetDefault<URPGSkillExecutionPolicy_Casting>();
+	const URPGSkillExecutionPolicy_Chain* ChainPolicy =
+		GetDefault<URPGSkillExecutionPolicy_Chain>();
 
 	FRPGSkillHoldingExecutionConfig HoldingConfig;
 	HoldingConfig.HoldDuration = 1.0f;
@@ -230,6 +286,59 @@ bool FRPGSkillExecutionConfigValidationTest::RunTest(
 		TEXT("Policy/config type mismatch is rejected"),
 		ComboPolicy->ValidateExecutionConfig(
 			HoldingStruct,
+			ValidationError));
+
+	FRPGSkillCastingExecutionConfig CastingConfig;
+	CastingConfig.CastDuration = 1.25f;
+	CastingConfig.CompleteSection = TEXT("CastComplete");
+	FInstancedStruct CastingStruct;
+	CastingStruct.InitializeAs<FRPGSkillCastingExecutionConfig>(CastingConfig);
+	TestTrue(
+		TEXT("Valid casting config is accepted"),
+		CastingPolicy->ValidateExecutionConfig(
+			CastingStruct,
+			ValidationError));
+
+	CastingConfig.CastDuration = 61.0f;
+	CastingStruct.InitializeAs<FRPGSkillCastingExecutionConfig>(CastingConfig);
+	TestFalse(
+		TEXT("Casting config rejects an excessive server lifetime"),
+		CastingPolicy->ValidateExecutionConfig(
+			CastingStruct,
+			ValidationError));
+
+	FRPGSkillChainExecutionConfig ChainConfig;
+	ChainConfig.ChainSections = {TEXT("Chain01"), TEXT("Chain02")};
+	ChainConfig.LinkWindowDuration = 0.75f;
+	FInstancedStruct ChainStruct;
+	ChainStruct.InitializeAs<FRPGSkillChainExecutionConfig>(ChainConfig);
+	TestTrue(
+		TEXT("Valid chain config is accepted"),
+		ChainPolicy->ValidateExecutionConfig(
+			ChainStruct,
+			ValidationError));
+
+	ChainConfig.LinkWindowDuration = 5.1f;
+	ChainStruct.InitializeAs<FRPGSkillChainExecutionConfig>(ChainConfig);
+	TestFalse(
+		TEXT("Chain config rejects an excessive input window"),
+		ChainPolicy->ValidateExecutionConfig(
+			ChainStruct,
+			ValidationError));
+
+	ChainConfig.LinkWindowDuration = 0.75f;
+	ChainConfig.ChainSections.SetNum(1);
+	ChainStruct.InitializeAs<FRPGSkillChainExecutionConfig>(ChainConfig);
+	TestFalse(
+		TEXT("Chain config requires at least two sections"),
+		ChainPolicy->ValidateExecutionConfig(
+			ChainStruct,
+			ValidationError));
+
+	TestFalse(
+		TEXT("Casting policy rejects Chain config"),
+		CastingPolicy->ValidateExecutionConfig(
+			ChainStruct,
 			ValidationError));
 
 	return true;

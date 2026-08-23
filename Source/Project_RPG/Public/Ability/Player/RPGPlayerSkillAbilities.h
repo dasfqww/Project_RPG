@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Ability/Gladiator/RPGGameplayAbility_Equipment.h"
-#include "Ability/Gladiator/RPGGameplayAbility_Weapon_Melee.h"
+#include "Ability/Player/RPGGameplayAbility_Equipment.h"
+#include "Ability/Player/RPGGameplayAbility_Weapon_Melee.h"
 #include "Abilities/GameplayAbilityTargetTypes.h"
 #include "Engine/EngineTypes.h"
-#include "RPGGladiatorSkillAbilities.generated.h"
+#include "RPGPlayerSkillAbilities.generated.h"
 
 class AGameplayAbilityTargetActor;
 class AGameplayAbilityTargetActor_GroundTrace;
@@ -35,13 +35,13 @@ protected:
 	UFUNCTION()
 	void OnMontageFinished();
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Buff")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Buff")
 	TObjectPtr<UAnimMontage> BuffMontage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Buff")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Buff")
 	TSubclassOf<UGameplayEffect> BuffGameplayEffectClass;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Buff")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Buff")
 	TObjectPtr<UNiagaraSystem> BuffEffect;
 };
 
@@ -64,19 +64,19 @@ protected:
 	UFUNCTION()
 	void OnMontageFinished();
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Shield Bash")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Shield Bash")
 	TObjectPtr<UAnimMontage> ShieldBashMontage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Shield Bash")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Shield Bash")
 	float Damage = 50.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Shield Bash")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Shield Bash")
 	float StunDuration = 1.5f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Shield Bash")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Shield Bash")
 	float Distance = 100.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Shield Bash")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Shield Bash")
 	float RadiusMultiplier = 3.25f;
 };
 
@@ -99,17 +99,17 @@ protected:
 	UFUNCTION()
 	void OnMontageFinished();
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Ground Breaker")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Ground Breaker")
 	TObjectPtr<UAnimMontage> GroundBreakerMontage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Ground Breaker")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Ground Breaker")
 	float DistanceOffset = 150.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Ground Breaker")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Ground Breaker")
 	float Damage = 80.0f;
 
 	/** Historical spelling is preserved for serialized assets. */
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Ground Breaker")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Ground Breaker")
 	float StunDruation = 3.0f;
 };
 
@@ -141,10 +141,10 @@ protected:
 	UFUNCTION()
 	void OnMontageFinished();
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Whirlwind Slash")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Whirlwind Slash")
 	TObjectPtr<UAnimMontage> WhirlwindSlashMontage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Whirlwind Slash")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Whirlwind Slash")
 	float Damage = 10.0f;
 
 };
@@ -174,38 +174,38 @@ protected:
 	UFUNCTION()
 	void OnMontageFinished();
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Piercing Shot")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Piercing Shot")
 	TObjectPtr<UInputAction> MainHandInputAction;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Piercing Shot")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Piercing Shot")
 	TObjectPtr<UInputAction> OffHandInputAction;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Piercing Shot")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Piercing Shot")
 	TObjectPtr<UAnimMontage> ADSStartMontage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Piercing Shot")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Piercing Shot")
 	TObjectPtr<UAnimMontage> ADSEndMontage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Piercing Shot")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Piercing Shot")
 	TObjectPtr<UAnimMontage> ReleaseMontage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Piercing Shot")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Piercing Shot")
 	TSubclassOf<AActor> ProjectileClass;
 
 	/** D1 bow-projectile properties retained on this flattened compatibility parent. */
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Piercing Shot")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Piercing Shot")
 	FName SpawnSocketName;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Piercing Shot")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Piercing Shot")
 	bool bApplyAimAssist = true;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Piercing Shot", meta = (EditCondition = "bApplyAimAssist"))
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Piercing Shot", meta = (EditCondition = "bApplyAimAssist"))
 	float AimAssistMinDistance = 100.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Piercing Shot", meta = (EditCondition = "bApplyAimAssist"))
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Piercing Shot", meta = (EditCondition = "bApplyAimAssist"))
 	float AimAssistMaxDistance = 10000.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Piercing Shot")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Piercing Shot")
 	TSubclassOf<URPGCameraMode> ADSCameraModeClass;
 };
 
@@ -225,52 +225,52 @@ protected:
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 
-	UFUNCTION(BlueprintCallable, Category = "RPG|Gladiator|Targeting")
+	UFUNCTION(BlueprintCallable, Category = "RPG|Player|Targeting")
 	void ConfirmSkill();
 
-	UFUNCTION(BlueprintCallable, Category = "RPG|Gladiator|Targeting")
+	UFUNCTION(BlueprintCallable, Category = "RPG|Player|Targeting")
 	void CancelSkill();
 
-	UFUNCTION(BlueprintCallable, Category = "RPG|Gladiator|Targeting")
+	UFUNCTION(BlueprintCallable, Category = "RPG|Player|Targeting")
 	void ResetSkill();
 
-	UFUNCTION(BlueprintImplementableEvent, Category = "RPG|Gladiator|Targeting")
+	UFUNCTION(BlueprintImplementableEvent, Category = "RPG|Player|Targeting")
 	void WaitTargetData();
 
 	UFUNCTION()
 	void OnMontageFinished();
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Targeting")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Targeting")
 	TObjectPtr<UAnimMontage> CastStartMontage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Targeting")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Targeting")
 	TObjectPtr<UAnimMontage> CastEndMontage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Targeting")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Targeting")
 	TObjectPtr<UAnimMontage> SpellMontage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Targeting", meta = (Categories = "GameplayCue"))
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Targeting", meta = (Categories = "GameplayCue"))
 	FGameplayTag CastGameplayCueTag;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Targeting", meta = (Categories = "GameplayCue"))
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Targeting", meta = (Categories = "GameplayCue"))
 	FGameplayTag BurstGameplayCueTag;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Targeting")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Targeting")
 	TArray<TSubclassOf<UGameplayEffect>> GameplayEffectClasses;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Targeting")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Targeting")
 	TObjectPtr<UInputAction> MainHandInputAction;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|Targeting")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|Targeting")
 	TObjectPtr<UInputAction> OffHandInputAction;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Gladiator|Targeting")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Player|Targeting")
 	TSubclassOf<ARPGGameplayAbilityTargetActor_LineTraceHighlight> TargetActorClass;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Gladiator|Targeting")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Player|Targeting")
 	TSubclassOf<AGameplayAbilityWorldReticle> TargetingReticleClass;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Gladiator|Targeting")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Player|Targeting")
 	float MaxRange = 1000.0f;
 
 	UPROPERTY(BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))
@@ -293,61 +293,61 @@ protected:
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 
-	UFUNCTION(BlueprintCallable, Category = "RPG|Gladiator|AOE")
+	UFUNCTION(BlueprintCallable, Category = "RPG|Player|AOE")
 	void ConfirmSkill();
 
-	UFUNCTION(BlueprintCallable, Category = "RPG|Gladiator|AOE")
+	UFUNCTION(BlueprintCallable, Category = "RPG|Player|AOE")
 	void CancelSkill();
 
-	UFUNCTION(BlueprintCallable, Category = "RPG|Gladiator|AOE")
+	UFUNCTION(BlueprintCallable, Category = "RPG|Player|AOE")
 	void ResetSkill();
 
-	UFUNCTION(BlueprintImplementableEvent, Category = "RPG|Gladiator|AOE")
+	UFUNCTION(BlueprintImplementableEvent, Category = "RPG|Player|AOE")
 	void WaitTargetData();
 
 	UFUNCTION()
 	void OnMontageFinished();
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|AOE")
 	TObjectPtr<UAnimMontage> CastStartMontage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|AOE")
 	TObjectPtr<UAnimMontage> CastEndMontage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|AOE")
 	TObjectPtr<UAnimMontage> SpellMontage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE", meta = (Categories = "GameplayCue"))
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|AOE", meta = (Categories = "GameplayCue"))
 	FGameplayTag CastGameplayCueTag;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|AOE")
 	TSubclassOf<AActor> AOESpawnerClass;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|AOE")
 	TObjectPtr<UInputAction> MainHandInputAction;
 
-	UPROPERTY(EditDefaultsOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, Category = "RPG|Player|AOE")
 	TObjectPtr<UInputAction> OffHandInputAction;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Player|AOE")
 	TSubclassOf<AGameplayAbilityTargetActor_GroundTrace> TargetActorClass;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Player|AOE")
 	TSubclassOf<AGameplayAbilityWorldReticle> AOEReticleClass;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Player|AOE")
 	float CollisionRadius = 3.0f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Player|AOE")
 	float CollisionHeight = 3.0f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Player|AOE")
 	float MaxRange = 1000.0f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Player|AOE")
 	float AcceptanceMultiplier = 1.25f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Gladiator|AOE")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Player|AOE")
 	FCollisionProfileName TraceProfile;
 
 	UPROPERTY(BlueprintReadWrite, meta = (AllowPrivateAccess = "true"))

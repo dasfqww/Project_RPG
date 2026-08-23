@@ -107,6 +107,24 @@ bool FRPGDungeonRewardDefinitionRejectsInvalidContentTest::RunTest(
 		RewardVersion.IsEmpty()
 			&& CurrencyChanges.IsEmpty()
 			&& ItemRewards.IsEmpty());
+
+	Definition->ItemRewards[0].Quantity = 1;
+	ItemDefinition->DefinitionVersion = 0;
+	TestFalse(TEXT("An invalid raw definition version is rejected"),
+		Definition->BuildSettlement(
+			RewardVersion,
+			CurrencyChanges,
+			ItemRewards,
+			Error));
+
+	ItemDefinition->DefinitionVersion = 3;
+	ItemDefinition->MaxStackSize = 0;
+	TestFalse(TEXT("An invalid raw stack limit is rejected"),
+		Definition->BuildSettlement(
+			RewardVersion,
+			CurrencyChanges,
+			ItemRewards,
+			Error));
 	return true;
 }
 

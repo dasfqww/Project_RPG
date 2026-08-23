@@ -150,6 +150,38 @@ private:
 };
 
 UCLASS()
+class PROJECT_RPG_API URPGSkillExecutionPolicy_Casting
+	: public URPGSkillExecutionPolicy
+{
+	GENERATED_BODY()
+
+public:
+	virtual bool StartExecution() override;
+	virtual bool ValidateExecutionConfig(
+		const FInstancedStruct& Config,
+		FText& OutError) const override;
+	virtual bool ValidateRuntimeSpec(FText& OutError) const override;
+	virtual void OnInputReleased() override;
+	virtual void OnMontageCompleted() override;
+	virtual void OnMontageInterrupted() override;
+	virtual void EndExecution() override;
+	virtual void CancelExecution() override;
+
+private:
+	void UpdateCasting();
+	void CompleteCasting();
+	void CancelCasting();
+	void CleanupCasting();
+	float GetScaledCastDuration() const;
+	const struct FRPGSkillCastingExecutionConfig* GetCastingConfig() const;
+
+	FTimerHandle CastingUpdateTimerHandle;
+	float CastingStartTime = 0.0f;
+	bool bResolved = false;
+	bool bFinishAsCancelled = false;
+};
+
+UCLASS()
 class PROJECT_RPG_API URPGSkillExecutionPolicy_Combo
 	: public URPGSkillExecutionPolicy
 {
@@ -172,4 +204,38 @@ private:
 
 	int32 CurrentComboIndex = INDEX_NONE;
 	bool bAdvanceBuffered = false;
+};
+
+UCLASS()
+class PROJECT_RPG_API URPGSkillExecutionPolicy_Chain
+	: public URPGSkillExecutionPolicy
+{
+	GENERATED_BODY()
+
+public:
+	virtual bool StartExecution() override;
+	virtual bool ValidateExecutionConfig(
+		const FInstancedStruct& Config,
+		FText& OutError) const override;
+	virtual bool ValidateRuntimeSpec(FText& OutError) const override;
+	virtual void OnInputPressed() override;
+	virtual FGameplayTag GetExecutionEventTag() const override;
+	virtual void OnExecutionEvent(const FGameplayEventData& Payload) override;
+	virtual void OnMontageCompleted() override;
+	virtual void EndExecution() override;
+	virtual void CancelExecution() override;
+
+	int32 GetCurrentChainIndex() const { return CurrentChainIndex; }
+	bool IsLinkWindowOpen() const { return bLinkWindowOpen; }
+
+private:
+	void AdvanceChain();
+	void CloseLinkWindow();
+	void CleanupChain();
+	const struct FRPGSkillChainExecutionConfig* GetChainConfig() const;
+
+	FTimerHandle LinkWindowTimerHandle;
+	int32 CurrentChainIndex = INDEX_NONE;
+	bool bLinkWindowOpen = false;
+	bool bInputBuffered = false;
 };

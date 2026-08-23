@@ -1,4 +1,4 @@
-#include "Ability/Gladiator/RPGGladiatorSkillAbilities.h"
+#include "Ability/Player/RPGPlayerSkillAbilities.h"
 
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
@@ -16,9 +16,9 @@
 #include "RPGGameplayTags.h"
 #include "TimerManager.h"
 
-#include UE_INLINE_GENERATED_CPP_BY_NAME(RPGGladiatorSkillAbilities)
+#include UE_INLINE_GENERATED_CPP_BY_NAME(RPGPlayerSkillAbilities)
 
-namespace RPGGladiatorAbility
+namespace RPGPlayerAbility
 {
 	void ReportInvalidTarget(AActor* SourceActor, const FString& Detail)
 	{
@@ -84,7 +84,7 @@ namespace RPGGladiatorAbility
 		}
 
 		FCollisionQueryParams QueryParams(
-			SCENE_QUERY_STAT(RPGGladiatorTargetValidation),
+			SCENE_QUERY_STAT(RPGPlayerTargetValidation),
 			false,
 			SourceActor);
 		FHitResult VisibilityHit;
@@ -189,7 +189,7 @@ namespace RPGGladiatorAbility
 		const FVector TraceEnd =
 			Candidate - FVector::UpVector * VerticalTraceDistance;
 		FCollisionQueryParams GroundParams(
-			SCENE_QUERY_STAT(RPGGladiatorGroundValidation),
+			SCENE_QUERY_STAT(RPGPlayerGroundValidation),
 			false,
 			SourceActor);
 		FHitResult GroundHit;
@@ -225,7 +225,7 @@ namespace RPGGladiatorAbility
 		}
 
 		FCollisionQueryParams VisibilityParams(
-			SCENE_QUERY_STAT(RPGGladiatorGroundVisibility),
+			SCENE_QUERY_STAT(RPGPlayerGroundVisibility),
 			false,
 			SourceActor);
 		FHitResult VisibilityHit;
@@ -426,7 +426,7 @@ void URPGGameplayAbility_Skill_Buff::ActivateAbility(const FGameplayAbilitySpecH
 	{
 		return;
 	}
-	if (!RPGGladiatorAbility::CommitIfGrounded(this))
+	if (!RPGPlayerAbility::CommitIfGrounded(this))
 	{
 		K2_EndAbility();
 		return;
@@ -435,10 +435,10 @@ void URPGGameplayAbility_Skill_Buff::ActivateAbility(const FGameplayAbilitySpecH
 	ApplyEffect();
 	ApplyAdditionalEffects();
 
-	if (UAnimMontage* MontageToPlay = RPGGladiatorAbility::ResolveBuffMontage(BuffMontage))
+	if (UAnimMontage* MontageToPlay = RPGPlayerAbility::ResolveBuffMontage(BuffMontage))
 	{
 		UAbilityTask_PlayMontageAndWait* Task = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
-			this, TEXT("GladiatorBuff"), MontageToPlay);
+			this, TEXT("PlayerBuff"), MontageToPlay);
 		Task->OnCompleted.AddDynamic(this, &ThisClass::OnMontageFinished);
 		Task->OnBlendOut.AddDynamic(this, &ThisClass::OnMontageFinished);
 		Task->OnInterrupted.AddDynamic(this, &ThisClass::OnMontageFinished);
@@ -488,7 +488,7 @@ void URPGGameplayAbility_Skill_ShieldBash::ActivateAbility(const FGameplayAbilit
 	{
 		return;
 	}
-	if (!RPGGladiatorAbility::CommitIfGrounded(this))
+	if (!RPGPlayerAbility::CommitIfGrounded(this))
 	{
 		K2_EndAbility();
 		return;
@@ -498,7 +498,7 @@ void URPGGameplayAbility_Skill_ShieldBash::ActivateAbility(const FGameplayAbilit
 	if (bUsesImportedMontage)
 	{
 		if (UAbilityTask_WaitGameplayEvent* BeginTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(
-			this, RPGGladiatorAbility::FindTag(TEXT("GameplayEvent.Montage.Begin")), nullptr, true, true))
+			this, RPGPlayerAbility::FindTag(TEXT("GameplayEvent.Montage.Begin")), nullptr, true, true))
 		{
 			BeginTask->EventReceived.AddDynamic(this, &ThisClass::OnShieldBashBegin);
 			BeginTask->ReadyForActivation();
@@ -509,7 +509,7 @@ void URPGGameplayAbility_Skill_ShieldBash::ActivateAbility(const FGameplayAbilit
 		OnShieldBashBegin(FGameplayEventData());
 	}
 
-	UAnimMontage* MontageToPlay = RPGGladiatorAbility::ResolveMeleeMontage(ShieldBashMontage);
+	UAnimMontage* MontageToPlay = RPGPlayerAbility::ResolveMeleeMontage(ShieldBashMontage);
 	if (!MontageToPlay)
 	{
 		K2_EndAbility();
@@ -571,7 +571,7 @@ void URPGGameplayAbility_Skill_ShieldBash::OnShieldBashBegin(FGameplayEventData 
 		UAbilitySystemComponent* TargetASC =
 			UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor);
 		const FGameplayTag KnockbackTag =
-			RPGGladiatorAbility::FindTag(TEXT("GameplayEvent.Knockback"));
+			RPGPlayerAbility::FindTag(TEXT("GameplayEvent.Knockback"));
 		FGameplayEventData KnockbackPayload;
 		KnockbackPayload.Instigator = SourceCharacter;
 		KnockbackPayload.Target = TargetActor;
@@ -608,7 +608,7 @@ void URPGGameplayAbility_Skill_ShieldBash::OnShieldBashBegin(FGameplayEventData 
 				{
 					if (WeakSource.IsValid() && WeakTarget.IsValid())
 					{
-						RPGGladiatorAbility::TriggerStun(
+						RPGPlayerAbility::TriggerStun(
 							WeakSource.Get(), WeakTarget.Get(), StunTime);
 					}
 				}),
@@ -632,7 +632,7 @@ void URPGGameplayAbility_Skill_GroundBreaker::ActivateAbility(const FGameplayAbi
 	{
 		return;
 	}
-	if (!RPGGladiatorAbility::CommitIfGrounded(this))
+	if (!RPGPlayerAbility::CommitIfGrounded(this))
 	{
 		K2_EndAbility();
 		return;
@@ -642,7 +642,7 @@ void URPGGameplayAbility_Skill_GroundBreaker::ActivateAbility(const FGameplayAbi
 	if (bUsesImportedMontage)
 	{
 		if (UAbilityTask_WaitGameplayEvent* BeginTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(
-			this, RPGGladiatorAbility::FindTag(TEXT("GameplayEvent.Montage.Begin")), nullptr, true, true))
+			this, RPGPlayerAbility::FindTag(TEXT("GameplayEvent.Montage.Begin")), nullptr, true, true))
 		{
 			BeginTask->EventReceived.AddDynamic(this, &ThisClass::OnGroundBreakerBegin);
 			BeginTask->ReadyForActivation();
@@ -653,7 +653,7 @@ void URPGGameplayAbility_Skill_GroundBreaker::ActivateAbility(const FGameplayAbi
 		OnGroundBreakerBegin(FGameplayEventData());
 	}
 
-	UAnimMontage* MontageToPlay = RPGGladiatorAbility::ResolveMeleeMontage(GroundBreakerMontage);
+	UAnimMontage* MontageToPlay = RPGPlayerAbility::ResolveMeleeMontage(GroundBreakerMontage);
 	if (!MontageToPlay)
 	{
 		K2_EndAbility();
@@ -711,7 +711,7 @@ void URPGGameplayAbility_Skill_GroundBreaker::OnGroundBreakerBegin(FGameplayEven
 			HitResult, Damage, IsCharacterBlockingHit(TargetActor), nullptr,
 			GetFirstEquipmentActor()))
 		{
-			RPGGladiatorAbility::TriggerStun(SourceCharacter, TargetActor, StunDruation);
+			RPGPlayerAbility::TriggerStun(SourceCharacter, TargetActor, StunDruation);
 		}
 	}
 }
@@ -730,7 +730,7 @@ void URPGGameplayAbility_Skill_WhirlwindSlash::ActivateAbility(const FGameplayAb
 	{
 		return;
 	}
-	if (!RPGGladiatorAbility::CommitIfGrounded(this))
+	if (!RPGPlayerAbility::CommitIfGrounded(this))
 	{
 		K2_EndAbility();
 		return;
@@ -740,25 +740,25 @@ void URPGGameplayAbility_Skill_WhirlwindSlash::ActivateAbility(const FGameplayAb
 	if (bUsesImportedMontage)
 	{
 		if (UAbilityTask_WaitGameplayEvent* TraceTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(
-			this, RPGGladiatorAbility::FindTag(TEXT("GameplayEvent.Trace")), nullptr, false, true))
+			this, RPGPlayerAbility::FindTag(TEXT("GameplayEvent.Trace")), nullptr, false, true))
 		{
 			TraceTask->EventReceived.AddDynamic(this, &ThisClass::OnTrace);
 			TraceTask->ReadyForActivation();
 		}
 		if (UAbilityTask_WaitGameplayEvent* ResetTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(
-			this, RPGGladiatorAbility::FindTag(TEXT("GameplayEvent.Reset")), nullptr, false, true))
+			this, RPGPlayerAbility::FindTag(TEXT("GameplayEvent.Reset")), nullptr, false, true))
 		{
 			ResetTask->EventReceived.AddDynamic(this, &ThisClass::OnReset);
 			ResetTask->ReadyForActivation();
 		}
 		if (UAbilityTask_WaitGameplayEvent* BeginTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(
-			this, RPGGladiatorAbility::FindTag(TEXT("GameplayEvent.Montage.Begin")), nullptr, true, true))
+			this, RPGPlayerAbility::FindTag(TEXT("GameplayEvent.Montage.Begin")), nullptr, true, true))
 		{
 			BeginTask->EventReceived.AddDynamic(this, &ThisClass::OnWhirlwindSlashBegin);
 			BeginTask->ReadyForActivation();
 		}
 		if (UAbilityTask_WaitGameplayEvent* EndTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(
-			this, RPGGladiatorAbility::FindTag(TEXT("GameplayEvent.Montage.End")), nullptr, true, true))
+			this, RPGPlayerAbility::FindTag(TEXT("GameplayEvent.Montage.End")), nullptr, true, true))
 		{
 			EndTask->EventReceived.AddDynamic(this, &ThisClass::OnWhirlwindSlashEnd);
 			EndTask->ReadyForActivation();
@@ -769,7 +769,7 @@ void URPGGameplayAbility_Skill_WhirlwindSlash::ActivateAbility(const FGameplayAb
 		OnTrace(FGameplayEventData());
 	}
 
-	UAnimMontage* MontageToPlay = RPGGladiatorAbility::ResolveMeleeMontage(WhirlwindSlashMontage);
+	UAnimMontage* MontageToPlay = RPGPlayerAbility::ResolveMeleeMontage(WhirlwindSlashMontage);
 	if (!MontageToPlay)
 	{
 		K2_EndAbility();
@@ -851,7 +851,7 @@ void URPGGameplayAbility_Skill_PiercingShot::ActivateAbility(const FGameplayAbil
 	{
 		return;
 	}
-	if (!RPGGladiatorAbility::CommitIfGrounded(this))
+	if (!RPGPlayerAbility::CommitIfGrounded(this))
 	{
 		K2_EndAbility();
 		return;
@@ -905,7 +905,7 @@ void URPGGameplayAbility_Skill_PiercingShot::ActivateAbility(const FGameplayAbil
 			SpawnParameters);
 	}
 
-	if (UAnimMontage* MontageToPlay = RPGGladiatorAbility::ResolveMeleeMontage(ReleaseMontage))
+	if (UAnimMontage* MontageToPlay = RPGPlayerAbility::ResolveMeleeMontage(ReleaseMontage))
 	{
 		UAbilityTask_PlayMontageAndWait* Task = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
 			this, TEXT("PiercingShot"), MontageToPlay);
@@ -960,7 +960,7 @@ void URPGGameplayAbility_Skill_Targeting::EndAbility(const FGameplayAbilitySpecH
 
 void URPGGameplayAbility_Skill_Targeting::ConfirmSkill()
 {
-	if (!RPGGladiatorAbility::CommitIfGrounded(this))
+	if (!RPGPlayerAbility::CommitIfGrounded(this))
 	{
 		CancelSkill();
 		return;
@@ -969,7 +969,7 @@ void URPGGameplayAbility_Skill_Targeting::ConfirmSkill()
 	if (HasAuthority(&CurrentActivationInfo))
 	{
 		FGameplayAbilityTargetDataHandle ValidatedTargetData;
-		if (!RPGGladiatorAbility::ValidateTargetedEffectData(
+		if (!RPGPlayerAbility::ValidateTargetedEffectData(
 			GetAvatarActorFromActorInfo(),
 			TargetDataHandle,
 			MaxRange,
@@ -1048,7 +1048,7 @@ void URPGGameplayAbility_Skill_AOE::EndAbility(const FGameplayAbilitySpecHandle 
 
 void URPGGameplayAbility_Skill_AOE::ConfirmSkill()
 {
-	if (!RPGGladiatorAbility::CommitIfGrounded(this))
+	if (!RPGPlayerAbility::CommitIfGrounded(this))
 	{
 		CancelSkill();
 		return;
@@ -1058,7 +1058,7 @@ void URPGGameplayAbility_Skill_AOE::ConfirmSkill()
 	{
 		AActor* Avatar = GetAvatarActorFromActorInfo();
 		FVector SpawnLocation = Avatar->GetActorLocation();
-		if (!RPGGladiatorAbility::ResolveGroundTargetLocation(
+		if (!RPGPlayerAbility::ResolveGroundTargetLocation(
 			Avatar,
 			TargetDataHandle,
 			MaxRange,

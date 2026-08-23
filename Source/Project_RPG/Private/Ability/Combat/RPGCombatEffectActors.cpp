@@ -1,4 +1,4 @@
-#include "Ability/Gladiator/RPGGladiatorEffectActors.h"
+#include "Ability/Combat/RPGCombatEffectActors.h"
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
@@ -20,9 +20,9 @@
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 
-#include UE_INLINE_GENERATED_CPP_BY_NAME(RPGGladiatorEffectActors)
+#include UE_INLINE_GENERATED_CPP_BY_NAME(RPGCombatEffectActors)
 
-namespace RPGGladiatorEffectActors
+namespace RPGCombatEffectActors
 {
 	UAbilitySystemComponent* FindAbilitySystem(AActor* Actor)
 	{
@@ -289,7 +289,7 @@ void ARPGGladiatorProjectileBase::HandleCollisionDetection(AActor* OtherActor,
 		{
 			return;
 		}
-		if (RPGGladiatorEffectActors::ApplyDamage(
+		if (RPGCombatEffectActors::ApplyDamage(
 			GetOwner(),
 			OtherActor,
 			HitResult,
@@ -309,7 +309,7 @@ void ARPGGladiatorProjectileBase::HandleCollisionDetection(AActor* OtherActor,
 	if (HitGameplayCueTag.IsValid())
 	{
 		if (UAbilitySystemComponent* SourceASC =
-			RPGGladiatorEffectActors::FindAbilitySystem(GetOwner()))
+			RPGCombatEffectActors::FindAbilitySystem(GetOwner()))
 		{
 			FGameplayCueParameters CueParameters;
 			CueParameters.Location = HitResult.ImpactPoint;
@@ -526,7 +526,7 @@ void ARPGGladiatorAOEElementBase::HandleCollisionDetection(const FHitResult& Hit
 		return;
 	}
 
-	if (RPGGladiatorEffectActors::ApplyDamage(
+	if (RPGCombatEffectActors::ApplyDamage(
 		GetOwner(),
 		HitActor,
 		HitResult,
