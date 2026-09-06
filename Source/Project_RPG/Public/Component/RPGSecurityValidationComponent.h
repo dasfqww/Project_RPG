@@ -7,6 +7,7 @@
 
 class UGameplayAbility;
 class URPGSecurityPolicy;
+class APlayerController;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	FRPGSecurityViolationReported,
@@ -14,6 +15,14 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	Violation);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	FRPGSecurityRiskThresholdExceeded,
+	float,
+	RiskScore);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
+	FRPGSecurityEnforcementStateChanged,
+	ERPGSecurityEnforcementState,
+	PreviousState,
+	ERPGSecurityEnforcementState,
+	NewState,
 	float,
 	RiskScore);
 
@@ -42,7 +51,7 @@ public:
 	/** Non-mutating admission check; accepted activations are recorded separately. */
 	bool CanAcceptAbilityActivation(
 		const UClass* AbilityClass,
-		FString& OutReason) const;
+		FString& OutReason);
 	void RecordAbilityActivation(const UClass* AbilityClass);
 
 	bool ValidateCombatHit(
@@ -54,11 +63,29 @@ public:
 	bool ValidateDamage(float Damage, FString& OutReason);
 
 	void ReportInvalidTargetData(const FString& Detail);
+
+	/** Trusted server Blueprint systems may report project-specific observations. */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly,
+		Category = "RPG|Security",
+		meta = (ClampMin = "0.0"))
 	void ReportViolation(
 		ERPGSecurityViolationType Type,
 		ERPGSecurityViolationSeverity Severity,
 		float Score,
 		const FString& Detail);
+
+	/** Gate a server BP action such as trade, crafting, or reward claim. */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly,
+		Category = "RPG|Security|Enforcement")
+	bool CanPerformProtectedAction(
+		FName ActionName,
+		bool bReportDeniedAttempt,
+		FString& OutReason);
+
+	/** Removes this player from the current server. This never creates a permanent ban. */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly,
+		Category = "RPG|Security|Enforcement")
+	bool RequestPlayerRemoval(const FText& Reason);
 
 	/** Call before a legitimate server teleport, dash, or forced displacement. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "RPG|Security")
@@ -92,6 +119,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "RPG|Security")
 	int32 GetTotalViolationCount() const { return TotalViolationCount; }
 
+	UFUNCTION(BlueprintPure, Category = "RPG|Security|Enforcement")
+	ERPGSecurityEnforcementState GetEnforcementState() const
+	{
+		return EnforcementState;
+	}
+
+	UFUNCTION(BlueprintPure, Category = "RPG|Security|Enforcement")
+	bool IsRestricted() const
+	{
+		return EnforcementState >= ERPGSecurityEnforcementState::Restricted;
+	}
+
 	UFUNCTION(BlueprintPure, Category = "RPG|Security|Movement")
 	bool IsMovementAuthorizationActive() const;
 
@@ -111,11 +150,23 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "RPG|Security")
 	FRPGSecurityRiskThresholdExceeded OnRiskThresholdExceeded;
 
+	UPROPERTY(BlueprintAssignable, Category = "RPG|Security|Enforcement")
+	FRPGSecurityEnforcementStateChanged OnEnforcementStateChanged;
+
 private:
 	double GetServerTimeSeconds() const;
 	void SampleMovement();
 	void DecayRiskScore(float DeltaTime);
 	void PruneAbilityActivationHistory(double Now);
+	void EvaluateEnforcementState();
+	void SetEnforcementState(ERPGSecurityEnforcementState NewState);
+	void EmitEnforcementAuditEvent(
+		ERPGSecurityViolationType Type,
+		ERPGSecurityViolationSeverity Severity,
+		const FString& Detail);
+	void ScheduleAutomaticRemoval();
+	void ExecuteScheduledRemoval();
+	APlayerController* ResolveOwningPlayerController() const;
 	bool IsAuthorityOwner() const;
 	const FRPGSecurityPolicyConfig& GetPolicyConfigRef() const;
 
@@ -131,6 +182,7 @@ private:
 
 	bool bHasMovementBaseline = false;
 	bool bRiskThresholdBroadcast = false;
+	bool bRemovalScheduled = false;
 	int32 ConsecutiveSpeedViolationSamples = 0;
 	int32 TotalViolationCount = 0;
 	float RiskScore = 0.0f;
@@ -138,8 +190,12 @@ private:
 	double AuthorizedMovementEndsAt = 0.0;
 	float AuthorizedExtraDistance = 0.0f;
 	FName AuthorizedMovementReason;
+	ERPGSecurityEnforcementState EnforcementState =
+		ERPGSecurityEnforcementState::Monitoring;
+	FTimerHandle AutomaticRemovalTimerHandle;
 	FRPGMovementSecuritySample PreviousMovementSample;
 	TArray<double> AbilityActivationHistory;
 	TMap<FName, double> LastAbilityActivationByClass;
 	TMap<ERPGSecurityViolationType, double> LastLogTimeByType;
+	TMap<FName, double> LastDeniedActionReportByName;
 };

@@ -15,8 +15,28 @@
 - `Ability`: 초당 어빌리티 활성화 수와 동일 어빌리티 최소 간격
 - `Combat`: 모든 스킬에 적용되는 최종 피해량 상한
 - `Scoring`: 위반 점수 감쇠와 경고 임계값
+- `Enforcement`: 단계별 상태 임계값, 회복 비율, 보호 동작 차단, 선택적 세션 제거
 
-`On Violation Reported`와 `On Risk Threshold Exceeded`는 서버에서만 바인딩한다. 자동 차단은 오탐 검토 전까지 바로 연결하지 않고, 우선 서버 로그·운영 텔레메트리에 기록한다.
+`On Violation Reported`, `On Risk Threshold Exceeded`, `On Enforcement State Changed`는 서버에서만 바인딩한다.
+
+기본 enforcement 단계는 다음과 같다.
+
+- `Monitoring`: 정상 관찰 상태
+- `Elevated`: 추가 기록과 운영 관찰 대상
+- `Restricted`: 플레이어 입력 Ability 및 BP 보호 동작 차단
+- `Removal Recommended`: 세션 제거 권고. 자동 제거는 기본적으로 비활성화
+
+상태가 내려갈 때는 `Recovery Ratio`를 적용해 임계값 주변에서 상태가 반복 전환되지 않게 한다. `Automatically Remove Player`는 충분한 Dedicated Server 오탐 측정 이후에만 활성화한다. 이 옵션은 현재 세션에서 Kick할 뿐 영구 계정 밴을 만들지 않는다.
+
+거래·제작·보상 수령처럼 BP에서 시작하는 중요한 서버 동작은 실행 전에 `Can Perform Protected Action`을 호출한다. `Action Name`에는 `TradeCommit`, `CraftItem`, `RewardClaim`처럼 안정적인 이름을 사용한다. 반환값이 false면 동작을 중단하고 `Out Reason`을 서버 로그에 남긴다. 반복 거부 시 보고는 정책의 간격 제한을 받으므로 요청 폭주가 텔레메트리를 무한히 만들지 않는다.
+
+기본 아이템 명령 컴포넌트의 `Equip`, `Unequip`, `Consume` Server RPC는 이 검사를
+공통 진입점에서 자동 수행한다. 서버 Pawn에 `RPGSecurityValidationComponent`가 없으면
+fail-closed로 거부하므로, 플레이어 BP에서 컴포넌트를 제거하거나 우회 RPC를 만들지
+않는다. 거래·제작처럼 프로젝트별로 추가하는 BP RPC에는 위 노드를 계속 명시적으로
+연결한다.
+
+운영 BP가 세션 제거를 승인하면 `Request Player Removal`을 호출한다. `Ban Player`나 영구 제재 API에는 연결하지 않는다.
 
 ## 2. 스킬 DataAsset 설정
 
@@ -32,6 +52,10 @@
 Content Browser의 `Validate Assets`를 실행하면 유효하지 않은 보안 프로필은 에러로 표시된다.
 
 ## 3. 공격 Ability BP 연결
+
+플레이어가 요청할 수 있는 `Local Predicted`와 `Server Only` Gameplay Ability는 모두
+서버 활성화 빈도와 Restricted 상태 검사를 받는다. `On Spawn`/`On Given` 패시브 또는
+서버가 직접 실행하는 반응형 Ability는 입력 요청으로 취급하지 않는다.
 
 피해가 발생하는 AnimNotify 또는 실행 이벤트에서 `Execute Authorized Skill Damage`를 호출한다.
 

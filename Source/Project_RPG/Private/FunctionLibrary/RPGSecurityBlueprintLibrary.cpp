@@ -34,40 +34,35 @@ namespace RPGSecurityBlueprint
 		FText& OutError)
 	{
 		if (Hit.GetActor() != &TargetActor ||
-			SourceActor.GetWorld() != TargetActor.GetWorld() ||
-			SourceActor.GetActorLocation().ContainsNaN() ||
-			TargetActor.GetActorLocation().ContainsNaN() ||
-			Hit.ImpactPoint.ContainsNaN())
+			SourceActor.GetWorld() != TargetActor.GetWorld())
 		{
 			OutError = FText::FromString(
-				TEXT("Server hit contains invalid source, target, or spatial data."));
+				TEXT("Server hit contains an invalid source or target."));
 			return false;
 		}
 
 		FVector BoundsOrigin = TargetActor.GetActorLocation();
 		FVector BoundsExtent = FVector::ZeroVector;
 		TargetActor.GetActorBounds(true, BoundsOrigin, BoundsExtent, false);
-		const float AllowedDistance =
-			Profile.MaximumServerHitDistance + BoundsExtent.Size();
-		if (FVector::DistSquared(SourceActor.GetActorLocation(), BoundsOrigin) >
-			FMath::Square(AllowedDistance))
+		FRPGCombatHitSecuritySample Sample;
+		Sample.SourceLocation = SourceActor.GetActorLocation();
+		Sample.TargetBoundsOrigin = BoundsOrigin;
+		Sample.TargetBoundsExtent = BoundsExtent;
+		Sample.ImpactPoint = Hit.ImpactPoint;
+		Sample.MaximumDistance = Profile.MaximumServerHitDistance;
+		Sample.HitLocationTolerance = Profile.HitLocationTolerance;
+		const FRPGCombatHitSecurityResult Result =
+			FRPGSecurityValidationMath::ValidateCombatHit(Sample);
+		if (!Result.bValid)
 		{
 			OutError = FText::FromString(
-				TEXT("Server hit exceeds the skill security profile range."));
-			return false;
-		}
-
-		const FVector BoundsMin = BoundsOrigin - BoundsExtent;
-		const FVector BoundsMax = BoundsOrigin + BoundsExtent;
-		const FVector ClosestPoint(
-			FMath::Clamp(Hit.ImpactPoint.X, BoundsMin.X, BoundsMax.X),
-			FMath::Clamp(Hit.ImpactPoint.Y, BoundsMin.Y, BoundsMax.Y),
-			FMath::Clamp(Hit.ImpactPoint.Z, BoundsMin.Z, BoundsMax.Z));
-		if (FVector::DistSquared(ClosestPoint, Hit.ImpactPoint) >
-			FMath::Square(FMath::Max(0.0f, Profile.HitLocationTolerance)))
-		{
-			OutError = FText::FromString(
-				TEXT("Server impact point does not intersect the target bounds."));
+				Result.Failure ==
+						ERPGCombatHitValidationFailure::RangeExceeded
+					? TEXT("Server hit exceeds the skill security profile range.")
+					: Result.Failure ==
+							ERPGCombatHitValidationFailure::ImpactPointOutsideTarget
+						? TEXT("Server impact point does not intersect the target bounds.")
+						: TEXT("Server hit contains invalid spatial data or limits."));
 			return false;
 		}
 		return true;
@@ -109,8 +104,9 @@ bool URPGSecurityBlueprintLibrary::ValidateAuthorizedServerHit(
 		OutError = FText::FromString(ProfileError);
 		return false;
 	}
-	if (!FMath::IsFinite(Damage) || Damage <= 0.0f ||
-		Damage > SecurityProfile.MaximumDamagePerHit)
+	if (!FRPGSecurityValidationMath::IsDamageMagnitudeValid(
+		Damage,
+		SecurityProfile.MaximumDamagePerHit))
 	{
 		OutError = FText::FromString(
 			TEXT("Damage exceeds the authored skill security profile."));

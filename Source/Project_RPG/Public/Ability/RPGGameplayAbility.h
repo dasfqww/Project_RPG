@@ -64,7 +64,8 @@ protected:
 	virtual void OnAvatarSet(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
 	//~ End UGameplayAbility Interface
 
-	/** Client-predicted input abilities are limited; passives and server reactions are exempt. */
+	/** Client-requested input abilities are limited; passives and server reactions are exempt. */
+	bool ShouldApplyServerInputEnforcement() const;
 	bool ShouldApplyServerActivationRateLimit() const;
 
 	UPROPERTY(EditDefaultsOnly, Category = "RPGAbility")

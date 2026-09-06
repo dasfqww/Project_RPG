@@ -5,6 +5,7 @@
 #include "Component/Equipment/RPGAuthoritativeEquipmentComponent.h"
 #include "Component/RPGAbilitySystemComponent.h"
 #include "Component/RPGInventoryProjectionComponent.h"
+#include "Component/RPGSecurityValidationComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameplayEffect.h"
 #include "Item/Backend/RPGItemBackendSubsystem.h"
@@ -500,6 +501,29 @@ bool URPGItemCommandComponent::BeginRequest(
 		ClientNotifyItemCommand(Result);
 		return false;
 	}
+
+	const APlayerController* Controller =
+		Cast<APlayerController>(GetOwner());
+	const APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+	URPGSecurityValidationComponent* Security = Pawn
+		? Pawn->FindComponentByClass<URPGSecurityValidationComponent>()
+		: nullptr;
+	FString SecurityReason;
+	if (!Security || !Security->CanPerformProtectedAction(
+		Operation,
+		true,
+		SecurityReason))
+	{
+		FRPGItemCommandClientResult Result;
+		Result.RequestId = RequestId;
+		Result.Operation = Operation;
+		Result.Result = Security
+			? ERPGItemCommandResultCode::Forbidden
+			: ERPGItemCommandResultCode::ServerStateError;
+		ClientNotifyItemCommand(Result);
+		return false;
+	}
+
 	InFlightRequestIds.Add(RequestId);
 	return true;
 }

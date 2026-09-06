@@ -11,6 +11,9 @@
 - 지면 지정 좌표의 서버 지면 Trace·거리·시야 재검증
 - GameplayEffect 적용 실패 시 직접 Attribute 피해로 우회하던 경로 제거
 - 대시·도약 같은 이동 불연속의 제한 시간·거리 예산 승인
+- 연사·활성화 폭주·사거리·피격점·피해량·TargetData 변조의 결정론적 서버 판정 및 공격 시뮬레이션 테스트
+- 위험 점수 기반 Monitoring/Elevated/Restricted/RemovalRecommended 단계와 BP 보호 동작 게이트
+- 인증된 전용 서버의 보안 이벤트 배치 저장, 멱등 재전송, 세션 단위 집계
 
 ## BP 설정 필요
 
@@ -27,8 +30,9 @@
 ## 검증 결과
 
 - `Project_RPGEditor Win64 Development`: 빌드 성공
-- 보안 관련 Blueprint 8개: 컴파일 오류 0, 실패 0
-- `ProjectRPG.*` 자동화 테스트: 35 성공, 0 실패
+- 보안 관련 Blueprint 9개: 컴파일 오류 0, 실패 0
+- `ProjectRPG.Security.*` 자동화 테스트: 17 성공, 테스트 경고 0, 실패 0
+- `ProjectRPG.*` 전체 회귀 테스트: 51개 실행, 실패 0
 
 검증한 BP는 레거시 기본 공격 1개, 플레이어 스킬 4개, NPC 근접 기본 Ability, Projectile Base, Glacer Projectile이다.
 
@@ -38,12 +42,11 @@
 
 - `Content/Blueprints/Character/NPC/Gruntling/BT_Guardian.uasset`: 패키지 이름 테이블이 파일 끝을 가리키는 손상 자산
 - `Plugins/GameFeatures/GladiatorCore/Content` 일부 BP: `D1GameplayAbility_*`, `D1WeaponBase`, `D1ItemTemplate` 등 원본 부모 클래스 누락
-- `GA_NPC_MeleeAttack_Base`: 현재 태그 테이블에 없는 `Enemy.Ability.Melee`, `Enemy.Ability`, `Enemy.Status.Unblockable` 참조
 
 ## 출시 전 남은 보안 작업
 
 - Dedicated Server의 고핑·패킷 손실·프레임 드랍 조건에서 허용치 튜닝
-- 위반 이벤트의 서버 텔레메트리 저장, 세션 단위 상관 분석, 운영자 조회 화면
+- 장기 계정 이력과 세션 집계를 결합한 운영자 검토 화면 및 제재 승인 워크플로
 - 거래·드롭·제작·보상 트랜잭션의 감사 로그와 재처리 도구 검증
-- 속도핵·연사핵·사거리핵·TargetData 변조를 재현하는 네트워크 통합 테스트
+- 별도 서버·클라이언트 프로세스와 패킷 지연/손실을 사용하는 네트워크 공격 통합 테스트
 - 필요 시 플랫폼 안티치트 연동. 플랫폼 안티치트는 서버 권위 검증을 대체하지 않고 보조한다.

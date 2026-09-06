@@ -35,15 +35,27 @@ bool URPGGameplayAbility::CanActivateAbility(
 	{
 		return true;
 	}
-	if (!ShouldApplyServerActivationRateLimit())
+	if (!ShouldApplyServerInputEnforcement())
 	{
 		return true;
 	}
 
 	URPGSecurityValidationComponent* Security =
 		AvatarActor->FindComponentByClass<URPGSecurityValidationComponent>();
+	if (!Security)
+	{
+		return true;
+	}
 	FString RejectionReason;
-	return !Security || Security->CanAcceptAbilityActivation(
+	if (!Security->CanPerformProtectedAction(
+		TEXT("AbilityActivation"),
+		true,
+		RejectionReason))
+	{
+		return false;
+	}
+	return !ShouldApplyServerActivationRateLimit()
+		|| Security->CanAcceptAbilityActivation(
 		GetClass(),
 		RejectionReason);
 }
@@ -71,9 +83,17 @@ void URPGGameplayAbility::ActivateAbility(
 bool URPGGameplayAbility::ShouldApplyServerActivationRateLimit() const
 {
 	return bCountTowardServerActivationRateLimit &&
-		AbilityActivationPolicy == ERPGAbilityActivationPolicy::OnTriggered &&
+		ShouldApplyServerInputEnforcement();
+}
+
+bool URPGGameplayAbility::ShouldApplyServerInputEnforcement() const
+{
+	return AbilityActivationPolicy == ERPGAbilityActivationPolicy::OnTriggered &&
 		ActivationPolicy != ERPGGladiatorAbilityActivationPolicy::OnSpawn &&
-		NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalPredicted;
+		(NetExecutionPolicy ==
+			EGameplayAbilityNetExecutionPolicy::LocalPredicted ||
+		 NetExecutionPolicy ==
+			EGameplayAbilityNetExecutionPolicy::ServerOnly);
 }
 
 void URPGGameplayAbility::OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
