@@ -33,6 +33,7 @@ bool FRPGInventoryProjectionEntry::HasSamePayload(
 	return ItemId == Other.ItemId &&
 		DefinitionId == Other.DefinitionId &&
 		DefinitionVersion == Other.DefinitionVersion &&
+		ContainerType == Other.ContainerType &&
 		SlotIndex == Other.SlotIndex &&
 		Quantity == Other.Quantity &&
 		Revision == Other.Revision &&
@@ -53,6 +54,7 @@ void FRPGInventoryProjectionEntry::CopyPayloadFrom(
 	ItemId = Other.ItemId;
 	DefinitionId = Other.DefinitionId;
 	DefinitionVersion = Other.DefinitionVersion;
+	ContainerType = Other.ContainerType;
 	SlotIndex = Other.SlotIndex;
 	Quantity = Other.Quantity;
 	Revision = Other.Revision;

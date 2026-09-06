@@ -20,7 +20,9 @@ enum class ERPGInventoryProjectionLoadState : uint8
  * Client-safe read model for one inventory record.
  *
  * Owner IDs, container IDs, generation seeds, lifecycle data, and persistence
- * metadata are deliberately not replicated.
+ * metadata are deliberately not replicated. The container type is replicated
+ * because a client must distinguish an equipped slot from an inventory slot
+ * with the same numeric index.
  */
 USTRUCT(BlueprintType)
 struct PROJECT_RPG_API FRPGInventoryProjectionEntry
@@ -32,6 +34,7 @@ public:
 	const FGuid& GetItemId() const { return ItemId; }
 	const FPrimaryAssetId& GetDefinitionId() const { return DefinitionId; }
 	int32 GetDefinitionVersion() const { return DefinitionVersion; }
+	ERPGItemContainerType GetContainerType() const { return ContainerType; }
 	int32 GetSlotIndex() const { return SlotIndex; }
 	int32 GetQuantity() const { return Quantity; }
 	int64 GetRevision() const { return Revision; }
@@ -62,6 +65,9 @@ private:
 
 	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	int32 DefinitionVersion = 0;
+
+	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	ERPGItemContainerType ContainerType = ERPGItemContainerType::None;
 
 	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	int32 SlotIndex = INDEX_NONE;

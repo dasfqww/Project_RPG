@@ -162,15 +162,20 @@ bool FRPGInventoryProjectionStoreMutationTest::RunTest(
 			Entries,
 			&Error));
 	TestEqual(
-		TEXT("Equipment and terminal records leave inventory projection"),
+		TEXT("Equipment records remain projected while terminal records do not"),
 		Entries.Num(),
-		1);
-	if (Entries.Num() == 1)
+		2);
+	if (Entries.Num() == 2)
 	{
 		TestEqual(
 			TEXT("An unrelated inventory item is preserved"),
 			Entries[0].GetItemId(),
 			UnaffectedItemId);
+		TestEqual(TEXT("The equipped item remains visible to its owner"),
+			Entries[1].GetItemId(), EquippedItemId);
+		TestEqual(TEXT("The equipped item exposes its container type"),
+			Entries[1].GetContainerType(),
+			ERPGItemContainerType::Equipment);
 	}
 	TestEqual(
 		TEXT("The authoritative cache retains all record lifecycles"),
@@ -191,8 +196,8 @@ bool FRPGInventoryProjectionStoreMutationTest::RunTest(
 		TEXT("An out-of-order callback is accepted as a no-op"),
 		Store.ApplyMutations(Owner, {StaleMutation}, Entries, &Error));
 	TestEqual(TEXT("A stale receipt preserves the current snapshot"),
-		Entries.Num(), 1);
-	if (Entries.Num() == 1)
+		Entries.Num(), 2);
+	if (Entries.Num() == 2)
 	{
 		TestEqual(TEXT("A stale receipt cannot roll back the slot"),
 			Entries[0].GetSlotIndex(), 2);

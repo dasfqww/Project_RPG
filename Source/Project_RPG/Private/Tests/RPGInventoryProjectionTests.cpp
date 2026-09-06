@@ -72,7 +72,7 @@ bool MakeRecord(
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRPGInventoryProjectionMapperTest,
-	"ProjectRPG.Item.Projection.MapsOnlyOwnedInventoryRecords",
+	"ProjectRPG.Item.Projection.MapsOwnedInventoryAndEquipmentRecords",
 	EAutomationTestFlags::EditorContext |
 		EAutomationTestFlags::EngineFilter)
 
@@ -83,6 +83,7 @@ bool FRPGInventoryProjectionMapperTest::RunTest(const FString& Parameters)
 		TEXT("10203040-5060-7080-90a0-b0c0d0e0f001"));
 	const FGuid InventoryItemId = FGuid::NewGuid();
 	FRPGItemRecord InventoryRecord;
+	FRPGItemRecord EquipmentRecord;
 	FRPGItemRecord TradeRecord;
 	constexpr int64 LargeRevision = 9007199254740993LL;
 	TestTrue(
@@ -95,6 +96,16 @@ bool FRPGInventoryProjectionMapperTest::RunTest(const FString& Parameters)
 			2,
 			LargeRevision,
 			InventoryRecord));
+	TestTrue(
+		TEXT("An equipment record can be restored"),
+		MakeRecord(
+			Owner,
+			FGuid::NewGuid(),
+			ERPGItemContainerType::Equipment,
+			0,
+			1,
+			8,
+			EquipmentRecord));
 	TestTrue(
 		TEXT("A server-only trade record can be restored"),
 		MakeRecord(
@@ -112,14 +123,19 @@ bool FRPGInventoryProjectionMapperTest::RunTest(const FString& Parameters)
 		TEXT("The owned records produce a projection"),
 		FRPGInventoryProjectionMapper::BuildInventorySnapshot(
 			Owner,
-			{TradeRecord, InventoryRecord},
+			{TradeRecord, EquipmentRecord, InventoryRecord},
 			Snapshot,
 			&Error));
-	TestEqual(TEXT("Only inventory records are projected"), Snapshot.Num(), 1);
-	if (Snapshot.Num() == 1)
+	TestEqual(
+		TEXT("Inventory and equipment records are projected"),
+		Snapshot.Num(),
+		2);
+	if (Snapshot.Num() == 2)
 	{
 		const FRPGInventoryProjectionEntry& Entry = Snapshot[0];
 		TestEqual(TEXT("Identity is projected"), Entry.GetItemId(), InventoryItemId);
+		TestEqual(TEXT("Inventory container type is projected"),
+			Entry.GetContainerType(), ERPGItemContainerType::Inventory);
 		TestEqual(TEXT("Slot is projected"), Entry.GetSlotIndex(), 4);
 		TestEqual(TEXT("Quantity is projected"), Entry.GetQuantity(), 2);
 		TestEqual(
@@ -135,6 +151,12 @@ bool FRPGInventoryProjectionMapperTest::RunTest(const FString& Parameters)
 			TEXT("Rolled stats are projected"),
 			Entry.GetRolledStats().Num(),
 			1);
+		TestEqual(TEXT("Equipment container type is projected"),
+			Snapshot[1].GetContainerType(),
+			ERPGItemContainerType::Equipment);
+		TestEqual(TEXT("Equipment slot is projected"),
+			Snapshot[1].GetSlotIndex(),
+			0);
 	}
 
 	const FRPGItemOwnerRef ForeignOwner = MakeOwner(
@@ -191,9 +213,9 @@ bool FRPGInventoryProjectionReconcileTest::RunTest(
 		MakeRecord(
 			Owner,
 			ItemId,
-			ERPGItemContainerType::Inventory,
-			2,
-			3,
+			ERPGItemContainerType::Equipment,
+			0,
+			1,
 			11,
 			UpdatedRecord));
 
@@ -230,8 +252,13 @@ bool FRPGInventoryProjectionReconcileTest::RunTest(
 	TestNotNull(TEXT("Stable identity is retained"), UpdatedEntry);
 	if (UpdatedEntry)
 	{
-		TestEqual(TEXT("Quantity is updated"), UpdatedEntry->GetQuantity(), 3);
+		TestEqual(TEXT("Quantity is updated"), UpdatedEntry->GetQuantity(), 1);
 		TestEqual(TEXT("Revision is updated"), UpdatedEntry->GetRevision(), 11LL);
+		TestEqual(TEXT("Container transition produces a delta"),
+			UpdatedEntry->GetContainerType(),
+			ERPGItemContainerType::Equipment);
+		TestEqual(TEXT("Equipment slot is updated"),
+			UpdatedEntry->GetSlotIndex(), 0);
 	}
 
 	TestTrue(

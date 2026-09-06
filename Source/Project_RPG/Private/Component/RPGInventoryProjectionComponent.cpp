@@ -49,6 +49,10 @@ bool URPGInventoryProjectionComponent::LoadAuthenticatedCharacterItems()
 		: nullptr;
 	if (!Backend || !Backend->IsAvailable())
 	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("Item projection load rejected because the backend gateway is unavailable."));
 		SetLoadState(ERPGInventoryProjectionLoadState::Failed);
 		return false;
 	}
@@ -93,6 +97,16 @@ bool URPGInventoryProjectionComponent::LoadAuthenticatedCharacterItems()
 				CurrentCharacterGuid != CharacterGuid ||
 				!Result.WasSuccessful())
 			{
+				if (!Result.WasSuccessful())
+				{
+					UE_LOG(
+						LogTemp,
+						Warning,
+						TEXT("Item projection backend load failed. Status=%d Http=%d Error=%s"),
+						static_cast<int32>(Result.Status),
+						Result.HttpStatusCode,
+						*Result.Error);
+				}
 				Self->SetLoadState(
 					ERPGInventoryProjectionLoadState::Failed);
 				return;
@@ -240,6 +254,11 @@ URPGInventoryProjectionComponent::GetProjectedItems() const
 		[](const FRPGInventoryProjectionEntry& Left,
 			const FRPGInventoryProjectionEntry& Right)
 		{
+			if (Left.GetContainerType() != Right.GetContainerType())
+			{
+				return static_cast<uint8>(Left.GetContainerType()) <
+					static_cast<uint8>(Right.GetContainerType());
+			}
 			return Left.GetSlotIndex() < Right.GetSlotIndex();
 		});
 	return Result;

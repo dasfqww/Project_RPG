@@ -17,6 +17,14 @@ bool GuidLess(const FGuid& Left, const FGuid& Right)
 	if (Left.C != Right.C) return Left.C < Right.C;
 	return Left.D < Right.D;
 }
+
+uint64 MakeSlotKey(
+	const ERPGItemContainerType ContainerType,
+	const int32 SlotIndex)
+{
+	return (static_cast<uint64>(static_cast<uint8>(ContainerType)) << 32)
+		| static_cast<uint32>(SlotIndex);
+}
 }
 
 bool FRPGInventoryProjectionMapper::BuildInventorySnapshot(
@@ -36,7 +44,7 @@ bool FRPGInventoryProjectionMapper::BuildInventorySnapshot(
 	}
 
 	TSet<FGuid> ItemIds;
-	TSet<int32> SlotIndices;
+	TSet<uint64> SlotKeys;
 	for (const FRPGItemRecord& Record : Records)
 	{
 		if (!Record.IsStructurallyValid())
@@ -55,31 +63,37 @@ bool FRPGInventoryProjectionMapper::BuildInventorySnapshot(
 			OutEntries.Reset();
 			return false;
 		}
+		const ERPGItemContainerType ContainerType =
+			Record.GetLocation().ContainerType;
 		if (!Record.IsActive() ||
-			Record.GetLocation().ContainerType !=
-				ERPGItemContainerType::Inventory)
+			(ContainerType != ERPGItemContainerType::Inventory &&
+				ContainerType != ERPGItemContainerType::Equipment))
 		{
 			continue;
 		}
 
 		const FGuid& ItemId = Record.GetItemId();
 		const int32 SlotIndex = Record.GetLocation().SlotIndex;
-		if (ItemIds.Contains(ItemId) || SlotIndices.Contains(SlotIndex))
+		const uint64 SlotKey = RPGInventoryProjectionMapper::MakeSlotKey(
+			ContainerType,
+			SlotIndex);
+		if (ItemIds.Contains(ItemId) || SlotKeys.Contains(SlotKey))
 		{
 			RPGInventoryProjectionMapper::SetError(
 				OutError,
-				TEXT("The inventory snapshot contains duplicate identity or slot data."));
+				TEXT("The item projection contains duplicate identity or slot data."));
 			OutEntries.Reset();
 			return false;
 		}
 		ItemIds.Add(ItemId);
-		SlotIndices.Add(SlotIndex);
+		SlotKeys.Add(SlotKey);
 
 		FRPGInventoryProjectionEntry& Entry =
 			OutEntries.AddDefaulted_GetRef();
 		Entry.ItemId = ItemId;
 		Entry.DefinitionId = Record.GetDefinitionId();
 		Entry.DefinitionVersion = Record.GetDefinitionVersion();
+		Entry.ContainerType = ContainerType;
 		Entry.SlotIndex = SlotIndex;
 		Entry.Quantity = Record.GetQuantity();
 		Entry.Revision = Record.GetRevision();
@@ -95,6 +109,11 @@ bool FRPGInventoryProjectionMapper::BuildInventorySnapshot(
 		[](const FRPGInventoryProjectionEntry& Left,
 			const FRPGInventoryProjectionEntry& Right)
 		{
+			if (Left.GetContainerType() != Right.GetContainerType())
+			{
+				return static_cast<uint8>(Left.GetContainerType()) <
+					static_cast<uint8>(Right.GetContainerType());
+			}
 			return Left.GetSlotIndex() == Right.GetSlotIndex()
 				? RPGInventoryProjectionMapper::GuidLess(
 					Left.GetItemId(),
