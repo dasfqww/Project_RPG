@@ -22,11 +22,14 @@ powershell -ExecutionPolicy Bypass -File .\Scripts\Network\Run-IrisMultiClientTe
 
 기본 동작은 다음과 같다.
 
-1. UE 5.8 Development Editor와 Server 타깃을 빌드한다.
+1. UE 5.8 Development Editor 타깃을 빌드한다.
 2. `/Game/Maps/testmap`을 포트 `17777`의 별도 전용 서버 프로세스로 연다.
 3. 헤드리스 클라이언트 두 개를 서버에 직접 연결한다.
 4. 서버와 두 클라이언트가 모두 `Iris=1`, `Connected=2`를 관측했는지 판정한다.
 5. 성공 또는 실패 후 테스트가 시작한 프로세스만 종료한다.
+
+헤드리스 프로세스는 기본 60 FPS로 제한해 로컬 CPU 포화와 CharacterMovement
+SavedMove 과적재를 방지한다. 필요하면 `-MaxFPS 30`처럼 조정할 수 있다.
 
 성공 로그는 다음 디렉터리에 남는다.
 
@@ -47,6 +50,20 @@ powershell -ExecutionPolicy Bypass -File .\Scripts\Network\Run-IrisMultiClientTe
 ```
 
 이미 빌드한 바이너리를 재사용하려면 `-SkipBuild`를 붙인다.
+
+기본 `Editor` 런타임은 Cook 없이 가장 빠르게 검증한다. 프로젝트를 연 Unreal
+Editor가 있으면 DLL 링크가 잠기므로 모두 닫은 뒤 실행해야 한다. 에디터를
+유지한 상태에서 이미 빌드하고 Cook한 게임 바이너리를 사용하려면 다음처럼
+실행한다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Scripts\Network\Run-IrisMultiClientTest.ps1 -Runtime Game -SkipBuild
+```
+
+Epic Launcher 배포형 엔진은 UBT Server 타깃 빌드를 지원하지 않는다. 소스
+빌드 엔진을 사용 중일 때만 `-BuildServerTarget`을 추가해
+`Project_RPGServer` 타깃까지 함께 검증한다. `Editor -server`와 `Game -server`
+테스트도 각각 독립 서버 프로세스와 외부 클라이언트 프로세스로 실행된다.
 
 ## 로컬 인증 경계
 
