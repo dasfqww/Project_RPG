@@ -32,6 +32,7 @@ public interface IGameRepository
     Task<GameServerCredential?> ResolveGameServerCredentialAsync(
         string tokenHash,
         DateTimeOffset now,
+        TimeSpan postSessionGrace,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(
@@ -178,6 +179,14 @@ public interface IGameRepository
         string steamId,
         Guid characterId,
         DateTimeOffset now,
+        CancellationToken cancellationToken);
+
+    Task<bool> AreAuthorizedSecurityTelemetryMembersAsync(
+        Guid dungeonSessionId,
+        string serverId,
+        IReadOnlyList<SecurityTelemetryMember> members,
+        DateTimeOffset now,
+        TimeSpan postSessionGrace,
         CancellationToken cancellationToken);
 
     Task StoreJoinTicketAsync(

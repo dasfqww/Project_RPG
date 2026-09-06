@@ -48,3 +48,11 @@ public sealed class DungeonSettlementOptions
     public int MaximumAttempts { get; init; } = 10;
     public int MaximumRetryDelaySeconds { get; init; } = 30;
 }
+
+public sealed class SecurityTelemetryOptions
+{
+    public const string SectionName = "SecurityTelemetry";
+
+    /** Allows an assigned game server to drain immutable audit events after finish. */
+    public int PostSessionGraceSeconds { get; init; } = 5 * 60;
+}

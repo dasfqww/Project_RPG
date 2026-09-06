@@ -138,29 +138,45 @@ public sealed class PostgresGameRepository(
     public async Task<GameServerCredential?> ResolveGameServerCredentialAsync(
         string tokenHash,
         DateTimeOffset now,
+        TimeSpan postSessionGrace,
         CancellationToken cancellationToken)
     {
         const string sql = """
-            SELECT credential.server_id, credential.dungeon_session_id
+            SELECT credential.server_id,
+                   credential.dungeon_session_id,
+                   session.state
             FROM game_server_credentials AS credential
             JOIN dungeon_sessions AS session
               ON session.dungeon_session_id = credential.dungeon_session_id
              AND session.server_id = credential.server_id
             WHERE credential.token_hash = @token_hash
               AND credential.expires_at > @now
-              AND session.expires_at > @now
-              AND session.state IN ('Loading', 'InProgress');
+              AND (
+                    (session.state IN ('Loading', 'InProgress')
+                     AND session.expires_at > @now)
+                 OR (session.state IN ('Cleared', 'Failed')
+                     AND session.updated_at >= @post_session_cutoff));
             """;
         await using NpgsqlConnection connection =
             await dataSource.OpenConnectionAsync(cancellationToken);
         await using NpgsqlCommand command = new(sql, connection);
         command.Parameters.AddWithValue("token_hash", tokenHash);
         command.Parameters.AddWithValue("now", now);
+        command.Parameters.AddWithValue(
+            "post_session_cutoff",
+            now - postSessionGrace);
         await using NpgsqlDataReader reader =
             await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken)
-            ? new GameServerCredential(reader.GetString(0), reader.GetGuid(1))
-            : null;
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+        string sessionState = reader.GetString(2);
+        return new GameServerCredential(
+            reader.GetString(0),
+            reader.GetGuid(1),
+            IsSecurityTelemetryOnly:
+                sessionState is "Cleared" or "Failed");
     }
 
     public async Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(
@@ -1342,6 +1358,72 @@ public sealed class PostgresGameRepository(
         command.Parameters.AddWithValue("steam_id", steamId);
         command.Parameters.AddWithValue("character_id", characterId);
         command.Parameters.AddWithValue("now", now);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken))!;
+    }
+
+    public async Task<bool> AreAuthorizedSecurityTelemetryMembersAsync(
+        Guid dungeonSessionId,
+        string serverId,
+        IReadOnlyList<SecurityTelemetryMember> members,
+        DateTimeOffset now,
+        TimeSpan postSessionGrace,
+        CancellationToken cancellationToken)
+    {
+        SecurityTelemetryMember[] requested = members
+            .Distinct()
+            .ToArray();
+        if (requested.Length == 0)
+        {
+            return false;
+        }
+
+        const string sql = """
+            WITH requested(character_id, steam_id) AS (
+                SELECT *
+                FROM unnest(@character_ids::UUID[], @steam_ids::TEXT[])
+            ), session_scope AS (
+                SELECT state, expires_at, updated_at
+                FROM dungeon_sessions
+                WHERE dungeon_session_id = @dungeon_session_id
+                  AND server_id = @server_id
+            )
+            SELECT COUNT(*) = @member_count
+            FROM requested r
+            JOIN dungeon_session_members m
+              ON m.dungeon_session_id = @dungeon_session_id
+             AND m.character_id = r.character_id
+             AND m.steam_id = r.steam_id
+            CROSS JOIN session_scope s
+            LEFT JOIN character_session_leases l
+              ON l.character_id = r.character_id
+             AND l.dungeon_session_id = @dungeon_session_id
+            WHERE (
+                    s.state IN ('Loading', 'InProgress')
+                AND s.expires_at > @now
+                AND m.lease_expires_at > @now
+                AND l.expires_at > @now)
+               OR (
+                    s.state IN ('Cleared', 'Failed')
+                AND s.updated_at >= @post_session_cutoff);
+            """;
+        await using NpgsqlConnection connection =
+            await dataSource.OpenConnectionAsync(cancellationToken);
+        await using NpgsqlCommand command = new(sql, connection);
+        command.Parameters.AddWithValue(
+            "character_ids",
+            requested.Select(value => value.CharacterId).ToArray());
+        command.Parameters.AddWithValue(
+            "steam_ids",
+            requested.Select(value => value.SteamId).ToArray());
+        command.Parameters.AddWithValue(
+            "dungeon_session_id",
+            dungeonSessionId);
+        command.Parameters.AddWithValue("server_id", serverId);
+        command.Parameters.AddWithValue("member_count", requested.Length);
+        command.Parameters.AddWithValue("now", now);
+        command.Parameters.AddWithValue(
+            "post_session_cutoff",
+            now - postSessionGrace);
         return (bool)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 

@@ -11,9 +11,14 @@ public sealed class BearerAuthenticator(
     IGameRepository repository,
     AccessTokenService accessTokenService,
     IOptions<AuthOptions> options,
+    IOptions<SecurityTelemetryOptions> securityTelemetryOptions,
     TimeProvider timeProvider)
 {
     private readonly AuthOptions _options = options.Value;
+    private readonly int _postSessionGraceSeconds = Math.Clamp(
+        securityTelemetryOptions.Value.PostSessionGraceSeconds,
+        0,
+        60 * 60);
 
     public async Task<AuthenticatedPrincipal?> AuthenticateAsync(
         string token,
@@ -34,6 +39,7 @@ public sealed class BearerAuthenticator(
             await repository.ResolveGameServerCredentialAsync(
                 tokenHash,
                 now,
+                TimeSpan.FromSeconds(_postSessionGraceSeconds),
                 cancellationToken);
         if (gameServerCredential is not null)
         {
@@ -41,7 +47,8 @@ public sealed class BearerAuthenticator(
                 PrincipalKind.GameServer,
                 null,
                 gameServerCredential.ServerId,
-                gameServerCredential.DungeonSessionId);
+                gameServerCredential.DungeonSessionId,
+                gameServerCredential.IsSecurityTelemetryOnly);
         }
 
         string? steamId = await repository.ResolveSessionAsync(

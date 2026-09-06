@@ -28,6 +28,8 @@ builder.Services.Configure<DungeonSessionOptions>(
     builder.Configuration.GetSection(DungeonSessionOptions.SectionName));
 builder.Services.Configure<DungeonSettlementOptions>(
     builder.Configuration.GetSection(DungeonSettlementOptions.SectionName));
+builder.Services.Configure<SecurityTelemetryOptions>(
+    builder.Configuration.GetSection(SecurityTelemetryOptions.SectionName));
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddSingleton<AccessTokenService>();
 builder.Services.AddScoped<BearerAuthenticator>();
@@ -63,6 +65,9 @@ if (string.Equals(storageProvider, "Postgres", StringComparison.OrdinalIgnoreCas
     builder.Services.AddSingleton<
         IDungeonRewardCommitRepository,
         PostgresDungeonRewardCommitRepository>();
+    builder.Services.AddSingleton<
+        ISecurityTelemetryRepository,
+        PostgresSecurityTelemetryRepository>();
 }
 else if (string.Equals(storageProvider, "Memory", StringComparison.OrdinalIgnoreCase))
 {
@@ -88,6 +93,9 @@ else if (string.Equals(storageProvider, "Memory", StringComparison.OrdinalIgnore
     builder.Services.AddSingleton<
         IDungeonRewardCommitRepository,
         InMemoryDungeonRewardCommitRepository>();
+    builder.Services.AddSingleton<
+        ISecurityTelemetryRepository,
+        InMemorySecurityTelemetryRepository>();
 }
 else
 {
@@ -1154,6 +1162,7 @@ app.MapPost(
 
 app.MapItemApi();
 app.MapEconomyApi();
+app.MapSecurityTelemetryApi();
 
 await app.RunAsync();
 

@@ -76,7 +76,8 @@ public sealed record AuthenticatedPrincipal(
     PrincipalKind Kind,
     string? SteamId,
     string? ServerId,
-    Guid? DungeonSessionId = null)
+    Guid? DungeonSessionId = null,
+    bool IsSecurityTelemetryOnly = false)
 {
     public bool IsGameServer => Kind == PrincipalKind.GameServer;
 
@@ -103,4 +104,5 @@ public sealed record AuthenticatedPrincipal(
 
 public sealed record GameServerCredential(
     string ServerId,
-    Guid DungeonSessionId);
+    Guid DungeonSessionId,
+    bool IsSecurityTelemetryOnly = false);

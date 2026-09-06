@@ -366,3 +366,37 @@ CREATE TABLE IF NOT EXISTS currency_transaction_receipts (
 
 CREATE INDEX IF NOT EXISTS ix_currency_transaction_receipts_character
     ON currency_transaction_receipts(character_id, committed_at);
+
+-- Immutable anti-cheat observations accepted only from an authenticated game
+-- server assigned to the matching dungeon session. IDs intentionally remain
+-- usable as audit evidence even if gameplay entities are removed later.
+CREATE TABLE IF NOT EXISTS security_events (
+    event_id                UUID PRIMARY KEY,
+    dungeon_session_id      UUID NOT NULL,
+    character_id            UUID NOT NULL,
+    steam_id                VARCHAR(20) NOT NULL,
+    server_id               VARCHAR(128) NOT NULL,
+    event_type              VARCHAR(64) NOT NULL,
+    severity                VARCHAR(16) NOT NULL
+                            CHECK (severity IN (
+                                'Low', 'Medium', 'High', 'Critical')),
+    score                   DOUBLE PRECISION NOT NULL
+                            CHECK (score >= 0.0 AND score <= 100000.0),
+    risk_after              DOUBLE PRECISION NOT NULL
+                            CHECK (risk_after >= 0.0
+                                   AND risk_after <= 100000.0),
+    server_time_seconds     DOUBLE PRECISION NOT NULL
+                            CHECK (server_time_seconds >= 0.0),
+    detail                  VARCHAR(512) NOT NULL,
+    command_fingerprint     CHAR(64) NOT NULL,
+    received_at             TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_security_events_session_received
+    ON security_events(dungeon_session_id, received_at);
+
+CREATE INDEX IF NOT EXISTS ix_security_events_character_received
+    ON security_events(character_id, received_at);
+
+CREATE INDEX IF NOT EXISTS ix_security_events_session_severity
+    ON security_events(dungeon_session_id, severity, received_at);

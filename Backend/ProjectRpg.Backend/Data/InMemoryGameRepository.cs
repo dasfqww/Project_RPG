@@ -134,6 +134,7 @@ public sealed class InMemoryGameRepository : IGameRepository
     public Task<GameServerCredential?> ResolveGameServerCredentialAsync(
         string tokenHash,
         DateTimeOffset now,
+        TimeSpan postSessionGrace,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -149,11 +150,21 @@ public sealed class InMemoryGameRepository : IGameRepository
                 || !string.Equals(
                     session.ServerId,
                     credential.ServerId,
-                    StringComparison.Ordinal)
-                || session.ExpiresAt <= now
-                || session.State is not (
+                    StringComparison.Ordinal))
+            {
+                _gameServerCredentials.TryRemove(tokenHash, out _);
+                return Task.FromResult<GameServerCredential?>(null);
+            }
+
+            bool isActive = session.State is (
                     DungeonSessionState.Loading
-                    or DungeonSessionState.InProgress))
+                    or DungeonSessionState.InProgress)
+                && session.ExpiresAt > now;
+            bool isWithinPostSessionGrace = session.State is (
+                    DungeonSessionState.Cleared
+                    or DungeonSessionState.Failed)
+                && session.UpdatedAt >= now - postSessionGrace;
+            if (!isActive && !isWithinPostSessionGrace)
             {
                 _gameServerCredentials.TryRemove(tokenHash, out _);
                 return Task.FromResult<GameServerCredential?>(null);
@@ -161,7 +172,8 @@ public sealed class InMemoryGameRepository : IGameRepository
 
             return Task.FromResult<GameServerCredential?>(new(
                 credential.ServerId,
-                credential.DungeonSessionId));
+                credential.DungeonSessionId,
+                IsSecurityTelemetryOnly: !isActive));
         }
     }
 
@@ -920,6 +932,70 @@ public sealed class InMemoryGameRepository : IGameRepository
                 && lease.DungeonSessionId == dungeonSessionId
                 && lease.ExpiresAt > now;
             return Task.FromResult(isAuthorized);
+        }
+    }
+
+    public Task<bool> AreAuthorizedSecurityTelemetryMembersAsync(
+        Guid dungeonSessionId,
+        string serverId,
+        IReadOnlyList<SecurityTelemetryMember> members,
+        DateTimeOffset now,
+        TimeSpan postSessionGrace,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_dungeonGate)
+        {
+            CleanupExpiredDungeonSessions(now);
+            if (members.Count == 0
+                || !_dungeonSessions.TryGetValue(
+                    dungeonSessionId,
+                    out DungeonSession? session)
+                || !string.Equals(
+                    session.ServerId,
+                    serverId,
+                    StringComparison.Ordinal))
+            {
+                return Task.FromResult(false);
+            }
+
+            bool isActive = session.State is (
+                    DungeonSessionState.Loading
+                    or DungeonSessionState.InProgress)
+                && session.ExpiresAt > now;
+            bool isWithinPostSessionGrace = session.State is (
+                    DungeonSessionState.Cleared
+                    or DungeonSessionState.Failed)
+                && session.UpdatedAt >= now - postSessionGrace;
+            if (!isActive && !isWithinPostSessionGrace)
+            {
+                return Task.FromResult(false);
+            }
+
+            bool allAuthorized = members
+                .Distinct()
+                .All(requested =>
+                {
+                    DungeonSessionMember? member = session.Members
+                        .FirstOrDefault(value =>
+                            value.CharacterId == requested.CharacterId
+                            && value.SteamId == requested.SteamId);
+                    if (member is null)
+                    {
+                        return false;
+                    }
+                    if (isWithinPostSessionGrace)
+                    {
+                        return true;
+                    }
+                    return member.LeaseExpiresAt > now
+                        && _characterLeases.TryGetValue(
+                            requested.CharacterId,
+                            out CharacterLeaseRecord? lease)
+                        && lease.DungeonSessionId == dungeonSessionId
+                        && lease.ExpiresAt > now;
+                });
+            return Task.FromResult(allAuthorized);
         }
     }
 

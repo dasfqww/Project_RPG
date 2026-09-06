@@ -33,6 +33,15 @@ public sealed class ApiAuthenticationMiddleware(RequestDelegate next)
             return;
         }
 
+        if (principal.IsSecurityTelemetryOnly
+            && !context.Request.Path.StartsWithSegments(
+                "/api/security",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+
         context.Items[PrincipalItemKey] = principal;
         await next(context);
     }
