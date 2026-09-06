@@ -52,10 +52,13 @@ def _currency_change(amount):
 
 
 def _item_reward(item_definition, quantity):
-    reward = unreal.RPGDungeonItemRewardEntry()
-    reward.set_editor_property("item_definition", item_definition)
-    reward.set_editor_property("quantity", quantity)
-    return reward
+    # EditDefaultsOnly struct fields cannot be assigned after Python creates a
+    # transient struct value. Constructor arguments initialize them through
+    # the reflection import path used by container property assignment.
+    return unreal.RPGDungeonItemRewardEntry(
+        item_definition=item_definition,
+        quantity=quantity,
+    )
 
 
 def _create_reward(
@@ -70,7 +73,11 @@ def _create_reward(
     include_helm,
 ):
     asset_path = f"{REWARD_ROOT}/{asset_name}"
-    existing = editor_assets.load_asset(asset_path)
+    existing = (
+        editor_assets.load_asset(asset_path)
+        if editor_assets.does_asset_exist(asset_path)
+        else None
+    )
     if existing is not None:
         if not isinstance(existing, unreal.RPGDungeonRewardDefinition):
             raise RuntimeError(

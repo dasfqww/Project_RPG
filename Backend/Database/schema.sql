@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS dungeon_sessions (
     dungeon_session_id UUID PRIMARY KEY,
     dungeon_id         VARCHAR(64) NOT NULL,
     difficulty         VARCHAR(32) NOT NULL,
-    state              VARCHAR(16) NOT NULL
+    state              VARCHAR(32) NOT NULL
                        CHECK (state IN (
                            'Waiting', 'Loading', 'InProgress',
                            'SettlementPending',
@@ -106,6 +106,9 @@ CREATE TABLE IF NOT EXISTS dungeon_sessions (
 
 ALTER TABLE dungeon_sessions
     ADD COLUMN IF NOT EXISTS server_address VARCHAR(255);
+
+ALTER TABLE dungeon_sessions
+    ALTER COLUMN state TYPE VARCHAR(32);
 
 -- Replace the original state check when upgrading an existing database.
 ALTER TABLE dungeon_sessions

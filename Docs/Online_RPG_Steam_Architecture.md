@@ -122,11 +122,41 @@ Dedicated Server에서 클리어 보상을 지급할 때는 `ARPGGameModeBase`�
    `RewardVersion`, 재화 변경, 아이템 보상을 입력한다.
 3. 던전 GameMode Blueprint의 `DungeonClearRewardsByDifficulty`에 에셋을 연결한다.
 4. 보스/스테이지의 서버 권위 클리어 이벤트에서 `ReportConfiguredDungeonClear`를 정확히
-   한 번 호출한다. 플레이어별 `GiveContentReward`에서는 호출하지 않는다.
+   한 번 호출한다. 기존 콘텐츠의 플레이어별 `GiveContentReward` 호출은 호환 경로가
+   첫 호출만 파티 단위 정산으로 전달하지만, 새 콘텐츠는 직접 호출을 사용한다.
+
+개발용 초기 보상은 에디터를 닫은 상태에서 다음 명령으로 생성할 수 있다. 이미 존재하는
+보상 에셋과 난이도별 오버라이드는 덮어쓰지 않고, 비어 있는 항목만 채운다.
+
+```powershell
+D:\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe `
+  Project_RPG.uproject `
+  -run=pythonscript `
+  -script=Scripts/Editor/CreateDungeonRewardAssets.py `
+  -unattended -nop4 -nosplash -NullRHI
+```
+
+초기 보상이 사용하는 `RosterGold` 통화 정의는 관리자 토큰으로 백엔드에 한 번 시드한다.
+동일 정의로 재실행해도 안전하다.
+
+```powershell
+Backend/seed-game-economy.ps1
+```
+
+실행 중인 개발 백엔드에서 네 난이도의 실제 보상 계약을 한 번에 검증하려면 다음
+smoke test를 사용한다. PostgreSQL 통합 러너는 이 테스트를 실행한 뒤 백엔드를
+재시작하고 동일한 지갑, 보상 우편, 던전 완료 상태가 남아 있는지도 확인한다.
+
+```powershell
+Backend/dungeon-reward-smoke-test.ps1 `
+  -BaseUrl http://127.0.0.1:3000 `
+  -AdminToken $env:PROJECT_RPG_BACKEND_ADMIN_TOKEN
+```
 
 보상 에셋은 에디터 Data Validation과 런타임 변환 양쪽에서 식별자, 양수 재화, 중복 재화,
-아이템 참조, 최대 스택, 내구도, 스탯 태그를 검증한다. `bGiveReward`가 참인데 현재 난이도
-보상 에셋이 없거나 유효하지 않으면 성공 정산을 보내지 않는다. 보상이 없는 콘텐츠는
+아이템 참조, 최대 스택, 내구도, 스탯 태그를 검증한다. `bGiveReward`가 참인 GameMode는
+Easy, Normal, Hard, Hell 보상이 모두 있어야 Data Validation을 통과하며, 런타임에서 현재
+난이도 보상이 없거나 유효하지 않으면 성공 정산을 보내지 않는다. 보상이 없는 콘텐츠는
 `bGiveReward`를 끄고 같은 함수를 호출하면 명시적인 `no_reward` 정산 경로를 사용한다.
 
 UE 서버는 보상 버전과 공통 재화·아이템 보상만 전송하며 파티원 목록과 캐릭터 소유권은

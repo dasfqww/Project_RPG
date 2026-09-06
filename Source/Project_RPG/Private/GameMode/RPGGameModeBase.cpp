@@ -128,7 +128,9 @@ ARPGGameModeBase::ARPGGameModeBase()
 EDataValidationResult ARPGGameModeBase::IsDataValid(
 	FDataValidationContext& Context) const
 {
-	EDataValidationResult Result = Super::IsDataValid(Context);
+	EDataValidationResult Result = CombineDataValidationResults(
+		Super::IsDataValid(Context),
+		EDataValidationResult::Valid);
 	if (!bGiveReward)
 	{
 		return Result;
