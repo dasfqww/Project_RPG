@@ -3,16 +3,31 @@
 #include "GenericPlatform/GenericPlatformHttp.h"
 #include "HAL/PlatformMisc.h"
 #include "HttpModule.h"
+#include "Item/Backend/RPGItemBackendSubsystem.h"
 #include "GameFramework/PlayerController.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Misc/App.h"
+#include "Misc/CommandLine.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
+#include "Misc/Parse.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
 namespace
 {
+	bool IsDedicatedServerOrItemE2EProxy()
+	{
+#if UE_BUILD_SHIPPING
+		return IsRunningDedicatedServer();
+#else
+		return IsRunningDedicatedServer()
+			|| FParse::Param(
+				FCommandLine::Get(),
+				TEXT("RPGItemE2EServer"));
+#endif
+	}
+
 	const TCHAR* ToBackendBindState(const ERPGItemBindState BindState)
 	{
 		switch (BindState)
@@ -105,8 +120,12 @@ namespace
 void UHttpWebManager::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	if (IsRunningDedicatedServer())
+	if (IsDedicatedServerOrItemE2EProxy())
 	{
+		// The Item V2 gateway is server-owned.  Make its initialization order
+		// explicit instead of relying on subsystem discovery during startup.
+		Collection.InitializeDependency<URPGItemBackendSubsystem>();
+
 		BackendServiceToken = FPlatformMisc::GetEnvironmentVariable(
 			TEXT("PROJECT_RPG_BACKEND_GAME_SERVER_TOKEN")).TrimStartAndEnd();
 		GameServerId = FPlatformMisc::GetEnvironmentVariable(
@@ -429,7 +448,7 @@ void UHttpWebManager::RequestJoinTicket(
 
 void UHttpWebManager::ConsumeJoinTicket(const FString& JoinTicket)
 {
-	if (!IsRunningDedicatedServer()
+	if (!IsDedicatedServerOrItemE2EProxy()
 		|| JoinTicket.IsEmpty()
 		|| BackendServiceToken.IsEmpty()
 		|| GameServerId.IsEmpty()
@@ -500,7 +519,7 @@ void UHttpWebManager::SettleConfiguredDungeonRewards(
 	const TArray<FRPGDungeonItemReward>& ItemRewards)
 {
 	const FString NormalizedRewardVersion = RewardVersion.TrimStartAndEnd();
-	if (!IsRunningDedicatedServer()
+	if (!IsDedicatedServerOrItemE2EProxy()
 		|| !IsConfiguredForDungeonServer()
 		|| NormalizedRewardVersion.IsEmpty()
 		|| CurrencyChanges.Num() > 16
@@ -641,7 +660,7 @@ void UHttpWebManager::SendConfiguredDungeonSessionRequest(
 	const FString& Action,
 	const FString& Outcome)
 {
-	if (!IsRunningDedicatedServer()
+	if (!IsDedicatedServerOrItemE2EProxy()
 		|| BackendServiceToken.IsEmpty()
 		|| GameServerId.IsEmpty()
 		|| ConfiguredDungeonSessionId.IsEmpty())

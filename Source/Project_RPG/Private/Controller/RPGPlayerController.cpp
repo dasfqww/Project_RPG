@@ -23,6 +23,9 @@
 #include "Components/TextBlock.h"
 #include "Component/UI/QuickSlotComponent.h"
 #include "Settings/RPGGameUserSettings.h"
+#if !UE_BUILD_SHIPPING
+#include "Tests/RPGItemCommandE2EProbeComponent.h"
+#endif
 
 #include "RPGDebugHelper.h"
 #include "DrawDebugHelpers.h"
@@ -36,6 +39,10 @@ ARPGPlayerController::ARPGPlayerController()
 		TEXT("InventoryProjection"));
 	ItemCommandComponent = CreateDefaultSubobject<URPGItemCommandComponent>(
 		TEXT("ItemCommands"));
+#if !UE_BUILD_SHIPPING
+	CreateDefaultSubobject<URPGItemCommandE2EProbeComponent>(
+		TEXT("ItemCommandE2EProbe"));
+#endif
 }
 
 void ARPGPlayerController::UpdateInputMappings()

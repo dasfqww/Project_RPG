@@ -3,14 +3,31 @@
 #include "HAL/PlatformMisc.h"
 #include "Item/Backend/RPGItemBackendTransport.h"
 #include "Misc/App.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RPGItemBackendSubsystem)
+
+namespace
+{
+	bool IsDedicatedServerOrItemE2EProxy()
+	{
+#if UE_BUILD_SHIPPING
+		return IsRunningDedicatedServer();
+#else
+		return IsRunningDedicatedServer()
+			|| FParse::Param(
+				FCommandLine::Get(),
+				TEXT("RPGItemE2EServer"));
+#endif
+	}
+}
 
 void URPGItemBackendSubsystem::Initialize(
 	FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	if (!IsRunningDedicatedServer())
+	if (!IsDedicatedServerOrItemE2EProxy())
 	{
 		return;
 	}
@@ -37,6 +54,10 @@ void URPGItemBackendSubsystem::Initialize(
 	Gateway = MakeShared<FRPGItemBackendGateway>(
 		StaticCastSharedRef<IRPGItemBackendTransport>(HttpTransport),
 		MaximumAttempts);
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("Item Backend Gateway initialized for the server runtime."));
 }
 
 void URPGItemBackendSubsystem::Deinitialize()

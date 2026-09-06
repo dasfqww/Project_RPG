@@ -17,6 +17,8 @@
 #include "GameState/RPGGameStateBase.h"
 #include "Manager/HttpWebManager.h"
 #include "Player/RPGPlayerState.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 #include "RPGDebugHelper.h"
 
@@ -34,6 +36,42 @@ namespace
 		return FParse::Param(
 			FCommandLine::Get(),
 			TEXT("RPGNetTestMode"));
+#endif
+	}
+
+	bool IsItemE2EServerProxyEnabled()
+	{
+#if UE_BUILD_SHIPPING
+		return false;
+#else
+		return FParse::Param(
+			FCommandLine::Get(),
+			TEXT("RPGItemE2EServer"));
+#endif
+	}
+
+	bool IsItemE2EIdentityBypassEnabled()
+	{
+#if UE_BUILD_SHIPPING
+		return false;
+#else
+		// A Development server may never disable identity verification on its
+		// own. This exists solely for the installed-engine E2E proxy, where the
+		// headless client deliberately runs without a Steam net driver.
+		return IsItemE2EServerProxyEnabled()
+			&& FParse::Param(
+				FCommandLine::Get(),
+				TEXT("RPGItemE2EAllowUnverifiedIdentity"));
+#endif
+	}
+
+	bool IsDedicatedServerOrItemE2EProxy()
+	{
+#if UE_BUILD_SHIPPING
+		return IsRunningDedicatedServer();
+#else
+		return IsRunningDedicatedServer()
+			|| IsItemE2EServerProxyEnabled();
 #endif
 	}
 
@@ -150,8 +188,15 @@ void ARPGGameModeBase::BeginPlay()
 			Warning,
 			TEXT("RPG_NETTEST LOCAL_ADMISSION_BYPASS_ENABLED Development builds only."));
 	}
+	if (IsItemE2EIdentityBypassEnabled())
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("RPG_ITEM_E2E IDENTITY_MATCH_BYPASS_ENABLED Development builds only."));
+	}
 
-	if (IsRunningDedicatedServer())
+	if (IsDedicatedServerOrItemE2EProxy())
 	{
 		if (UGameInstance* GameInstance = GetGameInstance())
 		{
@@ -257,7 +302,7 @@ void ARPGGameModeBase::PreLoginAsync(
 	const FUniqueNetIdRepl& UniqueId,
 	const FOnPreLoginCompleteDelegate& OnComplete)
 {
-	if (!IsRunningDedicatedServer()
+	if (!IsDedicatedServerOrItemE2EProxy()
 		|| !bRequireBackendJoinTicket
 		|| IsLocalNetworkTestModeEnabled())
 	{
@@ -322,7 +367,14 @@ FString ARPGGameModeBase::InitNewPlayer(
 		Options,
 		Portal);
 	if (!ErrorMessage.IsEmpty()
-		|| !IsRunningDedicatedServer()
+		// Installed-engine E2E uses a listen-server proxy.  The engine creates
+		// this one local controller while loading the map, before any external
+		// client can provide a validated ticket.  It is never a remote client;
+		// all remote controllers still follow the validation path below.
+		|| (IsItemE2EServerProxyEnabled()
+			&& NewPlayerController
+			&& NewPlayerController->IsLocalController())
+		|| !IsDedicatedServerOrItemE2EProxy()
 		|| !bRequireBackendJoinTicket
 		|| IsLocalNetworkTestModeEnabled())
 	{
@@ -404,6 +456,7 @@ void ARPGGameModeBase::HandleJoinTicketConsumed(
 	}
 
 	if (bRequireSteamIdentityMatch
+		&& !IsItemE2EIdentityBypassEnabled()
 		&& (Pending.PlatformId.IsEmpty()
 			|| !Pending.PlatformId.Equals(
 				SteamId,
