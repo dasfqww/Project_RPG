@@ -3,7 +3,8 @@ param(
         'Host=127.0.0.1;Port=54329;Database=project_rpg;Username=project_rpg;Password=project_rpg_dev_only',
     [string]$BaseUrl = 'http://127.0.0.1:3010',
     [string]$AdminToken = $env:PROJECT_RPG_BACKEND_ADMIN_TOKEN,
-    [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12)
+    [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12),
+    [switch]$NoRestore
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,6 +31,14 @@ $backendProject = Join-Path `
     $PSScriptRoot `
     'ProjectRpg.Backend\ProjectRpg.Backend.csproj'
 $smokeTest = Join-Path $PSScriptRoot 'smoke-test.ps1'
+$economySmokeTest = Join-Path $PSScriptRoot 'economy-smoke-test.ps1'
+$securityTelemetrySmokeTest = Join-Path `
+    $PSScriptRoot `
+    'security-telemetry-smoke-test.ps1'
+$itemSmokeTest = Join-Path $PSScriptRoot 'item-smoke-test.ps1'
+$dungeonRewardSmokeTest = Join-Path `
+    $PSScriptRoot `
+    'dungeon-reward-smoke-test.ps1'
 $dotnet = (Get-Command dotnet -ErrorAction Stop).Source
 $temporaryRoot = Join-Path `
     ([System.IO.Path]::GetTempPath()) `
@@ -39,6 +48,8 @@ $logDirectory = Join-Path $temporaryRoot 'logs'
 $backendHandle = $null
 $backendGeneration = 0
 $succeeded = $false
+$configuredRewardResults = @()
+$securityTelemetryResult = $null
 
 $environmentNames = @(
     'ASPNETCORE_ENVIRONMENT',
@@ -73,6 +84,37 @@ function Set-BackendEnvironment {
 }
 
 function Start-Backend {
+    # Some launchers inject both `Path` and `PATH`. Start-Process treats them as
+    # duplicate keys on Windows even though the process environment itself does not.
+    $processEnvironment = [Environment]::GetEnvironmentVariables(
+        [EnvironmentVariableTarget]::Process)
+    $pathKeys = @($processEnvironment.Keys | Where-Object {
+        [string]::Equals(
+            [string]$_,
+            'Path',
+            [StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($pathKeys.Count -gt 1) {
+        $pathValue = [Environment]::GetEnvironmentVariable(
+            'Path',
+            [EnvironmentVariableTarget]::Process)
+        foreach ($pathKey in $pathKeys) {
+            if (-not [string]::Equals(
+                    [string]$pathKey,
+                    'Path',
+                    [StringComparison]::Ordinal)) {
+                [Environment]::SetEnvironmentVariable(
+                    [string]$pathKey,
+                    $null,
+                    [EnvironmentVariableTarget]::Process)
+            }
+        }
+        [Environment]::SetEnvironmentVariable(
+            'Path',
+            $pathValue,
+            [EnvironmentVariableTarget]::Process)
+    }
+
     $script:backendGeneration++
     $stdoutPath = Join-Path `
         $logDirectory `
@@ -135,9 +177,10 @@ function Wait-BackendReady {
         try {
             $health = Invoke-RestMethod `
                 -Method Get `
-                -Uri "$BaseUrl/health" `
+                -Uri "$BaseUrl/health/ready" `
                 -TimeoutSec 2
-            if ($health.status -eq 'ok') {
+            if ($health.status -eq 'ready' -and
+                $health.storageProvider -eq 'Postgres') {
                 return
             }
         }
@@ -163,7 +206,11 @@ try {
     New-Item -ItemType Directory -Path $buildDirectory -Force | Out-Null
     New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
 
-    & $dotnet build $backendProject --output $buildDirectory
+    $buildArguments = @('build', $backendProject, '--output', $buildDirectory)
+    if ($NoRestore) {
+        $buildArguments += '--no-restore'
+    }
+    & $dotnet @buildArguments
     if ($LASTEXITCODE -ne 0) {
         throw "Backend build failed with exit code $LASTEXITCODE."
     }
@@ -171,6 +218,14 @@ try {
     Set-BackendEnvironment
     $backendHandle = Start-Backend
     Wait-BackendReady -Handle $backendHandle
+
+    $liveness = Invoke-RestMethod `
+        -Method Get `
+        -Uri "$BaseUrl/health/live" `
+        -TimeoutSec 2
+    if ($liveness.status -ne 'ok') {
+        throw 'Backend liveness endpoint did not report ok.'
+    }
 
     $smokeOutput = @(& $smokeTest `
         -BaseUrl $BaseUrl `
@@ -184,6 +239,35 @@ try {
         Select-Object -Last 1
     if ($null -eq $smokeResult) {
         throw 'The smoke test did not return its persistence checkpoint.'
+    }
+
+    & $economySmokeTest `
+        -BaseUrl $BaseUrl `
+        -AdminToken $AdminToken `
+        -RunId $RunId
+    $securityTelemetryResults = @(& $securityTelemetrySmokeTest `
+        -BaseUrl $BaseUrl `
+        -AdminToken $AdminToken `
+        -RunId $RunId)
+    $securityTelemetryResult = $securityTelemetryResults |
+        Where-Object {
+            $null -ne $_ -and
+            $null -ne $_.PSObject.Properties['DungeonSessionId']
+        } |
+        Select-Object -Last 1
+    if ($null -eq $securityTelemetryResult) {
+        throw 'The security telemetry smoke test did not return its persistence checkpoint.'
+    }
+    & $itemSmokeTest `
+        -BaseUrl $BaseUrl `
+        -AdminToken $AdminToken `
+        -RunId $RunId
+    $configuredRewardResults = @(& $dungeonRewardSmokeTest `
+        -BaseUrl $BaseUrl `
+        -AdminToken $AdminToken `
+        -RunId $RunId)
+    if ($configuredRewardResults.Count -ne 4) {
+        throw 'The configured dungeon reward smoke test did not return all four difficulties.'
     }
 
     $authBeforeRestart = Invoke-RestMethod `
@@ -239,12 +323,97 @@ try {
     }
 
     $adminHeaders = @{ Authorization = "Bearer $AdminToken" }
+    $securitySummary = Invoke-RestMethod `
+        -Method Get `
+        -Uri "$BaseUrl/api/security/sessions/$($securityTelemetryResult.DungeonSessionId)/summary" `
+        -Headers $adminHeaders
+    if ($securitySummary.totalEvents -ne 4 -or
+        $securitySummary.totalScore -ne 23) {
+        throw 'Security telemetry was not preserved after the backend restart.'
+    }
     $session = Invoke-RestMethod `
         -Method Get `
         -Uri "$BaseUrl/api/dungeon-sessions/$($smokeResult.DungeonSessionId)" `
         -Headers $adminHeaders
     if ($session.state -ne 'Cleared') {
         throw 'The completed dungeon state was not preserved after restart.'
+    }
+
+    $definitions = Invoke-RestMethod `
+        -Method Get `
+        -Uri "$BaseUrl/api/economy/currency-definitions" `
+        -Headers $adminHeaders
+    $rosterGoldDefinition = @($definitions.definitions | Where-Object {
+        $_.currencyCode -eq 'RosterGold'
+    })
+    if ($rosterGoldDefinition.Count -ne 1 -or
+        $rosterGoldDefinition[0].scope -ne 'Roster' -or
+        $rosterGoldDefinition[0].maxBalance -ne 1000000000 -or
+        -not $rosterGoldDefinition[0].enabled) {
+        throw 'The production RosterGold definition was not preserved after restart.'
+    }
+
+    foreach ($rewardResult in $configuredRewardResults) {
+        $rewardAuth = Invoke-RestMethod `
+            -Method Post `
+            -Uri "$BaseUrl/api/auth/steam-ticket" `
+            -ContentType 'application/json' `
+            -Body (@{
+                ticket = "dev:$($rewardResult.SteamId)"
+            } | ConvertTo-Json -Compress)
+        $rewardPlayerHeaders = @{
+            Authorization = "Bearer $($rewardAuth.accessToken)"
+        }
+
+        $rewardWallet = Invoke-RestMethod `
+            -Method Get `
+            -Uri "$BaseUrl/api/economy/wallets/$($rewardResult.CharacterId)" `
+            -Headers $rewardPlayerHeaders
+        $rewardGold = @($rewardWallet.balances | Where-Object {
+            $_.currencyCode -eq 'RosterGold'
+        })
+        if ($rewardGold.Count -ne 1 -or
+            $rewardGold[0].balance -ne $rewardResult.GoldBalance) {
+            throw "The '$($rewardResult.Difficulty)' RosterGold reward was not preserved after restart."
+        }
+
+        $rewardItems = Invoke-RestMethod `
+            -Method Get `
+            -Uri "$BaseUrl/api/items?ownerType=Character&ownerId=$($rewardResult.CharacterId)&includeTerminal=false" `
+            -Headers $rewardPlayerHeaders
+        $rewardPotions = @($rewardItems.items | Where-Object {
+            $_.definitionName -eq 'GameItem.Consume.Potion.Red.Large'
+        })
+        if ($rewardPotions.Count -ne 1 -or
+            $rewardPotions[0].state.quantity -ne
+                $rewardResult.PotionQuantity -or
+            $rewardPotions[0].location.containerType -ne 'Mail') {
+            throw "The '$($rewardResult.Difficulty)' potion reward was not preserved after restart."
+        }
+        $rewardHelms = @($rewardItems.items | Where-Object {
+            $_.definitionName -eq 'GameItem.Equipment.Helm.Default'
+        })
+        $expectedHelmCount = if ($rewardResult.HelmQuantity -gt 0) {
+            1
+        }
+        else {
+            0
+        }
+        if ($rewardHelms.Count -ne $expectedHelmCount -or
+            ($expectedHelmCount -eq 1 -and
+                ($rewardHelms[0].state.quantity -ne
+                    $rewardResult.HelmQuantity -or
+                 $rewardHelms[0].location.containerType -ne 'Mail'))) {
+            throw "The '$($rewardResult.Difficulty)' helm reward was not preserved after restart."
+        }
+
+        $rewardSession = Invoke-RestMethod `
+            -Method Get `
+            -Uri "$BaseUrl/api/dungeon-sessions/$($rewardResult.DungeonSessionId)" `
+            -Headers $adminHeaders
+        if ($rewardSession.state -ne 'Cleared') {
+            throw "The '$($rewardResult.Difficulty)' dungeon state was not preserved after restart."
+        }
     }
 
     $succeeded = $true
@@ -257,6 +426,13 @@ try {
         DungeonState = $session.state
         AuthSessionSurvivedRestart = $true
         SchemaReapplySurvivedRestart = $true
+        StorageReadinessPassed = $true
+        EconomySmokePassed = $true
+        ItemV2SmokePassed = $true
+        SecurityTelemetryEvents = $securitySummary.totalEvents
+        SecurityTelemetrySurvivedRestart = $true
+        ConfiguredDungeonRewardCases = $configuredRewardResults.Count
+        RosterGoldDefinitionSurvivedRestart = $true
     }
 }
 finally {

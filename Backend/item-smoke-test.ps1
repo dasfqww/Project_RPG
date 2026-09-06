@@ -1,6 +1,7 @@
 param(
     [string]$BaseUrl = 'http://127.0.0.1:3000',
-    [string]$AdminToken = $env:PROJECT_RPG_BACKEND_ADMIN_TOKEN
+    [string]$AdminToken = $env:PROJECT_RPG_BACKEND_ADMIN_TOKEN,
+    [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,6 +9,12 @@ $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($AdminToken)) {
     throw 'PROJECT_RPG_BACKEND_ADMIN_TOKEN or -AdminToken is required.'
 }
+if ($RunId -notmatch '^[a-fA-F0-9]{8,24}$') {
+    throw 'RunId must contain 8 to 24 hexadecimal characters.'
+}
+
+$RunId = $RunId.ToLowerInvariant()
+$runNumber = [Convert]::ToUInt32($RunId.Substring(0, 8), 16)
 
 function Invoke-JsonRequest {
     param(
@@ -145,7 +152,7 @@ function New-CommitRequest {
     }
 }
 
-$steamId = "76561198$((Get-Random -Minimum 100000000 -Maximum 999999999))"
+$steamId = ([uint64]76561260000000000 + [uint64]$runNumber).ToString()
 $auth = Invoke-JsonRequest `
     -Method Post `
     -Uri "$BaseUrl/api/auth/steam-ticket" `
@@ -160,7 +167,7 @@ $character = Invoke-JsonRequest `
     -Body @{ name = "Item$([Guid]::NewGuid().ToString('N').Substring(0, 8))" } `
     -ExpectedStatus 201
 $characterId = [Guid]$character.characterId
-$serverId = 'item-smoke-server'
+$serverId = "item-smoke-server-$RunId"
 $session = Invoke-JsonRequest `
     -Method Post `
     -Uri "$BaseUrl/api/dungeon-sessions" `

@@ -1,6 +1,7 @@
 param(
     [string]$BaseUrl = 'http://127.0.0.1:3000',
-    [string]$AdminToken = $env:PROJECT_RPG_BACKEND_ADMIN_TOKEN
+    [string]$AdminToken = $env:PROJECT_RPG_BACKEND_ADMIN_TOKEN,
+    [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,6 +9,16 @@ $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($AdminToken)) {
     throw 'PROJECT_RPG_BACKEND_ADMIN_TOKEN or -AdminToken is required.'
 }
+if ($RunId -notmatch '^[a-fA-F0-9]{8,24}$') {
+    throw 'RunId must contain 8 to 24 hexadecimal characters.'
+}
+
+$RunId = $RunId.ToLowerInvariant()
+$runNumber = [Convert]::ToUInt32($RunId.Substring(0, 8), 16)
+$steamIdBase = [uint64]76561240000000000 + ([uint64]$runNumber * 2)
+$accountCreditCode = "AccountCredit.$RunId"
+$rosterGoldCode = "RosterGold.$RunId"
+$characterTokenCode = "CharacterToken.$RunId"
 
 function Invoke-ExpectedError {
     param(
@@ -114,11 +125,11 @@ function Get-Balance {
 
 $adminHeaders = @{ Authorization = "Bearer $AdminToken" }
 $accountA = New-SmokeAccount `
-    -SteamId '76561198000000991' `
+    -SteamId ($steamIdBase + 1).ToString() `
     -Prefix 'EcoA'
 $characterA2 = New-Character -Headers $accountA.Headers -Prefix 'EcoB'
 $accountB = New-SmokeAccount `
-    -SteamId '76561198000000992' `
+    -SteamId ($steamIdBase + 2).ToString() `
     -Prefix 'EcoC'
 
 if ($accountA.Character.rosterId -ne $characterA2.rosterId) {
@@ -128,11 +139,11 @@ if ($accountA.Character.rosterId -eq $accountB.Character.rosterId) {
     throw 'Different accounts were assigned to the same roster.'
 }
 
-$null = Set-CurrencyDefinition -Code 'AccountCredit' -Scope 'Account'
-$null = Set-CurrencyDefinition -Code 'RosterGold' -Scope 'Roster'
-$null = Set-CurrencyDefinition -Code 'CharacterToken' -Scope 'Character'
+$null = Set-CurrencyDefinition -Code $accountCreditCode -Scope 'Account'
+$null = Set-CurrencyDefinition -Code $rosterGoldCode -Scope 'Roster'
+$null = Set-CurrencyDefinition -Code $characterTokenCode -Scope 'Character'
 
-$serverId = 'economy-smoke-server'
+$serverId = "economy-smoke-server-$RunId"
 $session = Invoke-RestMethod `
     -Method Post `
     -Uri "$BaseUrl/api/dungeon-sessions" `
@@ -170,9 +181,9 @@ $initialWallet = Invoke-RestMethod `
     -Uri "$BaseUrl/api/economy/wallets/$($accountA.Character.characterId)" `
     -Headers $accountA.Headers
 if ($initialWallet.rosterId -ne $accountA.Character.rosterId -or
-    (Get-Balance $initialWallet 'AccountCredit') -ne 0 -or
-    (Get-Balance $initialWallet 'RosterGold') -ne 0 -or
-    (Get-Balance $initialWallet 'CharacterToken') -ne 0) {
+    (Get-Balance $initialWallet $accountCreditCode) -ne 0 -or
+    (Get-Balance $initialWallet $rosterGoldCode) -ne 0 -or
+    (Get-Balance $initialWallet $characterTokenCode) -ne 0) {
     throw 'A new wallet did not expose zero balances for every ownership scope.'
 }
 
@@ -185,9 +196,9 @@ $commitBody = @{
     commandFingerprint = "smoke-reward|$requestId"
     reason = 'SmokeTest.Reward'
     changes = @(
-        @{ currencyCode = 'AccountCredit'; delta = 100 },
-        @{ currencyCode = 'RosterGold'; delta = 200 },
-        @{ currencyCode = 'CharacterToken'; delta = 5 }
+        @{ currencyCode = $accountCreditCode; delta = 100 },
+        @{ currencyCode = $rosterGoldCode; delta = 200 },
+        @{ currencyCode = $characterTokenCode; delta = 5 }
     )
 }
 $committed = Invoke-RestMethod `
@@ -223,9 +234,9 @@ $sharedWallet = Invoke-RestMethod `
     -Method Get `
     -Uri "$BaseUrl/api/economy/wallets/$($characterA2.characterId)" `
     -Headers $accountA.Headers
-if ((Get-Balance $sharedWallet 'AccountCredit') -ne 100 -or
-    (Get-Balance $sharedWallet 'RosterGold') -ne 200 -or
-    (Get-Balance $sharedWallet 'CharacterToken') -ne 0) {
+if ((Get-Balance $sharedWallet $accountCreditCode) -ne 100 -or
+    (Get-Balance $sharedWallet $rosterGoldCode) -ne 200 -or
+    (Get-Balance $sharedWallet $characterTokenCode) -ne 0) {
     throw 'Account/roster balances were not shared independently of character balances.'
 }
 
@@ -237,8 +248,8 @@ $insufficientBody = @{
     commandFingerprint = "smoke-spend|$([Guid]::NewGuid())"
     reason = 'SmokeTest.Spend'
     changes = @(
-        @{ currencyCode = 'RosterGold'; delta = 50 },
-        @{ currencyCode = 'CharacterToken'; delta = -999 }
+        @{ currencyCode = $rosterGoldCode; delta = 50 },
+        @{ currencyCode = $characterTokenCode; delta = -999 }
     )
 }
 Invoke-ExpectedError `
@@ -252,18 +263,18 @@ $unchangedWallet = Invoke-RestMethod `
     -Method Get `
     -Uri "$BaseUrl/api/economy/wallets/$($accountA.Character.characterId)" `
     -Headers $accountA.Headers
-if ((Get-Balance $unchangedWallet 'RosterGold') -ne 200 -or
-    (Get-Balance $unchangedWallet 'CharacterToken') -ne 5) {
+if ((Get-Balance $unchangedWallet $rosterGoldCode) -ne 200 -or
+    (Get-Balance $unchangedWallet $characterTokenCode) -ne 5) {
     throw 'A rejected batch partially changed a balance.'
 }
 
 Invoke-ExpectedError `
     -Method Put `
-    -Uri "$BaseUrl/api/economy/currency-definitions/AccountCredit" `
+    -Uri "$BaseUrl/api/economy/currency-definitions/$accountCreditCode" `
     -Headers $adminHeaders `
     -Body @{
-        currencyCode = 'AccountCredit'
-        displayName = 'AccountCredit'
+        currencyCode = $accountCreditCode
+        displayName = $accountCreditCode
         scope = 'Account'
         maxBalance = 99
         enabled = $true
