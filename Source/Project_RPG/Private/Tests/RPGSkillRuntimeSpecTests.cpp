@@ -1,12 +1,314 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Animation/AnimMontage.h"
+#include "Component/Skill/RPGPlayerSkillComponent.h"
+#include "Engine/AssetManager.h"
+#include "FunctionLibrary/RPGSkillConfigBlueprintLibrary.h"
 #include "Misc/AutomationTest.h"
+#include "RPGAbilityTags.h"
 #include "Skill/RPGSkillDefinition.h"
 #include "Skill/RPGSkillDefinition_Charge.h"
+#if WITH_EDITOR
+#include "Misc/DataValidation.h"
+#endif
 #include "Skill/RPGSkillExecutionPolicy.h"
 #include "Skill/RPGSkillExecutionTypes.h"
 #include "Skill/RPGSkillTargetingPolicy.h"
 #include "Skill/RPGSkillTargetingTypes.h"
+#include "UI/MVVM/RPGSkillViewModel.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRPGSkillConfigBlueprintLibraryTest,
+	"ProjectRPG.Skill.Config.TypeSafeWrapping",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRPGSkillConfigBlueprintLibraryTest::RunTest(
+	const FString& Parameters)
+{
+	FRPGSkillInstantExecutionConfig InstantConfig;
+	InstantConfig.StartSection = TEXT("Attack");
+	const FInstancedStruct InstantStruct =
+		URPGSkillConfigBlueprintLibrary::MakeInstantExecutionConfig(
+			InstantConfig);
+	const FRPGSkillInstantExecutionConfig* WrappedInstant =
+		InstantStruct.GetPtr<FRPGSkillInstantExecutionConfig>();
+	TestNotNull(TEXT("Instant config retains its concrete type"), WrappedInstant);
+	if (WrappedInstant)
+	{
+		TestEqual(TEXT("Instant config retains its authored section"),
+			WrappedInstant->StartSection,
+			InstantConfig.StartSection);
+	}
+
+	FRPGSkillHoldingExecutionConfig HoldingConfig;
+	HoldingConfig.HoldDuration = 4.0f;
+	HoldingConfig.SuccessSection = TEXT("End");
+	const FInstancedStruct HoldingStruct =
+		URPGSkillConfigBlueprintLibrary::MakeHoldingExecutionConfig(
+			HoldingConfig);
+	const FRPGSkillHoldingExecutionConfig* WrappedHolding =
+		HoldingStruct.GetPtr<FRPGSkillHoldingExecutionConfig>();
+	TestNotNull(TEXT("Holding config retains its concrete type"), WrappedHolding);
+	if (WrappedHolding)
+	{
+		TestEqual(TEXT("Holding config retains its authored duration"),
+			WrappedHolding->HoldDuration,
+			HoldingConfig.HoldDuration);
+	}
+
+	FRPGSkillSoftTargetingConfig SoftTargetConfig;
+	SoftTargetConfig.MaxRange = 875.0f;
+	const FInstancedStruct SoftTargetStruct =
+		URPGSkillConfigBlueprintLibrary::MakeSoftTargetingConfig(
+			SoftTargetConfig);
+	const FRPGSkillSoftTargetingConfig* WrappedSoftTarget =
+		SoftTargetStruct.GetPtr<FRPGSkillSoftTargetingConfig>();
+	TestNotNull(TEXT("Targeting config retains its concrete type"),
+		WrappedSoftTarget);
+	if (WrappedSoftTarget)
+	{
+		TestEqual(TEXT("Targeting config retains its authored range"),
+			WrappedSoftTarget->MaxRange,
+			SoftTargetConfig.MaxRange);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRPGSkillViewModelReactiveInitializationTest,
+	"ProjectRPG.Skill.UI.ReactiveInitialization",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRPGSkillViewModelReactiveInitializationTest::RunTest(
+	const FString& Parameters)
+{
+	URPGPlayerSkillComponent* SkillComponent =
+		NewObject<URPGPlayerSkillComponent>();
+	URPGSkillDefinition* Definition = NewObject<URPGSkillDefinition>();
+	Definition->SkillTag =
+		RPGGameplayTags::Player_Ability_Skill_AssultBlade;
+	URPGSkillViewModel* ViewModel = NewObject<URPGSkillViewModel>();
+
+	ViewModel->InitializeSkillData(SkillComponent, {Definition});
+	TestTrue(TEXT("The skill view model subscribes to model changes"),
+		SkillComponent->OnSkillDataChanged.IsBound());
+	TestEqual(TEXT("Initial total SP comes from the skill component"),
+		ViewModel->TotalSP,
+		SkillComponent->GetTotalSP());
+	TestEqual(TEXT("One definition creates one slot"),
+		ViewModel->SkillSlots.Num(),
+		1);
+
+	ViewModel->TotalSP = 0;
+	SkillComponent->OnSkillDataChanged.Broadcast(FGameplayTag());
+	TestEqual(TEXT("Aggregate model events refresh total SP"),
+		ViewModel->TotalSP,
+		SkillComponent->GetTotalSP());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRPGSkillPrimaryAssetIdentityTest,
+	"ProjectRPG.Skill.Catalog.PrimaryAssetIdentity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRPGSkillPrimaryAssetIdentityTest::RunTest(const FString& Parameters)
+{
+	URPGSkillDefinition* Definition = NewObject<URPGSkillDefinition>();
+	Definition->SkillTag =
+		RPGGameplayTags::Player_Ability_Skill_AssultBlade;
+
+	const FPrimaryAssetId ExpectedId =
+		URPGSkillDefinition::MakePrimaryAssetIdForTag(Definition->SkillTag);
+	TestTrue(TEXT("A valid skill tag produces a primary asset id"),
+		ExpectedId.IsValid());
+	TestEqual(TEXT("Skill definitions use the catalog primary asset type"),
+		ExpectedId.PrimaryAssetType,
+		URPGSkillDefinition::PrimaryAssetType);
+	TestEqual(TEXT("The skill tag is the stable primary asset name"),
+		ExpectedId.PrimaryAssetName,
+		Definition->SkillTag.GetTagName());
+	TestEqual(TEXT("The definition exposes the same stable identity"),
+		Definition->GetPrimaryAssetId(),
+		ExpectedId);
+
+	return true;
+}
+
+#if WITH_EDITOR
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRPGAuthoredSkillCatalogTest,
+	"ProjectRPG.Skill.Catalog.AuthoredDefinitions",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRPGAuthoredSkillCatalogTest::RunTest(const FString& Parameters)
+{
+	const TArray<FGameplayTag> ExpectedTags =
+	{
+		RPGGameplayTags::Player_Ability_Skill_AssultBlade,
+		RPGGameplayTags::Player_Ability_Skill_JumpSmash,
+		RPGGameplayTags::Player_Ability_Skill_Charge,
+		RPGGameplayTags::Player_Ability_Skill_WhirlWind,
+	};
+
+	UAssetManager& AssetManager = UAssetManager::Get();
+	TArray<FPrimaryAssetId> RegisteredIds;
+	AssetManager.GetPrimaryAssetIdList(
+		URPGSkillDefinition::PrimaryAssetType,
+		RegisteredIds);
+
+	for (const FGameplayTag SkillTag : ExpectedTags)
+	{
+		const FPrimaryAssetId ExpectedId =
+			URPGSkillDefinition::MakePrimaryAssetIdForTag(SkillTag);
+		TestTrue(
+			*FString::Printf(TEXT("Catalog registers %s"),
+				*SkillTag.ToString()),
+			RegisteredIds.Contains(ExpectedId));
+
+		const FSoftObjectPath AssetPath =
+			AssetManager.GetPrimaryAssetPath(ExpectedId);
+		TestTrue(
+			*FString::Printf(TEXT("Catalog resolves %s"),
+				*SkillTag.ToString()),
+			AssetPath.IsValid());
+		URPGSkillDefinition* Definition =
+			Cast<URPGSkillDefinition>(AssetPath.TryLoad());
+		TestNotNull(
+			*FString::Printf(TEXT("Catalog loads %s"),
+				*SkillTag.ToString()),
+			Definition);
+		if (Definition)
+		{
+			TestEqual(TEXT("Loaded definition retains its stable tag"),
+				Definition->SkillTag,
+				SkillTag);
+			FDataValidationContext ValidationContext;
+			TestEqual(TEXT("Loaded definition passes data validation"),
+				Definition->IsDataValid(ValidationContext),
+				EDataValidationResult::Valid);
+		}
+	}
+
+	return true;
+}
+#endif
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRPGSkillDefinitionProgressionRulesTest,
+	"ProjectRPG.Skill.Definition.ProgressionRules",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRPGSkillDefinitionProgressionRulesTest::RunTest(
+	const FString& Parameters)
+{
+	URPGSkillDefinition* Definition = NewObject<URPGSkillDefinition>();
+	Definition->MaxSkillLevel = 5;
+
+	FRPGSkillTripodTier& FirstTier =
+		Definition->TripodTiers.AddDefaulted_GetRef();
+	FirstTier.RequiredSkillLevel = 2;
+	FirstTier.Options.AddDefaulted(2);
+	FRPGSkillTripodTier& SecondTier =
+		Definition->TripodTiers.AddDefaulted_GetRef();
+	SecondTier.RequiredSkillLevel = 4;
+	SecondTier.Options.AddDefaulted();
+
+	FRPGSkillSaveData SaveData;
+	SaveData.SkillLevel = 99;
+	SaveData.SelectedTripodIndices = {1, 7, 0};
+	Definition->NormalizeSaveData(SaveData);
+	TestEqual(TEXT("Authored maximum level clamps save data"),
+		SaveData.SkillLevel,
+		5);
+	TestEqual(TEXT("Selection count follows authored tripod tiers"),
+		SaveData.SelectedTripodIndices.Num(),
+		2);
+	TestEqual(TEXT("A valid authored option is preserved"),
+		SaveData.SelectedTripodIndices[0],
+		1);
+	TestEqual(TEXT("An out-of-range option is cleared"),
+		SaveData.SelectedTripodIndices[1],
+		INDEX_NONE);
+
+	SaveData.SkillLevel = 3;
+	SaveData.SelectedTripodIndices = {0, 0};
+	Definition->NormalizeSaveData(SaveData);
+	TestEqual(TEXT("A locked-tier selection is cleared"),
+		SaveData.SelectedTripodIndices[1],
+		INDEX_NONE);
+	TestTrue(TEXT("A locked tier can always be deselected"),
+		Definition->IsTripodSelectionAllowed(1, 1, INDEX_NONE));
+	TestFalse(TEXT("Unknown tripod options are rejected"),
+		Definition->IsTripodSelectionAllowed(5, 1, 2));
+
+	return true;
+}
+
+#if WITH_EDITOR
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRPGSkillDefinitionDataValidationTest,
+	"ProjectRPG.Skill.Definition.DataValidation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRPGSkillDefinitionDataValidationTest::RunTest(
+	const FString& Parameters)
+{
+	URPGSkillDefinition* Definition = NewObject<URPGSkillDefinition>();
+	Definition->SkillName = FText::FromString(TEXT("Validation Skill"));
+	Definition->SkillTag =
+		RPGGameplayTags::Player_Ability_Skill_AssultBlade;
+	Definition->SkillMontage = NewObject<UAnimMontage>(Definition);
+	Definition->DefaultExecutionPolicyClass =
+		URPGSkillExecutionPolicy_Instant::StaticClass();
+
+	FDataValidationContext ValidContext;
+	TestEqual(TEXT("A complete definition passes editor validation"),
+		Definition->IsDataValid(ValidContext),
+		EDataValidationResult::Valid);
+
+	Definition->BaseCooldown = 0.5f;
+	FDataValidationContext CooldownContext;
+	TestEqual(TEXT("Sub-second authored cooldown is rejected"),
+		Definition->IsDataValid(CooldownContext),
+		EDataValidationResult::Invalid);
+
+	Definition->BaseCooldown = 1.0f;
+	FRPGSkillChargeExecutionConfig ChargeConfig;
+	Definition->DefaultExecutionConfig.InitializeAs<
+		FRPGSkillChargeExecutionConfig>(ChargeConfig);
+	FDataValidationContext PolicyContext;
+	TestEqual(TEXT("Mismatched policy and config are rejected"),
+		Definition->IsDataValid(PolicyContext),
+		EDataValidationResult::Invalid);
+
+	Definition->DefaultExecutionConfig.Reset();
+	FRPGSkillTripodTier& Tier =
+		Definition->TripodTiers.AddDefaulted_GetRef();
+	Tier.RequiredSkillLevel = 1;
+	FRPGSkillTripodOption& Option = Tier.Options.AddDefaulted_GetRef();
+	Option.OverrideExecutionPolicyClass =
+		URPGSkillExecutionPolicy_Charge::StaticClass();
+	FDataValidationContext InvalidTripodContext;
+	TestEqual(TEXT("A tripod cannot select a policy without its config"),
+		Definition->IsDataValid(InvalidTripodContext),
+		EDataValidationResult::Invalid);
+
+	Option.OverrideExecutionPolicyClass =
+		URPGSkillExecutionPolicy_Instant::StaticClass();
+	FRPGSkillInstantExecutionConfig InstantConfig;
+	Option.OverrideExecutionConfig.InitializeAs<
+		FRPGSkillInstantExecutionConfig>(InstantConfig);
+	FDataValidationContext ValidTripodContext;
+	TestEqual(TEXT("A type-safe tripod execution override is valid"),
+		Definition->IsDataValid(ValidTripodContext),
+		EDataValidationResult::Valid);
+
+	return true;
+}
+#endif
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRPGSkillDefaultCooldownTest,
@@ -340,6 +642,71 @@ bool FRPGSkillExecutionConfigValidationTest::RunTest(
 		CastingPolicy->ValidateExecutionConfig(
 			ChainStruct,
 			ValidationError));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRPGSkillAuthoredMontageValidationTest,
+	"ProjectRPG.Skill.RuntimeSpec.AuthoredMontageValidation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRPGSkillAuthoredMontageValidationTest::RunTest(
+	const FString& Parameters)
+{
+	UAnimMontage* Montage = NewObject<UAnimMontage>();
+	// AddAnimCompositeSection is editor-only in UE 5.8.  The runtime-spec
+	// validation only needs authored section names, so construct the minimal
+	// runtime representation directly for this Development automation test.
+	auto AddRuntimeSection = [Montage](const FName SectionName)
+	{
+		FCompositeSection& Section = Montage->CompositeSections.Emplace_GetRef();
+		Section.SectionName = SectionName;
+		Section.SetTime(0.0f);
+	};
+	AddRuntimeSection(TEXT("CastStart"));
+	AddRuntimeSection(TEXT("CastComplete"));
+	AddRuntimeSection(TEXT("Chain01"));
+	AddRuntimeSection(TEXT("Chain02"));
+
+	FText ValidationError;
+	FRPGSkillRuntimeSpec RuntimeSpec;
+	RuntimeSpec.Montage = Montage;
+
+	FRPGSkillCastingExecutionConfig CastingConfig;
+	CastingConfig.CastingSection = TEXT("CastStart");
+	CastingConfig.CompleteSection = TEXT("CastComplete");
+	RuntimeSpec.ExecutionConfig.InitializeAs<
+		FRPGSkillCastingExecutionConfig>(CastingConfig);
+	const URPGSkillExecutionPolicy_Casting* CastingPolicy =
+		GetDefault<URPGSkillExecutionPolicy_Casting>();
+	TestTrue(
+		TEXT("Casting accepts authored montage sections"),
+		CastingPolicy->ValidateRuntimeSpecData(RuntimeSpec, ValidationError));
+
+	CastingConfig.CompleteSection = TEXT("MissingSection");
+	RuntimeSpec.ExecutionConfig.InitializeAs<
+		FRPGSkillCastingExecutionConfig>(CastingConfig);
+	TestFalse(
+		TEXT("Casting rejects a missing completion section before activation"),
+		CastingPolicy->ValidateRuntimeSpecData(RuntimeSpec, ValidationError));
+
+	FRPGSkillChainExecutionConfig ChainConfig;
+	ChainConfig.ChainSections = {TEXT("Chain01"), TEXT("Chain02")};
+	RuntimeSpec.ExecutionConfig.InitializeAs<
+		FRPGSkillChainExecutionConfig>(ChainConfig);
+	const URPGSkillExecutionPolicy_Chain* ChainPolicy =
+		GetDefault<URPGSkillExecutionPolicy_Chain>();
+	TestTrue(
+		TEXT("Chain accepts authored montage sections"),
+		ChainPolicy->ValidateRuntimeSpecData(RuntimeSpec, ValidationError));
+
+	ChainConfig.ChainSections[1] = TEXT("MissingSection");
+	RuntimeSpec.ExecutionConfig.InitializeAs<
+		FRPGSkillChainExecutionConfig>(ChainConfig);
+	TestFalse(
+		TEXT("Chain rejects a missing link section before activation"),
+		ChainPolicy->ValidateRuntimeSpecData(RuntimeSpec, ValidationError));
 
 	return true;
 }

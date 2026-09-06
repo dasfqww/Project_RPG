@@ -52,6 +52,10 @@ public:
 	virtual bool ValidateExecutionConfig(
 		const FInstancedStruct& Config,
 		FText& OutError) const;
+	/** Validates frozen authored data without requiring an active ability host. */
+	virtual bool ValidateRuntimeSpecData(
+		const FRPGSkillRuntimeSpec& RuntimeSpec,
+		FText& OutError) const;
 	/** Validates activation-local montage and config references before CommitAbility. */
 	virtual bool ValidateRuntimeSpec(FText& OutError) const;
 	virtual void OnInputPressed();
@@ -84,7 +88,9 @@ public:
 	virtual bool ValidateExecutionConfig(
 		const FInstancedStruct& Config,
 		FText& OutError) const override;
-	virtual bool ValidateRuntimeSpec(FText& OutError) const override;
+	virtual bool ValidateRuntimeSpecData(
+		const FRPGSkillRuntimeSpec& RuntimeSpec,
+		FText& OutError) const override;
 };
 
 UCLASS()
@@ -98,7 +104,9 @@ public:
 	virtual bool ValidateExecutionConfig(
 		const FInstancedStruct& Config,
 		FText& OutError) const override;
-	virtual bool ValidateRuntimeSpec(FText& OutError) const override;
+	virtual bool ValidateRuntimeSpecData(
+		const FRPGSkillRuntimeSpec& RuntimeSpec,
+		FText& OutError) const override;
 	virtual void OnInputReleased() override;
 	virtual void EndExecution() override;
 	virtual void CancelExecution() override;
@@ -129,7 +137,9 @@ public:
 	virtual bool ValidateExecutionConfig(
 		const FInstancedStruct& Config,
 		FText& OutError) const override;
-	virtual bool ValidateRuntimeSpec(FText& OutError) const override;
+	virtual bool ValidateRuntimeSpecData(
+		const FRPGSkillRuntimeSpec& RuntimeSpec,
+		FText& OutError) const override;
 	virtual void OnInputReleased() override;
 	virtual void OnMontageCompleted() override;
 	virtual void EndExecution() override;
@@ -160,7 +170,9 @@ public:
 	virtual bool ValidateExecutionConfig(
 		const FInstancedStruct& Config,
 		FText& OutError) const override;
-	virtual bool ValidateRuntimeSpec(FText& OutError) const override;
+	virtual bool ValidateRuntimeSpecData(
+		const FRPGSkillRuntimeSpec& RuntimeSpec,
+		FText& OutError) const override;
 	virtual void OnInputReleased() override;
 	virtual void OnMontageCompleted() override;
 	virtual void OnMontageInterrupted() override;
@@ -192,7 +204,9 @@ public:
 	virtual bool ValidateExecutionConfig(
 		const FInstancedStruct& Config,
 		FText& OutError) const override;
-	virtual bool ValidateRuntimeSpec(FText& OutError) const override;
+	virtual bool ValidateRuntimeSpecData(
+		const FRPGSkillRuntimeSpec& RuntimeSpec,
+		FText& OutError) const override;
 	virtual void OnInputPressed() override;
 	virtual FGameplayTag GetExecutionEventTag() const override;
 	virtual void OnExecutionEvent(const FGameplayEventData& Payload) override;
@@ -217,7 +231,9 @@ public:
 	virtual bool ValidateExecutionConfig(
 		const FInstancedStruct& Config,
 		FText& OutError) const override;
-	virtual bool ValidateRuntimeSpec(FText& OutError) const override;
+	virtual bool ValidateRuntimeSpecData(
+		const FRPGSkillRuntimeSpec& RuntimeSpec,
+		FText& OutError) const override;
 	virtual void OnInputPressed() override;
 	virtual FGameplayTag GetExecutionEventTag() const override;
 	virtual void OnExecutionEvent(const FGameplayEventData& Payload) override;

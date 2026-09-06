@@ -10,6 +10,12 @@ URPGSkillViewModel::URPGSkillViewModel()
 {
 }
 
+void URPGSkillViewModel::BeginDestroy()
+{
+	UnbindSkillComponent();
+	Super::BeginDestroy();
+}
+
 void URPGSkillViewModel::InitializeSkillData(URPGPlayerSkillComponent* InSkillComponent, const TArray<URPGSkillDefinition*>& InAllSkills)
 {
 	if (!InSkillComponent)
@@ -17,7 +23,14 @@ void URPGSkillViewModel::InitializeSkillData(URPGPlayerSkillComponent* InSkillCo
 		return;
 	}
 
-	SkillComponent = InSkillComponent;
+	if (SkillComponent != InSkillComponent)
+	{
+		UnbindSkillComponent();
+		SkillComponent = InSkillComponent;
+	}
+	SkillComponent->OnSkillDataChanged.AddUniqueDynamic(
+		this,
+		&ThisClass::HandleSkillDataChanged);
 	SkillSlots.Empty();
 
 	// 1. 전달받은 모든 스킬 정의(Definition)를 순회하며 슬롯 VM 생성
@@ -44,17 +57,17 @@ void URPGSkillViewModel::InitializeSkillData(URPGPlayerSkillComponent* InSkillCo
 
 void URPGSkillViewModel::RequestSkillLevelUp(FGameplayTag SkillTag)
 {
-	if (SkillComponent && SkillComponent->TryLevelUpSkill(SkillTag))
+	if (SkillComponent)
 	{
-		RefreshSkillData();
+		SkillComponent->TryLevelUpSkill(SkillTag);
 	}
 }
 
 void URPGSkillViewModel::RequestSkillLevelDown(FGameplayTag SkillTag)
 {
-	if (SkillComponent && SkillComponent->TryLevelDownSkill(SkillTag))
+	if (SkillComponent)
 	{
-		RefreshSkillData();
+		SkillComponent->TryLevelDownSkill(SkillTag);
 	}
 }
 
@@ -62,15 +75,13 @@ void URPGSkillViewModel::RequestSkillLevelMax(FGameplayTag SkillTag)
 {
 	if (SkillComponent)
 	{
-		bool bChanged = false;
-		while (SkillComponent->TryLevelUpSkill(SkillTag))
+		const URPGSkillDefinition* Definition =
+			FindSkillDefinition(SkillTag);
+		if (Definition)
 		{
-			bChanged = true;
-		}
-
-		if (bChanged)
-		{
-			RefreshSkillData();
+			SkillComponent->LevelUpToMax(
+				SkillTag,
+				Definition->MaxSkillLevel);
 		}
 	}
 }
@@ -79,22 +90,20 @@ void URPGSkillViewModel::RequestSkillLevelMin(FGameplayTag SkillTag)
 {
 	if (SkillComponent)
 	{
-		bool bChanged = false;
-		while (SkillComponent->TryLevelDownSkill(SkillTag))
-		{
-			bChanged = true;
-		}
-
-		if (bChanged)
-		{
-			RefreshSkillData();
-		}
+		SkillComponent->ResetSkillLevel(SkillTag);
 	}
 }
 
 void URPGSkillViewModel::RefreshSkillData()
 {
 	if (!SkillComponent) return;
+
+	int32 NewTotalSP = SkillComponent->GetTotalSP();
+	if (TotalSP != NewTotalSP)
+	{
+		TotalSP = NewTotalSP;
+		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(TotalSP);
+	}
 
 	// SP 정보 갱신
 	int32 NewRemainingSP = SkillComponent->GetRemainingSP();
@@ -116,4 +125,34 @@ void URPGSkillViewModel::RefreshSkillData()
 			SlotVM->RefreshFromSaveData(Data);
 		}
 	}
+}
+
+void URPGSkillViewModel::HandleSkillDataChanged(
+	const FGameplayTag SkillTag)
+{
+	RefreshSkillData();
+}
+
+void URPGSkillViewModel::UnbindSkillComponent()
+{
+	if (SkillComponent)
+	{
+		SkillComponent->OnSkillDataChanged.RemoveDynamic(
+			this,
+			&ThisClass::HandleSkillDataChanged);
+		SkillComponent = nullptr;
+	}
+}
+
+const URPGSkillDefinition* URPGSkillViewModel::FindSkillDefinition(
+	const FGameplayTag SkillTag) const
+{
+	for (const URPGSkillSlotViewModel* Slot : SkillSlots)
+	{
+		if (Slot && Slot->GetSkillTag() == SkillTag)
+		{
+			return Slot->GetSkillDefinition();
+		}
+	}
+	return nullptr;
 }

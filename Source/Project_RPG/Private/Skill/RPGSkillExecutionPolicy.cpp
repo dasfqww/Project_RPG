@@ -52,8 +52,14 @@ bool URPGSkillExecutionPolicy::ValidateRuntimeSpec(FText& OutError) const
 			OutError,
 			TEXT("Execution policy has no initialized host."));
 	}
-	OutError = FText::GetEmpty();
-	return true;
+	return ValidateRuntimeSpecData(GetRuntimeSpec(), OutError);
+}
+
+bool URPGSkillExecutionPolicy::ValidateRuntimeSpecData(
+	const FRPGSkillRuntimeSpec& RuntimeSpec,
+	FText& OutError) const
+{
+	return ValidateExecutionConfig(RuntimeSpec.ExecutionConfig, OutError);
 }
 
 void URPGSkillExecutionPolicy::OnInputPressed()
@@ -143,19 +149,20 @@ bool URPGSkillExecutionPolicy_Instant::ValidateExecutionConfig(
 	return false;
 }
 
-bool URPGSkillExecutionPolicy_Instant::ValidateRuntimeSpec(
+bool URPGSkillExecutionPolicy_Instant::ValidateRuntimeSpecData(
+	const FRPGSkillRuntimeSpec& RuntimeSpec,
 	FText& OutError) const
 {
-	if (!Super::ValidateRuntimeSpec(OutError))
+	if (!Super::ValidateRuntimeSpecData(RuntimeSpec, OutError))
 	{
 		return false;
 	}
 	const FRPGSkillInstantExecutionConfig* Config =
-		GetRuntimeSpec().ExecutionConfig
+		RuntimeSpec.ExecutionConfig
 		.GetPtr<FRPGSkillInstantExecutionConfig>();
-	if (!GetRuntimeSpec().Montage ||
+	if (!RuntimeSpec.Montage ||
 		(Config && !HasMontageSection(
-			GetRuntimeSpec().Montage,
+			RuntimeSpec.Montage,
 			Config->StartSection)))
 	{
 		return FailRuntimeValidation(
@@ -237,17 +244,19 @@ bool URPGSkillExecutionPolicy_Charge::ValidateExecutionConfig(
 	return true;
 }
 
-bool URPGSkillExecutionPolicy_Charge::ValidateRuntimeSpec(
+bool URPGSkillExecutionPolicy_Charge::ValidateRuntimeSpecData(
+	const FRPGSkillRuntimeSpec& RuntimeSpec,
 	FText& OutError) const
 {
-	if (!Super::ValidateRuntimeSpec(OutError))
+	if (!Super::ValidateRuntimeSpecData(RuntimeSpec, OutError))
 	{
 		return false;
 	}
-	const FRPGSkillChargeExecutionConfig* Config = GetChargeConfig();
-	if (!Config || !GetRuntimeSpec().Montage ||
-		!HasMontageSection(GetRuntimeSpec().Montage, Config->ChargeSection) ||
-		!HasMontageSection(GetRuntimeSpec().Montage, Config->ReleaseSection))
+	const FRPGSkillChargeExecutionConfig* Config =
+		RuntimeSpec.ExecutionConfig.GetPtr<FRPGSkillChargeExecutionConfig>();
+	if (!Config || !RuntimeSpec.Montage ||
+		!HasMontageSection(RuntimeSpec.Montage, Config->ChargeSection) ||
+		!HasMontageSection(RuntimeSpec.Montage, Config->ReleaseSection))
 	{
 		return FailRuntimeValidation(
 			OutError,
@@ -477,18 +486,20 @@ bool URPGSkillExecutionPolicy_Holding::ValidateExecutionConfig(
 	return true;
 }
 
-bool URPGSkillExecutionPolicy_Holding::ValidateRuntimeSpec(
+bool URPGSkillExecutionPolicy_Holding::ValidateRuntimeSpecData(
+	const FRPGSkillRuntimeSpec& RuntimeSpec,
 	FText& OutError) const
 {
-	if (!Super::ValidateRuntimeSpec(OutError))
+	if (!Super::ValidateRuntimeSpecData(RuntimeSpec, OutError))
 	{
 		return false;
 	}
-	const FRPGSkillHoldingExecutionConfig* Config = GetHoldingConfig();
-	if (!Config || !GetRuntimeSpec().Montage ||
-		!HasMontageSection(GetRuntimeSpec().Montage, Config->HoldingSection) ||
-		!HasMontageSection(GetRuntimeSpec().Montage, Config->SuccessSection) ||
-		!HasMontageSection(GetRuntimeSpec().Montage, Config->FailureSection))
+	const FRPGSkillHoldingExecutionConfig* Config =
+		RuntimeSpec.ExecutionConfig.GetPtr<FRPGSkillHoldingExecutionConfig>();
+	if (!Config || !RuntimeSpec.Montage ||
+		!HasMontageSection(RuntimeSpec.Montage, Config->HoldingSection) ||
+		!HasMontageSection(RuntimeSpec.Montage, Config->SuccessSection) ||
+		!HasMontageSection(RuntimeSpec.Montage, Config->FailureSection))
 	{
 		return FailRuntimeValidation(
 			OutError,
@@ -728,18 +739,20 @@ bool URPGSkillExecutionPolicy_Casting::ValidateExecutionConfig(
 	return true;
 }
 
-bool URPGSkillExecutionPolicy_Casting::ValidateRuntimeSpec(
+bool URPGSkillExecutionPolicy_Casting::ValidateRuntimeSpecData(
+	const FRPGSkillRuntimeSpec& RuntimeSpec,
 	FText& OutError) const
 {
-	if (!Super::ValidateRuntimeSpec(OutError))
+	if (!Super::ValidateRuntimeSpecData(RuntimeSpec, OutError))
 	{
 		return false;
 	}
-	const FRPGSkillCastingExecutionConfig* Config = GetCastingConfig();
-	if (!Config || !GetRuntimeSpec().Montage ||
-		!HasMontageSection(GetRuntimeSpec().Montage, Config->CastingSection) ||
-		!HasMontageSection(GetRuntimeSpec().Montage, Config->CompleteSection) ||
-		!HasMontageSection(GetRuntimeSpec().Montage, Config->CancelSection))
+	const FRPGSkillCastingExecutionConfig* Config =
+		RuntimeSpec.ExecutionConfig.GetPtr<FRPGSkillCastingExecutionConfig>();
+	if (!Config || !RuntimeSpec.Montage ||
+		!HasMontageSection(RuntimeSpec.Montage, Config->CastingSection) ||
+		!HasMontageSection(RuntimeSpec.Montage, Config->CompleteSection) ||
+		!HasMontageSection(RuntimeSpec.Montage, Config->CancelSection))
 	{
 		return FailRuntimeValidation(
 			OutError,
@@ -873,7 +886,11 @@ float URPGSkillExecutionPolicy_Casting::GetScaledCastDuration() const
 	const float SafeScalar = FMath::IsFinite(AuthoredScalar)
 		? FMath::Max(AuthoredScalar, 0.01f)
 		: 1.0f;
-	return FMath::Max(0.01f, Config->CastDuration * SafeScalar);
+	const float ScaledDuration = Config->CastDuration * SafeScalar;
+	return FMath::Clamp(
+		FMath::IsFinite(ScaledDuration) ? ScaledDuration : 60.0f,
+		0.01f,
+		60.0f);
 }
 
 const FRPGSkillCastingExecutionConfig*
@@ -929,15 +946,17 @@ bool URPGSkillExecutionPolicy_Combo::ValidateExecutionConfig(
 	return true;
 }
 
-bool URPGSkillExecutionPolicy_Combo::ValidateRuntimeSpec(
+bool URPGSkillExecutionPolicy_Combo::ValidateRuntimeSpecData(
+	const FRPGSkillRuntimeSpec& RuntimeSpec,
 	FText& OutError) const
 {
-	if (!Super::ValidateRuntimeSpec(OutError))
+	if (!Super::ValidateRuntimeSpecData(RuntimeSpec, OutError))
 	{
 		return false;
 	}
-	const FRPGSkillComboExecutionConfig* Config = GetComboConfig();
-	if (!Config || !GetRuntimeSpec().Montage)
+	const FRPGSkillComboExecutionConfig* Config =
+		RuntimeSpec.ExecutionConfig.GetPtr<FRPGSkillComboExecutionConfig>();
+	if (!Config || !RuntimeSpec.Montage)
 	{
 		return FailRuntimeValidation(
 			OutError,
@@ -945,7 +964,7 @@ bool URPGSkillExecutionPolicy_Combo::ValidateRuntimeSpec(
 	}
 	for (const FName Section : Config->ComboSections)
 	{
-		if (!HasMontageSection(GetRuntimeSpec().Montage, Section))
+		if (!HasMontageSection(RuntimeSpec.Montage, Section))
 		{
 			return FailRuntimeValidation(
 				OutError,
@@ -1071,16 +1090,22 @@ bool URPGSkillExecutionPolicy_Chain::ValidateExecutionConfig(
 	return true;
 }
 
-bool URPGSkillExecutionPolicy_Chain::ValidateRuntimeSpec(
+bool URPGSkillExecutionPolicy_Chain::ValidateRuntimeSpecData(
+	const FRPGSkillRuntimeSpec& RuntimeSpec,
 	FText& OutError) const
 {
-	if (!Super::ValidateRuntimeSpec(OutError))
+	if (!Super::ValidateRuntimeSpecData(RuntimeSpec, OutError))
 	{
 		return false;
 	}
-	const FRPGSkillChainExecutionConfig* Config = GetChainConfig();
-	if (!Config || !GetRuntimeSpec().Montage ||
-		!GetExecutionEventTag().IsValid())
+	const FRPGSkillChainExecutionConfig* Config =
+		RuntimeSpec.ExecutionConfig.GetPtr<FRPGSkillChainExecutionConfig>();
+	const FGameplayTag EventTag = Config && Config->LinkWindowEventTag.IsValid()
+		? Config->LinkWindowEventTag
+		: FGameplayTag::RequestGameplayTag(
+			TEXT("GameplayEvent.Skill.Chain.Window"),
+			false);
+	if (!Config || !RuntimeSpec.Montage || !EventTag.IsValid())
 	{
 		return FailRuntimeValidation(
 			OutError,
@@ -1088,7 +1113,7 @@ bool URPGSkillExecutionPolicy_Chain::ValidateRuntimeSpec(
 	}
 	for (const FName Section : Config->ChainSections)
 	{
-		if (!HasMontageSection(GetRuntimeSpec().Montage, Section))
+		if (!HasMontageSection(RuntimeSpec.Montage, Section))
 		{
 			return FailRuntimeValidation(
 				OutError,

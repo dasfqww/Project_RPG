@@ -3,6 +3,7 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "Combat/HitQuery/RPGHitQuerySubsystem.h"
 #include "Engine/World.h"
+#include "Security/RPGSecurityTypes.h"
 #include "Skill/RPGSkillTargetingTypes.h"
 #include "StructUtils/InstancedStruct.h"
 
@@ -33,14 +34,6 @@ namespace RPGSkillTargeting
 		return false;
 	}
 
-	bool IsFiniteVector(const FVector& Value)
-	{
-		return !Value.ContainsNaN() &&
-			FMath::IsFinite(Value.X) &&
-			FMath::IsFinite(Value.Y) &&
-			FMath::IsFinite(Value.Z);
-	}
-
 	bool ValidateCommonReplicatedTarget(
 		const IRPGSkillTargetingHost& Host,
 		const FRPGSkillTargetingConfig& Config,
@@ -53,10 +46,7 @@ namespace RPGSkillTargeting
 	{
 		OutResult.Reset();
 		AActor* SourceActor = Host.GetSkillSourceActor();
-		if (!SubmittedResult.bIsValid || !IsValid(SourceActor) ||
-			!IsFiniteVector(SubmittedResult.SourceLocation) ||
-			!IsFiniteVector(SubmittedResult.TargetLocation) ||
-			!IsFiniteVector(SubmittedResult.AimDirection))
+		if (!SubmittedResult.bIsValid || !IsValid(SourceActor))
 		{
 			return FailValidation(
 				OutError,
@@ -71,95 +61,80 @@ namespace RPGSkillTargeting
 		}
 
 		const FVector SourceLocation = SourceActor->GetActorLocation();
-		if (FVector::DistSquared(SourceLocation, SubmittedResult.SourceLocation) >
-			FMath::Square(Config.ServerSourceLocationTolerance))
-		{
-			return FailValidation(
-				OutError,
-				TEXT("Replicated source location exceeds the server tolerance."));
-		}
-
-		FVector ToTarget = SubmittedResult.TargetLocation - SourceLocation;
-		if (bFlattenAim)
-		{
-			if (FMath::Abs(ToTarget.Z) >
-				MaxRange + Config.ServerRangeTolerance)
-			{
-				return FailValidation(
-					OutError,
-					TEXT("Replicated target exceeds the vertical server tolerance."));
-			}
-			ToTarget.Z = 0.0f;
-		}
-		const float Distance = ToTarget.Size();
-		if (!FMath::IsFinite(Distance) ||
-			Distance > MaxRange + Config.ServerRangeTolerance)
-		{
-			return FailValidation(
-				OutError,
-				TEXT("Replicated target exceeds the authored range."));
-		}
-
-		FVector AimDirection = ToTarget.GetSafeNormal();
-		if (AimDirection.IsNearlyZero())
-		{
-			AimDirection = SubmittedResult.AimDirection.GetSafeNormal();
-			if (bFlattenAim)
-			{
-				AimDirection.Z = 0.0f;
-				AimDirection.Normalize();
-			}
-		}
-		if (AimDirection.IsNearlyZero())
-		{
-			return FailValidation(
-				OutError,
-				TEXT("Replicated target has no usable aim direction."));
-		}
-
 		const bool bMatchesServerLock =
 			SubmittedResult.TargetActor &&
 			SubmittedResult.TargetActor == Host.GetSkillLockedTarget();
+		FVector ServerAimDirection = FVector::ForwardVector;
 		if (!bMatchesServerLock)
 		{
 			FVector ViewOrigin;
-			FVector ServerAimDirection;
 			if (!Host.GetSkillCameraAimRay(ViewOrigin, ServerAimDirection))
 			{
 				return FailValidation(
 					OutError,
 					TEXT("Server could not resolve the owning client's control aim."));
 			}
-			if (bFlattenAim)
+		}
+
+		FRPGTargetDataSecuritySample SecuritySample;
+		SecuritySample.ServerSourceLocation = SourceLocation;
+		SecuritySample.SubmittedSourceLocation =
+			SubmittedResult.SourceLocation;
+		SecuritySample.SubmittedTargetLocation =
+			SubmittedResult.TargetLocation;
+		SecuritySample.SubmittedAimDirection =
+			SubmittedResult.AimDirection;
+		SecuritySample.ServerAimDirection = ServerAimDirection;
+		SecuritySample.MaximumRange = MaxRange;
+		SecuritySample.SourceLocationTolerance =
+			Config.ServerSourceLocationTolerance;
+		SecuritySample.RangeTolerance = Config.ServerRangeTolerance;
+		SecuritySample.AimToleranceDegrees = FMath::Clamp(
+			Config.ServerAimToleranceDegrees + AdditionalAimToleranceDegrees,
+			0.0f,
+			180.0f);
+		SecuritySample.bFlattenAim = bFlattenAim;
+		SecuritySample.bValidateAim = !bMatchesServerLock;
+		const FRPGTargetDataSecurityResult SecurityResult =
+			FRPGSecurityValidationMath::ValidateTargetData(SecuritySample);
+		if (!SecurityResult.bValid)
+		{
+			if (SecurityResult.bSourceLocationViolation)
 			{
-				ServerAimDirection.Z = 0.0f;
+				return FailValidation(
+					OutError,
+					TEXT("Replicated source location exceeds the server tolerance."));
 			}
-			ServerAimDirection = ServerAimDirection.GetSafeNormal();
-			const float AllowedAngle = FMath::Clamp(
-				Config.ServerAimToleranceDegrees +
-					AdditionalAimToleranceDegrees,
-				0.0f,
-				180.0f);
-			const float AimDot = FMath::Clamp(
-				FVector::DotProduct(ServerAimDirection, AimDirection),
-				-1.0f,
-				1.0f);
-			const float AimErrorDegrees =
-				FMath::RadiansToDegrees(FMath::Acos(AimDot));
-			if (ServerAimDirection.IsNearlyZero() ||
-				AimErrorDegrees > AllowedAngle)
+			if (SecurityResult.bVerticalRangeViolation)
+			{
+				return FailValidation(
+					OutError,
+					TEXT("Replicated target exceeds the vertical server tolerance."));
+			}
+			if (SecurityResult.bRangeViolation)
+			{
+				return FailValidation(
+					OutError,
+					TEXT("Replicated target exceeds the authored range."));
+			}
+			if (SecurityResult.bAimViolation)
 			{
 				return FailValidation(
 					OutError,
 					TEXT("Replicated aim diverges from the server-known control aim."));
 			}
+			return FailValidation(
+				OutError,
+				SecurityResult.bInvalidLimits
+					? TEXT("Replicated target security limits are invalid.")
+					: TEXT("Replicated target contains invalid spatial data."));
 		}
 
 		OutResult.bIsValid = true;
 		OutResult.TargetActor = SubmittedResult.TargetActor;
 		OutResult.SourceLocation = SourceLocation;
 		OutResult.TargetLocation = SubmittedResult.TargetLocation;
-		OutResult.AimDirection = AimDirection;
+		OutResult.AimDirection = SecurityResult.ValidatedAimDirection;
 		OutResult.bOrientSourceToAim = Config.bOrientSourceToAim;
 		OutError = FText::GetEmpty();
 		return true;

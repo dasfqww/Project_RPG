@@ -79,6 +79,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "RPG|Skill")
 	int32 GetRemainingSP() const { return TotalSP - UsedSP; }
 
+	UFUNCTION(BlueprintPure, Category = "RPG|Skill")
+	int32 GetTotalSP() const { return TotalSP; }
+
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "RPG|Skill")
 	void AddTotalSP(int32 Amount);
 
@@ -90,6 +93,8 @@ public:
 	FRPGSkillDataChangedSignature OnSkillDataChanged;
 
 protected:
+	virtual void BeginPlay() override;
+
 	UFUNCTION(Server, Reliable)
 	void ServerTryLevelUpSkill(FGameplayTag SkillTag);
 
@@ -123,6 +128,8 @@ private:
 	void PublishAuthoritativeSkillData(FGameplayTag SkillTag);
 	void TouchAuthoritativeRevision();
 	bool IsAuthorityOwner() const;
+	const URPGSkillDefinition* FindSkillDefinition(
+		FGameplayTag SkillTag) const;
 
 	// 유저의 스킬 정보 맵 (태그 -> 데이터)
 	UPROPERTY()

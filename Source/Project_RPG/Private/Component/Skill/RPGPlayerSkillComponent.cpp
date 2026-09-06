@@ -1,11 +1,27 @@
 #include "Component/Skill/RPGPlayerSkillComponent.h"
 
+#include "Engine/GameInstance.h"
 #include "Net/UnrealNetwork.h"
 #include "RPGDebugHelper.h"
+#include "Skill/RPGSkillCatalogSubsystem.h"
+#include "Skill/RPGSkillDefinition.h"
 
 URPGPlayerSkillComponent::URPGPlayerSkillComponent()
 {
 	SetIsReplicatedByDefault(true);
+}
+
+void URPGPlayerSkillComponent::BeginPlay()
+{
+	Super::BeginPlay();
+	UWorld* World = GetWorld();
+	UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
+	if (URPGSkillCatalogSubsystem* Catalog = GameInstance
+		? GameInstance->GetSubsystem<URPGSkillCatalogSubsystem>()
+		: nullptr)
+	{
+		Catalog->RequestSkillDefinitions();
+	}
 }
 
 void URPGPlayerSkillComponent::GetLifetimeReplicatedProps(
@@ -47,9 +63,15 @@ bool URPGPlayerSkillComponent::ApplyLevelUpSkill(
 	{
 		return false;
 	}
+	const URPGSkillDefinition* Definition = FindSkillDefinition(SkillTag);
+	if (!Definition)
+	{
+		return false;
+	}
 
 	FRPGSkillSaveData& Data = SkillDataMap.FindOrAdd(SkillTag);
-	if (Data.SkillLevel >= 12)
+	Definition->NormalizeSaveData(Data);
+	if (Data.SkillLevel >= Definition->MaxSkillLevel)
 	{
 		return false;
 	}
@@ -86,8 +108,14 @@ bool URPGPlayerSkillComponent::TryLevelDownSkill(
 bool URPGPlayerSkillComponent::ApplyLevelDownSkill(
 	const FGameplayTag SkillTag)
 {
+	const URPGSkillDefinition* Definition = FindSkillDefinition(SkillTag);
 	FRPGSkillSaveData* Data = SkillDataMap.Find(SkillTag);
-	if (!Data || Data->SkillLevel <= 1)
+	if (!Definition || !Data)
+	{
+		return false;
+	}
+	Definition->NormalizeSaveData(*Data);
+	if (Data->SkillLevel <= 1)
 	{
 		return false;
 	}
@@ -95,22 +123,7 @@ bool URPGPlayerSkillComponent::ApplyLevelDownSkill(
 	const int32 Refund = GetRequiredSPForLevel(Data->SkillLevel);
 	--Data->SkillLevel;
 	UsedSP = FMath::Max(0, UsedSP - Refund);
-	if (Data->SelectedTripodIndices.Num() < 3)
-	{
-		Data->SelectedTripodIndices.SetNum(3);
-	}
-	if (Data->SkillLevel < 10)
-	{
-		Data->SelectedTripodIndices[2] = INDEX_NONE;
-	}
-	if (Data->SkillLevel < 7)
-	{
-		Data->SelectedTripodIndices[1] = INDEX_NONE;
-	}
-	if (Data->SkillLevel < 4)
-	{
-		Data->SelectedTripodIndices[0] = INDEX_NONE;
-	}
+	Definition->NormalizeSaveData(*Data);
 
 	PublishAuthoritativeSkillData(SkillTag);
 	OnSkillDataChanged.Broadcast(SkillTag);
@@ -136,9 +149,16 @@ void URPGPlayerSkillComponent::ApplyLevelUpToMax(
 	{
 		return;
 	}
+	const URPGSkillDefinition* Definition = FindSkillDefinition(SkillTag);
+	if (!Definition)
+	{
+		return;
+	}
 
-	const int32 ClampedGoalLevel = FMath::Clamp(TargetGoalLevel, 1, 12);
+	const int32 ClampedGoalLevel =
+		Definition->ClampSkillLevel(TargetGoalLevel);
 	FRPGSkillSaveData& Data = SkillDataMap.FindOrAdd(SkillTag);
+	Definition->NormalizeSaveData(Data);
 	while (Data.SkillLevel < ClampedGoalLevel && ApplyLevelUpSkill(SkillTag))
 	{
 	}
@@ -186,8 +206,12 @@ bool URPGPlayerSkillComponent::ApplySelectTripod(
 	const int32 TierIndex,
 	const int32 OptionIndex)
 {
-	if (!SkillTag.IsValid() || TierIndex < 0 || TierIndex >= 3 ||
-		OptionIndex < INDEX_NONE)
+	if (!SkillTag.IsValid() || OptionIndex < INDEX_NONE)
+	{
+		return false;
+	}
+	const URPGSkillDefinition* Definition = FindSkillDefinition(SkillTag);
+	if (!Definition)
 	{
 		return false;
 	}
@@ -197,17 +221,19 @@ bool URPGPlayerSkillComponent::ApplySelectTripod(
 	{
 		return false;
 	}
-
-	static constexpr int32 RequiredLevels[] = {4, 7, 10};
-	if (Data->SkillLevel < RequiredLevels[TierIndex])
+	Definition->NormalizeSaveData(*Data);
+	if (!Definition->IsTripodSelectionAllowed(
+		Data->SkillLevel,
+		TierIndex,
+		OptionIndex))
 	{
 		Debug::Print(TEXT("Skill Level too low for Tier "), TierIndex + 1);
 		return false;
 	}
 
-	if (Data->SelectedTripodIndices.Num() < 3)
+	if (Data->SelectedTripodIndices[TierIndex] == OptionIndex)
 	{
-		Data->SelectedTripodIndices.SetNum(3);
+		return false;
 	}
 	Data->SelectedTripodIndices[TierIndex] = OptionIndex;
 	PublishAuthoritativeSkillData(SkillTag);
@@ -252,6 +278,7 @@ void URPGPlayerSkillComponent::AddTotalSP(const int32 Amount)
 	}
 	TotalSP = FMath::Max(0, TotalSP + Amount);
 	TouchAuthoritativeRevision();
+	OnSkillDataChanged.Broadcast(FGameplayTag());
 }
 
 void URPGPlayerSkillComponent::ServerTryLevelUpSkill_Implementation(
@@ -319,6 +346,10 @@ void URPGPlayerSkillComponent::OnRep_ReplicatedSkillData()
 	{
 		OnSkillDataChanged.Broadcast(Removed.Key);
 	}
+
+	// The shared revision also represents TotalSP/UsedSP changes. An invalid
+	// tag is the explicit signal for consumers to refresh aggregate state.
+	OnSkillDataChanged.Broadcast(FGameplayTag());
 }
 
 void URPGPlayerSkillComponent::PublishAuthoritativeSkillData(
@@ -366,4 +397,21 @@ bool URPGPlayerSkillComponent::IsAuthorityOwner() const
 {
 	const AActor* Owner = GetOwner();
 	return Owner && Owner->HasAuthority();
+}
+
+const URPGSkillDefinition*
+URPGPlayerSkillComponent::FindSkillDefinition(
+	const FGameplayTag SkillTag) const
+{
+	if (!SkillTag.IsValid())
+	{
+		return nullptr;
+	}
+
+	UWorld* World = GetWorld();
+	UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
+	const URPGSkillCatalogSubsystem* Catalog = GameInstance
+		? GameInstance->GetSubsystem<URPGSkillCatalogSubsystem>()
+		: nullptr;
+	return Catalog ? Catalog->FindSkillDefinition(SkillTag) : nullptr;
 }

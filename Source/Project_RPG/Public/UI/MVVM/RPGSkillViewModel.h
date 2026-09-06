@@ -23,6 +23,7 @@ class PROJECT_RPG_API URPGSkillViewModel : public URPGViewModelBase
 
 public:
 	URPGSkillViewModel();
+	virtual void BeginDestroy() override;
 
 	// PlayerSkillComponent로부터 데이터를 받아 초기화
 	void InitializeSkillData(URPGPlayerSkillComponent* InSkillComponent, const TArray<URPGSkillDefinition*>& InAllSkills);
@@ -61,6 +62,13 @@ public:
 	void RefreshSkillData();
 
 private:
+	UFUNCTION()
+	void HandleSkillDataChanged(FGameplayTag SkillTag);
+
+	void UnbindSkillComponent();
+	const URPGSkillDefinition* FindSkillDefinition(
+		FGameplayTag SkillTag) const;
+
 	UPROPERTY()
 	TObjectPtr<URPGPlayerSkillComponent> SkillComponent;
 };

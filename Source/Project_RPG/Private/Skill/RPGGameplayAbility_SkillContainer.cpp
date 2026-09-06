@@ -170,6 +170,13 @@ bool URPGGameplayAbility_SkillContainer::StartSkillAfterTargetReady()
 		{
 			return false;
 		}
+		// Execution-window events and gameplay-effect events are independent.
+		// Keep legacy hit/AOE delivery alive until migrated content supplies a
+		// dedicated effect processor.
+		if (EventTag.IsValid())
+		{
+			ExecWaitGameplayEvent();
+		}
 		StartExecutionInputTasks();
 		if (!CommitAbility(
 			CurrentSpecHandle,

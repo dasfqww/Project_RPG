@@ -28,10 +28,11 @@ UProject_RPGEditorValidator_SkillDefinition::ValidateLoadedAsset_Implementation(
 		AssetFails(Definition, Message, ValidationErrors);
 		Result = EDataValidationResult::Invalid;
 	};
-	const auto ValidateExecutionConfig =
+	const auto ValidateExecutionSpec =
 		[&Fail](
 			const TSubclassOf<URPGSkillExecutionPolicy> PolicyClass,
 			const FInstancedStruct& Config,
+			UAnimMontage* Montage,
 			const FText& Context)
 	{
 		if (!PolicyClass)
@@ -51,6 +52,22 @@ UProject_RPGEditorValidator_SkillDefinition::ValidateLoadedAsset_Implementation(
 					"{0} has an invalid execution config: {1}"),
 				Context,
 				ConfigError));
+			return;
+		}
+
+		FRPGSkillRuntimeSpec RuntimeSpec;
+		RuntimeSpec.ExecutionPolicyClass = PolicyClass;
+		RuntimeSpec.ExecutionConfig = Config;
+		RuntimeSpec.Montage = Montage;
+		FText RuntimeError;
+		if (!Policy->ValidateRuntimeSpecData(RuntimeSpec, RuntimeError))
+		{
+			Fail(FText::Format(
+				LOCTEXT(
+					"ExecutionRuntimeInvalid",
+					"{0} has invalid montage runtime data: {1}"),
+				Context,
+				RuntimeError));
 		}
 	};
 	const auto ValidateTargetingConfig =
@@ -109,9 +126,10 @@ UProject_RPGEditorValidator_SkillDefinition::ValidateLoadedAsset_Implementation(
 	}
 	else if (DefaultRuntimeSpec.ExecutionPolicyClass)
 	{
-		ValidateExecutionConfig(
+		ValidateExecutionSpec(
 			DefaultRuntimeSpec.ExecutionPolicyClass,
 			DefaultRuntimeSpec.ExecutionConfig,
+			DefaultRuntimeSpec.Montage.Get(),
 			LOCTEXT("DefaultExecutionContext", "Default execution"));
 	}
 	ValidateTargetingConfig(
@@ -170,9 +188,10 @@ UProject_RPGEditorValidator_SkillDefinition::ValidateLoadedAsset_Implementation(
 				"A Mode Override has an invalid damage multiplier."));
 		}
 		if (Override.NewExecutionPolicyClass ||
-			Override.NewExecutionConfig.IsValid())
+			Override.NewExecutionConfig.IsValid() ||
+			Override.NewMontage)
 		{
-			ValidateExecutionConfig(
+			ValidateExecutionSpec(
 				Override.NewExecutionPolicyClass
 					? Override.NewExecutionPolicyClass
 					: DefaultRuntimeSpec.ExecutionPolicyClass,
@@ -181,6 +200,9 @@ UProject_RPGEditorValidator_SkillDefinition::ValidateLoadedAsset_Implementation(
 					: (Override.NewExecutionConfig.IsValid()
 						? Override.NewExecutionConfig
 						: DefaultRuntimeSpec.ExecutionConfig),
+				Override.NewMontage
+					? Override.NewMontage
+					: DefaultRuntimeSpec.Montage.Get(),
 				LOCTEXT("ModeExecutionContext", "A Mode Override"));
 		}
 		if (Override.NewTargetingPolicyClass ||
@@ -243,9 +265,10 @@ UProject_RPGEditorValidator_SkillDefinition::ValidateLoadedAsset_Implementation(
 					FText::AsNumber(TierIndex + 1), FText::AsNumber(OptionIndex + 1)));
 			}
 			if (Option.OverrideExecutionPolicyClass ||
-				Option.OverrideExecutionConfig.IsValid())
+				Option.OverrideExecutionConfig.IsValid() ||
+				Option.OverrideMontage)
 			{
-				ValidateExecutionConfig(
+				ValidateExecutionSpec(
 					Option.OverrideExecutionPolicyClass
 						? Option.OverrideExecutionPolicyClass
 						: DefaultRuntimeSpec.ExecutionPolicyClass,
@@ -254,6 +277,9 @@ UProject_RPGEditorValidator_SkillDefinition::ValidateLoadedAsset_Implementation(
 						: (Option.OverrideExecutionConfig.IsValid()
 							? Option.OverrideExecutionConfig
 							: DefaultRuntimeSpec.ExecutionConfig),
+					Option.OverrideMontage
+						? Option.OverrideMontage.Get()
+						: DefaultRuntimeSpec.Montage.Get(),
 					FText::Format(
 						LOCTEXT(
 							"TripodExecutionContext",

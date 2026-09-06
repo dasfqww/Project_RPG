@@ -9,6 +9,7 @@
 class URPGSkillViewModel;
 class URPGSkillListModule;
 class URPGSkillDetailModule;
+class URPGPlayerSkillComponent;
 
 /**
  * URPGSkillWindow
@@ -32,6 +33,7 @@ public:
 
 protected:
 	virtual void NativeConstruct() override;
+	void HandleSkillDefinitionsReady();
 
 	// ViewModel 인스턴스
 	UPROPERTY(BlueprintReadOnly, Category = "RPG|MVVM")
@@ -43,4 +45,6 @@ protected:
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<URPGSkillDetailModule> SkillDetailModule;
+
+	TWeakObjectPtr<URPGPlayerSkillComponent> PendingSkillComponent;
 };

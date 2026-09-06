@@ -16,6 +16,7 @@ class URPGSkillExecutionPolicy;
 class URPGSkillTargetingPolicy;
 class UAnimMontage;
 class UNiagaraSystem;
+class FDataValidationContext;
 
 /**
  * 상태에 따라 변경될 스킬 데이터를 정의하는 구조체
@@ -74,18 +75,39 @@ struct FRPGSkillTripodTier
  * URPGSkillDefinition
  */
 UCLASS(BlueprintType, Const)
-class PROJECT_RPG_API URPGSkillDefinition : public UDataAsset
+class PROJECT_RPG_API URPGSkillDefinition : public UPrimaryDataAsset
 {
 	GENERATED_BODY()
 	
 public:
+	static const FPrimaryAssetType PrimaryAssetType;
+	static FPrimaryAssetId MakePrimaryAssetIdForTag(
+		const FGameplayTag& InSkillTag);
+
 	URPGSkillDefinition(
 		const FObjectInitializer& ObjectInitializer =
 			FObjectInitializer::Get());
 
+	/** Stable tag-based identity used by the skill catalog and save data. */
+	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
+
+#if WITH_EDITOR
+	/** Reject invalid policy/config pairings before the asset reaches runtime. */
+	virtual EDataValidationResult IsDataValid(
+		FDataValidationContext& Context) const override;
+#endif
+
 	/** Build the immutable configuration consumed during one activation. */
 	void BuildRuntimeSpec(AActor* InActor, const FRPGSkillSaveData& SaveData,
 		FRPGSkillRuntimeSpec& OutSpec) const;
+
+	/** Progression rules authored by this definition, shared by UI and server. */
+	int32 ClampSkillLevel(int32 RequestedLevel) const;
+	bool IsTripodSelectionAllowed(
+		int32 SkillLevel,
+		int32 TierIndex,
+		int32 OptionIndex) const;
+	void NormalizeSaveData(FRPGSkillSaveData& InOutSaveData) const;
 
 	// 현재 캐릭터 상태와 선택된 트라이포드에 맞는 데이터를 반환
 	void GetSkillDataForContext(AActor* InActor, const TArray<int32>& SelectedTripods, UTexture2D*& OutIcon, UAnimMontage*& OutMontage, TSubclassOf<URPGSkillAction>& OutActionClass) const;
