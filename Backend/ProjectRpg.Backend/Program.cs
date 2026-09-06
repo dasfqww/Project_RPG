@@ -50,6 +50,9 @@ if (string.Equals(storageProvider, "Postgres", StringComparison.OrdinalIgnoreCas
     string connectionString = configuredConnectionString;
     NpgsqlDataSource dataSource = NpgsqlDataSource.Create(connectionString);
     builder.Services.AddSingleton(dataSource);
+    builder.Services.AddSingleton<
+        IStorageReadinessProbe,
+        PostgresStorageReadinessProbe>();
     builder.Services.AddSingleton<IGameRepository, PostgresGameRepository>();
     builder.Services.AddSingleton<PostgresItemRepository>();
     builder.Services.AddSingleton<IItemRepository>(provider =>
@@ -71,6 +74,9 @@ else if (string.Equals(storageProvider, "Memory", StringComparison.OrdinalIgnore
             + "Configure PostgreSQL before starting another environment.");
     }
 
+    builder.Services.AddSingleton<
+        IStorageReadinessProbe,
+        MemoryStorageReadinessProbe>();
     builder.Services.AddSingleton<IGameRepository, InMemoryGameRepository>();
     builder.Services.AddSingleton<InMemoryTransactionGate>();
     builder.Services.AddSingleton<InMemoryItemRepository>();
@@ -102,6 +108,28 @@ await app.Services.GetRequiredService<IGameRepository>()
 app.UseMiddleware<ApiAuthenticationMiddleware>();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
+app.MapGet(
+    "/health/ready",
+    async (
+        IStorageReadinessProbe readinessProbe,
+        CancellationToken cancellationToken) =>
+    {
+        StorageReadinessResult readiness =
+            await readinessProbe.CheckAsync(cancellationToken);
+        var response = new
+        {
+            status = readiness.IsReady ? "ready" : "not_ready",
+            storageProvider = readiness.Provider,
+            storageLatencyMilliseconds = readiness.LatencyMilliseconds,
+            failureCode = readiness.FailureCode
+        };
+        return readiness.IsReady
+            ? Results.Ok(response)
+            : Results.Json(
+                response,
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+    });
 
 app.MapPost(
     "/api/auth/steam-ticket",

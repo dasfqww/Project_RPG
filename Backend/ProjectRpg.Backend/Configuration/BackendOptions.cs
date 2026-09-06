@@ -27,6 +27,7 @@ public sealed class StorageOptions
     public const string SectionName = "Storage";
 
     public string Provider { get; init; } = "Postgres";
+    public int ReadinessTimeoutSeconds { get; init; } = 3;
 }
 
 public sealed class DungeonSessionOptions
