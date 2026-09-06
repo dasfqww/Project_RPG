@@ -16,7 +16,7 @@
 
 namespace
 {
-	bool IsDedicatedServerOrItemE2EProxy()
+	bool IsHttpBackendServerRuntime()
 	{
 #if UE_BUILD_SHIPPING
 		return IsRunningDedicatedServer();
@@ -120,7 +120,7 @@ namespace
 void UHttpWebManager::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	if (IsDedicatedServerOrItemE2EProxy())
+	if (IsHttpBackendServerRuntime())
 	{
 		// The Item V2 gateway is server-owned.  Make its initialization order
 		// explicit instead of relying on subsystem discovery during startup.
@@ -448,7 +448,7 @@ void UHttpWebManager::RequestJoinTicket(
 
 void UHttpWebManager::ConsumeJoinTicket(const FString& JoinTicket)
 {
-	if (!IsDedicatedServerOrItemE2EProxy()
+	if (!IsHttpBackendServerRuntime()
 		|| JoinTicket.IsEmpty()
 		|| BackendServiceToken.IsEmpty()
 		|| GameServerId.IsEmpty()
@@ -519,7 +519,7 @@ void UHttpWebManager::SettleConfiguredDungeonRewards(
 	const TArray<FRPGDungeonItemReward>& ItemRewards)
 {
 	const FString NormalizedRewardVersion = RewardVersion.TrimStartAndEnd();
-	if (!IsDedicatedServerOrItemE2EProxy()
+	if (!IsHttpBackendServerRuntime()
 		|| !IsConfiguredForDungeonServer()
 		|| NormalizedRewardVersion.IsEmpty()
 		|| CurrencyChanges.Num() > 16
@@ -660,7 +660,7 @@ void UHttpWebManager::SendConfiguredDungeonSessionRequest(
 	const FString& Action,
 	const FString& Outcome)
 {
-	if (!IsDedicatedServerOrItemE2EProxy()
+	if (!IsHttpBackendServerRuntime()
 		|| BackendServiceToken.IsEmpty()
 		|| GameServerId.IsEmpty()
 		|| ConfiguredDungeonSessionId.IsEmpty())

@@ -10,7 +10,7 @@
 
 namespace
 {
-	bool IsDedicatedServerOrItemE2EProxy()
+	bool IsItemBackendServerRuntime()
 	{
 #if UE_BUILD_SHIPPING
 		return IsRunningDedicatedServer();
@@ -27,7 +27,7 @@ void URPGItemBackendSubsystem::Initialize(
 	FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	if (!IsDedicatedServerOrItemE2EProxy())
+	if (!IsItemBackendServerRuntime())
 	{
 		return;
 	}

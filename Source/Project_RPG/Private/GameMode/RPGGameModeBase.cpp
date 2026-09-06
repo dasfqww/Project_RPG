@@ -65,7 +65,7 @@ namespace
 #endif
 	}
 
-	bool IsDedicatedServerOrItemE2EProxy()
+	bool IsGameModeServerRuntime()
 	{
 #if UE_BUILD_SHIPPING
 		return IsRunningDedicatedServer();
@@ -198,7 +198,7 @@ void ARPGGameModeBase::BeginPlay()
 			TEXT("RPG_ITEM_E2E IDENTITY_MATCH_BYPASS_ENABLED Development builds only."));
 	}
 
-	if (IsDedicatedServerOrItemE2EProxy())
+	if (IsGameModeServerRuntime())
 	{
 		if (UGameInstance* GameInstance = GetGameInstance())
 		{
@@ -304,7 +304,7 @@ void ARPGGameModeBase::PreLoginAsync(
 	const FUniqueNetIdRepl& UniqueId,
 	const FOnPreLoginCompleteDelegate& OnComplete)
 {
-	if (!IsDedicatedServerOrItemE2EProxy()
+	if (!IsGameModeServerRuntime()
 		|| !bRequireBackendJoinTicket
 		|| IsLocalNetworkTestModeEnabled())
 	{
@@ -376,7 +376,7 @@ FString ARPGGameModeBase::InitNewPlayer(
 		|| (IsItemE2EServerProxyEnabled()
 			&& NewPlayerController
 			&& NewPlayerController->IsLocalController())
-		|| !IsDedicatedServerOrItemE2EProxy()
+		|| !IsGameModeServerRuntime()
 		|| !bRequireBackendJoinTicket
 		|| IsLocalNetworkTestModeEnabled())
 	{
