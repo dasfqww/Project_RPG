@@ -1,15 +1,21 @@
 #include "Component/RPGInventoryProjectionComponent.h"
 
+#include "HAL/PlatformTime.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Item/Backend/RPGItemBackendTypes.h"
 #include "Item/Backend/RPGItemBackendSubsystem.h"
+#include "Item/Projection/RPGInventoryProjectionMapper.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/RPGPlayerState.h"
+#include "Security/RPGDungeonGameplayAuthority.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RPGInventoryProjectionComponent)
 
 URPGInventoryProjectionComponent::URPGInventoryProjectionComponent()
 	: Projection(this)
+	, MailProjection(this)
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);
@@ -20,12 +26,53 @@ void URPGInventoryProjectionComponent::GetLifetimeReplicatedProps(
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME_CONDITION(ThisClass, Projection, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(ThisClass, MailProjection, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(ThisClass, LoadState, COND_OwnerOnly);
+}
+
+void URPGInventoryProjectionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	bAuthenticatedIdentityRevoked = true;
+	++ActiveLoadGeneration;
+	++AuthoritativeSnapshotGeneration;
+	Super::EndPlay(EndPlayReason);
+}
+
+void URPGInventoryProjectionComponent::InvalidateForRevokedIdentity(const ARPGPlayerState& RevokedState)
+{
+	const auto* Controller = Cast<APlayerController>(GetOwner());
+	if (!Controller || !Controller->HasAuthority() || !RevokedState.IsAuthenticatedIdentityRevoked()
+		|| Controller->GetPlayerState<ARPGPlayerState>() != &RevokedState || bAuthenticatedIdentityRevoked) return;
+	bAuthenticatedIdentityRevoked = true;
+	++ActiveLoadGeneration;
+	++AuthoritativeSnapshotGeneration;
+	AuthoritativeStore = FRPGInventoryProjectionStore();
+	bool bChanged = false, bMailChanged = false;
+	Projection.Reconcile({}, bChanged);
+	MailProjection.Reconcile({}, bMailChanged);
+	SetLoadState(ERPGInventoryProjectionLoadState::Uninitialized);
+	OnAuthoritativeRecordsChanged.Broadcast();
+	OnProjectionChanged.Broadcast();
+	GetOwner()->ForceNetUpdate();
+}
+
+void URPGInventoryProjectionComponent::ServerRetryLoadAuthenticatedCharacterItems_Implementation()
+{
+	if (bAuthenticatedIdentityRevoked || !GetOwner() || !GetOwner()->HasAuthority()
+		|| LoadState != ERPGInventoryProjectionLoadState::Failed) return;
+	const APlayerController* Controller = Cast<APlayerController>(GetOwner());
+	const ARPGPlayerState* State = Controller ? Controller->GetPlayerState<ARPGPlayerState>() : nullptr;
+	if (!State || !State->HasAuthenticatedCharacter() || State->IsAuthenticatedIdentityRevoked()
+		|| IsDungeonGameplayRevoked(Controller)) return;
+	const double Now = FPlatformTime::Seconds();
+	if (LastRetryLoadSeconds >= 0.0 && Now - LastRetryLoadSeconds < 3.0) return;
+	LastRetryLoadSeconds = Now;
+	LoadAuthenticatedCharacterItems();
 }
 
 bool URPGInventoryProjectionComponent::LoadAuthenticatedCharacterItems()
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority())
+	if (bAuthenticatedIdentityRevoked || !GetOwner() || !GetOwner()->HasAuthority())
 	{
 		return false;
 	}
@@ -68,15 +115,22 @@ bool URPGInventoryProjectionComponent::LoadAuthenticatedCharacterItems()
 	const FString CharacterId = CharacterGuid.ToString(
 		EGuidFormats::DigitsWithHyphensLower);
 	const uint32 LoadGeneration = ++ActiveLoadGeneration;
+	const TWeakObjectPtr<const ARPGPlayerState> ExpectedState(PlayerState);
+	const FString ExpectedSessionId = PlayerState->GetBackendDungeonSessionId();
+	const FString ExpectedSteamId = PlayerState->GetAuthenticatedSteamId();
 	SetLoadState(ERPGInventoryProjectionLoadState::Loading);
+	if (bAuthenticatedIdentityRevoked || ActiveLoadGeneration != LoadGeneration || !ExpectedState.IsValid()
+		|| !ExpectedState->HasAuthenticatedCharacter()
+		|| ExpectedState->GetBackendDungeonSessionId() != ExpectedSessionId
+		|| ExpectedState->GetAuthenticatedSteamId() != ExpectedSteamId) return false;
 	const TWeakObjectPtr<URPGInventoryProjectionComponent> WeakThis(this);
 	return Backend->LoadCharacterItems(
 		CharacterId,
-		[WeakThis, CharacterId, CharacterGuid, LoadGeneration](
+		[WeakThis, CharacterId, CharacterGuid, LoadGeneration, ExpectedState, ExpectedSessionId, ExpectedSteamId](
 			FRPGItemBackendLoadResult Result)
 		{
 			URPGInventoryProjectionComponent* Self = WeakThis.Get();
-			if (!Self ||
+			if (!Self || Self->bAuthenticatedIdentityRevoked ||
 				Self->ActiveLoadGeneration != LoadGeneration ||
 				!Self->GetOwner() ||
 				!Self->GetOwner()->HasAuthority())
@@ -91,6 +145,9 @@ bool URPGInventoryProjectionComponent::LoadAuthenticatedCharacterItems()
 				: nullptr;
 			FGuid CurrentCharacterGuid;
 			if (!CurrentPlayerState ||
+				!CurrentPlayerState->HasAuthenticatedCharacter() || CurrentPlayerState != ExpectedState.Get() ||
+				CurrentPlayerState->GetBackendDungeonSessionId() != ExpectedSessionId ||
+				CurrentPlayerState->GetAuthenticatedSteamId() != ExpectedSteamId ||
 				!FGuid::Parse(
 					CurrentPlayerState->GetBackendCharacterId(),
 					CurrentCharacterGuid) ||
@@ -130,12 +187,35 @@ bool URPGInventoryProjectionComponent::LoadAuthenticatedCharacterItems()
 		});
 }
 
+bool URPGInventoryProjectionComponent::ApplyCompletedRewardSnapshot(const FRPGItemOwnerRef& ExpectedOwner,
+	const TArray<FRPGItemRecord>& ActiveRecords, const uint64 ExpectedGeneration, FString* OutError)
+{
+	if (AuthoritativeSnapshotGeneration != ExpectedGeneration || !AuthoritativeStore.IsInitialized()
+		|| AuthoritativeStore.GetOwner() != ExpectedOwner) return false;
+	TArray<FRPGItemRecord> Combined = ActiveRecords;
+	TSet<FGuid> ActiveIds;
+	for (const FRPGItemRecord& Record : ActiveRecords)
+	{
+		if (!Record.IsActive()) return false;
+		ActiveIds.Add(Record.GetItemId());
+	}
+	// Retain known tombstones needed by late idempotency receipts/first-commit effects.
+	TArray<FRPGItemRecord> Previous;
+	AuthoritativeStore.FindByOwner(ExpectedOwner, Previous);
+	for (const FRPGItemRecord& Record : Previous)
+		if (!Record.IsActive() && !ActiveIds.Contains(Record.GetItemId())) Combined.Add(Record);
+	if (!ApplyAuthoritativeRecords(ExpectedOwner, Combined, OutError)) return false;
+	++ActiveLoadGeneration; // An older full-load callback must not undo this refresh.
+	SetLoadState(ERPGInventoryProjectionLoadState::Ready);
+	return true;
+}
+
 bool URPGInventoryProjectionComponent::ApplyAuthoritativeRecords(
 	const FRPGItemOwnerRef& ExpectedOwner,
 	const TArray<FRPGItemRecord>& Records,
 	FString* OutError)
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority())
+	if (bAuthenticatedIdentityRevoked || !GetOwner() || !GetOwner()->HasAuthority())
 	{
 		if (OutError)
 		{
@@ -155,12 +235,13 @@ bool URPGInventoryProjectionComponent::ApplyAuthoritativeRecords(
 		return false;
 	}
 
+	++AuthoritativeSnapshotGeneration;
 	if (!ReconcileProjection(DesiredEntries, OutError))
 	{
 		return false;
 	}
 	OnAuthoritativeRecordsChanged.Broadcast();
-	return true;
+	return !bAuthenticatedIdentityRevoked;
 }
 
 bool URPGInventoryProjectionComponent::ApplyAuthoritativeMutationRecords(
@@ -168,7 +249,7 @@ bool URPGInventoryProjectionComponent::ApplyAuthoritativeMutationRecords(
 	const TArray<FRPGItemRecord>& MutationRecords,
 	FString* OutError)
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority())
+	if (bAuthenticatedIdentityRevoked || !GetOwner() || !GetOwner()->HasAuthority())
 	{
 		if (OutError)
 		{
@@ -187,12 +268,13 @@ bool URPGInventoryProjectionComponent::ApplyAuthoritativeMutationRecords(
 	{
 		return false;
 	}
+	++AuthoritativeSnapshotGeneration;
 	if (!ReconcileProjection(DesiredEntries, OutError))
 	{
 		return false;
 	}
 	OnAuthoritativeRecordsChanged.Broadcast();
-	return true;
+	return !bAuthenticatedIdentityRevoked;
 }
 
 bool URPGInventoryProjectionComponent::ApplyAuthoritativeCommitResult(
@@ -229,6 +311,14 @@ bool URPGInventoryProjectionComponent::ReconcileProjection(
 	const TArray<FRPGInventoryProjectionEntry>& DesiredEntries,
 	FString* OutError)
 {
+	TArray<FRPGItemRecord> Records;
+	AuthoritativeStore.FindByOwner(AuthoritativeStore.GetOwner(), Records);
+	TArray<FRPGInventoryProjectionEntry> MailEntries;
+	if (!FRPGInventoryProjectionMapper::BuildMailSnapshot(
+		AuthoritativeStore.GetOwner(), Records, MailEntries, OutError))
+	{
+		return false;
+	}
 	bool bChanged = false;
 	if (!Projection.Reconcile(DesiredEntries, bChanged))
 	{
@@ -238,7 +328,16 @@ bool URPGInventoryProjectionComponent::ReconcileProjection(
 		}
 		return false;
 	}
-	if (bChanged)
+	bool bMailChanged = false;
+	if (!MailProjection.Reconcile(MailEntries, bMailChanged))
+	{
+		if (OutError)
+		{
+			*OutError = TEXT("The projected mailbox snapshot is invalid.");
+		}
+		return false;
+	}
+	if (bChanged || bMailChanged)
 	{
 		OnProjectionChanged.Broadcast();
 		GetOwner()->ForceNetUpdate();
@@ -277,6 +376,31 @@ bool URPGInventoryProjectionComponent::FindProjectedItem(
 	return true;
 }
 
+TArray<FRPGInventoryProjectionEntry>
+URPGInventoryProjectionComponent::GetMailItems() const
+{
+	TArray<FRPGInventoryProjectionEntry> Result = MailProjection.GetEntries();
+	Result.Sort([](const FRPGInventoryProjectionEntry& Left,
+		const FRPGInventoryProjectionEntry& Right)
+	{
+		return Left.GetItemId().ToString(EGuidFormats::Digits) <
+			Right.GetItemId().ToString(EGuidFormats::Digits);
+	});
+	return Result;
+}
+
+bool URPGInventoryProjectionComponent::FindMailItem(
+	const FGuid& ItemId, FRPGInventoryProjectionEntry& OutEntry) const
+{
+	const FRPGInventoryProjectionEntry* Entry = MailProjection.Find(ItemId);
+	if (!Entry)
+	{
+		return false;
+	}
+	OutEntry = *Entry;
+	return true;
+}
+
 void URPGInventoryProjectionComponent::HandleProjectionReplicated()
 {
 	OnProjectionChanged.Broadcast();
@@ -285,6 +409,7 @@ void URPGInventoryProjectionComponent::HandleProjectionReplicated()
 void URPGInventoryProjectionComponent::SetLoadState(
 	const ERPGInventoryProjectionLoadState NewState)
 {
+	if (bAuthenticatedIdentityRevoked && NewState != ERPGInventoryProjectionLoadState::Uninitialized) return;
 	if (LoadState == NewState)
 	{
 		return;

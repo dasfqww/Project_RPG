@@ -7,6 +7,7 @@
 #include "RPGInventoryProjectionComponent.generated.h"
 
 struct FRPGItemBackendCommitResult;
+class ARPGPlayerState;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FRPGInventoryProjectionChanged);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
@@ -27,12 +28,23 @@ class PROJECT_RPG_API URPGInventoryProjectionComponent final
 
 public:
 	URPGInventoryProjectionComponent();
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	/** Clears only this controller's read model, never backend-owned items. */
+	void InvalidateForRevokedIdentity(const ARPGPlayerState& RevokedState);
 
 	virtual void GetLifetimeReplicatedProps(
 		TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	/** Starts the Dedicated Server load after backend admission succeeds. */
 	bool LoadAuthenticatedCharacterItems();
+
+	/** Owner may retry only a failed initial read; the server keeps identity and rate authority. */
+	UFUNCTION(Server, Reliable)
+	void ServerRetryLoadAuthenticatedCharacterItems();
+
+	uint64 GetAuthoritativeSnapshotGeneration() const { return AuthoritativeSnapshotGeneration; }
+	bool ApplyCompletedRewardSnapshot(const FRPGItemOwnerRef& ExpectedOwner,
+		const TArray<FRPGItemRecord>& ActiveRecords, uint64 ExpectedGeneration, FString* OutError = nullptr);
 
 	/** Server-only replacement from an authoritative backend result. */
 	bool ApplyAuthoritativeRecords(
@@ -68,6 +80,13 @@ public:
 		const FGuid& ItemId,
 		FRPGInventoryProjectionEntry& OutEntry) const;
 
+	/** Unclaimed attachments, separate from usable inventory/equipment. */
+	UFUNCTION(BlueprintPure, Category = "RPG|Reward Mail")
+	TArray<FRPGInventoryProjectionEntry> GetMailItems() const;
+
+	UFUNCTION(BlueprintPure, Category = "RPG|Reward Mail")
+	bool FindMailItem(const FGuid& ItemId, FRPGInventoryProjectionEntry& OutEntry) const;
+
 	UFUNCTION(BlueprintPure, Category = "RPG|Inventory Projection")
 	ERPGInventoryProjectionLoadState GetLoadState() const
 	{
@@ -84,6 +103,7 @@ public:
 	FRPGAuthoritativeItemRecordsChanged OnAuthoritativeRecordsChanged;
 
 private:
+	friend struct FRPGDungeonAuthorityRevocationTestAccess;
 	friend struct FRPGInventoryProjectionList;
 
 	void HandleProjectionReplicated();
@@ -98,10 +118,16 @@ private:
 	UPROPERTY(Replicated)
 	FRPGInventoryProjectionList Projection;
 
+	UPROPERTY(Replicated)
+	FRPGInventoryProjectionList MailProjection;
+
 	UPROPERTY(ReplicatedUsing = OnRep_LoadState)
 	ERPGInventoryProjectionLoadState LoadState =
 		ERPGInventoryProjectionLoadState::Uninitialized;
 
 	uint32 ActiveLoadGeneration = 0;
+	double LastRetryLoadSeconds = -1.0;
+	bool bAuthenticatedIdentityRevoked = false;
+	uint64 AuthoritativeSnapshotGeneration = 0;
 	FRPGInventoryProjectionStore AuthoritativeStore;
 };
