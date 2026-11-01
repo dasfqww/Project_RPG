@@ -46,7 +46,7 @@ void ARPGTrainingGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	ObservedWeb.Reset();
 	for (const auto& Observation : Observations)
 		if (auto* Objectives = Observation.Objectives.Get())
-			Objectives->OnTrainingProgressChanged.RemoveDynamic(this, &ThisClass::HandleTrainingProgressChanged);
+			UnbindPracticeObjectives(Objectives);
 	Observations.Reset();
 	KnownMembers.Reset();
 	Super::EndPlay(EndPlayReason);
@@ -59,6 +59,34 @@ void ARPGTrainingGameMode::RestartPlayer(AController* NewPlayer)
 	if (!bTrainingEnding && !bCompletionSubmitted && HasAuthority() && IsRunningDedicatedServer()) RefreshBindings();
 }
 
+const TCHAR* ARPGTrainingGameMode::GetPracticeContentId() const { return TEXT("Progression.Training"); }
+
+UActorComponent* ARPGTrainingGameMode::FindPracticeObjectives(ARPGPlayer* Pawn) const
+{
+	return IsValid(Pawn) ? Pawn->FindComponentByClass<URPGTrainingObjectiveComponent>() : nullptr;
+}
+
+ARPGTrainingGameMode::FPracticeStatus ARPGTrainingGameMode::ReadPracticeStatus(const UActorComponent* Objectives) const
+{
+	const auto* Typed = Cast<URPGTrainingObjectiveComponent>(Objectives);
+	if (!IsValid(Typed)) return {};
+	const auto Progress = Typed->GetTrainingProgress();
+	return {Progress.bActive, Progress.bActive && !Progress.bBasicAttackCompleted && !Progress.bEvadeCompleted
+		&& !Progress.bAssaultCompleted && !Progress.bChargeCompleted, Progress.IsComplete()};
+}
+
+void ARPGTrainingGameMode::BindPracticeObjectives(UActorComponent* Objectives)
+{
+	if (auto* Typed = Cast<URPGTrainingObjectiveComponent>(Objectives))
+		Typed->OnTrainingProgressChanged.AddUniqueDynamic(this, &ThisClass::HandleTrainingProgressChanged);
+}
+
+void ARPGTrainingGameMode::UnbindPracticeObjectives(UActorComponent* Objectives)
+{
+	if (auto* Typed = Cast<URPGTrainingObjectiveComponent>(Objectives))
+		Typed->OnTrainingProgressChanged.RemoveDynamic(this, &ThisClass::HandleTrainingProgressChanged);
+}
+
 bool ARPGTrainingGameMode::IsTrainingScopeCurrent(const UHttpWebManager*& OutWeb) const
 {
 	const auto* World = GetWorld();
@@ -66,7 +94,7 @@ bool ARPGTrainingGameMode::IsTrainingScopeCurrent(const UHttpWebManager*& OutWeb
 	return !bTrainingEnding && !bCompletionSubmitted && HasAuthority() && IsRunningDedicatedServer()
 		&& IsValid(World) && !World->bIsTearingDown && World->GetAuthGameMode() == this
 		&& World->GetNetMode() == NM_DedicatedServer && IsBackendDungeonDifficultyReady()
-		&& GetConfirmedDungeonContentId() == TEXT("Progression.Training")
+		&& GetConfirmedDungeonContentId() == GetPracticeContentId()
 		&& GetCurrentGameDifficulty() == ERPGGameDifficulty::Normal && bGiveReward
 		&& OutWeb && OutWeb->IsConfiguredForDungeonServer();
 }
@@ -94,7 +122,7 @@ bool ARPGTrainingGameMode::IsObservedLifetimeCurrent(const FMemberObservation& O
 		&& Growth->GetSkillRestoreGeneration() == Observation.RestoreGeneration
 		&& Class && Class->ClassId == FName(TEXT("GreatSwordWarrior"))
 		&& Observation.Objectives.IsValid() && Observation.Objectives->GetOwner() == Pawn
-		&& Pawn->FindComponentByClass<URPGTrainingObjectiveComponent>() == Observation.Objectives.Get()
+		&& FindPracticeObjectives(Pawn) == Observation.Objectives.Get()
 		&& !IsDungeonPartyMemberRevoked(Observation.SessionId, Observation.CharacterId, Observation.SteamId)
 		&& Observation.Lifetime.IsCurrent(Pawn, Pawn);
 }
@@ -119,35 +147,40 @@ void ARPGTrainingGameMode::RefreshBindings()
 {
 	auto* World = GetWorld();
 	if (!IsValid(World) || World->bIsTearingDown || World->GetAuthGameMode() != this) return;
-	TSet<URPGTrainingObjectiveComponent*> Present;
+	TSet<UActorComponent*> Present;
 	for (auto It = World->GetPlayerControllerIterator(); It; ++It)
 	{
 		auto* Controller = It->Get();
 		auto* Pawn = IsValid(Controller) ? Cast<ARPGPlayer>(Controller->GetPawn()) : nullptr;
-		auto* Objectives = IsValid(Pawn) ? Pawn->FindComponentByClass<URPGTrainingObjectiveComponent>() : nullptr;
+		auto* Objectives = IsValid(Pawn) ? FindPracticeObjectives(Pawn) : nullptr;
 		if (!IsValid(Objectives) || Pawn->IsActorBeingDestroyed()) continue;
 		Present.Add(Objectives);
 		if (Observations.ContainsByPredicate([Objectives](const FMemberObservation& Entry) { return Entry.Objectives.Get() == Objectives; })) continue;
 		FMemberObservation Observation;
 		Observation.Pawn = Pawn;
 		Observation.Objectives = Objectives;
-		const auto Progress = Objectives->GetTrainingProgress();
-		Observation.bLastComplete = Progress.IsComplete();
+		const auto Progress = ReadPracticeStatus(Objectives);
+		Observation.bLastComplete = Progress.bComplete;
 		// Never manufacture a completion event for a component discovered already complete.
-		if (Progress.bActive && !Progress.IsComplete()) CaptureObservedLifetime(Observation);
+		if (Progress.bActive && !Progress.bComplete) CaptureObservedLifetime(Observation);
 		Observations.Add(MoveTemp(Observation));
-		Objectives->OnTrainingProgressChanged.AddUniqueDynamic(this, &ThisClass::HandleTrainingProgressChanged);
+		BindPracticeObjectives(Objectives);
 	}
 	for (int32 Index = Observations.Num() - 1; Index >= 0; --Index)
 	{
 		if (Present.Contains(Observations[Index].Objectives.Get())) continue;
 		if (auto* Objectives = Observations[Index].Objectives.Get())
-			Objectives->OnTrainingProgressChanged.RemoveDynamic(this, &ThisClass::HandleTrainingProgressChanged);
+			UnbindPracticeObjectives(Objectives);
 		Observations.RemoveAtSwap(Index);
 	}
 }
 
 void ARPGTrainingGameMode::HandleTrainingProgressChanged(const FRPGTrainingObjectiveProgress&)
+{
+	NotifyPracticeProgressChanged();
+}
+
+void ARPGTrainingGameMode::NotifyPracticeProgressChanged()
 {
 	// The delegate has no sender. Inspect bound sources, and only record their new complete transitions.
 	// Defer settlement until the timer, outside the GAS/delegate notification stack.
@@ -159,7 +192,7 @@ void ARPGTrainingGameMode::HandleTrainingSessionUpdated(const FRPGDungeonSession
 	const auto* Web = ObservedWeb.Get();
 	if (!bSuccess || bTrainingEnding || bCompletionSubmitted || !HasAuthority() || !IsRunningDedicatedServer()
 		|| !Web || !Web->IsConfiguredForDungeonServer() || Session.DungeonSessionId != Web->GetConfiguredDungeonSessionId()
-		|| Session.ServerId != Web->GetGameServerId() || Session.DungeonId != TEXT("Progression.Training")
+		|| Session.ServerId != Web->GetGameServerId() || Session.DungeonId != GetPracticeContentId()
 		|| Session.Difficulty != TEXT("Normal") || Session.State != TEXT("InProgress")) return;
 	if ((!KnownSessionId.IsEmpty() && KnownSessionId != Session.DungeonSessionId)
 		|| (!KnownServerId.IsEmpty() && KnownServerId != Session.ServerId)) { bRosterConflict = true; return; }
@@ -187,23 +220,22 @@ void ARPGTrainingGameMode::ReadProgress(bool bFromProgressEvent)
 	{
 		const auto* Objectives = Observation.Objectives.Get();
 		if (!Objectives) { Observation.CompletedAtSeconds = 0.0; continue; }
-		const auto Progress = Objectives->GetTrainingProgress();
+		const auto Progress = ReadPracticeStatus(Objectives);
 		bool bCurrent = IsObservedLifetimeCurrent(Observation);
-		if (!Progress.IsComplete()) Observation.CompletedAtSeconds = 0.0;
+		if (!Progress.bComplete) Observation.CompletedAtSeconds = 0.0;
 		if (!bCurrent)
 		{
 			Observation.CompletedAtSeconds = 0.0;
 			// Rebind a new observation lifetime only at its empty, active start. Old partial/full progress cannot migrate.
-			if (Progress.bActive && !Progress.bBasicAttackCompleted && !Progress.bEvadeCompleted
-				&& !Progress.bAssaultCompleted && !Progress.bChargeCompleted)
+			if (Progress.bActive && Progress.bEmpty)
 			{
 				CaptureObservedLifetime(Observation);
 				bCurrent = IsObservedLifetimeCurrent(Observation);
 			}
 		}
-		if (bFromProgressEvent && bCurrent && !Observation.bLastComplete && Progress.IsComplete())
+		if (bFromProgressEvent && bCurrent && !Observation.bLastComplete && Progress.bComplete)
 			Observation.CompletedAtSeconds = FPlatformTime::Seconds();
-		Observation.bLastComplete = Progress.IsComplete();
+		Observation.bLastComplete = Progress.bComplete;
 	}
 }
 
@@ -269,7 +301,7 @@ void ARPGTrainingGameMode::ReportConfiguredDungeonClear()
 			if (Match) return; // Ambiguous live identity must not collapse to one participant.
 			Match = &Observation;
 		}
-		if (!Match || !Match->Objectives->IsControlPracticeComplete() || Match->CompletedAtSeconds <= 0.0
+		if (!Match || !ReadPracticeStatus(Match->Objectives.Get()).bComplete || Match->CompletedAtSeconds <= 0.0
 			|| !FMath::IsFinite(Match->CompletedAtSeconds)) return;
 		LatestCompletion = FMath::Max(LatestCompletion, Match->CompletedAtSeconds);
 	}
@@ -277,6 +309,8 @@ void ARPGTrainingGameMode::ReportConfiguredDungeonClear()
 	if (Membership.RequestStartedAtSeconds < LatestCompletion || !Web->CanDispatchConfiguredDungeonConnectionMutation()) return;
 	bCompletionSubmitted = true;
 	GetWorldTimerManager().ClearTimer(TrainingCompletionTimer);
-	UE_LOG(LogTemp, Log, TEXT("RPG_TRAINING_PARTY_COMPLETE Session=%s Members=%d"), *KnownSessionId, CurrentMembers.Num());
+	UE_LOG(LogTemp, Log, TEXT("RPG_PRACTICE_PARTY_COMPLETE Content=%s Session=%s Members=%d"), GetPracticeContentId(), *KnownSessionId, CurrentMembers.Num());
+	if (FCString::Strcmp(GetPracticeContentId(), TEXT("Progression.Training")) == 0)
+		UE_LOG(LogTemp, Log, TEXT("RPG_TRAINING_PARTY_COMPLETE Session=%s Members=%d"), *KnownSessionId, CurrentMembers.Num());
 	Super::ReportConfiguredDungeonClear(); // Existing pinned rewards, idempotency, retries and XP persistence remain the owners.
 }

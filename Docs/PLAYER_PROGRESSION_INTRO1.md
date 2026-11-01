@@ -6,6 +6,9 @@
 후속으로 서버 개인 목표 컴포넌트3파일의 원본 적용·정상 빌드·집중 native3 검증을 완료했다.
 실제 Pawn/맵 연결·파티 완료·성공 정산·입장 공개는 아직 후속이다.
 
+2026-11-02 후속: 입문1 완료 GameMode와 기존 훈련 완료 gate의 콘텐츠 adapter를 원본에
+적용하고 정상 빌드/집중 native3 검증을 완료했다. Pawn/맵 배치·실제 정산 실행은 후속이다.
+
 ## 맵과 공간
 
 맵은 `Content/Maps/Progression/L_ProgressionIntro1.umap`이다. 기본 훈련 맵을
@@ -109,6 +112,41 @@ native3 모두 Success/사례 오류·경고0**, 기동 Error15/발견 이후0�
 이미 지운 중복 raw 로그 용량은 미계측/합계 제외다. Temp/정리 예외0·타 프로세스 종료0·
 본인 예약 전체 해제이며 정상 Binaries/Intermediate·공유 DDC는 삭제하지 않았다.
 폐기한 사본/로그 해시는 당시 증거만 남긴다.
+
+## 기존 파티 완료 gate의 입문1 적용 — 2026-11-02
+
+`ARPGIntroApproachGameMode`는 기존 `ARPGTrainingGameMode`의 집계·보고 수명을 상속한다.
+콘텐츠 ID, 해당 Pawn의 목표 컴포넌트 찾기, 활성/빈 상태/완료 읽기와 타입별 delegate 연결/
+해제만 override한다. 입문1은 `Progression.Intro1`과 `URPGIntroApproachObjectiveComponent`,
+기존 훈련 기본 구현은 종전 ID와 `URPGTrainingObjectiveComponent`를 계속 사용한다.
+공통 클래스가 입문1 타입을 참조하거나 새 콘텐츠별 switch로 보상 경로를 갈라놓지 않는다.
+
+개인 목표가 완성됐다는 bool만으로 정산하지 않는다. 기존 gate의 최초 전원 명부·현재
+Pawn/Controller/PlayerState·신원/접속/복원/전투 수명, 확정 제외 영수증, 중복/알 수 없는
+참가자 거절과 **전원 완료 이벤트 이후 시작된 신선한 멤버십 GET**을 그대로 통과해야 한다.
+타이머에서 제출 상태를 먼저 고정한 뒤 기존 부모 GameMode의 고정 보상/재시도 경로를 한 번
+호출한다. 멤버십 HTTP 조회·정산 저장소·클라이언트 완료 RPC를 새로 만들지 않았다.
+
+훈련의 기존 `RPG_TRAINING_PARTY_COMPLETE` 표시는 유지하며 공통 진단에는 정확한 콘텐츠 ID를
+추가했다. 이미 완료된 객체를 늦게 발견해 완료 이벤트를 만들지 않고, 활성화된 빈 상태에서만
+새 관찰 수명으로 재등록하는 동작도 유지한다.
+
+새 native는 훈련16가지/입문1의8가지 부분·완료 상태의 타입 구분, delegate 구독/해제,
+미인증 완료 bool의 타임스탬프 제거와 양쪽 공개 clear 진입의 거절을 확인한다. 표시용 상태를
+주입한 standalone fixture이며 인증된 전용 서버 전원 완료·정산 성공의 실행 근거는 아니다.
+이후 새 Pawn/BP GameMode/서버 정의·보상/실습 안내를 실제 맵에 연결한 뒤 실행한다.
+
+정상 UHT/Editor 타깃9작업(신규/변경 CPP와 생성 코드·lib/DLL 링크/metadata)·종료0·
+선택 Source/Plugins 입력1,381 불변과 모듈 `28A3C386…53786586`을 확인했다. 같은 모듈의
+닫힌 사본에서 실제 로드 경로/해시·UE0·native3 Success/사례 오류·경고0,
+기동 Error15/발견 이후0이다. 검사에서 쓰는 상태 주입은 권한 근거가 아니다.
+증거: `Saved/BuildChecks/ProgressionIntro1Completion-20261102/Verification.proof.json`와
+`ba16a90480254ef39d140fc9a006ef7a/{Result,NativeReport}.json`·명령/해시/최소 로그.
+
+자기 runtime/DLL/Config/UserDir/캐시와 적용 완료된 중복 작성본5개를 계측 최소
+184,929,242 bytes(176.36MiB) 폐기·소유 링크10개 해제·Temp/정리 예외0이다. 중복 raw
+로그의 이미 삭제된 용량은 미계측/합계 제외다. 정상 Binaries/Intermediate·공유 DDC와
+다른 담당자의 변경은 보존했다. 폐기한 사본의 해시는 당시 증거만 남긴다.
 
 ## 맵 작성 확인 범위
 

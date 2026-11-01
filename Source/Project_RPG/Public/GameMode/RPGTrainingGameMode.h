@@ -9,7 +9,7 @@
 class ARPGPlayer;
 class URPGTrainingObjectiveComponent;
 
-/** Training-only server completion. Uses the existing membership read and settlement owner. */
+/** Personal-practice party gate. Training is the default; derived content only adapts its objective source. */
 UCLASS()
 class PROJECT_RPG_API ARPGTrainingGameMode : public ARPGGameModeBase
 {
@@ -22,11 +22,27 @@ public:
 	/** Legacy server clear calls must pass the same training gate. */
 	virtual void ReportConfiguredDungeonClear() override;
 
+protected:
+	struct FPracticeStatus
+	{
+		bool bActive = false;
+		bool bEmpty = false;
+		bool bComplete = false;
+	};
+	virtual const TCHAR* GetPracticeContentId() const;
+	virtual UActorComponent* FindPracticeObjectives(ARPGPlayer* Pawn) const;
+	virtual FPracticeStatus ReadPracticeStatus(const UActorComponent* Objectives) const;
+	virtual void BindPracticeObjectives(UActorComponent* Objectives);
+	virtual void UnbindPracticeObjectives(UActorComponent* Objectives);
+	/** Called only by the typed server objective delegate, never a client completion RPC. */
+	void NotifyPracticeProgressChanged();
+
 private:
+	friend struct FRPGPracticeCompletionTestAccess;
 	struct FMemberObservation
 	{
 		TWeakObjectPtr<ARPGPlayer> Pawn;
-		TWeakObjectPtr<URPGTrainingObjectiveComponent> Objectives;
+		TWeakObjectPtr<UActorComponent> Objectives;
 		TWeakObjectPtr<ARPGPlayerState> PlayerState;
 		TWeakObjectPtr<AController> Controller;
 		FString SessionId, CharacterId, SteamId;
