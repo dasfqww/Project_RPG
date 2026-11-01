@@ -39,7 +39,13 @@ public sealed record DungeonSessionMember(
     Guid CharacterId,
     string SteamId,
     DateTimeOffset JoinedAt,
-    DateTimeOffset LeaseExpiresAt);
+    DateTimeOffset LeaseExpiresAt,
+    DateTimeOffset? DisconnectedAt = null,
+    long ConnectionGeneration = 0,
+    long ConfirmedConnectionGeneration = 0,
+    long DisconnectedGeneration = 0,
+    // Presentation only. Never used for ownership, membership, tickets or rewards.
+    string? CharacterName = null);
 
 public sealed record DungeonSession(
     Guid DungeonSessionId,
@@ -51,12 +57,18 @@ public sealed record DungeonSession(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     DateTimeOffset ExpiresAt,
-    IReadOnlyList<DungeonSessionMember> Members);
+    IReadOnlyList<DungeonSessionMember> Members,
+    Guid? LeaderCharacterId = null,
+    long LobbyRevision = 0,
+    Guid? DepartureRequestId = null,
+    long? DepartureRequestRevision = null,
+    DateTimeOffset? DepartureRequestedAt = null);
 
 public sealed record ConsumedJoinTicket(
     Guid DungeonSessionId,
     Guid CharacterId,
-    string SteamId);
+    string SteamId,
+    long ConnectionGeneration);
 
 public sealed record InventoryItem(
     string ItemId,
@@ -77,6 +89,7 @@ public sealed record AuthenticatedPrincipal(
     string? SteamId,
     string? ServerId,
     Guid? DungeonSessionId = null,
+    // Legacy name: restricted audit access plus explicitly scoped snapshot GETs.
     bool IsSecurityTelemetryOnly = false)
 {
     public bool IsGameServer => Kind == PrincipalKind.GameServer;

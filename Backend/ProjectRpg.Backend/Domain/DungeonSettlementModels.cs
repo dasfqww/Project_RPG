@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ProjectRpg.Backend.Domain;
 
 public enum DungeonRewardSettlementState
@@ -35,7 +37,13 @@ public sealed record DungeonItemReward(
     int DurabilityCurrent,
     int DurabilityMaximum,
     IReadOnlyList<string> InstanceTags,
-    IReadOnlyList<ItemStatValue> StatValues);
+    IReadOnlyList<ItemStatValue> StatValues,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] int MaxStackSize = 0,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    FirstSliceEquipmentProgressionState? EquipmentProgression = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? PersonalLootWeight = null,
+    // Storage only. Never accepted from the HTTP contract or returned in item snapshots.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PersonalLootSeed = null);
 
 public static class DungeonRewardRules
 {
@@ -49,6 +57,10 @@ public static class DungeonRewardRules
             || !IsBoundedText(reward.DefinitionName, 128)
             || reward.DefinitionVersion < 1
             || reward.Quantity <= 0
+            || reward.MaxStackSize < 0
+            || reward.PersonalLootWeight is <= 0 or > 10000
+            || (reward.PersonalLootWeight.HasValue && reward.MaxStackSize <= 0)
+            || (reward.MaxStackSize > 0 && reward.Quantity > reward.MaxStackSize)
             || !Enum.IsDefined(reward.BindState))
         {
             error = "Item reward definition, version, and quantity are invalid.";
@@ -60,6 +72,18 @@ public static class DungeonRewardRules
             || reward.DurabilityCurrent > reward.DurabilityMaximum)
         {
             error = "Item reward durability is invalid.";
+            return false;
+        }
+
+        // Opt-in on the frozen reward itself, never infer +0 for old settlements.
+        if (reward.EquipmentProgression is { } growth
+            && (!FirstSliceEquipmentProgression.IsValidState(growth)
+                || reward.Quantity != 1 || reward.MaxStackSize != 1
+                || reward.BindState != ItemBindState.CharacterBound
+                || !FirstSliceEquipmentDefinitions.TryResolve(reward.DefinitionType, reward.DefinitionName,
+                    reward.DefinitionVersion, out _)))
+        {
+            error = "Equipment reward progression requires a supported state and exact definition, quantity/stack limit 1 and CharacterBound.";
             return false;
         }
 

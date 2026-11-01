@@ -12,9 +12,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Update="DevelopmentProfiles\Training.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\Database\schema.sql"
              Link="Database\schema.sql"
              CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Database\Migrations\0002_item_equipment_progression.sql"
+             Link="Database\Migrations\0002_item_equipment_progression.sql"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

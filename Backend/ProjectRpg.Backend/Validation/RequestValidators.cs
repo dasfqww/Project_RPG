@@ -42,6 +42,8 @@ public static class RequestValidators
             || serverAddress.Any(char.IsWhiteSpace)
             || serverAddress.Any(char.IsControl)
             || serverAddress.Contains('/')
+            || serverAddress.Contains('\\')
+            || serverAddress.Contains('@')
             || serverAddress.Contains('?')
             || serverAddress.Contains('#')
             || !Uri.TryCreate(

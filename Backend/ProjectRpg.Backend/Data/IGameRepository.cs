@@ -22,6 +22,8 @@ public interface IGameRepository
         DateTimeOffset now,
         CancellationToken cancellationToken);
 
+    Task RevokeSessionAsync(string tokenHash, string steamId, CancellationToken cancellationToken);
+
     Task StoreGameServerCredentialAsync(
         string tokenHash,
         string serverId,
@@ -62,6 +64,11 @@ public interface IGameRepository
         DateTimeOffset now,
         CancellationToken cancellationToken);
 
+    Task<DungeonMembershipSnapshot?> GetDungeonMembershipSnapshotAsync(
+        Guid dungeonSessionId,
+        string serverId,
+        CancellationToken cancellationToken);
+
     Task<DungeonSession?> GetActiveDungeonSessionForCharacterAsync(
         Guid characterId,
         string steamId,
@@ -99,6 +106,52 @@ public interface IGameRepository
         string serverAddress,
         DateTimeOffset now,
         DateTimeOffset leaseExpiresAt,
+        CancellationToken cancellationToken,
+        bool requireDeparture = false,
+        int minimumPartySize = 1);
+
+    Task<DungeonSession> SetDungeonDepartureAsync(Guid dungeonSessionId, string steamId, Guid characterId,
+        Guid requestId, long expectedRevision, bool cancel, int minimumPartySize,
+        DateTimeOffset now, CancellationToken cancellationToken);
+
+    Task<DungeonAbandonment> AbandonDungeonSessionAsync(
+        Guid dungeonSessionId,
+        string steamId,
+        Guid characterId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+
+    // Assigned-server-only report. Current-generation tombstone makes a late
+    // admission confirmation unable to revive a socket already reported lost.
+    // An optional server observation survives delivery delays; now remains the
+    // backend authorization/expiry clock and is never replaced by that observation.
+    Task<DateTimeOffset> RecordDungeonMemberDisconnectionAsync(
+        Guid dungeonSessionId,
+        string serverId,
+        string steamId,
+        Guid characterId,
+        long connectionGeneration,
+        DateTimeOffset now,
+        CancellationToken cancellationToken,
+        DateTimeOffset? observedAtUtc = null);
+
+    // Idempotently removes only members whose recorded disconnect reached the
+    // grace deadline. Returns all immutable expiry receipts for this session.
+    Task<IReadOnlyList<DungeonDisconnectionExpulsion>> ExpelDisconnectedDungeonMembersAsync(
+        Guid dungeonSessionId,
+        string serverId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+
+    // Only the assigned game server can confirm completed UE admission. A
+    // duplicate/late confirmation must not clear a disconnect on that socket.
+    Task<bool> ConfirmDungeonMemberAdmissionAsync(
+        Guid dungeonSessionId,
+        string serverId,
+        string steamId,
+        Guid characterId,
+        long connectionGeneration,
+        DateTimeOffset now,
         CancellationToken cancellationToken);
 
     Task<DungeonSession?> ClaimNextDungeonSessionAsync(
@@ -106,7 +159,10 @@ public interface IGameRepository
         string serverAddress,
         DateTimeOffset now,
         DateTimeOffset leaseExpiresAt,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IReadOnlyList<DungeonContentSelection>? allowedSelections = null,
+        bool requireDeparture = false,
+        int minimumPartySize = 1);
 
     Task<DungeonSession> StartDungeonSessionAsync(
         Guid dungeonSessionId,
@@ -189,7 +245,9 @@ public interface IGameRepository
         TimeSpan postSessionGrace,
         CancellationToken cancellationToken);
 
-    Task StoreJoinTicketAsync(
+    // Validate membership and reconnect eligibility under the same lock as
+    // abandonment, admission and settlement, then persist the ticket atomically.
+    Task<JoinTicketIssueResult> StoreJoinTicketAsync(
         string tokenHash,
         string steamId,
         Guid characterId,
@@ -197,12 +255,28 @@ public interface IGameRepository
         DateTimeOffset expiresAt,
         CancellationToken cancellationToken);
 
+    // A nonempty optional ID recovers the same consumption result while its
+    // original generation and all active-member/lease checks still hold.
+    // Omitting it preserves the legacy strictly one-use behavior.
     Task<ConsumedJoinTicket?> ConsumeJoinTicketAsync(
         string tokenHash,
         string serverId,
         Guid dungeonSessionId,
         DateTimeOffset now,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        Guid? consumptionRequestId = null);
+
+    // Read-only evidence, including expired/superseded admission results. A
+    // missing record is unresolved, never proof of a transaction not committing.
+    Task<JoinTicketConsumptionEvidence?> ReadJoinTicketConsumptionEvidenceAsync(
+        string tokenHash, string serverId, Guid dungeonSessionId, Guid consumptionRequestId,
+        string expectedSteamId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    // Serialize with consume: return recorded history, or cancel a still-present
+    // ticket and fence its ID/hash atomically. Missing history alone is unresolved.
+    Task<JoinTicketConsumptionResolution?> SealJoinTicketConsumptionAsync(
+        string tokenHash, string serverId, Guid dungeonSessionId, Guid consumptionRequestId,
+        string expectedSteamId, DateTimeOffset now, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<InventoryItem>> LoadInventoryAsync(
         Guid characterId,
@@ -212,5 +286,8 @@ public interface IGameRepository
         Guid characterId,
         IReadOnlyList<InventoryItem> inventory,
         DateTimeOffset updatedAt,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        // HTTP writes must supply their authenticated assignment. Null is for
+        // trusted in-process legacy import/fixtures, never a request-body option.
+        GameServerCredential? requiredServer = null);
 }

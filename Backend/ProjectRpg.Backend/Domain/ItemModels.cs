@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ProjectRpg.Backend.Domain;
 
 public enum ItemOwnerType
@@ -81,7 +83,9 @@ public sealed record ItemInstanceState(
     int GenerationSeed,
     int Quantity,
     IReadOnlyList<string> InstanceTags,
-    IReadOnlyList<ItemStatValue> StatValues);
+    IReadOnlyList<ItemStatValue> StatValues,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    FirstSliceEquipmentProgressionState? EquipmentProgression = null);
 
 public sealed record ItemRecord(
     string DefinitionType,
@@ -133,6 +137,18 @@ public static class ItemRecordRules
     public static bool TryValidateCommit(
         ItemRepositoryCommitRequest request,
         out string error)
+        => TryValidateCommit(request, MaximumMutationCount, out error);
+
+    // Only the internal atomic reward path may touch an entire inventory.
+    internal static bool TryValidateRewardCommit(
+        ItemRepositoryCommitRequest request,
+        out string error)
+        => TryValidateCommit(request, DungeonRewardDeliveryPlanner.MaximumMutationCount, out error);
+
+    private static bool TryValidateCommit(
+        ItemRepositoryCommitRequest request,
+        int maximumMutationCount,
+        out string error)
     {
         if (request.RequestId == Guid.Empty)
         {
@@ -164,18 +180,20 @@ public static class ItemRecordRules
             return false;
         }
 
-        if (request.Mutations.Count is < 1 or > MaximumMutationCount)
+        if (request.Mutations.Count < 1 || request.Mutations.Count > maximumMutationCount)
         {
-            error = $"A commit requires 1 to {MaximumMutationCount} mutations.";
+            error = $"A commit requires 1 to {maximumMutationCount} mutations.";
             return false;
         }
 
         HashSet<Guid> itemIds = [];
         foreach (ItemRecordMutation mutation in request.Mutations)
         {
-            if (mutation.ExpectedRevision < 0)
+            // A stored MaxValue revision remains readable, but cannot advance.
+            // Reject before any repository access or revision + 1 arithmetic.
+            if (mutation.ExpectedRevision < 0 || mutation.ExpectedRevision == long.MaxValue)
             {
-                error = "ExpectedRevision cannot be negative.";
+                error = "ExpectedRevision must be non-negative and below Int64.MaxValue.";
                 return false;
             }
 
@@ -235,6 +253,13 @@ public static class ItemRecordRules
             || record.State.StatValues.Count > 128)
         {
             error = "Item instance metadata is too large.";
+            return false;
+        }
+
+        if (record.State.EquipmentProgression is { } progression
+            && (!FirstSliceEquipmentProgression.IsValidState(progression) || record.State.Quantity > 1))
+        {
+            error = "Equipment progression must be supported, within +0..+3, and non-stackable.";
             return false;
         }
 

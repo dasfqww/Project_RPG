@@ -12,11 +12,35 @@ using ProjectRpg.Backend.Data;
 using ProjectRpg.Backend.Domain;
 using ProjectRpg.Backend.Validation;
 
-WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+const string migrateSchemaArgument = "--migrate-schema";
+int migrateSchemaCount = args.Count(argument => argument == migrateSchemaArgument);
+if (migrateSchemaCount > 1)
+    throw new InvalidOperationException("Specify --migrate-schema only once.");
+WebApplicationBuilder builder = WebApplication.CreateBuilder(
+    args.Where(argument => argument != migrateSchemaArgument).ToArray());
 ApplyEnvironmentOverrides(builder.Configuration);
+if (migrateSchemaCount == 1)
+{
+    // A deployment job, not a web host: no listeners or settlement workers start.
+    if (!string.Equals(builder.Configuration["Storage:Provider"], "Postgres",
+        StringComparison.OrdinalIgnoreCase))
+        throw new InvalidOperationException("--migrate-schema requires PostgreSQL storage.");
+    string? migrationConnection = builder.Configuration.GetConnectionString("Postgres");
+    if (string.IsNullOrWhiteSpace(migrationConnection))
+        throw new InvalidOperationException("--migrate-schema requires ConnectionStrings:Postgres.");
+    await using NpgsqlDataSource migrationSource = NpgsqlDataSource.Create(migrationConnection);
+    int applied = await PostgresSchemaMigrations.ApplyAsync(migrationSource,
+        await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory, CancellationToken.None),
+        CancellationToken.None);
+    Console.WriteLine($"PostgreSQL migrations ready; applied {applied} version(s). No web host started.");
+    return;
+}
 ValidateAuthConfiguration(
     builder.Configuration.GetSection(AuthOptions.SectionName)
         .Get<AuthOptions>() ?? new AuthOptions());
+// Validate before connecting/migrating storage. No empty/permissive fallback.
+builder.Services.AddSingleton(DungeonDevelopmentProfiles.Resolve(
+    builder.Configuration, builder.Environment, AppContext.BaseDirectory));
 
 builder.Services.Configure<AuthOptions>(
     builder.Configuration.GetSection(AuthOptions.SectionName));
@@ -24,6 +48,8 @@ builder.Services.Configure<SteamOptions>(
     builder.Configuration.GetSection(SteamOptions.SectionName));
 builder.Services.Configure<StorageOptions>(
     builder.Configuration.GetSection(StorageOptions.SectionName));
+builder.Services.Configure<ApiRateLimitOptions>(
+    builder.Configuration.GetSection(ApiRateLimitOptions.SectionName));
 builder.Services.Configure<DungeonSessionOptions>(
     builder.Configuration.GetSection(DungeonSessionOptions.SectionName));
 builder.Services.Configure<DungeonSettlementOptions>(
@@ -32,6 +58,7 @@ builder.Services.Configure<SecurityTelemetryOptions>(
     builder.Configuration.GetSection(SecurityTelemetryOptions.SectionName));
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddSingleton<AccessTokenService>();
+builder.Services.AddSingleton<ApiRateLimiter>();
 builder.Services.AddScoped<BearerAuthenticator>();
 builder.Services.AddHttpClient<ISteamTicketValidator, SteamTicketValidator>(client =>
 {
@@ -82,7 +109,10 @@ else if (string.Equals(storageProvider, "Memory", StringComparison.OrdinalIgnore
     builder.Services.AddSingleton<
         IStorageReadinessProbe,
         MemoryStorageReadinessProbe>();
-    builder.Services.AddSingleton<IGameRepository, InMemoryGameRepository>();
+    builder.Services.AddSingleton<IGameRepository>(provider =>
+        new InMemoryGameRepository(
+            provider.GetRequiredService<InMemoryTransactionGate>(),
+            provider.GetRequiredService<InMemoryItemRepository>()));
     builder.Services.AddSingleton<InMemoryTransactionGate>();
     builder.Services.AddSingleton<InMemoryItemRepository>();
     builder.Services.AddSingleton<IItemRepository>(provider =>
@@ -104,40 +134,41 @@ else
 }
 
 builder.Services.AddSingleton<ItemTransactionService>();
+builder.Services.AddSingleton<ICharacterProgressionRepository>(provider =>
+    (ICharacterProgressionRepository)provider.GetRequiredService<IGameRepository>());
+builder.Services.AddSingleton<IEquipmentProgressionRepository>(provider =>
+    (IEquipmentProgressionRepository)provider.GetRequiredService<IGameRepository>());
+builder.Services.AddSingleton<DungeonPickupCommitService>();
+builder.Services.AddSingleton<IDungeonPickupIntentRepository>(provider =>
+    (IDungeonPickupIntentRepository)provider.GetRequiredService<IGameRepository>());
 builder.Services.AddSingleton<ItemOwnerAccessService>();
 builder.Services.AddSingleton<CurrencyTransactionService>();
 builder.Services.AddHostedService<DungeonRewardSettlementWorker>();
 
 WebApplication app = builder.Build();
 
-await app.Services.GetRequiredService<IGameRepository>()
-    .EnsureCreatedAsync(CancellationToken.None);
+ValidateApiRateLimitConfiguration(
+    app.Services.GetRequiredService<IOptions<ApiRateLimitOptions>>().Value);
+if (string.Equals(storageProvider, "Postgres", StringComparison.OrdinalIgnoreCase)
+    && !app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"))
+{
+    await PostgresSchemaMigrations.ValidateAsync(app.Services.GetRequiredService<NpgsqlDataSource>(),
+        await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory, CancellationToken.None),
+        CancellationToken.None);
+    app.Logger.LogInformation("PostgreSQL migration history matches this release (no startup DDL).");
+}
+else
+{
+    // Preserve the existing local development / test schema-upgrade contract.
+    await app.Services.GetRequiredService<IGameRepository>()
+        .EnsureCreatedAsync(CancellationToken.None);
+}
 
+app.UseMiddleware<ApiIngressRateLimitMiddleware>();
 app.UseMiddleware<ApiAuthenticationMiddleware>();
+app.UseMiddleware<AuthenticatedApiRateLimitMiddleware>();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
-app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
-app.MapGet(
-    "/health/ready",
-    async (
-        IStorageReadinessProbe readinessProbe,
-        CancellationToken cancellationToken) =>
-    {
-        StorageReadinessResult readiness =
-            await readinessProbe.CheckAsync(cancellationToken);
-        var response = new
-        {
-            status = readiness.IsReady ? "ready" : "not_ready",
-            storageProvider = readiness.Provider,
-            storageLatencyMilliseconds = readiness.LatencyMilliseconds,
-            failureCode = readiness.FailureCode
-        };
-        return readiness.IsReady
-            ? Results.Ok(response)
-            : Results.Json(
-                response,
-                statusCode: StatusCodes.Status503ServiceUnavailable);
-    });
+app.MapHealthApi();
 
 app.MapPost(
     "/api/auth/steam-ticket",
@@ -178,7 +209,8 @@ app.MapPost(
             return Results.Ok(new SteamTicketResponse(
                 accessToken.Token,
                 accessToken.ExpiresAt,
-                identity.SteamId));
+                identity.SteamId,
+                accessToken.IssuedAt));
         }
         catch (SteamTicketRejectedException exception)
         {
@@ -198,8 +230,10 @@ app.MapPost(
 
 app.MapGet(
     "/api/characters",
-    async (HttpContext context, IGameRepository repository, CancellationToken cancellationToken) =>
+    async (HttpContext context, IGameRepository repository, ICharacterProgressionRepository progression,
+        CancellationToken cancellationToken) =>
     {
+        context.Response.Headers.CacheControl = "no-store";
         AuthenticatedPrincipal principal = context.GetProjectRpgPrincipal();
         if (principal.Kind != PrincipalKind.Player || principal.SteamId is null)
         {
@@ -209,7 +243,10 @@ app.MapGet(
         IReadOnlyList<GameCharacter> characters = await repository.GetCharactersAsync(
             principal.SteamId,
             cancellationToken);
-        return Results.Ok(characters.Select(ToCharacterResponse));
+        IReadOnlyDictionary<Guid, CharacterProgressionSummary> summaries = await progression.GetStoredProgressionSummariesAsync(
+            principal.SteamId, cancellationToken);
+        return Results.Ok(characters.Select(character => ToCharacterResponse(character,
+            summaries.GetValueOrDefault(character.CharacterId, CharacterProgressionSummary.Unavailable))));
     });
 
 app.MapGet(
@@ -231,6 +268,14 @@ app.MapGet(
         return Results.Ok(rosters.Select(ToRosterResponse));
     });
 
+app.MapGet("/api/character-creation-options", (HttpContext context) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    AuthenticatedPrincipal principal = context.GetProjectRpgPrincipal();
+    return principal.Kind == PrincipalKind.Player && principal.SteamId is not null
+        ? Results.Ok(CharacterCreationCatalog.Options) : Results.StatusCode(StatusCodes.Status403Forbidden);
+});
+
 app.MapPost(
     "/api/characters",
     async (
@@ -244,6 +289,11 @@ app.MapPost(
         if (principal.Kind != PrincipalKind.Player || principal.SteamId is null)
         {
             return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        if (!CharacterCreationCatalog.IsSupported(request.ClassId))
+        {
+            return Results.BadRequest(new { error = "unsupported_character_class" });
         }
 
         string? validationError = RequestValidators.ValidateCharacterName(
@@ -319,6 +369,7 @@ app.MapPost(
         CreateDungeonSessionRequest request,
         HttpContext context,
         IGameRepository repository,
+        DungeonContentCatalog contentCatalog,
         AccessTokenService accessTokenService,
         IOptions<AuthOptions> authOptions,
         IOptions<DungeonSessionOptions> sessionOptions,
@@ -340,6 +391,11 @@ app.MapPost(
         {
             return Results.BadRequest(new { error = validationError });
         }
+
+        // Do not let the older syntax validator's Trim silently alias an ID.
+        validationError = contentCatalog.GetSelectionError(request.DungeonId, request.Difficulty);
+        if (validationError is not null)
+            return Results.BadRequest(new { error = validationError });
 
         string? ownerSteamId = await repository.GetCharacterOwnerAsync(
             request.CharacterId,
@@ -364,6 +420,9 @@ app.MapPost(
             60);
         try
         {
+            if (!await CharacterProgressionApiEndpoints.CanEnterAsync(repository, request.CharacterId,
+                    dungeonId, difficulty, now, cancellationToken))
+                return Results.Conflict(new { error = "progression_prerequisite_not_met" });
             DungeonSession session = await repository.CreateDungeonSessionAsync(
                 principal.SteamId,
                 request.CharacterId,
@@ -391,7 +450,12 @@ app.MapGet(
         TimeProvider timeProvider,
         CancellationToken cancellationToken) =>
     {
+        context.Response.Headers.CacheControl = "no-store";
         AuthenticatedPrincipal principal = context.GetProjectRpgPrincipal();
+        // A server label is not a globally unique dungeon identity. Reject a
+        // foreign or unscoped server credential before querying its session.
+        if (principal.IsGameServer && principal.DungeonSessionId != dungeonSessionId)
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
         DungeonSession? session = await repository.GetDungeonSessionAsync(
             dungeonSessionId,
             timeProvider.GetUtcNow(),
@@ -403,7 +467,7 @@ app.MapGet(
 
         bool isAuthorizedServer = principal.IsGameServer
             && session.ServerId is not null
-            && principal.MatchesGameServer(session.ServerId);
+            && principal.MatchesGameServer(session.ServerId, dungeonSessionId);
         if (!isAuthorizedServer
             && !principal.IsAdministrator
             && (principal.SteamId is null
@@ -460,6 +524,10 @@ app.MapPost(
             8);
         try
         {
+            DungeonSession? targetSession = await repository.GetDungeonSessionAsync(dungeonSessionId, now, cancellationToken);
+            if (targetSession is not null && !await CharacterProgressionApiEndpoints.CanEnterAsync(repository,
+                    request.CharacterId, targetSession.DungeonId, targetSession.Difficulty, now, cancellationToken))
+                return Results.Conflict(new { error = "progression_prerequisite_not_met" });
             DungeonSession session = await repository.JoinDungeonSessionAsync(
                 dungeonSessionId,
                 principal.SteamId,
@@ -527,6 +595,7 @@ app.MapPost(
         ClaimDungeonServerRequest request,
         HttpContext context,
         IGameRepository repository,
+        DungeonContentCatalog contentCatalog,
         AccessTokenService accessTokenService,
         IOptions<AuthOptions> authOptions,
         IOptions<DungeonSessionOptions> sessionOptions,
@@ -561,8 +630,11 @@ app.MapPost(
                 serverId,
                 serverAddress,
                 now,
-                GetActiveLeaseExpiry(now, sessionOptions.Value),
-                cancellationToken);
+                sessionOptions.Value.GetServerStartupLeaseExpiry(now),
+                cancellationToken,
+                contentCatalog.AllowedSelections, requireDeparture: true,
+                minimumPartySize: Math.Clamp(sessionOptions.Value.MinimumDeparturePartySize, 1,
+                    Math.Clamp(sessionOptions.Value.MaxPartySize, 1, 8)));
         if (session is null)
         {
             return Results.NoContent();
@@ -580,7 +652,8 @@ app.MapPost(
         return Results.Ok(ToDungeonSessionResponse(session) with
         {
             GameServerAccessToken = gameServerToken.Token,
-            GameServerAccessTokenExpiresAt = gameServerToken.ExpiresAt
+            GameServerAccessTokenExpiresAt = gameServerToken.ExpiresAt,
+            ServerMapPackage = contentCatalog.GetMapPackage(session.DungeonId, session.Difficulty)
         });
     });
 
@@ -591,6 +664,7 @@ app.MapPost(
         AssignDungeonServerRequest request,
         HttpContext context,
         IGameRepository repository,
+        DungeonContentCatalog contentCatalog,
         AccessTokenService accessTokenService,
         IOptions<AuthOptions> authOptions,
         IOptions<DungeonSessionOptions> sessionOptions,
@@ -620,9 +694,15 @@ app.MapPost(
         }
 
         DateTimeOffset now = timeProvider.GetUtcNow();
-        DateTimeOffset leaseExpiresAt = GetActiveLeaseExpiry(
-            now,
-            sessionOptions.Value);
+        DateTimeOffset leaseExpiresAt = sessionOptions.Value.GetServerStartupLeaseExpiry(now);
+        // ID/difficulty are immutable repository fields. Removed/legacy content
+        // remains readable/recoverable, but cannot acquire a new assignment.
+        DungeonSession? candidate = await repository.GetDungeonSessionAsync(
+            dungeonSessionId, now, cancellationToken);
+        if (candidate is null)
+            return Results.NotFound(new { error = "dungeon_session_not_found" });
+        if (contentCatalog.GetSelectionError(candidate.DungeonId, candidate.Difficulty) is not null)
+            return Results.Conflict(new { error = "dungeon_content_not_available" });
         try
         {
             DungeonSession session = await repository.AssignDungeonServerAsync(
@@ -631,7 +711,9 @@ app.MapPost(
                 serverAddress,
                 now,
                 leaseExpiresAt,
-                cancellationToken);
+                cancellationToken, requireDeparture: true,
+                minimumPartySize: Math.Clamp(sessionOptions.Value.MinimumDeparturePartySize, 1,
+                    Math.Clamp(sessionOptions.Value.MaxPartySize, 1, 8)));
             IssuedAccessToken gameServerToken = IssueGameServerToken(
                 accessTokenService,
                 authOptions.Value);
@@ -644,7 +726,8 @@ app.MapPost(
             return Results.Ok(ToDungeonSessionResponse(session) with
             {
                 GameServerAccessToken = gameServerToken.Token,
-                GameServerAccessTokenExpiresAt = gameServerToken.ExpiresAt
+                GameServerAccessTokenExpiresAt = gameServerToken.ExpiresAt,
+                ServerMapPackage = contentCatalog.GetMapPackage(session.DungeonId, session.Difficulty)
             });
         }
         catch (Exception exception) when (IsDungeonDomainException(exception))
@@ -850,6 +933,13 @@ app.MapPost(
                     value.Value))
                 .OrderBy(value => value.StatTag, StringComparer.Ordinal)
                 .ToArray();
+            FirstSliceEquipmentProgressionState? equipmentProgression = null;
+            if (contract.EquipmentProgression is { } growth)
+            {
+                if (growth.GrowthBandId is null || growth.RuleVersion is not int ruleVersion || growth.Level is not int level)
+                    return Results.BadRequest(new { error = "EquipmentProgression requires GrowthBandId, RuleVersion and Level." });
+                equipmentProgression = new(growth.GrowthBandId, ruleVersion, level);
+            }
             DungeonItemReward reward = new(
                 definitionType,
                 definitionName,
@@ -859,7 +949,10 @@ app.MapPost(
                 contract.DurabilityCurrent,
                 contract.DurabilityMaximum,
                 instanceTags,
-                statValues);
+                statValues,
+                contract.MaxStackSize,
+                equipmentProgression,
+                contract.PersonalLootWeight);
             if (!DungeonRewardRules.TryValidateItemReward(reward, out string error))
             {
                 return Results.BadRequest(new { error });
@@ -875,6 +968,9 @@ app.MapPost(
                 });
             }
         }
+
+        if (!DungeonPersonalLootSelection.IsValidPool(itemRewards))
+            return Results.BadRequest(new { error = "Personal loot weights must be positive and sum to at most 10000." });
 
         CurrencyChange[] canonicalChanges = changes
             .OrderBy(change => change.CurrencyCode, StringComparer.Ordinal)
@@ -978,112 +1074,8 @@ app.MapPost(
         }
     });
 
-app.MapPost(
-    "/api/join-tickets",
-    async (
-        CreateJoinTicketRequest request,
-        HttpContext context,
-        IGameRepository repository,
-        AccessTokenService accessTokenService,
-        IOptions<AuthOptions> authOptions,
-        TimeProvider timeProvider,
-        CancellationToken cancellationToken) =>
-    {
-        AuthenticatedPrincipal principal = context.GetProjectRpgPrincipal();
-        if (principal.Kind != PrincipalKind.Player || principal.SteamId is null)
-        {
-            return Results.StatusCode(StatusCodes.Status403Forbidden);
-        }
-
-        DateTimeOffset now = timeProvider.GetUtcNow();
-        bool isActiveMember =
-            await repository.IsActiveDungeonSessionMemberAsync(
-                request.DungeonSessionId,
-                principal.SteamId,
-                request.CharacterId,
-                now,
-                cancellationToken);
-        if (!isActiveMember)
-        {
-            return Results.Conflict(new
-            {
-                error = "Character is not an active member of this dungeon session."
-            });
-        }
-
-        int lifetimeSeconds = Math.Clamp(
-            authOptions.Value.JoinTicketLifetimeSeconds,
-            10,
-            5 * 60);
-        IssuedAccessToken joinTicket = accessTokenService.Issue(
-            TimeSpan.FromSeconds(lifetimeSeconds));
-        await repository.StoreJoinTicketAsync(
-            joinTicket.TokenHash,
-            principal.SteamId,
-            request.CharacterId,
-            request.DungeonSessionId,
-            joinTicket.ExpiresAt,
-            cancellationToken);
-
-        return Results.Ok(new CreateJoinTicketResponse(
-            request.DungeonSessionId,
-            request.CharacterId,
-            joinTicket.Token,
-            joinTicket.ExpiresAt));
-    });
-
-app.MapPost(
-    "/api/join-tickets/consume",
-    async (
-        ConsumeJoinTicketRequest request,
-        HttpContext context,
-        IGameRepository repository,
-        AccessTokenService accessTokenService,
-        TimeProvider timeProvider,
-        CancellationToken cancellationToken) =>
-    {
-        AuthenticatedPrincipal principal = context.GetProjectRpgPrincipal();
-        if (!principal.IsGameServer)
-        {
-            return Results.StatusCode(StatusCodes.Status403Forbidden);
-        }
-
-        if (string.IsNullOrWhiteSpace(request.JoinTicket)
-            || RequestValidators.ValidateServerId(
-                request.ServerId,
-                out string serverId) is not null)
-        {
-            return Results.Unauthorized();
-        }
-
-        if (!principal.DungeonSessionId.HasValue
-            || !principal.MatchesGameServer(
-                serverId,
-                principal.DungeonSessionId.Value))
-        {
-            return Results.StatusCode(StatusCodes.Status403Forbidden);
-        }
-
-        string joinTicket = request.JoinTicket.Trim();
-        if (joinTicket.Length is < 32 or > 256)
-        {
-            return Results.Unauthorized();
-        }
-
-        ConsumedJoinTicket? consumedTicket =
-            await repository.ConsumeJoinTicketAsync(
-                accessTokenService.Hash(joinTicket),
-                serverId,
-                principal.DungeonSessionId.Value,
-                timeProvider.GetUtcNow(),
-                cancellationToken);
-        return consumedTicket is null
-            ? Results.Unauthorized()
-            : Results.Ok(new ConsumeJoinTicketResponse(
-                consumedTicket.DungeonSessionId,
-                consumedTicket.CharacterId,
-                consumedTicket.SteamId));
-    });
+app.MapPlayerLogoutApi();
+app.MapJoinTicketApi();
 
 app.MapGet(
     "/api/loadInventory",
@@ -1091,8 +1083,10 @@ app.MapGet(
         Guid characterId,
         HttpContext context,
         IGameRepository repository,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken) =>
     {
+        context.Response.Headers.CacheControl = "no-store";
         AuthenticatedPrincipal principal = context.GetProjectRpgPrincipal();
         string? ownerSteamId = await repository.GetCharacterOwnerAsync(
             characterId,
@@ -1102,8 +1096,13 @@ app.MapGet(
             return Results.NotFound();
         }
 
-        if (!principal.IsGameServer
-            && !string.Equals(principal.SteamId, ownerSteamId, StringComparison.Ordinal))
+        bool allowed = principal.Kind == PrincipalKind.Player
+            && string.Equals(principal.SteamId, ownerSteamId, StringComparison.Ordinal);
+        if (principal.IsGameServer && principal.DungeonSessionId is Guid sessionId
+            && !string.IsNullOrWhiteSpace(principal.ServerId))
+            allowed = await repository.IsAuthorizedGameServerSessionMemberAsync(sessionId, principal.ServerId,
+                ownerSteamId, characterId, timeProvider.GetUtcNow(), cancellationToken);
+        if (!allowed)
         {
             return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
@@ -1124,8 +1123,10 @@ app.MapPost(
         TimeProvider timeProvider,
         CancellationToken cancellationToken) =>
     {
+        context.Response.Headers.CacheControl = "no-store";
         AuthenticatedPrincipal principal = context.GetProjectRpgPrincipal();
-        if (!principal.IsGameServer)
+        if (!principal.IsGameServer || principal.DungeonSessionId is not Guid sessionId
+            || string.IsNullOrWhiteSpace(principal.ServerId))
         {
             return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
@@ -1152,25 +1153,38 @@ app.MapPost(
                 item.Category,
                 item.InstanceId))
             .ToArray();
-        await repository.SaveInventoryAsync(
-            request.CharacterId,
-            inventory,
-            timeProvider.GetUtcNow(),
-            cancellationToken);
+        try
+        {
+            await repository.SaveInventoryAsync(request.CharacterId, inventory, timeProvider.GetUtcNow(),
+                cancellationToken, new GameServerCredential(principal.ServerId, sessionId));
+        }
+        catch (DungeonSessionMembershipException)
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
         return Results.NoContent();
     });
 
 app.MapItemApi();
+app.MapDungeonPickupIntentApi();
 app.MapEconomyApi();
 app.MapSecurityTelemetryApi();
+app.MapDungeonRewardSnapshotApi();
+app.MapCharacterProgressionApi();
+app.MapEquipmentProgressionApi();
+app.MapDungeonAbandonmentApi();
+app.MapDungeonMembershipSnapshotApi();
+app.MapDungeonAdmissionApi();
+app.MapDungeonDepartureApi();
 
 await app.RunAsync();
 
-static CharacterResponse ToCharacterResponse(GameCharacter character) => new(
+static CharacterResponse ToCharacterResponse(GameCharacter character, CharacterProgressionSummary? progression = null) => new(
     character.CharacterId,
     character.RosterId,
     character.Name,
-    character.CreatedAt);
+    character.CreatedAt,
+    progression);
 
 static RosterResponse ToRosterResponse(Roster roster) => new(
     roster.RosterId,
@@ -1178,18 +1192,7 @@ static RosterResponse ToRosterResponse(Roster roster) => new(
     roster.CreatedAt);
 
 static DungeonSessionResponse ToDungeonSessionResponse(
-    DungeonSession session) => new(
-        session.DungeonSessionId,
-        session.DungeonId,
-        session.Difficulty,
-        session.State.ToString(),
-        session.ServerId,
-        session.ServerAddress,
-        session.ExpiresAt,
-        session.Members.Select(member => new DungeonSessionMemberResponse(
-            member.CharacterId,
-            member.JoinedAt,
-            member.LeaseExpiresAt)).ToArray());
+    DungeonSession session) => DungeonSessionResponses.From(session);
 
 static InventoryItemContract ToInventoryContract(InventoryItem item) => new(
     item.ItemId,
@@ -1247,7 +1250,8 @@ static bool IsDungeonDomainException(Exception exception) =>
         or DungeonSessionServerMismatchException
         or DungeonSessionStateConflictException
         or DungeonSessionMembershipException
-        or DungeonRewardSettlementConflictException;
+        or DungeonRewardSettlementConflictException
+        or DungeonDepartureConflictException;
 
 static IResult ToDungeonErrorResult(Exception exception) => exception switch
 {
@@ -1302,4 +1306,37 @@ static void ValidateAuthConfiguration(AuthOptions options)
             $"Auth:AdminToken must contain at least {minimumTokenLength} characters.");
     }
 
+}
+
+static void ValidateApiRateLimitConfiguration(ApiRateLimitOptions options)
+{
+    if (!options.Enabled)
+    {
+        return;
+    }
+    if (options.WindowSeconds is < 1 or > 3600)
+    {
+        throw new InvalidOperationException(
+            "RateLimits:WindowSeconds must be between 1 and 3600.");
+    }
+    ValidatePermitLimit(
+        options.AuthenticationPermitLimit,
+        "AuthenticationPermitLimit");
+    ValidatePermitLimit(options.IngressPermitLimit, "IngressPermitLimit");
+    ValidatePermitLimit(options.PlayerPermitLimit, "PlayerPermitLimit");
+    ValidatePermitLimit(
+        options.GameServerPermitLimit,
+        "GameServerPermitLimit");
+    ValidatePermitLimit(
+        options.AdministratorPermitLimit,
+        "AdministratorPermitLimit");
+
+    static void ValidatePermitLimit(int value, string name)
+    {
+        if (value is < 1 or > 1_000_000)
+        {
+            throw new InvalidOperationException(
+                $"RateLimits:{name} must be between 1 and 1000000.");
+        }
+    }
 }

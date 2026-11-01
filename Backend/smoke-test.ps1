@@ -1,10 +1,12 @@
 param(
     [string]$BaseUrl = 'http://127.0.0.1:3000',
     [string]$AdminToken = $env:PROJECT_RPG_BACKEND_ADMIN_TOKEN,
-    [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12)
+    [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12),
+    [string]$DungeonId = 'Dungeon.RaidSwordMan'
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Tools/Request-DungeonDeparture.ps1')
 
 if ([string]::IsNullOrWhiteSpace($AdminToken)) {
     throw 'PROJECT_RPG_BACKEND_ADMIN_TOKEN or -AdminToken is required.'
@@ -121,7 +123,7 @@ if (-not ($characters.characterId -contains $leader.Character.characterId)) {
 
 $createSessionBody = @{
     characterId = $leader.Character.characterId
-    dungeonId = 'Dungeon.Smoke.Crypt'
+    dungeonId = $DungeonId
     difficulty = 'Normal'
 } | ConvertTo-Json -Compress
 $dungeonSession = Invoke-RestMethod `
@@ -197,6 +199,7 @@ $activateBody = @{
     serverId = $serverId
     serverAddress = $serverAddress
 } | ConvertTo-Json -Compress
+$null = Request-RPGDungeonDeparture $BaseUrl $dungeonSession.dungeonSessionId $leader.Character.characterId $leader.Headers
 $dungeonSession = Invoke-RestMethod `
     -Method Post `
     -Uri "$BaseUrl/api/dungeon-sessions/$($dungeonSession.dungeonSessionId)/activate" `
@@ -575,7 +578,7 @@ if ($balanceAfterRejectedMaximum.Count -ne 1 -or
 $rollbackPlayer = $players[4]
 $rollbackSessionBody = @{
     characterId = $rollbackPlayer.Character.characterId
-    dungeonId = 'Dungeon.Smoke.Rollback'
+    dungeonId = $DungeonId
     difficulty = 'Normal'
 } | ConvertTo-Json -Compress
 $rollbackSession = Invoke-RestMethod `
@@ -585,6 +588,7 @@ $rollbackSession = Invoke-RestMethod `
     -ContentType 'application/json' `
     -Body $rollbackSessionBody
 $rollbackServerId = "smoke-rollback-server-$RunId"
+$null = Request-RPGDungeonDeparture $BaseUrl $rollbackSession.dungeonSessionId $rollbackPlayer.Character.characterId $rollbackPlayer.Headers
 $rollbackActivateBody = @{
     serverId = $rollbackServerId
     serverAddress = '127.0.0.1:7781'
@@ -721,7 +725,7 @@ $expiredServerReplayStatus = Invoke-ExpectedStatus `
     -Uri "$BaseUrl/api/dungeon-sessions/$($dungeonSession.dungeonSessionId)/settle-rewards" `
     -Headers $serverHeaders `
     -Body $settlementBody `
-    -ExpectedStatus 401
+    -ExpectedStatus 403
 $finishReplay = $finished
 
 $noActiveSessionResponse = Invoke-WebRequest `
@@ -753,6 +757,7 @@ if ($resumedNextSession.dungeonSessionId -ne $nextSession.dungeonSessionId) {
 }
 
 $claimServerId = "smoke-claim-server-$RunId"
+$null = Request-RPGDungeonDeparture $BaseUrl $nextSession.dungeonSessionId $leader.Character.characterId $leader.Headers
 $claimServerAddress = '127.0.0.1:7780'
 $claimBody = @{
     serverId = $claimServerId

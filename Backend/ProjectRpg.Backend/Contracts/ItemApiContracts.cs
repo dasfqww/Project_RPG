@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ProjectRpg.Backend.Contracts;
 
 public sealed record ItemOwnerContract(
@@ -24,12 +26,19 @@ public sealed record ItemStatValueContract(
     string? StatTag,
     double Value);
 
+public sealed record ItemEquipmentProgressionContract(
+    string? GrowthBandId,
+    int? RuleVersion,
+    int? Level);
+
 public sealed record ItemInstanceStateContract(
     Guid InstanceId,
     int GenerationSeed,
     int Quantity,
     IReadOnlyList<string?>? InstanceTags,
-    IReadOnlyList<ItemStatValueContract?>? StatValues);
+    IReadOnlyList<ItemStatValueContract?>? StatValues,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ItemEquipmentProgressionContract? EquipmentProgression = null);
 
 public sealed record ItemRecordContract(
     string? DefinitionType,

@@ -3,8 +3,23 @@ using ProjectRpg.Backend.Domain;
 
 namespace ProjectRpg.Backend.Data;
 
-public sealed class InMemoryGameRepository : IGameRepository
+public sealed partial class InMemoryGameRepository(TimeProvider? connectionClock = null) : IGameRepository, IDungeonPickupIntentRepository
 {
+    private readonly InMemoryItemRepository? _starterItems;
+    private readonly InMemoryTransactionGate? _starterTransactionGate;
+
+    public InMemoryGameRepository(
+        InMemoryTransactionGate transactionGate,
+        InMemoryItemRepository itemRepository) : this()
+    {
+        _starterTransactionGate = transactionGate;
+        _starterItems = itemRepository;
+        if (!ReferenceEquals(itemRepository.TransactionSyncRoot, transactionGate.SyncRoot))
+        {
+            throw new ArgumentException("Character and item repositories must share a transaction gate.");
+        }
+    }
+
     private sealed record AccountRecord(
         SteamIdentity Identity,
         DateTimeOffset CreatedAt,
@@ -27,6 +42,12 @@ public sealed class InMemoryGameRepository : IGameRepository
         Guid DungeonSessionId,
         DateTimeOffset ExpiresAt);
 
+    private sealed record JoinTicketConsumptionRecord(
+        string TokenHash, ConsumedJoinTicket Admission, DateTimeOffset ConsumedAt, DateTimeOffset RecoveryExpiresAt);
+
+    private readonly Dictionary<(Guid SessionId, string ServerId, Guid RequestId), JoinTicketConsumptionRecord>
+        _joinTicketConsumptions = new();
+
     private readonly ConcurrentDictionary<string, AccountRecord> _accounts = new();
     private readonly ConcurrentDictionary<string, SessionRecord> _sessions = new();
     private readonly ConcurrentDictionary<string, GameServerCredentialRecord>
@@ -39,6 +60,10 @@ public sealed class InMemoryGameRepository : IGameRepository
     private readonly Dictionary<Guid, DungeonRewardSettlement>
         _dungeonRewardSettlements = new();
     private readonly Dictionary<Guid, CharacterLeaseRecord> _characterLeases = new();
+    private readonly Dictionary<(Guid SessionId, Guid CharacterId), DungeonAbandonment>
+        _dungeonAbandonments = new();
+    private readonly Dictionary<(Guid SessionId, Guid CharacterId), DungeonDisconnectionExpulsion>
+        _dungeonDisconnectionExpulsions = new();
     private readonly object _characterGate = new();
     private readonly object _dungeonGate = new();
 
@@ -103,6 +128,14 @@ public sealed class InMemoryGameRepository : IGameRepository
         return Task.FromResult<string?>(session.SteamId);
     }
 
+    public Task RevokeSessionAsync(string tokenHash, string steamId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_sessions.TryGetValue(tokenHash, out SessionRecord? session) && session.SteamId == steamId)
+            _sessions.TryRemove(new KeyValuePair<string, SessionRecord>(tokenHash, session));
+        return Task.CompletedTask;
+    }
+
     public Task StoreGameServerCredentialAsync(
         string tokenHash,
         string serverId,
@@ -164,9 +197,23 @@ public sealed class InMemoryGameRepository : IGameRepository
                     DungeonSessionState.Cleared
                     or DungeonSessionState.Failed)
                 && session.UpdatedAt >= now - postSessionGrace;
-            if (!isActive && !isWithinPostSessionGrace)
+            bool isSettling = session.State == DungeonSessionState.SettlementPending
+                && session.UpdatedAt >= now - postSessionGrace;
+            bool isAbandonedClosed = session.State == DungeonSessionState.Closed
+                && session.UpdatedAt >= now - postSessionGrace
+                && _dungeonAbandonments.Values.Any(receipt =>
+                    receipt.DungeonSessionId == session.DungeonSessionId
+                    && receipt.SessionStateAtAbandonment == DungeonSessionState.Closed);
+            bool isExpelledClosed = session.State == DungeonSessionState.Closed
+                && session.UpdatedAt >= now - postSessionGrace
+                && _dungeonDisconnectionExpulsions.Values.Any(receipt =>
+                    receipt.DungeonSessionId == session.DungeonSessionId);
+            if (!isActive && !isSettling && !isWithinPostSessionGrace && !isAbandonedClosed && !isExpelledClosed)
             {
-                _gameServerCredentials.TryRemove(tokenHash, out _);
+                // A temporarily unreadable pending settlement can later complete. Do not
+                // destroy its still-unexpired credential while the worker is retrying.
+                if (session.State != DungeonSessionState.SettlementPending)
+                    _gameServerCredentials.TryRemove(tokenHash, out _);
                 return Task.FromResult<GameServerCredential?>(null);
             }
 
@@ -206,28 +253,34 @@ public sealed class InMemoryGameRepository : IGameRepository
         DateTimeOffset createdAt,
         CancellationToken cancellationToken)
     {
-        lock (_characterGate)
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_starterTransactionGate?.SyncRoot ?? _characterGate)
         {
-            bool nameExists = _characters.Values.Any(character =>
-                string.Equals(character.Name, name, StringComparison.OrdinalIgnoreCase));
-            if (nameExists)
+            lock (_characterGate)
             {
-                throw new DuplicateCharacterNameException(name);
-            }
+                bool nameExists = _characters.Values.Any(character =>
+                    string.Equals(character.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (nameExists)
+                {
+                    throw new DuplicateCharacterNameException(name);
+                }
 
-            Roster roster = _rosters.Values.SingleOrDefault(candidate =>
-                candidate.SteamId == steamId
-                && candidate.WorldId == "main")
-                ?? throw new InvalidOperationException(
-                    "The account does not have a default roster.");
-            GameCharacter character = new(
-                Guid.NewGuid(),
-                roster.RosterId,
-                steamId,
-                name,
-                createdAt);
-            _characters[character.CharacterId] = character;
-            return Task.FromResult(character);
+                Roster roster = _rosters.Values.SingleOrDefault(candidate =>
+                    candidate.SteamId == steamId
+                    && candidate.WorldId == "main")
+                    ?? throw new InvalidOperationException(
+                        "The account does not have a default roster.");
+                GameCharacter character = new(
+                    Guid.NewGuid(),
+                    roster.RosterId,
+                    steamId,
+                    name,
+                    createdAt);
+                _starterItems?.SeedStarters(FirstSliceStarterEquipment.Create(character.CharacterId));
+                _progression[character.CharacterId] = FirstSliceProgression.Create(character.CharacterId);
+                _characters[character.CharacterId] = character;
+                return Task.FromResult(character);
+            }
         }
     }
 
@@ -269,6 +322,30 @@ public sealed class InMemoryGameRepository : IGameRepository
                 dungeonSessionId,
                 out DungeonSession? session);
             return Task.FromResult(session);
+        }
+    }
+
+    public Task<DungeonMembershipSnapshot?> GetDungeonMembershipSnapshotAsync(
+        Guid dungeonSessionId,
+        string serverId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(serverId)) throw new DungeonSessionServerMismatchException(dungeonSessionId);
+        lock (_dungeonGate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_dungeonSessions.TryGetValue(dungeonSessionId, out DungeonSession? session))
+                return Task.FromResult<DungeonMembershipSnapshot?>(null);
+            EnsureServerMatches(session, serverId);
+            // Do not clean up leases or expire sessions from this diagnostic GET.
+            return Task.FromResult<DungeonMembershipSnapshot?>(new(
+                session.DungeonSessionId, serverId, session.State, session.UpdatedAt, session.ExpiresAt,
+                session.Members.OrderBy(member => member.CharacterId).ToArray(),
+                _dungeonAbandonments.Values.Where(receipt => receipt.DungeonSessionId == dungeonSessionId)
+                    .OrderBy(receipt => receipt.CharacterId).ToArray(),
+                _dungeonDisconnectionExpulsions.Values.Where(receipt => receipt.DungeonSessionId == dungeonSessionId)
+                    .OrderBy(receipt => receipt.CharacterId).ToArray(), connectionClock?.GetUtcNow() ?? DateTimeOffset.UtcNow));
         }
     }
 
@@ -338,7 +415,8 @@ public sealed class InMemoryGameRepository : IGameRepository
                 characterId,
                 steamId,
                 now,
-                expiresAt);
+                expiresAt,
+                CharacterName: GetDungeonMemberCharacterName(characterId, steamId));
             DungeonSession session = new(
                 dungeonSessionId,
                 dungeonId,
@@ -349,7 +427,7 @@ public sealed class InMemoryGameRepository : IGameRepository
                 now,
                 now,
                 expiresAt,
-                [member]);
+                [member], characterId, 1);
             _dungeonSessions[dungeonSessionId] = session;
             return Task.FromResult(session);
         }
@@ -368,7 +446,7 @@ public sealed class InMemoryGameRepository : IGameRepository
         {
             CleanupExpiredDungeonSessions(now);
             DungeonSession session = GetRequiredDungeonSession(dungeonSessionId);
-            if (session.State != DungeonSessionState.Waiting)
+            if (session.State != DungeonSessionState.Waiting || session.DepartureRequestedAt.HasValue)
             {
                 throw new DungeonSessionNotJoinableException(dungeonSessionId);
             }
@@ -402,7 +480,8 @@ public sealed class InMemoryGameRepository : IGameRepository
                     characterId,
                     steamId,
                     now,
-                    leaseExpiresAt))
+                    leaseExpiresAt,
+                    CharacterName: GetDungeonMemberCharacterName(characterId, steamId)))
                 .ToArray();
             foreach (DungeonSessionMember member in members)
             {
@@ -411,12 +490,7 @@ public sealed class InMemoryGameRepository : IGameRepository
                         dungeonSessionId,
                         leaseExpiresAt);
             }
-            session = session with
-            {
-                Members = members,
-                UpdatedAt = now,
-                ExpiresAt = leaseExpiresAt
-            };
+            session = DungeonDeparturePolicy.WithRoster(session, members, now) with { ExpiresAt = leaseExpiresAt };
             _dungeonSessions[dungeonSessionId] = session;
             return Task.FromResult(session);
         }
@@ -457,9 +531,8 @@ public sealed class InMemoryGameRepository : IGameRepository
                 _characterLeases.Remove(characterId);
             }
 
-            session = session with
+            session = DungeonDeparturePolicy.WithRoster(session, members, now) with
             {
-                Members = members,
                 State = members.Length == 0
                     ? DungeonSessionState.Closed
                     : session.State,
@@ -471,13 +544,207 @@ public sealed class InMemoryGameRepository : IGameRepository
         }
     }
 
+    public Task<DungeonAbandonment> AbandonDungeonSessionAsync(
+        Guid dungeonSessionId,
+        string steamId,
+        Guid characterId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_dungeonGate)
+        {
+            CleanupExpiredDungeonSessions(now);
+            DungeonSession session = GetRequiredDungeonSession(dungeonSessionId);
+            if (_dungeonAbandonments.TryGetValue((dungeonSessionId, characterId), out DungeonAbandonment? existing))
+            {
+                if (!string.Equals(existing.SteamId, steamId, StringComparison.Ordinal))
+                    throw new DungeonSessionMembershipException(dungeonSessionId);
+                return Task.FromResult(existing);
+            }
+            if (session.State is not (DungeonSessionState.Loading or DungeonSessionState.InProgress))
+                throw new DungeonSessionStateConflictException(dungeonSessionId, session.State);
+            if (!session.Members.Any(member => member.CharacterId == characterId && member.SteamId == steamId))
+                throw new DungeonSessionMembershipException(dungeonSessionId);
+
+            // The same gate protects reward recipient capture, heartbeat and admission.
+            // Once settlement wins this race, its immutable recipients cannot be edited.
+            DungeonSessionMember[] members = session.Members.Where(member => member.CharacterId != characterId).ToArray();
+            if (_characterLeases.TryGetValue(characterId, out CharacterLeaseRecord? lease)
+                && lease.DungeonSessionId == dungeonSessionId)
+                _characterLeases.Remove(characterId);
+            foreach ((string hash, JoinTicketRecord ticket) in _joinTickets)
+                if (ticket.DungeonSessionId == dungeonSessionId && ticket.CharacterId == characterId)
+                    _joinTickets.TryRemove(hash, out _);
+            session = session with
+            {
+                Members = members,
+                State = members.Length == 0 ? DungeonSessionState.Closed : session.State,
+                UpdatedAt = now,
+                ExpiresAt = members.Length == 0 ? now : session.ExpiresAt
+            };
+            DungeonAbandonment receipt = new(dungeonSessionId, characterId, steamId, now, session.State);
+            _dungeonSessions[dungeonSessionId] = session;
+            _dungeonAbandonments.Add((dungeonSessionId, characterId), receipt);
+            return Task.FromResult(receipt);
+        }
+    }
+
+    public Task<DateTimeOffset> RecordDungeonMemberDisconnectionAsync(
+        Guid dungeonSessionId,
+        string serverId,
+        string steamId,
+        Guid characterId,
+        long connectionGeneration,
+        DateTimeOffset now,
+        CancellationToken cancellationToken,
+        DateTimeOffset? observedAtUtc = null)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_dungeonGate)
+        {
+            now = connectionClock?.GetUtcNow() ?? now;
+            CleanupExpiredDungeonSessions(now);
+            DungeonSession session = GetRequiredDungeonSession(dungeonSessionId);
+            EnsureServerMatches(session, serverId);
+            if (session.State is not (DungeonSessionState.Loading or DungeonSessionState.InProgress))
+                throw new DungeonSessionStateConflictException(dungeonSessionId, session.State);
+            DungeonSessionMember? member = session.Members.SingleOrDefault(value =>
+                value.CharacterId == characterId && value.SteamId == steamId);
+            if (member is null || connectionGeneration <= 0
+                || member.ConnectionGeneration != connectionGeneration)
+                throw new DungeonSessionMembershipException(dungeonSessionId);
+
+            // Duplicate delivery cannot restart the ten-minute grace clock.
+            DateTimeOffset disconnectedAt = member.DisconnectedAt
+                ?? DungeonConnectionPolicy.ResolveObservation(observedAtUtc, member.JoinedAt, now);
+            if (member.DisconnectedAt is null
+                || member.DisconnectedGeneration != connectionGeneration)
+                _dungeonSessions[dungeonSessionId] = session with
+                {
+                    Members = session.Members.Select(value => value.CharacterId == characterId
+                        ? value with
+                        {
+                            DisconnectedAt = disconnectedAt,
+                            DisconnectedGeneration = connectionGeneration
+                        } : value).ToArray()
+                };
+            return Task.FromResult(disconnectedAt);
+        }
+    }
+
+    public Task<IReadOnlyList<DungeonDisconnectionExpulsion>> ExpelDisconnectedDungeonMembersAsync(
+        Guid dungeonSessionId,
+        string serverId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_dungeonGate)
+        {
+            now = connectionClock?.GetUtcNow() ?? now;
+            CleanupExpiredDungeonSessions(now);
+            DungeonSession session = GetRequiredDungeonSession(dungeonSessionId);
+            EnsureServerMatches(session, serverId);
+            if (session.State is DungeonSessionState.Loading or DungeonSessionState.InProgress)
+            {
+                DungeonSessionMember[] expired = session.Members
+                    .Where(member => DungeonConnectionPolicy.HasReconnectGraceExpired(member.DisconnectedAt, now))
+                    .ToArray();
+                if (expired.Length > 0)
+                {
+                    HashSet<Guid> expiredIds = expired.Select(member => member.CharacterId).ToHashSet();
+                    foreach (DungeonSessionMember member in expired)
+                    {
+                        DateTimeOffset disconnectedAt = member.DisconnectedAt!.Value;
+                        _dungeonDisconnectionExpulsions.Add((dungeonSessionId, member.CharacterId), new(
+                            dungeonSessionId, member.CharacterId, member.SteamId, disconnectedAt,
+                            disconnectedAt + DungeonConnectionPolicy.UnexpectedDisconnectGrace, now));
+                        if (_characterLeases.TryGetValue(member.CharacterId, out CharacterLeaseRecord? lease)
+                            && lease.DungeonSessionId == dungeonSessionId)
+                            _characterLeases.Remove(member.CharacterId);
+                    }
+                    foreach ((string hash, JoinTicketRecord ticket) in _joinTickets)
+                        if (ticket.DungeonSessionId == dungeonSessionId && expiredIds.Contains(ticket.CharacterId))
+                            _joinTickets.TryRemove(hash, out _);
+                    DungeonSessionMember[] remaining = session.Members
+                        .Where(member => !expiredIds.Contains(member.CharacterId)).ToArray();
+                    _dungeonSessions[dungeonSessionId] = session with
+                    {
+                        Members = remaining,
+                        State = remaining.Length == 0 ? DungeonSessionState.Closed : session.State,
+                        UpdatedAt = now,
+                        ExpiresAt = remaining.Length == 0 ? now : session.ExpiresAt
+                    };
+                }
+            }
+            return Task.FromResult<IReadOnlyList<DungeonDisconnectionExpulsion>>(
+                _dungeonDisconnectionExpulsions.Values
+                    .Where(receipt => receipt.DungeonSessionId == dungeonSessionId)
+                    .OrderBy(receipt => receipt.CharacterId).ToArray());
+        }
+    }
+
+    public Task<bool> ConfirmDungeonMemberAdmissionAsync(
+        Guid dungeonSessionId,
+        string serverId,
+        string steamId,
+        Guid characterId,
+        long connectionGeneration,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_dungeonGate)
+        {
+            now = connectionClock?.GetUtcNow() ?? now;
+            CleanupExpiredDungeonSessions(now);
+            DungeonSession session = GetRequiredDungeonSession(dungeonSessionId);
+            EnsureServerMatches(session, serverId);
+            if (session.State is not (DungeonSessionState.Loading or DungeonSessionState.InProgress))
+                throw new DungeonSessionStateConflictException(dungeonSessionId, session.State);
+            DungeonSessionMember? member = session.Members.SingleOrDefault(value =>
+                value.CharacterId == characterId && value.SteamId == steamId);
+            if (member is null || member.LeaseExpiresAt <= now || connectionGeneration <= 0
+                || member.ConnectionGeneration != connectionGeneration)
+                throw new DungeonSessionMembershipException(dungeonSessionId);
+
+            // Replaying a confirmation for a connection that subsequently dropped
+            // must not erase its new disconnect marker.
+            if (member.ConfirmedConnectionGeneration == connectionGeneration)
+                return Task.FromResult(member.DisconnectedAt is null);
+            // A report for this very attempt is terminal even if it raced ahead
+            // of the HTTP confirmation commit. A marker from an older attempt
+            // may still be cleared by a successful new admission before grace.
+            if (member.DisconnectedAt is not null
+                && member.DisconnectedGeneration == connectionGeneration)
+                return Task.FromResult(false);
+            if (DungeonConnectionPolicy.HasReconnectGraceExpired(member.DisconnectedAt, now))
+                return Task.FromResult(false);
+
+            _dungeonSessions[dungeonSessionId] = session with
+            {
+                Members = session.Members.Select(value => value.CharacterId == characterId
+                    ? value with
+                    {
+                        DisconnectedAt = null,
+                        ConfirmedConnectionGeneration = connectionGeneration,
+                        DisconnectedGeneration = 0
+                    } : value).ToArray()
+            };
+            return Task.FromResult(true);
+        }
+    }
+
     public Task<DungeonSession> AssignDungeonServerAsync(
         Guid dungeonSessionId,
         string serverId,
         string serverAddress,
         DateTimeOffset now,
         DateTimeOffset leaseExpiresAt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requireDeparture = false,
+        int minimumPartySize = 1)
     {
         lock (_dungeonGate)
         {
@@ -505,6 +772,8 @@ public sealed class InMemoryGameRepository : IGameRepository
                     session.State);
             }
 
+            if (requireDeparture && !DungeonDeparturePolicy.CanAllocate(session, minimumPartySize, now))
+                throw new DungeonDepartureConflictException("dungeon_departure_not_requested");
             session = ExtendDungeonLease(
                 session with
                 {
@@ -523,7 +792,10 @@ public sealed class InMemoryGameRepository : IGameRepository
         string serverAddress,
         DateTimeOffset now,
         DateTimeOffset leaseExpiresAt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<DungeonContentSelection>? allowedSelections = null,
+        bool requireDeparture = false,
+        int minimumPartySize = 1)
     {
         lock (_dungeonGate)
         {
@@ -531,7 +803,10 @@ public sealed class InMemoryGameRepository : IGameRepository
             DungeonSession? session = _dungeonSessions.Values
                 .Where(candidate =>
                     candidate.State == DungeonSessionState.Waiting
-                    && candidate.Members.Count > 0)
+                    && candidate.Members.Count > 0
+                    && (!requireDeparture || DungeonDeparturePolicy.CanAllocate(candidate, minimumPartySize, now))
+                    && (allowedSelections is null || allowedSelections.Contains(
+                        new DungeonContentSelection(candidate.DungeonId, candidate.Difficulty))))
                 .OrderBy(candidate => candidate.CreatedAt)
                 .ThenBy(candidate => candidate.DungeonSessionId)
                 .FirstOrDefault();
@@ -703,15 +978,22 @@ public sealed class InMemoryGameRepository : IGameRepository
                     session.State);
             }
 
+            // The host injects its authoritative clock. Read it under the same
+            // gate as admission/disconnection, after any wait. Direct repository
+            // callers without a clock retain the explicit-time test contract.
+            now = connectionClock?.GetUtcNow() ?? now;
+            Guid[] recipients = session.Members
+                .Where(member => !DungeonConnectionPolicy.HasReconnectGraceExpired(member.DisconnectedAt, now))
+                .Select(member => member.CharacterId).ToArray();
             DungeonRewardSettlement settlement = new(
                 dungeonSessionId,
                 serverId,
                 rewardVersion,
                 commandFingerprint,
                 DungeonRewardSettlementState.Pending,
-                session.Members.Select(member => member.CharacterId).ToArray(),
+                recipients,
                 changes.ToArray(),
-                itemRewards.ToArray(),
+                DungeonPersonalLootSelection.Capture(itemRewards),
                 0,
                 now,
                 null,
@@ -911,7 +1193,14 @@ public sealed class InMemoryGameRepository : IGameRepository
         lock (_dungeonGate)
         {
             CleanupExpiredDungeonSessions(now);
-            bool isAuthorized = _dungeonSessions.TryGetValue(
+            return Task.FromResult(IsAuthorizedGameServerSessionMember(
+                dungeonSessionId, serverId, steamId, characterId, now));
+        }
+    }
+
+    // Caller holds _dungeonGate, including a legacy inventory replacement.
+    private bool IsAuthorizedGameServerSessionMember(Guid dungeonSessionId, string serverId,
+        string steamId, Guid characterId, DateTimeOffset now) => _dungeonSessions.TryGetValue(
                     dungeonSessionId,
                     out DungeonSession? session)
                 && session.State is (
@@ -931,9 +1220,6 @@ public sealed class InMemoryGameRepository : IGameRepository
                     out CharacterLeaseRecord? lease)
                 && lease.DungeonSessionId == dungeonSessionId
                 && lease.ExpiresAt > now;
-            return Task.FromResult(isAuthorized);
-        }
-    }
 
     public Task<bool> AreAuthorizedSecurityTelemetryMembersAsync(
         Guid dungeonSessionId,
@@ -999,7 +1285,7 @@ public sealed class InMemoryGameRepository : IGameRepository
         }
     }
 
-    public Task StoreJoinTicketAsync(
+    public Task<JoinTicketIssueResult> StoreJoinTicketAsync(
         string tokenHash,
         string steamId,
         Guid characterId,
@@ -1007,11 +1293,32 @@ public sealed class InMemoryGameRepository : IGameRepository
         DateTimeOffset expiresAt,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         lock (_dungeonGate)
         {
+            DateTimeOffset now = connectionClock?.GetUtcNow() ?? DateTimeOffset.UtcNow;
+            if (_dungeonDisconnectionExpulsions.TryGetValue((dungeonSessionId, characterId), out var expulsion)
+                && expulsion.SteamId == steamId)
+                return Task.FromResult(JoinTicketIssueResult.ReconnectGraceExpired);
+
+            if (!_dungeonSessions.TryGetValue(dungeonSessionId, out DungeonSession? session)
+                || session.State is not (DungeonSessionState.Loading or DungeonSessionState.InProgress)
+                || session.ServerId is null || session.ExpiresAt <= now || expiresAt <= now)
+                return Task.FromResult(JoinTicketIssueResult.NotActiveMember);
+
+            DungeonSessionMember? member = session.Members.FirstOrDefault(member =>
+                member.CharacterId == characterId && member.SteamId == steamId);
+            if (member is null) return Task.FromResult(JoinTicketIssueResult.NotActiveMember);
+            if (DungeonConnectionPolicy.HasReconnectGraceExpired(member.DisconnectedAt, now))
+                return Task.FromResult(JoinTicketIssueResult.ReconnectGraceExpired);
+            if (member.LeaseExpiresAt <= now
+                || !_characterLeases.TryGetValue(characterId, out CharacterLeaseRecord? lease)
+                || lease.DungeonSessionId != dungeonSessionId || lease.ExpiresAt <= now)
+                return Task.FromResult(JoinTicketIssueResult.NotActiveMember);
+
             foreach ((string expiredHash, JoinTicketRecord expiredTicket) in _joinTickets)
             {
-                if (expiredTicket.ExpiresAt <= DateTimeOffset.UtcNow)
+                if (expiredTicket.ExpiresAt <= now)
                 {
                     _joinTickets.TryRemove(expiredHash, out _);
                 }
@@ -1022,8 +1329,8 @@ public sealed class InMemoryGameRepository : IGameRepository
                 characterId,
                 dungeonSessionId,
                 expiresAt);
+            return Task.FromResult(JoinTicketIssueResult.Issued);
         }
-        return Task.CompletedTask;
     }
 
     public Task<ConsumedJoinTicket?> ConsumeJoinTicketAsync(
@@ -1031,11 +1338,43 @@ public sealed class InMemoryGameRepository : IGameRepository
         string serverId,
         Guid dungeonSessionId,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? consumptionRequestId = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (consumptionRequestId == Guid.Empty) return Task.FromResult<ConsumedJoinTicket?>(null);
         lock (_dungeonGate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            // Admission waits on this same gate as disconnection and settlement.
+            // Re-read the authoritative clock after any wait, not when the HTTP
+            // request first arrived.
+            now = connectionClock?.GetUtcNow() ?? now;
             CleanupExpiredDungeonSessions(now);
+            // Keep evidence even after the admission-replay window. Erasing it
+            // would turn a late lookup into an unsafe "never committed" guess.
+            if (_joinTicketConsumptionCancellations.Values.Any(value => value.TicketHash == tokenHash)
+                || (consumptionRequestId is Guid fencedId
+                    && _joinTicketConsumptionCancellations.ContainsKey((dungeonSessionId, serverId, fencedId))))
+                return Task.FromResult<ConsumedJoinTicket?>(null);
+            if (consumptionRequestId is Guid requestId
+                && _joinTicketConsumptions.TryGetValue((dungeonSessionId, serverId, requestId), out var receipt))
+            {
+                // This is result recovery, not another admission or confirmation.
+                // Never revive a superseded generation or clear a disconnect marker.
+                bool current = receipt.TokenHash == tokenHash && receipt.RecoveryExpiresAt > now
+                    && _dungeonSessions.TryGetValue(dungeonSessionId, out var currentSession)
+                    && currentSession.ServerId == serverId && currentSession.ExpiresAt > now
+                    && currentSession.State is DungeonSessionState.Loading or DungeonSessionState.InProgress
+                    && currentSession.Members.Any(member => member.CharacterId == receipt.Admission.CharacterId
+                        && member.SteamId == receipt.Admission.SteamId
+                        && member.ConnectionGeneration == receipt.Admission.ConnectionGeneration
+                        && member.LeaseExpiresAt > now
+                        && !DungeonConnectionPolicy.HasReconnectGraceExpired(member.DisconnectedAt, now))
+                    && _characterLeases.TryGetValue(receipt.Admission.CharacterId, out var currentLease)
+                    && currentLease.DungeonSessionId == dungeonSessionId && currentLease.ExpiresAt > now;
+                return Task.FromResult(current ? receipt.Admission : null);
+            }
             if (!_joinTickets.TryGetValue(tokenHash, out JoinTicketRecord? ticket)
                 || ticket.ExpiresAt <= now
                 || ticket.DungeonSessionId != dungeonSessionId
@@ -1045,20 +1384,63 @@ public sealed class InMemoryGameRepository : IGameRepository
                 || session.ServerId != serverId
                 || session.State is not (
                     DungeonSessionState.Loading
-                    or DungeonSessionState.InProgress)
-                || !session.Members.Any(member =>
+                    or DungeonSessionState.InProgress))
+            {
+                return Task.FromResult<ConsumedJoinTicket?>(null);
+            }
+
+            DungeonSessionMember? admitted = session.Members.FirstOrDefault(member =>
                     member.CharacterId == ticket.CharacterId
                     && member.SteamId == ticket.SteamId
-                    && member.LeaseExpiresAt > now))
+                    && member.LeaseExpiresAt > now
+                    && !DungeonConnectionPolicy.HasReconnectGraceExpired(member.DisconnectedAt, now));
+            if (admitted is null || admitted.ConnectionGeneration == long.MaxValue
+                || !_characterLeases.TryGetValue(ticket.CharacterId, out var lease)
+                || lease.DungeonSessionId != dungeonSessionId || lease.ExpiresAt <= now
+                || _joinTicketConsumptions.Values.Any(stored => stored.TokenHash == tokenHash))
             {
                 return Task.FromResult<ConsumedJoinTicket?>(null);
             }
 
             _joinTickets.TryRemove(tokenHash, out _);
-            return Task.FromResult<ConsumedJoinTicket?>(new ConsumedJoinTicket(
+            long connectionGeneration = admitted.ConnectionGeneration + 1;
+            _dungeonSessions[dungeonSessionId] = session with
+            {
+                Members = session.Members.Select(member => member.CharacterId == ticket.CharacterId
+                    ? member with { ConnectionGeneration = connectionGeneration } : member).ToArray()
+            };
+            ConsumedJoinTicket result = new(
                 ticket.DungeonSessionId,
                 ticket.CharacterId,
-                ticket.SteamId));
+                ticket.SteamId,
+                connectionGeneration);
+            if (consumptionRequestId is Guid id)
+                _joinTicketConsumptions.Add((dungeonSessionId, serverId, id),
+                    new(tokenHash, result, now, now + JoinTicketConsumptionRecovery.Retention));
+            return Task.FromResult<ConsumedJoinTicket?>(result);
+        }
+    }
+
+    public Task<JoinTicketConsumptionEvidence?> ReadJoinTicketConsumptionEvidenceAsync(
+        string tokenHash, string serverId, Guid dungeonSessionId, Guid consumptionRequestId,
+        string expectedSteamId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_dungeonGate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            now = connectionClock?.GetUtcNow() ?? now;
+            // Do not run expiry cleanup or mutate membership in this read path.
+            if (consumptionRequestId == Guid.Empty
+                || !_dungeonSessions.TryGetValue(dungeonSessionId, out var session)
+                || session.ServerId != serverId || session.ExpiresAt <= now
+                || session.State is not (DungeonSessionState.Loading or DungeonSessionState.InProgress)
+                || !_joinTicketConsumptions.TryGetValue((dungeonSessionId, serverId, consumptionRequestId), out var receipt)
+                || receipt.TokenHash != tokenHash || receipt.Admission.SteamId != expectedSteamId)
+                return Task.FromResult<JoinTicketConsumptionEvidence?>(null);
+            return Task.FromResult<JoinTicketConsumptionEvidence?>(new(dungeonSessionId, serverId,
+                consumptionRequestId, receipt.Admission.CharacterId, receipt.Admission.SteamId,
+                receipt.Admission.ConnectionGeneration, receipt.ConsumedAt));
         }
     }
 
@@ -1200,11 +1582,19 @@ public sealed class InMemoryGameRepository : IGameRepository
         Guid characterId,
         IReadOnlyList<InventoryItem> inventory,
         DateTimeOffset updatedAt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        GameServerCredential? requiredServer = null)
     {
-        _inventories[characterId] = inventory
-            .OrderBy(item => item.SlotIndex)
-            .ToArray();
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_dungeonGate)
+        {
+            if (requiredServer is not null && (requiredServer.IsSecurityTelemetryOnly
+                || !_characters.TryGetValue(characterId, out GameCharacter? character)
+                || !IsAuthorizedGameServerSessionMember(requiredServer.DungeonSessionId,
+                    requiredServer.ServerId, character.SteamId, characterId, updatedAt)))
+                throw new DungeonSessionMembershipException(requiredServer.DungeonSessionId);
+            _inventories[characterId] = inventory.OrderBy(item => item.SlotIndex).ToArray();
+        }
         return Task.CompletedTask;
     }
 }

@@ -4,7 +4,8 @@ param(
     [string]$BaseUrl = 'http://127.0.0.1:3010',
     [string]$AdminToken = $env:PROJECT_RPG_BACKEND_ADMIN_TOKEN,
     [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12),
-    [switch]$NoRestore
+    [switch]$NoRestore,
+    [switch]$KeepArtifacts
 )
 
 $ErrorActionPreference = 'Stop'
@@ -269,6 +270,14 @@ try {
     if ($configuredRewardResults.Count -ne 4) {
         throw 'The configured dungeon reward smoke test did not return all four difficulties.'
     }
+    $inventoryRewardResults = @(& $dungeonRewardSmokeTest `
+        -BaseUrl $BaseUrl `
+        -AdminToken $AdminToken `
+        -InventoryFirst)
+    if ($inventoryRewardResults.Count -ne 4) {
+        throw 'The inventory-first dungeon reward smoke test did not return all four difficulties.'
+    }
+    $configuredRewardResults += $inventoryRewardResults
 
     $authBeforeRestart = Invoke-RestMethod `
         -Method Post `
@@ -387,7 +396,8 @@ try {
         if ($rewardPotions.Count -ne 1 -or
             $rewardPotions[0].state.quantity -ne
                 $rewardResult.PotionQuantity -or
-            $rewardPotions[0].location.containerType -ne 'Mail') {
+            $rewardPotions[0].location.containerType -ne $rewardResult.DeliveryType -or
+            $rewardPotions[0].revision -ne 1) {
             throw "The '$($rewardResult.Difficulty)' potion reward was not preserved after restart."
         }
         $rewardHelms = @($rewardItems.items | Where-Object {
@@ -403,7 +413,8 @@ try {
             ($expectedHelmCount -eq 1 -and
                 ($rewardHelms[0].state.quantity -ne
                     $rewardResult.HelmQuantity -or
-                 $rewardHelms[0].location.containerType -ne 'Mail'))) {
+                 $rewardHelms[0].location.containerType -ne $rewardResult.DeliveryType -or
+                 $rewardHelms[0].revision -ne 1))) {
             throw "The '$($rewardResult.Difficulty)' helm reward was not preserved after restart."
         }
 
@@ -438,7 +449,13 @@ try {
 finally {
     Stop-Backend -Handle $backendHandle
     Restore-Environment
-    if ($succeeded -and (Test-Path -LiteralPath $temporaryRoot)) {
+    if ($succeeded -and -not $KeepArtifacts -and (Test-Path -LiteralPath $temporaryRoot)) {
+        $resolvedArtifacts = (Resolve-Path -LiteralPath $temporaryRoot).ProviderPath
+        $resolvedTempBase = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+        if (-not $resolvedArtifacts.StartsWith($resolvedTempBase, [StringComparison]::OrdinalIgnoreCase) -or
+            [IO.Path]::GetFileName($resolvedArtifacts) -notmatch '^project-rpg-postgres-[a-f0-9]{32}$') {
+            throw 'Refusing to remove an unverified integration artifact directory.'
+        }
         Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
     }
     elseif (Test-Path -LiteralPath $temporaryRoot) {

@@ -30,13 +30,33 @@ public sealed class StorageOptions
     public int ReadinessTimeoutSeconds { get; init; } = 3;
 }
 
+public sealed class ApiRateLimitOptions
+{
+    public const string SectionName = "RateLimits";
+
+    public bool Enabled { get; init; } = true;
+    public int WindowSeconds { get; init; } = 60;
+    public int AuthenticationPermitLimit { get; init; } = 60;
+    public int IngressPermitLimit { get; init; } = 6000;
+    public int PlayerPermitLimit { get; init; } = 600;
+    public int GameServerPermitLimit { get; init; } = 6000;
+    public int AdministratorPermitLimit { get; init; } = 3000;
+}
+
 public sealed class DungeonSessionOptions
 {
     public const string SectionName = "DungeonSessions";
 
     public int MaxPartySize { get; init; } = 4;
+    public int MinimumDeparturePartySize { get; init; } = 1;
     public int WaitingLifetimeMinutes { get; init; } = 5;
+    public int ServerStartupLeaseSeconds { get; init; } = 300;
     public int ActiveLeaseSeconds { get; init; } = 90;
+
+    // Only the backend chooses this bound. Running servers still use the
+    // shorter active lease on start/heartbeat; token expiry is independent.
+    public DateTimeOffset GetServerStartupLeaseExpiry(DateTimeOffset now) =>
+        now.AddSeconds(Math.Clamp(ServerStartupLeaseSeconds, 30, 15 * 60));
 }
 
 public sealed class DungeonSettlementOptions
