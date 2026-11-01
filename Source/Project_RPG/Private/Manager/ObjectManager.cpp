@@ -1,93 +1,126 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "Manager/ObjectManager.h"
-#include "Manager/PoolManager.h"
-#include "RPGDebugHelper.h"
 
-AActor* UObjectManager::SpawnObject(FName PoolName, TSubclassOf<AActor> ActorClass, 
+#include "GameFramework/Actor.h"
+#include "UObject/UObjectGlobals.h"
+#include "Manager/PoolManager.h"
+
+namespace
+{
+    int32 CountValidActors(const TSet<TWeakObjectPtr<AActor>>& Actors)
+    {
+        int32 Count = 0;
+        for (const TWeakObjectPtr<AActor>& Actor : Actors) { Count += Actor.IsValid() ? 1 : 0; }
+        return Count;
+    }
+}
+
+UObjectManager* UObjectManager::Get(const UObject* Context)
+{
+    check(IsInGameThread());
+    UWorld* World = RPGManagerContext::ResolveWorld(Context);
+    UObjectManager* Manager = World ? World->GetSubsystem<UObjectManager>() : nullptr;
+    return IsValid(Manager) && !Manager->bDeinitializing
+        ? Manager : GetMutableDefault<UObjectManager>();
+}
+
+bool UObjectManager::CanProcessRequests() const
+{
+    if (!IsInGameThread() || HasAnyFlags(RF_ClassDefaultObject) || bDeinitializing) { return false; }
+    UWorld* World = GetWorld();
+    return IsValid(World) && !World->bIsTearingDown;
+}
+
+bool UObjectManager::DoesSupportWorldType(EWorldType::Type WorldType) const
+{
+    return WorldType == EWorldType::Game || WorldType == EWorldType::PIE
+        || WorldType == EWorldType::GamePreview;
+}
+
+void UObjectManager::Initialize(FSubsystemCollectionBase& Collection)
+{
+    Super::Initialize(Collection);
+    Collection.InitializeDependency<UPoolManager>();
+    bDeinitializing = false;
+}
+
+void UObjectManager::Deinitialize()
+{
+    bDeinitializing = true;
+    for (const TWeakObjectPtr<AActor>& Reference : ManagedObjects)
+    {
+        if (AActor* Actor = Reference.Get())
+        {
+            Actor->OnEndPlay.RemoveDynamic(this, &ThisClass::OnManagedActorEndPlay);
+        }
+    }
+    ManagedObjects.Reset();
+    Players.Reset();
+    Monsters.Reset();
+    Super::Deinitialize();
+}
+
+AActor* UObjectManager::SpawnObject(FName PoolName, TSubclassOf<AActor> ActorClass,
     const FVector& Location, const FRotator& Rotation, bool bUsePooling)
 {
-	AActor* SpawnedActor = nullptr;
+    if (!CanProcessRequests() || !ActorClass) { return nullptr; }
+    UWorld* World = GetWorld();
 
-	if (bUsePooling)
-	{
-		// 풀이 존재하지 않으면 자동으로 등록 (초기 크기: 5개)
-		SpawnedActor = UPoolManager::Get<UPoolManager>(this)->AcquireFromPool(PoolName);
-		if (!IsValid(SpawnedActor))
-		{
-			// 풀에 없으면 새로 등록
-			Debug::Print(FString::Printf(TEXT("Pool '%s' not found. Creating new pool..."), *PoolName.ToString()), FColor::Yellow);
-			UPoolManager::Get<UPoolManager>(this)->RegisterPool(PoolName, ActorClass, 15);
-			SpawnedActor = UPoolManager::Get<UPoolManager>(this)->AcquireFromPool(PoolName);
-			
-			if (IsValid(SpawnedActor))
-			{
-				Debug::Print(FString::Printf(TEXT("Pool '%s' created successfully!"), *PoolName.ToString()), FColor::Green);
-			}
-		}
-		else
-		{
-			Debug::Print(FString::Printf(TEXT("Actor acquired from pool '%s'"), *PoolName.ToString()), FColor::Cyan);
-		}
+    AActor* Actor = nullptr;
+    if (bUsePooling)
+    {
+        UPoolManager* Pools = UPoolManager::Get(this);
+        Pools->RegisterPool(PoolName, ActorClass, 15);
+        Actor = Pools->AcquireFromPool(PoolName);
+        if (IsValid(Actor) && Actor->GetClass() != ActorClass.Get())
+        {
+            Pools->TryReleaseToPool(PoolName, Actor);
+            return nullptr;
+        }
+        if (IsValid(Actor))
+        {
+            Actor->SetActorLocation(Location);
+            Actor->SetActorRotation(Rotation);
+        }
+    }
+    else
+    {
+        Actor = World->SpawnActor<AActor>(ActorClass, Location, Rotation);
+    }
 
-		if (IsValid(SpawnedActor))
-		{
-			SpawnedActor->SetActorLocation(Location);
-			SpawnedActor->SetActorRotation(Rotation);
-			Debug::Print(FString::Printf(TEXT("Actor positioned at Location: (%.1f, %.1f, %.1f)"), 
-				Location.X, Location.Y, Location.Z), FColor::Green);
-		}
-	}
-	else
-	{
-		SpawnedActor = GetWorld()->SpawnActor<AActor>(ActorClass, Location, Rotation);
-		Debug::Print(TEXT("Actor spawned without pooling (Directly spawned)"), FColor::Orange);
-	}
-
-	if (IsValid(SpawnedActor))
-	{
-		ManagedObjects.Add(SpawnedActor);
-		Debug::Print(FString::Printf(TEXT("Total Managed Objects: %d"), ManagedObjects.Num()), FColor::Blue);
-	}
-	else
-	{
-		Debug::Print(TEXT("Failed to spawn actor!"), FColor::Red);
-	}
-
-    return SpawnedActor;
+    if (!IsValid(Actor)) { return nullptr; }
+    ManagedObjects.Add(Actor);
+    Actor->OnEndPlay.AddUniqueDynamic(this, &ThisClass::OnManagedActorEndPlay);
+    return Actor;
 }
 
 void UObjectManager::Despawn(FName PoolName, AActor* Actor, bool bUsePooling)
 {
-	if(!IsValid(Actor)) 
-	{
-		Debug::Print(TEXT("Attempting to despawn invalid actor!"), FColor::Red);
-		return;
-	}
+    if (!CanProcessRequests() || !IsValid(Actor) || Actor->GetWorld() != GetWorld()) { return; }
+    Actor->OnEndPlay.RemoveDynamic(this, &ThisClass::OnManagedActorEndPlay);
+    OnManagedActorEndPlay(Actor, EEndPlayReason::RemovedFromWorld);
 
-	Debug::Print(FString::Printf(TEXT("Despawning actor: %s from pool: %s"), *Actor->GetName(), *PoolName.ToString()), FColor::Yellow);
+    if (!bUsePooling || !UPoolManager::Get(this)->TryReleaseToPool(PoolName, Actor))
+    {
+        Actor->Destroy();
+    }
+}
 
-	if (bUsePooling)
-	{
-		UPoolManager* PoolManager = UPoolManager::Get<UPoolManager>(this);
-		if (IsValid(PoolManager))
-		{
-			PoolManager->ReleaseToPool(PoolName, Actor);
-			Debug::Print(FString::Printf(TEXT("Actor returned to pool '%s'"), *PoolName.ToString()), FColor::Green);
-		}
-		else
-		{
-			Debug::Print(TEXT("PoolManager is not valid! Destroying actor instead"), FColor::Red);
-			Actor->Destroy();
-		}
-	}
-	else
-	{
-		Actor->Destroy();
-		Debug::Print(TEXT("Actor destroyed directly"), FColor::Green);
-	}
+void UObjectManager::OnManagedActorEndPlay(AActor* Actor, EEndPlayReason::Type Reason)
+{
+    ManagedObjects.Remove(Actor);
+    Players.Remove(Actor);
+    Monsters.Remove(Actor);
+}
 
-	ManagedObjects.Remove(Actor);
-	Debug::Print(FString::Printf(TEXT("Total Managed Objects: %d"), ManagedObjects.Num()), FColor::Blue);
+int32 UObjectManager::GetPlayerCount() const
+{
+    return CanProcessRequests() ? CountValidActors(Players) : 0;
+}
+int32 UObjectManager::GetMonsterCount() const
+{
+    return CanProcessRequests() ? CountValidActors(Monsters) : 0;
+}
+int32 UObjectManager::GetManagedCount() const
+{
+    return CanProcessRequests() ? CountValidActors(ManagedObjects) : 0;
 }

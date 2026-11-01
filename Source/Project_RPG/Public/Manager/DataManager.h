@@ -18,6 +18,7 @@
 #include "DataManager.generated.h"
 
 class URPGItemDefinition;
+class UDataTable;
 
 /**
  *

@@ -1,73 +1,69 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameInstance/RPGGameInstanceSubsystem.h"
+#include "Engine/World.h"
+#include "Manager/RPGManagerContext.h"
+#include "Subsystems/WorldSubsystem.h"
+#include "UObject/StrongObjectPtr.h"
 #include "PoolManager.generated.h"
 
 class Pool
 {
 public:
-	Pool(TSubclassOf<AActor> InActorClass, int32 InitialSize = 10, UWorld* InWorld = nullptr)
-		: ActorClass(InActorClass), World(InWorld)
-	{
-		for (int32 i = 0; i < InitialSize; ++i)
-		{
-			AActor* NewActor = World->SpawnActor<AActor>(ActorClass);
-			NewActor->SetActorHiddenInGame(true);
-			NewActor->SetActorEnableCollision(false);
-			ActorPool.Add(NewActor);
-		}
-	}
-
-	AActor* Acquire()
-	{
-		for (AActor* Actor : ActorPool)
-		{
-			if (Actor->IsHidden())
-			{
-				Actor->SetActorHiddenInGame(false);
-				Actor->SetActorEnableCollision(true);
-				return Actor;
-			}
-		}
-		AActor* NewActor = World->SpawnActor<AActor>(ActorClass);
-		ActorPool.Add(NewActor);
-		return NewActor;
-	}
-
-	void Release(AActor* Actor)
-	{
-		if (!IsValid(Actor)) return;
-
-		Actor->SetActorHiddenInGame(true);
-		Actor->SetActorLocation(FVector::ZeroVector);
-		Actor->SetActorEnableCollision(false);
-	}
+    Pool(TSubclassOf<AActor> InActorClass, int32 InitialSize = 10, UWorld* InWorld = nullptr);
+    void WarmUp(int32 InitialSize);
+    AActor* Acquire();
+    UClass* GetActorClass() const { return ActorClass.Get(); }
+    bool Release(AActor* Actor);
+    void Reset();
 
 private:
-	TSubclassOf<AActor> ActorClass;
-	TArray<AActor*> ActorPool;
-	TObjectPtr<UWorld> World;
+    AActor* SpawnActor();
+    TStrongObjectPtr<UClass> ActorClass;
+    TArray<TWeakObjectPtr<AActor>> ActorPool;
+    TArray<TWeakObjectPtr<AActor>> AvailableActors;
+    TWeakObjectPtr<UWorld> World;
 };
 
-/**
- * 
- */
+/** Actor pools belong to the world that owns their actors. */
 UCLASS()
-class PROJECT_RPG_API UPoolManager : public URPGGameInstanceSubsystem
+class PROJECT_RPG_API UPoolManager : public UWorldSubsystem
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
+
 public:
-	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+    /** Game-thread access to this context's world. Missing owners use a stateless receiver. */
+    static UPoolManager* Get(const UObject* Context);
 
-	void RegisterPool(FName PoolName, TSubclassOf<AActor> ActorClass, int32 InitialSize = 10);
+    /** Compatibility for existing Get<UPoolManager>(Context) callers. */
+    template<typename T>
+    static T* Get(UObject* Context)
+    {
+        if constexpr (std::is_same_v<T, UPoolManager>)
+        {
+            return Get(static_cast<const UObject*>(Context));
+        }
+        else
+        {
+            return UWorld::GetSubsystem<T>(RPGManagerContext::ResolveWorld(Context));
+        }
+    }
 
-	AActor* AcquireFromPool(FName PoolName);
+    virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+    virtual void Deinitialize() override;
 
-	void ReleaseToPool(FName PoolName, AActor* Actor);
+    void RegisterPool(FName PoolName, TSubclassOf<AActor> ActorClass, int32 InitialSize = 10);
+    void UnregisterPool(FName PoolName);
+    AActor* AcquireFromPool(FName PoolName);
+    void ReleaseToPool(FName PoolName, AActor* Actor);
+    bool TryReleaseToPool(FName PoolName, AActor* Actor);
+
+protected:
+    virtual bool DoesSupportWorldType(EWorldType::Type WorldType) const override;
 
 private:
-	TMap<FName, TUniquePtr<Pool>> PoolMap;
+    TMap<FName, TSharedPtr<Pool>> PoolMap;
+    bool bDeinitializing = true;
+
+    bool CanProcessRequests() const;
 };

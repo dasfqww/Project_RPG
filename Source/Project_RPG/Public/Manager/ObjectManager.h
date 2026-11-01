@@ -1,34 +1,57 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameInstance/RPGGameInstanceSubsystem.h"
+#include "Engine/World.h"
+#include "Manager/RPGManagerContext.h"
+#include "Subsystems/WorldSubsystem.h"
 #include "ObjectManager.generated.h"
 
-/**
- * 
- */
+/** Tracks spawned actors in their owning world without extending actor lifetime. */
 UCLASS()
-class PROJECT_RPG_API UObjectManager : public URPGGameInstanceSubsystem
+class PROJECT_RPG_API UObjectManager : public UWorldSubsystem
 {
-	GENERATED_BODY()
-public:
-	// 오브젝트 스폰 (풀링 여부 선택 가능)
-	AActor* SpawnObject(FName PoolName, TSubclassOf<AActor> ActorClass, 
-		const FVector& Location, const FRotator& Rotation, bool bUsePooling = true);
+    GENERATED_BODY()
 
-	// 오브젝트 제거 
-	void Despawn(FName PoolName, AActor* Actor, bool bUsePooling = true);
+public:
+    /** Game-thread access to this context's world. Missing owners use a stateless receiver. */
+    static UObjectManager* Get(const UObject* Context);
+
+    /** Compatibility for existing Get<UObjectManager>(Context) callers. */
+    template<typename T>
+    static T* Get(UObject* Context)
+    {
+        if constexpr (std::is_same_v<T, UObjectManager>)
+        {
+            return Get(static_cast<const UObject*>(Context));
+        }
+        else
+        {
+            return UWorld::GetSubsystem<T>(RPGManagerContext::ResolveWorld(Context));
+        }
+    }
+
+    virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+    virtual void Deinitialize() override;
+
+    AActor* SpawnObject(FName PoolName, TSubclassOf<AActor> ActorClass,
+        const FVector& Location, const FRotator& Rotation, bool bUsePooling = true);
+    void Despawn(FName PoolName, AActor* Actor, bool bUsePooling = true);
+
+    int32 GetPlayerCount() const;
+    int32 GetMonsterCount() const;
+    int32 GetManagedCount() const;
+
+protected:
+    virtual bool DoesSupportWorldType(EWorldType::Type WorldType) const override;
 
 private:
-	TSet<AActor*> ManagedObjects;
-	TSet<AActor*> Players;
-	TSet<AActor*> Monsters;
+    UFUNCTION()
+    void OnManagedActorEndPlay(AActor* Actor, EEndPlayReason::Type Reason);
 
-public:
-	// 카운트 조회 
-	FORCEINLINE int32 GetPlayerCount() const { return Players.Num(); }
-	FORCEINLINE int32 GetMonsterCount() const { return Monsters.Num(); }
-	FORCEINLINE int32 GetManagedCount() const { return ManagedObjects.Num(); }
+    TSet<TWeakObjectPtr<AActor>> ManagedObjects;
+    TSet<TWeakObjectPtr<AActor>> Players;
+    TSet<TWeakObjectPtr<AActor>> Monsters;
+    bool bDeinitializing = true;
+
+    bool CanProcessRequests() const;
 };

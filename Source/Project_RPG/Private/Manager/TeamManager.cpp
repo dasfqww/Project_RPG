@@ -119,7 +119,7 @@ int32 UTeamManager::FindTeamFromObject(const UObject* TestObject) const
 	if (!TestObject) return 255;
 
 	// 1. 직접 인터페이스를 구현하고 있는지 확인
-	if (const IRPGTeamAgentInterface* TeamInterface = Cast<IRPGTeamAgentInterface>(TestObject))
+	if (const IGenericTeamAgentInterface* TeamInterface = Cast<IGenericTeamAgentInterface>(TestObject))
 	{
 		return RPGGenericTeamIdToInteger(TeamInterface->GetGenericTeamId());
 	}
@@ -127,12 +127,12 @@ int32 UTeamManager::FindTeamFromObject(const UObject* TestObject) const
 	// 2. 액터인 경우 소유주나 인스티게이터 확인
 	if (const AActor* TestActor = Cast<const AActor>(TestObject))
 	{
-		if (const IRPGTeamAgentInterface* InstigatorTeam = Cast<IRPGTeamAgentInterface>(TestActor->GetInstigator()))
+		if (const IGenericTeamAgentInterface* InstigatorTeam = Cast<IGenericTeamAgentInterface>(TestActor->GetInstigator()))
 		{
 			return RPGGenericTeamIdToInteger(InstigatorTeam->GetGenericTeamId());
 		}
 
-		if (const IRPGTeamAgentInterface* OwnerTeam = Cast<IRPGTeamAgentInterface>(TestActor->GetOwner()))
+		if (const IGenericTeamAgentInterface* OwnerTeam = Cast<IGenericTeamAgentInterface>(TestActor->GetOwner()))
 		{
 			return RPGGenericTeamIdToInteger(OwnerTeam->GetGenericTeamId());
 		}
@@ -140,12 +140,12 @@ int32 UTeamManager::FindTeamFromObject(const UObject* TestObject) const
 		// 3. Pawn인 경우 PlayerState 또는 Controller 확인
 		if (const APawn* Pawn = Cast<const APawn>(TestActor))
 		{
-			if (const IRPGTeamAgentInterface* ControllerTeam = Cast<IRPGTeamAgentInterface>(Pawn->GetController()))
+			if (const IGenericTeamAgentInterface* ControllerTeam = Cast<IGenericTeamAgentInterface>(Pawn->GetController()))
 			{
 				return RPGGenericTeamIdToInteger(ControllerTeam->GetGenericTeamId());
 			}
 
-			if (const IRPGTeamAgentInterface* PSTeam = Pawn->GetPlayerState<IRPGTeamAgentInterface>())
+			if (const IGenericTeamAgentInterface* PSTeam = Pawn->GetPlayerState<IGenericTeamAgentInterface>())
 			{
 				return RPGGenericTeamIdToInteger(PSTeam->GetGenericTeamId());
 			}
