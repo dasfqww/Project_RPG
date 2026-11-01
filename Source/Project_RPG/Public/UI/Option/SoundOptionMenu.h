@@ -11,6 +11,7 @@ class USlider;
 class UCheckBox;
 class URPGCheckBox;
 class UTextBlock;
+struct FRPGSoundOptionsControls;
 
 /**
  * 
@@ -23,10 +24,21 @@ public:
 	USoundOptionMenu();
 
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 
 	void InitWidgetMaps();
 
+	UFUNCTION(BlueprintCallable, Category = "Audio")
 	void InitializeFromSavedSettings();
+
+	UFUNCTION(BlueprintCallable, Category = "Audio")
+	void ResetToDefaults();
+
+	UPROPERTY(BlueprintReadOnly, Category = "Audio")
+	FText LastSaveMessage;
+
+	UFUNCTION(BlueprintPure, Category = "Audio")
+	bool DidLastSaveFail() const { return bLastSaveFailed; }
 
 	UFUNCTION()
 	void OnMasterVolumeChanged(float Value);
@@ -36,6 +48,12 @@ public:
 
 	UFUNCTION()
 	void OnVolumeChanged(float Value);
+
+	UFUNCTION()
+	void OnBGMVolumeChanged(float Value);
+
+	UFUNCTION()
+	void OnEffectVolumeChanged(float Value);
 
 	UFUNCTION(BlueprintCallable)
 	void SetVolumeRatioText(UTextBlock* TextBlock, float Value);
@@ -50,6 +68,12 @@ public:
 	void ApplySettings();
 
 protected:
+	virtual TSharedRef<SWidget> RebuildWidget() override;
+
+	/** Disable when a Blueprint provides its own sound action controls. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio|Presentation")
+	bool bShowNativeSoundActions = true;
+
 	// 슬라이더와 그에 해당하는 음향 타입을 매핑
 	TMap<ESoundType, USlider*> SoundTypeToSliderMap;
 	TMap<ESoundType, URPGCheckBox*> SoundTypeToCheckBoxMap;
@@ -65,6 +89,19 @@ protected:
 	TObjectPtr<USlider> EffectVolumeSlider;
 
 private:
+	FRPGSoundOptionsControls GetRuntimeControls() const;
+	void UnbindControls();
+	void ClearSaveFeedback();
+	void ApplyChannelVolume(ESoundType Type, float Value);
+	bool CanInteractWithOptions() const;
+	FText GetVolumeSummary() const;
+	FReply HandleSaveClicked();
+	FReply HandleDefaultsClicked();
+	bool bSynchronizingOptions = false;
+	bool bApplyingOptions = false;
+	bool bMenuConstructed = false;
+	bool bLastSaveFailed = false;
+
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UCheckBox> MasterMuteCheckBox;
 
