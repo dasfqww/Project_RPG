@@ -9,8 +9,24 @@
 #include "Attribute/RPGAttributeSet.h"
 #include "Component/UI/PlayerUIComponent.h"
 #include "Interface/PawnUIInterface.h"
+#include "GameFramework/Character.h"
+#include "Components/SkeletalMeshComponent.h"
 
 #include "RPGDebugHelper.h"
+
+UPlayerCombatComponent::UPlayerCombatComponent()
+{
+    PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.bStartWithTickEnabled = false;
+    PrimaryComponentTick.TickGroup = TG_PostPhysics;
+}
+
+void UPlayerCombatComponent::TickComponent(float DeltaTime, ELevelTick TickType,
+    FActorComponentTickFunction* ThisTickFunction)
+{
+    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+    SweepCurrentWeapon();
+}
 
 ARPGPlayerWeapon* UPlayerCombatComponent::GetPlayerHasWeaponByTag(FGameplayTag InWeaponTag) const
 {
@@ -24,7 +40,11 @@ ARPGPlayerWeapon* UPlayerCombatComponent::GetPlayerCurrentEquippedWeapon() const
 
 float UPlayerCombatComponent::GetPlayerCurrentEquipWeaponDamageAtLevel(float InLevel) const
 {
-    return GetPlayerCurrentEquippedWeapon()->PlayerWeaponData.WeaponBaseDamage.GetValueAtLevel(InLevel);
+    const ARPGPlayerWeapon* Weapon = GetPlayerCurrentEquippedWeapon();
+    if (!IsValid(Weapon) || !FMath::IsFinite(InLevel)) return 0.f;
+    // Preserve the authored base-damage curve; do not invent item-stat/balance mappings.
+    const float Damage = Weapon->PlayerWeaponData.WeaponBaseDamage.GetValueAtLevel(InLevel);
+    return FMath::IsFinite(Damage) ? FMath::Max(0.f, Damage) : 0.f;
 }
 
 void UPlayerCombatComponent::OnHitTargetActor(AActor* HitActor)
@@ -94,28 +114,28 @@ void UPlayerCombatComponent::RecoverMana()
             float CurrentMana = AttributeSet->GetCurrentMana();
             float MaxMana = AttributeSet->GetMaxMana();
 
-            float RecoveryAmount = MaxMana * ManaRecoveryRatio;  // ÃÖ´ë ¸¶³ªÀÇ 15% È¸º¹
+            float RecoveryAmount = MaxMana * ManaRecoveryRatio;  // ìµœëŒ€ ë§ˆë‚˜ì˜ 15% íšŒë³µ
 
-            CurrentMana += RecoveryAmount;  // È¸º¹·®(¿¹½Ã: 10¾¿ È¸º¹)
+            CurrentMana += RecoveryAmount;  // íšŒë³µëŸ‰(ì˜ˆì‹œ: 10ì”© íšŒë³µ)
             if (CurrentMana >= MaxMana)
             {
                 CurrentMana = MaxMana;
                 StopManaRecovery();
             }
 
-            // ¸¶³ª °ª ¾÷µ¥ÀÌÆ®
+            // ë§ˆë‚˜ ê°’ ì—…ë°ì´íŠ¸
             ASC->ApplyModToAttribute(AttributeSet->GetCurrentManaAttribute(),
                 EGameplayModOp::Override, CurrentMana);
 
-            // Pawn UI ÀÎÅÍÆäÀÌ½º¸¦ Ä³½ºÆÃÇÏ¿© »ç¿ë
+            // Pawn UI ì¸í„°í˜ì´ìŠ¤ë¥¼ ìºìŠ¤íŒ…í•˜ì—¬ ì‚¬ìš©
             if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(GetOwner()))
             {
-                // UI ÄÄÆ÷³ÍÆ®¿¡ Á¢±Ù
+                // UI ì»´í¬ë„ŒíŠ¸ì— ì ‘ê·¼
                 if (UPlayerUIComponent* PlayerUIComponent = PawnUIInterface->GetPlayerUIComponent())
                 {
-                    // ÇÁ·Î±×·¹½º ¹Ù UI¸¦ º¸ÀÌµµ·Ï µ¨¸®°ÔÀÌÆ® È£Ãâ
+                    // í”„ë¡œê·¸ë ˆìŠ¤ ë°” UIë¥¼ ë³´ì´ë„ë¡ ë¸ë¦¬ê²Œì´íŠ¸ í˜¸ì¶œ
                     PlayerUIComponent->OnCurrentManaChanged.Broadcast
-                    (AttributeSet->GetCurrentMana() / AttributeSet->GetMaxMana());  // ÇÁ·Î±×·¹½º ¹Ù Ç¥½Ã
+                    (AttributeSet->GetCurrentMana() / AttributeSet->GetMaxMana());  // í”„ë¡œê·¸ë ˆìŠ¤ ë°” í‘œì‹œ
 
                     FString ManaText = FString::Printf(TEXT("%.0f/%.0f"),
                         AttributeSet->GetCurrentMana(), AttributeSet->GetMaxMana());
@@ -144,10 +164,14 @@ bool UPlayerCombatComponent::IsManaFull() const
 void UPlayerCombatComponent::BeginPlay()
 {
     Super::BeginPlay();
+    if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
+    {
+        if (Character->GetMesh()) AddTickPrerequisiteComponent(Character->GetMesh());
+    }
 
     if (UAbilitySystemComponent* ASC = GetOwner()->FindComponentByClass<UAbilitySystemComponent>())
     {
-        // ¸¶³ª º¯°æ °¨Áö µ¨¸®°ÔÀÌÆ® µî·Ï
+        // ë§ˆë‚˜ ë³€ê²½ ê°ì§€ ë¸ë¦¬ê²Œì´íŠ¸ ë“±ë¡
         ASC->GetGameplayAttributeValueChangeDelegate(URPGAttributeSet::GetCurrentManaAttribute())
             .AddLambda([this](const FOnAttributeChangeData& Data)
                 {

@@ -17,6 +17,8 @@ class PROJECT_RPG_API UPlayerCombatComponent : public UPawnCombatComponent
 {
 	GENERATED_BODY()
 public:	
+	UPlayerCombatComponent();
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	UFUNCTION(BlueprintCallable, Category = "RPG|Combat")
 		ARPGPlayerWeapon* GetPlayerHasWeaponByTag(FGameplayTag InWeaponTag) const;
 
@@ -27,6 +29,7 @@ public:
 		float GetPlayerCurrentEquipWeaponDamageAtLevel(float InLevel) const;
 
 protected:
+	virtual bool UsesContinuousWeaponTrace() const override { return true; }
 	virtual void OnHitTargetActor(AActor* HitActor);
 	virtual void OnWeaponPulledFromTargetActor(AActor* InteractedActor);
 

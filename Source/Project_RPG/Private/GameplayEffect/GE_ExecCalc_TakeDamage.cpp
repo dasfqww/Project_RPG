@@ -2,12 +2,15 @@
 
 
 #include "GameplayEffect/GE_ExecCalc_TakeDamage.h"
+#include "Ability/Skill/RPGGreatSwordResolveAbility.h"
 #include "Attribute/RPGAttributeSet.h"
+#include "Component/Combat/RPGCombatControlComponent.h"
 #include "RPGGameplayTags.h"
 #include "Character/RPGBaseCharacter.h"
 #include "Character/RPGPlayer.h"
 
 #include "RPGDebugHelper.h"
+#include "Security/RPGDamageExecutionGuard.h"
 
 struct FRPGDamageCapture
 {
@@ -52,6 +55,23 @@ void UGE_ExecCalc_TakeDamage::Execute_Implementation(const FGameplayEffectCustom
 		FGameplayEffectCustomExecutionOutput& OutExecutionOutput) const
 {
 	const FGameplayEffectSpec& EffectSpec = ExecutionParams.GetOwningSpec();
+	UAbilitySystemComponent* SourceASC = ExecutionParams.GetSourceAbilitySystemComponent();
+	UAbilitySystemComponent* TargetASC = ExecutionParams.GetTargetAbilitySystemComponent();
+	AActor* SourceAvatarActor = SourceASC ? SourceASC->GetAvatarActor() : nullptr;
+	AActor* TargetAvatarActor = TargetASC ? TargetASC->GetAvatarActor() : nullptr;
+	if (!IsValid(SourceAvatarActor) || !IsValid(TargetAvatarActor) ||
+		!SourceAvatarActor->HasAuthority() || !TargetAvatarActor->HasAuthority() ||
+		SourceAvatarActor->GetWorld() != TargetAvatarActor->GetWorld()) return;
+	// Read live authoritative state, not the spec's captured tags. A queued hit must
+	// not damage a corpse, grant identity, or revive a dead attacker's reward path.
+	// HP can reach zero before the death tag is broadcast by AttributeSet/BP.
+	const URPGAttributeSet* SourceAttributes = SourceASC->GetSet<URPGAttributeSet>();
+	const URPGAttributeSet* TargetAttributes = TargetASC->GetSet<URPGAttributeSet>();
+	if (!SourceAttributes || !TargetAttributes ||
+		!FMath::IsFinite(SourceAttributes->GetCurrentHealth()) || SourceAttributes->GetCurrentHealth() <= 0.f ||
+		!FMath::IsFinite(TargetAttributes->GetCurrentHealth()) || TargetAttributes->GetCurrentHealth() <= 0.f ||
+		SourceASC->HasMatchingGameplayTag(RPGGameplayTags::Shared_Status_Death) ||
+		TargetASC->HasMatchingGameplayTag(RPGGameplayTags::Shared_Status_Death)) return;
 
 	FAggregatorEvaluateParameters EvaluateParameters;
 	EvaluateParameters.SourceTags = EffectSpec.CapturedSourceTags.GetAggregatedTags();
@@ -108,27 +128,27 @@ void UGE_ExecCalc_TakeDamage::Execute_Implementation(const FGameplayEffectCustom
 		TargetDefense
 	);
 
-	bool bIsCritical = FMath::RandRange(0.0f, 1.0f) < SourceCritChance;
-
+	// Captured attributes can be malformed even when the incoming SetByCaller was validated.
+	// Never divide by zero or convert a non-finite/out-of-range value to the integer damage meta attribute.
+	if (!FMath::IsFinite(BaseDamage) || BaseDamage < 0.f ||
+		!FMath::IsFinite(SourceAttack) || SourceAttack < 0.f ||
+		!FMath::IsFinite(TargetDefense) || TargetDefense <= 0.f ||
+		!FMath::IsFinite(SourceCritChance) || !FMath::IsFinite(SourceCritDamage) || SourceCritDamage < 0.f)
+	{
+		return;
+	}
+	const bool bIsCritical = SourceCritChance >= 1.0f ||
+		FMath::RandRange(0.0f, 1.0f) < FMath::Clamp(SourceCritChance, 0.f, 1.f);
+	const auto* TargetControl = TargetAvatarActor->FindComponentByClass<URPGCombatControlComponent>();
+	const double DamageTakenMultiplier = TargetControl ? TargetControl->GetDamageTakenMultiplier() : 1.0;
+	const double CalculatedDamage = static_cast<double>(BaseDamage) * SourceAttack *
+		(bIsCritical ? static_cast<double>(SourceCritDamage) : 1.0) / TargetDefense * DamageTakenMultiplier;
 	int32 FinalDamageDone = 0;
-
-	UAbilitySystemComponent* SourceASC = ExecutionParams.GetSourceAbilitySystemComponent();
-	UAbilitySystemComponent* TargetASC = ExecutionParams.GetTargetAbilitySystemComponent();
-
-	AActor* TargetAvatarActor = TargetASC ? TargetASC->GetAvatarActor() : nullptr;
-	AActor* SourceAvatarActor = SourceASC ? SourceASC->GetAvatarActor() : nullptr;
-
-	if (bIsCritical)
-	{
-		FinalDamageDone = (BaseDamage * SourceAttack * SourceCritDamage) / TargetDefense;
-	}
-	else
-	{
-		FinalDamageDone = BaseDamage * SourceAttack / TargetDefense;
-	}
+	if (!FRPGDamageExecutionGuard::Approve(EffectSpec, SourceASC, TargetASC, CalculatedDamage, FinalDamageDone)) return;
 
 	// 아이덴티티 게이지 획득 처리 (공격자가 플레이어인 경우)
-	if (BaseIdentityGain > 0.f && SourceASC && SourceAvatarActor->IsA<ARPGPlayer>())
+	if (BaseIdentityGain > 0.f && SourceASC && SourceAvatarActor && SourceAvatarActor->IsA<ARPGPlayer>()
+		&& !URPGGreatSwordResolveAbility::IsConfiguredFor(SourceAvatarActor))
 	{
 		float FinalIdentityGain = BaseIdentityGain * SourceIdentityMultiplier;
 		
