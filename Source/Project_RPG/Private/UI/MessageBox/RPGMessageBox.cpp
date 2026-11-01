@@ -14,7 +14,7 @@ void URPGMessageBox::NativeConstruct()
 
 	MessageText->SetText(Message);
 
-	USoundManager::Get()->Play(PopUpSound);
+	USoundManager::Get(this)->Play(PopUpSound);
 }
 
 void URPGMessageBox::OnConfirm()

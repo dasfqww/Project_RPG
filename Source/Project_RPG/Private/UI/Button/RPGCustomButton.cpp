@@ -16,8 +16,8 @@ void URPGCustomButton::SynchronizeProperties()
 {
 	Super::SynchronizeProperties();
 
-	OnPressed.AddDynamic(this, &ThisClass::OnPressedCallback);
-	OnHovered.AddDynamic(this, &ThisClass::OnHoveredCallback);
+	OnPressed.AddUniqueDynamic(this, &ThisClass::OnPressedCallback);
+	OnHovered.AddUniqueDynamic(this, &ThisClass::OnHoveredCallback);
 }
 
 void URPGCustomButton::PostLoad()
@@ -29,10 +29,10 @@ void URPGCustomButton::PostLoad()
 
 void URPGCustomButton::OnHoveredCallback()
 {
-	USoundManager::Get()->Play(HoverSound);
+	USoundManager::Get(this)->Play(HoverSound);
 }
 
 void URPGCustomButton::OnPressedCallback()
 {
-	USoundManager::Get()->Play(PressedSound);
+	USoundManager::Get(this)->Play(PressedSound);
 }

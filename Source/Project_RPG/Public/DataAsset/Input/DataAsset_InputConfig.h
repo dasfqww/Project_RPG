@@ -49,6 +49,11 @@ public:
 
 	UInputAction* FindNativeInputActionByTag(const FGameplayTag& InInputTag) const;
 	UInputAction* FindAbilityInputActionByTag(const FGameplayTag& InInputTag) const;
+	/** Resolve the native entry first, then an ability entry, matching the controller's existing lookup. */
+	UInputAction* FindInputActionByTag(const FGameplayTag& InInputTag) const;
+
+	/** Unique aliases that resolve to this action through native-first tag lookup, including hidden entries. */
+	void GetInputTagsForAction(const UInputAction* Action, TArray<FGameplayTag>& OutTags) const;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (TitleProperty = "InputTag"))
 		TArray<FWarriorInputActionConfig> AbilityInputActions;

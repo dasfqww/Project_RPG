@@ -62,3 +62,25 @@ UInputAction* UDataAsset_InputConfig::FindAbilityInputActionByTag(const FGamepla
 
 	return nullptr;
 }
+
+UInputAction* UDataAsset_InputConfig::FindInputActionByTag(const FGameplayTag& InInputTag) const
+{
+	UInputAction* Action = FindNativeInputActionByTag(InInputTag);
+	return Action ? Action : FindAbilityInputActionByTag(InInputTag);
+}
+
+void UDataAsset_InputConfig::GetInputTagsForAction(const UInputAction* Action, TArray<FGameplayTag>& OutTags) const
+{
+	OutTags.Reset();
+	if (!Action) { return; }
+	for (const TArray<FWarriorInputActionConfig>* Entries : { &NativeInputActions, &AbilityInputActions })
+	{
+		for (const FWarriorInputActionConfig& Entry : *Entries)
+		{
+			if (!Entry.IsValid() || Entry.InputAction.Get() != Action) { continue; }
+			const UInputAction* ResolvedAction = FindInputActionByTag(Entry.InputTag);
+			// A repeated tag may be shadowed by an earlier native entry for another action.
+			if (ResolvedAction == Action) { OutTags.AddUnique(Entry.InputTag); }
+		}
+	}
+}

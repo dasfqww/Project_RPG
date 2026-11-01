@@ -7,7 +7,7 @@ void URPGCheckBox::SynchronizeProperties()
 {
 	Super::SynchronizeProperties();
 
-	OnCheckStateChanged.AddDynamic(this, &URPGCheckBox::HandleCheckChanged);
+	OnCheckStateChanged.AddUniqueDynamic(this, &URPGCheckBox::HandleCheckChanged);
 }
 
 void URPGCheckBox::HandleCheckChanged(bool bIsChecked)
