@@ -83,3 +83,18 @@ Backend/Tools/logs/
 # Locally generated IDE workspaces
 *.slnx
 *.DotSettings.user
+
+# Python bytecode caches
+__pycache__/
+*.py[co]
+
+# Compiler debug symbols, crash dumps, and local editor backup files
+*.pdb
+*.ilk
+*.exp
+*.dmp
+*.bak
+*.tmp
+*~
+Thumbs.db
+.DS_Store

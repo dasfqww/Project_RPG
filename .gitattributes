@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Imported Unreal asset packs are stored in Git LFS; existing history is preserved.
+Content/Dark_Knight/** filter=lfs diff=lfs merge=lfs -text
+Content/RuinedCrypt/** filter=lfs diff=lfs merge=lfs -text
+Content/StoneGolem/** filter=lfs diff=lfs merge=lfs -text
