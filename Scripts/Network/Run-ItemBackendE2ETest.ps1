@@ -14,10 +14,22 @@ param(
     [string] $Map = '/Game/Maps/testmap',
 
     [string] $GameMode =
-        '/Game/Blueprints/GameMode/BP_GameModeBase.BP_GameModeBase_C'
+        '/Game/Blueprints/GameMode/BP_GameModeBase.BP_GameModeBase_C',
+
+    [switch] $TestTelemetryRestartRecovery,
+
+    [switch] $TestTelemetryBackendRecovery,
+
+    [switch] $TestTelemetryHttpRecovery
 )
 
 $ErrorActionPreference = 'Stop'
+
+if (@($TestTelemetryRestartRecovery, $TestTelemetryBackendRecovery,
+        $TestTelemetryHttpRecovery | Where-Object { [bool] $_ }).Count -gt 1) {
+    throw 'Run the three telemetry recovery scenarios separately.'
+}
+$testUsesPostgres = $TestTelemetryBackendRecovery -or $TestTelemetryHttpRecovery
 
 function Repair-DuplicatePathEnvironment {
     $processEnvironment =
@@ -66,6 +78,7 @@ function Invoke-JsonRequest {
         Uri = $Uri
         Headers = $Headers
         UseBasicParsing = $true
+        TimeoutSec = 20
     }
     if ($null -ne $Body) {
         $parameters.ContentType = 'application/json'
@@ -282,6 +295,19 @@ if ($normalizedBackendUrl -notin @(
         'The current UE runtime config uses localhost:3000. ' +
         'Use -BackendUrl http://127.0.0.1:3000.')
 }
+$backendHostUrl = $normalizedBackendUrl
+$proxyScript = Join-Path $PSScriptRoot 'Fixtures\TelemetryHttpFaultProxy.mjs'
+if ($TestTelemetryHttpRecovery) {
+    Get-Command node -ErrorAction Stop | Out-Null
+    if (-not (Test-Path -LiteralPath $proxyScript -PathType Leaf)) {
+        throw 'The local telemetry HTTP fault proxy fixture was not found.'
+    }
+    $backendHostUrl = 'http://127.0.0.1:3002'
+    if (@(Get-NetTCPConnection -State Listen -LocalPort 3002 `
+            -ErrorAction SilentlyContinue).Count -gt 0) {
+        throw 'HTTP recovery requires an unused localhost port 3002.'
+    }
+}
 
 $runStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $runHex = [Guid]::NewGuid().ToString('N').Substring(0, 12)
@@ -292,26 +318,98 @@ New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
 
 $serverLogName = "ItemE2E-$runStamp-Server.log"
 $clientLogName = "ItemE2E-$runStamp-Client.log"
+$recoveryServerLogName =
+    "ItemE2E-$runStamp-RecoveryServer.log"
 $serverRequestedLog = Join-Path $logRoot $serverLogName
 $clientRequestedLog = Join-Path $logRoot $clientLogName
+$recoveryServerRequestedLog = Join-Path `
+    $logRoot `
+    $recoveryServerLogName
 $runtimeLogRoot = Join-Path `
     $cookedRoot `
     "Project_RPG\Saved\Logs\ItemBackendE2E\$runStamp"
 $serverRuntimeLog = Join-Path $runtimeLogRoot $serverLogName
 $clientRuntimeLog = Join-Path $runtimeLogRoot $clientLogName
+$recoveryServerRuntimeLog = Join-Path `
+    $runtimeLogRoot `
+    $recoveryServerLogName
 $backendOutputLog = Join-Path $logRoot 'Backend.stdout.log'
 $backendErrorLog = Join-Path $logRoot 'Backend.stderr.log'
+$proxyOutputLog = Join-Path $logRoot 'HttpProxy.stdout.log'
+$proxyErrorLog = Join-Path $logRoot 'HttpProxy.stderr.log'
+$restrictedReleasePath = Join-Path $logRoot 'Restriction.release'
 
 $backendProcess = $null
 $serverProcess = $null
 $clientProcess = $null
+$proxyProcess = $null
+$proxyControlUrl = $null
+$proxyControlHeaders = $null
 $serverHeaders = $null
 $sessionId = $null
 $serverId = "item-e2e-$runHex"
 $settled = $false
+$postgresContainerName = "project-rpg-telemetry-e2e-$runHex"
+$ownsPostgresContainer = $false
+$postgresPaused = $false
+$testPostgresConnectionString = $null
+$outageInjected = $false
+$outageBatch = $null
 
 try {
     $backendWasRunning = Test-BackendHealth $normalizedBackendUrl
+    if ($testUsesPostgres) {
+        if ($backendWasRunning -or
+            @(Get-NetTCPConnection -State Listen -LocalPort 3000 `
+                -ErrorAction SilentlyContinue).Count -gt 0) {
+            throw (
+                'Backend recovery requires an unused port 3000 so the ' +
+                'test can own its backend and isolated PostgreSQL instance.')
+        }
+        $postgresPassword = [Guid]::NewGuid().ToString('N')
+        $containerId = & docker run --detach --rm `
+            --name $postgresContainerName `
+            --label 'project_rpg.test=telemetry-recovery' `
+            --tmpfs '/var/lib/postgresql/data:rw' `
+            --env 'POSTGRES_DB=project_rpg' `
+            --env 'POSTGRES_USER=project_rpg' `
+            --env "POSTGRES_PASSWORD=$postgresPassword" `
+            --publish '127.0.0.1::5432' `
+            --health-cmd 'pg_isready -U project_rpg -d project_rpg' `
+            --health-interval 1s --health-timeout 3s --health-retries 30 `
+            'postgres:17-alpine'
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Could not start the isolated PostgreSQL test container.'
+        }
+        $ownsPostgresContainer = $true
+        $postgresReady = $false
+        $postgresDeadline = (Get-Date).AddSeconds(45)
+        while ((Get-Date) -lt $postgresDeadline) {
+            $healthStatus = & docker inspect --format `
+                '{{.State.Health.Status}}' $postgresContainerName
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Could not inspect the isolated PostgreSQL container.'
+            }
+            if ($healthStatus -eq 'healthy') {
+                $postgresReady = $true
+                break
+            }
+            Start-Sleep -Milliseconds 200
+        }
+        if (-not $postgresReady) {
+            throw 'The isolated PostgreSQL container did not become healthy.'
+        }
+        $portBinding = & docker port $postgresContainerName '5432/tcp'
+        if ($LASTEXITCODE -ne 0 -or
+            $portBinding -notmatch '^127\.0\.0\.1:(\d+)$') {
+            throw 'Could not resolve the isolated PostgreSQL localhost port.'
+        }
+        $testPostgresConnectionString =
+            "Host=127.0.0.1;Port=$($Matches[1]);Database=project_rpg;" +
+            "Username=project_rpg;Password=$postgresPassword;" +
+            'Timeout=2;Command Timeout=2'
+        Write-Host 'Started an isolated, temporary PostgreSQL test container.'
+    }
     if ($backendWasRunning) {
         if ([string]::IsNullOrWhiteSpace($AdminToken)) {
             throw (
@@ -329,7 +427,10 @@ try {
 
         $environmentNames = @(
             'ASPNETCORE_ENVIRONMENT',
-            'PROJECT_RPG_BACKEND_ADMIN_TOKEN')
+            'PROJECT_RPG_BACKEND_ADMIN_TOKEN',
+            'POSTGRES_CONNECTION_STRING',
+            'Storage__Provider',
+            'Kestrel__Endpoints__Http__Url')
         $previousEnvironment = @{}
         foreach ($name in $environmentNames) {
             $previousEnvironment[$name] =
@@ -344,15 +445,36 @@ try {
                 'PROJECT_RPG_BACKEND_ADMIN_TOKEN',
                 $AdminToken,
                 'Process')
+            [Environment]::SetEnvironmentVariable(
+                'POSTGRES_CONNECTION_STRING',
+                $testPostgresConnectionString,
+                'Process')
+            $testStorageProvider = 'Memory'
+            if ($testUsesPostgres) {
+                $testStorageProvider = 'Postgres'
+            }
+            [Environment]::SetEnvironmentVariable(
+                'Storage__Provider', $testStorageProvider, 'Process')
+            [Environment]::SetEnvironmentVariable(
+                'Kestrel__Endpoints__Http__Url',
+                $backendHostUrl,
+                'Process')
+            # Start the DLL directly so the process we own is the HTTP host,
+            # rather than a dotnet-run parent with a surviving child process.
+            $backendBuildRoot = Join-Path $logRoot 'BackendBuild'
+            & dotnet build $backendProject --no-restore `
+                --output $backendBuildRoot --verbosity quiet
+            if ($LASTEXITCODE -ne 0) {
+                throw 'The local backend build failed.'
+            }
+            $backendDll = Join-Path $backendBuildRoot 'ProjectRpg.Backend.dll'
             $backendProcess = Start-Process `
                 -FilePath 'dotnet' `
-                -ArgumentList @(
-                    'run',
-                    '--no-restore',
-                    '--no-launch-profile',
-                    '--project',
-                    $backendProject) `
-                -WorkingDirectory (Split-Path $backendProject) `
+                -ArgumentList @("`"$backendDll`"",
+                    '--DungeonContent:Entries:1:DungeonId=Dungeon.ItemE2E',
+                    "--DungeonContent:Entries:1:MapPackage=$Map",
+                    '--DungeonContent:Entries:1:Difficulties:0=Normal') `
+                -WorkingDirectory $backendBuildRoot `
                 -RedirectStandardOutput $backendOutputLog `
                 -RedirectStandardError $backendErrorLog `
                 -WindowStyle Hidden `
@@ -376,18 +498,80 @@ try {
                     [Environment]::NewLine +
                     (Get-LogTail $backendErrorLog))
             }
-            if (Test-BackendHealth $normalizedBackendUrl) {
+            if (Test-BackendHealth $backendHostUrl) {
                 break
             }
             Start-Sleep -Milliseconds 200
         }
-        if (-not (Test-BackendHealth $normalizedBackendUrl)) {
+        if (-not (Test-BackendHealth $backendHostUrl)) {
             throw (
                 'The local backend did not become healthy.' +
                 [Environment]::NewLine +
                 (Get-LogTail $backendOutputLog))
         }
-        Write-Host 'Started a Development/Memory backend.'
+        Write-Host "Started a Development/$testStorageProvider backend."
+    }
+
+    if ($testUsesPostgres) {
+        $readiness = Invoke-JsonRequest -Method Get `
+            -Uri "$backendHostUrl/health/ready" -Body $null -ExpectedStatus 200
+        if ($readiness.storageProvider -ne 'Postgres' -or
+            $readiness.status -ne 'ready') {
+            throw 'The recovery fixture must use ready PostgreSQL storage.'
+        }
+    }
+    if ($TestTelemetryHttpRecovery) {
+        $proxyControlToken = [Guid]::NewGuid().ToString('N')
+        $proxyControlHeaders = @{ Authorization = "Bearer $proxyControlToken" }
+        $proxyEnvironment = @{
+            PROJECT_RPG_E2E_PROXY_CONTROL_TOKEN = $proxyControlToken
+            PROJECT_RPG_E2E_PROXY_LISTEN_PORT = '3000'
+            PROJECT_RPG_E2E_PROXY_UPSTREAM_PORT = '3002'
+        }
+        $previousProxyEnvironment = @{}
+        try {
+            foreach ($name in $proxyEnvironment.Keys) {
+                $previousProxyEnvironment[$name] =
+                    [Environment]::GetEnvironmentVariable($name, 'Process')
+                [Environment]::SetEnvironmentVariable(
+                    $name, $proxyEnvironment[$name], 'Process')
+            }
+            $proxyProcess = Start-Process -FilePath 'node' `
+                -ArgumentList @("`"$proxyScript`"") `
+                -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru `
+                -RedirectStandardOutput $proxyOutputLog `
+                -RedirectStandardError $proxyErrorLog
+        }
+        finally {
+            foreach ($name in $previousProxyEnvironment.Keys) {
+                [Environment]::SetEnvironmentVariable(
+                    $name, $previousProxyEnvironment[$name], 'Process')
+            }
+        }
+        $proxyDeadline = (Get-Date).AddSeconds(30)
+        while ((Get-Date) -lt $proxyDeadline) {
+            $proxyProcess.Refresh()
+            if ($proxyProcess.HasExited) {
+                throw ('The HTTP fault proxy exited during startup.' +
+                    [Environment]::NewLine + (Get-LogTail $proxyErrorLog))
+            }
+            if (Test-Path -LiteralPath $proxyOutputLog) {
+                $readyLine = Get-Content -LiteralPath $proxyOutputLog |
+                    Where-Object { $_ -match '^E2E_PROXY_READY ControlPort=\d+ ProxyPort=3000$' } |
+                    Select-Object -Last 1
+                if ($null -ne $readyLine -and
+                    $readyLine -match 'ControlPort=(\d+)') {
+                    $proxyControlUrl = "http://127.0.0.1:$($Matches[1])"
+                    break
+                }
+            }
+            Start-Sleep -Milliseconds 100
+        }
+        if ($null -eq $proxyControlUrl -or
+            -not (Test-BackendHealth $normalizedBackendUrl)) {
+            throw 'The local HTTP fault proxy did not become ready.'
+        }
+        Write-Host 'Started the local HTTP fault proxy on port 3000.'
     }
 
     $runNumber = [Convert]::ToUInt32($runHex.Substring(0, 8), 16)
@@ -426,6 +610,8 @@ try {
         } `
         -ExpectedStatus 201
     $sessionId = [Guid] $session.dungeonSessionId
+    . (Join-Path $projectRoot 'Backend/Tools/Request-DungeonDeparture.ps1')
+    $null = Request-RPGDungeonDeparture $normalizedBackendUrl $sessionId $characterId $playerHeaders
     $session = Invoke-JsonRequest `
         -Method Post `
         -Uri (
@@ -486,7 +672,9 @@ try {
             '-NoLiveCoding',
             '-UseIrisReplication=1',
             '-RPGItemE2EServer',
-            '-RPGItemE2EAllowUnverifiedIdentity')
+            '-RPGItemE2EAllowUnverifiedIdentity',
+            '-RPGSecurityTelemetryDevListenServer',
+            '-RPGItemE2ERestricted')
         $serverProcess = Start-Process `
             -FilePath $gamePath `
             -ArgumentList $serverArguments `
@@ -503,7 +691,7 @@ try {
         }
     }
     Write-Host (
-        "Started the UE dedicated-server runtime on " +
+        "Started the UE Development listen-server fixture on " +
         "127.0.0.1:$Port.")
 
     $serverDeadline = (Get-Date).AddSeconds(
@@ -647,8 +835,13 @@ try {
         '-multiprocess',
         '-nosteam',
         '-NoLiveCoding',
+        '-RPGItemE2ERestricted',
         "-RPGItemE2EConsume=$($itemId.ToString('D'))",
         "-RPGItemE2EEquip=$($equipmentItemId.ToString('D'))")
+    if ($testUsesPostgres) {
+        $clientArguments +=
+            "-RPGItemE2ERestrictedReleaseFile=`"$restrictedReleasePath`""
+    }
     $clientProcess = Start-Process `
         -FilePath $gamePath `
         -ArgumentList $clientArguments `
@@ -667,6 +860,28 @@ try {
                 'The UE server exited during the item command.' +
                 [Environment]::NewLine +
                 (Get-LogTail $serverRuntimeLog))
+        }
+        if ($testUsesPostgres -and -not $outageInjected -and
+            (Test-LogMarker $clientRuntimeLog 'RPG_ITEM_E2E RESTRICTION_READY')) {
+            if ($TestTelemetryBackendRecovery) {
+                & docker pause $postgresContainerName | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    throw 'Could not pause the isolated PostgreSQL test container.'
+                }
+                $postgresPaused = $true
+                Write-Host 'Paused the test database after normal item RPCs.'
+            }
+            else {
+                Invoke-JsonRequest -Method Post -Uri "$proxyControlUrl/mode" `
+                    -Headers $proxyControlHeaders -ExpectedStatus 200 -Body @{
+                        mode = 'blocked'
+                        dungeonSessionId = $sessionId.ToString('D')
+                    } | Out-Null
+                Write-Host 'Disconnected the test HTTP path after normal item RPCs.'
+            }
+            $outageInjected = $true
+            New-Item -ItemType File -Path $restrictedReleasePath | Out-Null
+            Write-Host 'Released the Restricted-state probe during the outage.'
         }
         if (Test-LogMarker $clientRuntimeLog 'RPG_ITEM_E2E PASS') {
             $clientPassed = $true
@@ -691,6 +906,376 @@ try {
             'Timed out waiting for the UE item command probe.' +
             [Environment]::NewLine +
             (Get-LogTail $clientRuntimeLog))
+    }
+
+    $telemetrySpoolPath = Join-Path `
+        $cookedRoot `
+        ("Project_RPG\Saved\SecurityTelemetry\" +
+            "$($sessionId.ToString('D')).jsonl")
+    if ($testUsesPostgres) {
+        if (-not $outageInjected) {
+            throw 'The backend outage checkpoint was not reached.'
+        }
+        $outageDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+        $retryMatches = @()
+        while ((Get-Date) -lt $outageDeadline) {
+            $serverProcess.Refresh()
+            $backendProcess.Refresh()
+            if ($serverProcess.HasExited -or $backendProcess.HasExited) {
+                throw 'A server process exited during the backend outage.'
+            }
+            $retryMatches = @(Select-String -LiteralPath $serverRuntimeLog `
+                -Pattern ('Security telemetry retry scheduled: HTTP=(\d+) ' +
+                    'Attempt=(\d+) Delay=([\d.]+)s Queued=(\d+)\.'))
+            if ($retryMatches.Count -ge 2) {
+                break
+            }
+            Start-Sleep -Milliseconds 100
+        }
+        if ($retryMatches.Count -lt 2) {
+            throw ('Did not observe two telemetry failures and retries.' +
+                [Environment]::NewLine + (Get-LogTail $serverRuntimeLog))
+        }
+        for ($retryIndex = 0; $retryIndex -lt 2; $retryIndex++) {
+            $groups = $retryMatches[$retryIndex].Matches[0].Groups
+            $httpStatus = [int] $groups[1].Value
+            $expectedAttempt = $retryIndex + 1
+            $expectedDelay = 2 * [Math]::Pow(2, $retryIndex)
+            if (($httpStatus -ne 0 -and $httpStatus -lt 500) -or
+                ($TestTelemetryHttpRecovery -and $httpStatus -ne 0) -or
+                [int] $groups[2].Value -ne $expectedAttempt -or
+                [double]::Parse($groups[3].Value,
+                    [Globalization.CultureInfo]::InvariantCulture) -ne $expectedDelay -or
+                [int] $groups[4].Value -ne 3) {
+                throw 'The observed outage retries did not retain three events with 2s/4s backoff.'
+            }
+        }
+        $outageRecords = @(Get-Content -LiteralPath $telemetrySpoolPath `
+            -Encoding utf8 | Where-Object {
+                -not [string]::IsNullOrWhiteSpace($_)
+            } | ForEach-Object { $_ | ConvertFrom-Json })
+        $outageEvents = @($outageRecords | ForEach-Object { $_.events })
+        if ($outageRecords.Count -ne 3 -or $outageEvents.Count -ne 3 -or
+            @($outageEvents.eventId | Select-Object -Unique).Count -ne 3 -or
+            @($outageRecords | Where-Object {
+                $_.dungeonSessionId -ne $sessionId.ToString('D')
+            }).Count -ne 0) {
+            throw 'The outage did not preserve exactly three unique session events on disk.'
+        }
+        $outageBatch = @{
+            dungeonSessionId = $sessionId.ToString('D')
+            events = $outageEvents
+        }
+        Copy-Item -LiteralPath $telemetrySpoolPath `
+            -Destination (Join-Path $logRoot 'Telemetry.outage.jsonl')
+        $outageSpoolHash = (Get-FileHash -LiteralPath $telemetrySpoolPath).Hash
+        if ($TestTelemetryBackendRecovery) {
+            & docker unpause $postgresContainerName | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Could not restore the isolated PostgreSQL test container.'
+            }
+            $postgresPaused = $false
+            $storageDeadline = (Get-Date).AddSeconds(30)
+            $storageReady = $false
+            while ((Get-Date) -lt $storageDeadline) {
+                try {
+                    $ready = Invoke-JsonRequest -Method Get `
+                        -Uri "$backendHostUrl/health/ready" -Body $null `
+                        -ExpectedStatus @(200, 503)
+                    if ($ready.status -eq 'ready') {
+                        $storageReady = $true
+                        break
+                    }
+                }
+                catch { }
+                Start-Sleep -Milliseconds 100
+            }
+            if (-not $storageReady) {
+                throw 'PostgreSQL readiness did not recover after the outage.'
+            }
+            Write-Host 'Observed retained evidence and 2s/4s backoff; restored the database.'
+        }
+        else {
+            $beforeCommit = Invoke-JsonRequest -Method Get `
+                -Uri ("$backendHostUrl/api/security/sessions/" +
+                    "$($sessionId.ToString('D'))/summary") `
+                -Headers $adminHeaders -Body $null -ExpectedStatus 200
+            if ($beforeCommit.totalEvents -ne 0) {
+                throw 'HTTP-disconnected telemetry unexpectedly reached PostgreSQL.'
+            }
+            Invoke-JsonRequest -Method Post -Uri "$proxyControlUrl/mode" `
+                -Headers $proxyControlHeaders -ExpectedStatus 200 -Body @{
+                    mode = 'drop_next_ack'
+                    dungeonSessionId = $sessionId.ToString('D')
+                } | Out-Null
+            $lostAckDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+            $lostAckObserved = $false
+            while ((Get-Date) -lt $lostAckDeadline) {
+                foreach ($ownedHost in @($serverProcess, $backendProcess, $proxyProcess)) {
+                    $ownedHost.Refresh()
+                    if ($ownedHost.HasExited) {
+                        throw 'A test host exited before the lost-ack checkpoint.'
+                    }
+                }
+                $proxyState = Invoke-JsonRequest -Method Get `
+                    -Uri "$proxyControlUrl/state" -Headers $proxyControlHeaders `
+                    -Body $null -ExpectedStatus 200
+                if ($proxyState.droppedAcknowledgements -eq 1 -and
+                    (Test-LogMarker $serverRuntimeLog `
+                        'HTTP=0 Attempt=3 Delay=8.00s Queued=3.')) {
+                    $lostAckObserved = $true
+                    break
+                }
+                Start-Sleep -Milliseconds 100
+            }
+            if (-not $lostAckObserved -or
+                $proxyState.blockedTelemetryRequests -lt 2 -or
+                $proxyState.committedBatch.acceptedCount -ne 3 -or
+                $proxyState.committedBatch.duplicateCount -ne 0 -or
+                @(Compare-Object -ReferenceObject @($outageEvents.eventId) `
+                    -DifferenceObject @($proxyState.committedBatch.eventIds)).Count -ne 0) {
+                throw 'The proxy did not drop one committed acknowledgement for the original three events.'
+            }
+            $committedSummary = Invoke-JsonRequest -Method Get `
+                -Uri ("$backendHostUrl/api/security/sessions/" +
+                    "$($sessionId.ToString('D'))/summary") `
+                -Headers $adminHeaders -Body $null -ExpectedStatus 200
+            if ($committedSummary.totalEvents -ne 3 -or
+                -not (Test-Path -LiteralPath $telemetrySpoolPath) -or
+                (Get-FileHash -LiteralPath $telemetrySpoolPath).Hash -ne $outageSpoolHash) {
+                throw 'Lost acknowledgement did not preserve committed backend events and the unchanged UE spool.'
+            }
+            Copy-Item -LiteralPath $telemetrySpoolPath `
+                -Destination (Join-Path $logRoot 'Telemetry.unacknowledged.jsonl')
+            Invoke-JsonRequest -Method Post -Uri "$proxyControlUrl/mode" `
+                -Headers $proxyControlHeaders -ExpectedStatus 200 -Body @{
+                    mode = 'pass'
+                    dungeonSessionId = $sessionId.ToString('D')
+                } | Out-Null
+            Write-Host (
+                'Observed a committed batch with its HTTP acknowledgement ' +
+                'disconnected, an unchanged durable spool, and 8s backoff; ' +
+                'restored the HTTP path for the UE retry.')
+        }
+    }
+    if ($TestTelemetryRestartRecovery) {
+        # Stop before the two-second telemetry flush. The event append is
+        # synchronous, so this models a server process loss after evidence is
+        # durable but before the backend acknowledges it.
+        Stop-OwnedProcess $serverProcess
+        $serverProcess = $null
+        Stop-OwnedProcess $clientProcess
+        $clientProcess = $null
+
+        if (-not (Test-Path `
+                -LiteralPath $telemetrySpoolPath `
+                -PathType Leaf)) {
+            throw (
+                'The security telemetry spool was not durable before the ' +
+                'simulated server restart.')
+        }
+
+        # Exercise backward compatibility with spools written before the
+        # JSONL encoder was changed to condensed, single-line JSON.
+        $spoolRecords = @(Get-Content `
+            -LiteralPath $telemetrySpoolPath |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($spoolRecords.Count -ne 3) {
+            throw (
+                'Expected three durable telemetry JSONL records before ' +
+                "restart, got $($spoolRecords.Count).")
+        }
+        $legacyPrettyRecords = @($spoolRecords | ForEach-Object {
+            ($_ | ConvertFrom-Json) |
+                ConvertTo-Json -Depth 20
+        })
+        $utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
+        [IO.File]::WriteAllText(
+            $telemetrySpoolPath,
+            ($legacyPrettyRecords -join [Environment]::NewLine) +
+                [Environment]::NewLine,
+            $utf8WithoutBom)
+
+        $preRecoverySummary = Invoke-JsonRequest `
+            -Method Get `
+            -Uri (
+                "$normalizedBackendUrl/api/security/sessions/" +
+                "$($sessionId.ToString('D'))/summary") `
+            -Headers $adminHeaders `
+            -Body $null `
+            -ExpectedStatus 200
+        if ($preRecoverySummary.totalEvents -ne 0) {
+            throw (
+                'Security telemetry reached the backend before the ' +
+                'restart-recovery checkpoint could be established.')
+        }
+
+        $recoveryArguments = @($serverArguments | Where-Object {
+            $_ -notlike '-abslog=*'
+        })
+        $recoveryArguments +=
+            "-abslog=$recoveryServerRequestedLog"
+        $previousRecoveryEnvironment = @{}
+        foreach ($name in $serverEnvironmentNames) {
+            $previousRecoveryEnvironment[$name] =
+                [Environment]::GetEnvironmentVariable($name, 'Process')
+        }
+        try {
+            [Environment]::SetEnvironmentVariable(
+                'PROJECT_RPG_BACKEND_GAME_SERVER_TOKEN',
+                [string] $session.gameServerAccessToken,
+                'Process')
+            [Environment]::SetEnvironmentVariable(
+                'PROJECT_RPG_GAME_SERVER_ID',
+                $serverId,
+                'Process')
+            [Environment]::SetEnvironmentVariable(
+                'PROJECT_RPG_DUNGEON_SESSION_ID',
+                $sessionId.ToString('D'),
+                'Process')
+            $serverProcess = Start-Process `
+                -FilePath $gamePath `
+                -ArgumentList $recoveryArguments `
+                -WorkingDirectory $projectRoot `
+                -WindowStyle Hidden `
+                -PassThru
+        }
+        finally {
+            foreach ($name in $serverEnvironmentNames) {
+                [Environment]::SetEnvironmentVariable(
+                    $name,
+                    $previousRecoveryEnvironment[$name],
+                    'Process')
+            }
+        }
+        Write-Host (
+            'Restarted the UE server to recover durable security ' +
+            'telemetry.')
+    }
+
+    $telemetryPassed = $false
+    $telemetryPollAttempts = 60
+    if ($TestTelemetryRestartRecovery -or $testUsesPostgres) {
+        $telemetryPollAttempts = 150
+    }
+    foreach ($attempt in 1..$telemetryPollAttempts) {
+        if ($null -ne $serverProcess) {
+            $serverProcess.Refresh()
+            if ($serverProcess.HasExited) {
+                $activeServerLog = $serverRuntimeLog
+                if ($TestTelemetryRestartRecovery) {
+                    $activeServerLog = $recoveryServerRuntimeLog
+                }
+                throw (
+                    'The UE server exited before telemetry delivery.' +
+                    [Environment]::NewLine +
+                    (Get-LogTail $activeServerLog))
+            }
+        }
+        $securitySummary = Invoke-JsonRequest `
+            -Method Get `
+            -Uri (
+                "$normalizedBackendUrl/api/security/sessions/" +
+                "$($sessionId.ToString('D'))/summary") `
+            -Headers $adminHeaders `
+            -Body $null `
+            -ExpectedStatus 200
+        $invalidDamageEvents = @($securitySummary.byType |
+            Where-Object { $_.key -eq 'InvalidDamage' })
+        $stateChangeEvents = @($securitySummary.byType |
+            Where-Object { $_.key -eq 'EnforcementStateChanged' })
+        $restrictedAttemptEvents = @($securitySummary.byType |
+            Where-Object { $_.key -eq 'RestrictedActionAttempt' })
+        if ($invalidDamageEvents.Count -eq 1 -and
+            $invalidDamageEvents[0].eventCount -ge 1 -and
+            $stateChangeEvents.Count -eq 1 -and
+            $stateChangeEvents[0].eventCount -ge 1 -and
+            $restrictedAttemptEvents.Count -eq 1 -and
+            $restrictedAttemptEvents[0].eventCount -ge 1) {
+            $telemetryPassed = $true
+            break
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not $telemetryPassed) {
+        throw (
+            'The live server did not deliver all Restricted-state security ' +
+            'telemetry events before the timeout.')
+    }
+    if ($TestTelemetryRestartRecovery -or $testUsesPostgres) {
+        if ($securitySummary.totalEvents -ne 3) {
+            throw (
+                'Recovery did not preserve exactly-once backend ' +
+                "effects. Expected 3 events, got " +
+                "$($securitySummary.totalEvents).")
+        }
+        $spoolPollAttempts = 30
+        if ($testUsesPostgres) {
+            $spoolPollAttempts = 150
+        }
+        foreach ($attempt in 1..$spoolPollAttempts) {
+            if (-not (Test-Path -LiteralPath $telemetrySpoolPath)) {
+                break
+            }
+            Start-Sleep -Milliseconds 100
+        }
+        if (Test-Path -LiteralPath $telemetrySpoolPath) {
+            throw (
+                'The acknowledged security telemetry spool was not ' +
+                'removed after recovery.')
+        }
+    }
+    if ($testUsesPostgres) {
+        if (Test-Path -LiteralPath ($telemetrySpoolPath -replace
+                '\.jsonl$', '.deadletter.jsonl')) {
+            throw 'Transient backend failures incorrectly produced a deadletter.'
+        }
+        if ($TestTelemetryHttpRecovery) {
+            $proxyState = Invoke-JsonRequest -Method Get `
+                -Uri "$proxyControlUrl/state" -Headers $proxyControlHeaders `
+                -Body $null -ExpectedStatus 200
+            if ($proxyState.droppedAcknowledgements -ne 1 -or
+                $proxyState.deliveredBatch.acceptedCount -ne 0 -or
+                $proxyState.deliveredBatch.duplicateCount -ne 3 -or
+                @(Compare-Object -ReferenceObject @($outageEvents.eventId) `
+                    -DifferenceObject @($proxyState.deliveredBatch.eventIds)).Count -ne 0) {
+                throw 'The UE retry did not receive a duplicate-only acknowledgement for its original events.'
+            }
+            [IO.File]::WriteAllText(
+                (Join-Path $logRoot 'Telemetry.http-proof.json'),
+                ($proxyState | ConvertTo-Json -Depth 10),
+                (New-Object System.Text.UTF8Encoding($false)))
+        }
+        $replay = Invoke-JsonRequest -Method Post `
+            -Uri "$normalizedBackendUrl/api/security/events/batch" `
+            -Headers $serverHeaders -Body $outageBatch -ExpectedStatus 200
+        if ($replay.acceptedCount -ne 0 -or $replay.duplicateCount -ne 3) {
+            throw 'Replaying the durable outage batch did not return three duplicates.'
+        }
+        $replaySummary = Invoke-JsonRequest -Method Get `
+            -Uri ("$normalizedBackendUrl/api/security/sessions/" +
+                "$($sessionId.ToString('D'))/summary") `
+            -Headers $adminHeaders -Body $null -ExpectedStatus 200
+        if ($replaySummary.totalEvents -ne 3) {
+            throw 'Replaying the outage batch changed the backend event count.'
+        }
+        $serverProcess.Refresh()
+        if ($serverProcess.HasExited) {
+            throw 'The UE server did not remain alive through outage recovery.'
+        }
+        if ($TestTelemetryHttpRecovery) {
+            Write-Host (
+                'PASS: HTTP disconnect and lost post-commit acknowledgement ' +
+                'retained three events, retried with 2s/4s/8s backoff, ' +
+                'received three duplicates on the UE retry, and removed ' +
+                'the acknowledged spool with exactly three backend events.')
+        }
+        else {
+            Write-Host (
+                'PASS: PostgreSQL outage recovery retained three events, ' +
+                'retried with 2s/4s backoff, removed the acknowledged spool, ' +
+                'and replayed as three duplicates with no extra backend effects.')
+        }
     }
 
     $persistedItem = Invoke-JsonRequest `
@@ -765,12 +1350,23 @@ try {
     Write-Host (
         'PASS: backend join-ticket admission, owner-only projection, ' +
         'live consume/equip/unequip RPCs, replicated container deltas, ' +
-        'and backend persistence.')
+        'Restricted-state rejection and telemetry, and backend persistence.')
+    if ($TestTelemetryRestartRecovery) {
+        Write-Host (
+            'PASS: durable telemetry survived a pre-ack UE server restart ' +
+            'and produced exactly three backend events.')
+    }
     Write-Host "Potion: $($itemId.ToString('D')) quantity 3 -> 2, revision 1 -> 2"
     Write-Host "Helm: $($equipmentItemId.ToString('D')) inventory 1 -> equipment Head -> inventory 1, revision 1 -> 3"
     Write-Host "Logs: $logRoot"
 }
 finally {
+    if ($postgresPaused) {
+        & docker unpause $postgresContainerName | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'Could not unpause the owned test container during cleanup.'
+        }
+    }
     if (-not $settled -and
         $null -ne $sessionId -and
         $null -ne $serverHeaders) {
@@ -778,10 +1374,11 @@ finally {
             Invoke-WebRequest `
                 -Method Post `
                 -Uri (
-                    "$normalizedBackendUrl/api/dungeon-sessions/" +
+                    "$backendHostUrl/api/dungeon-sessions/" +
                     "$($sessionId.ToString('D'))/finish") `
                 -Headers $serverHeaders `
                 -UseBasicParsing `
+                -TimeoutSec 5 `
                 -ContentType 'application/json' `
                 -Body (@{
                     serverId = $serverId
@@ -797,7 +1394,14 @@ finally {
 
     Stop-OwnedProcess $clientProcess
     Stop-OwnedProcess $serverProcess
+    Stop-OwnedProcess $proxyProcess
     Stop-OwnedProcess $backendProcess
+    if ($ownsPostgresContainer) {
+        & docker stop --time 5 $postgresContainerName | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'Could not stop the owned PostgreSQL test container.'
+        }
+    }
 
     $logCopies = @(
         [pscustomobject] @{
@@ -807,6 +1411,10 @@ finally {
         [pscustomobject] @{
             Source = $clientRuntimeLog
             Destination = $clientRequestedLog
+        },
+        [pscustomobject] @{
+            Source = $recoveryServerRuntimeLog
+            Destination = $recoveryServerRequestedLog
         })
     foreach ($logCopy in $logCopies) {
         if (Test-Path -LiteralPath $logCopy.Source -PathType Leaf) {
