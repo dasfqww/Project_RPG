@@ -172,6 +172,11 @@ bool FRPGSkillSecurityProfile::IsValid(FString* OutReason) const
 	{
 		return Fail(TEXT("MaximumDamagePerHit must be finite and positive."));
 	}
+	if (!FMath::IsFinite(MaximumFinalDamagePerHit) || MaximumFinalDamagePerHit < 1.0f ||
+		MaximumFinalDamagePerHit > MaximumSupportedFinalDamage)
+	{
+		return Fail(TEXT("MaximumFinalDamagePerHit must be finite and between 1 and 1e9."));
+	}
 	if (AuthorizedMovement.bEnabled &&
 		(!FMath::IsFinite(AuthorizedMovement.DurationSeconds) ||
 		 AuthorizedMovement.DurationSeconds <= 0.0f ||

@@ -2,6 +2,7 @@
 
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Dom/JsonObject.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
 #include "HAL/FileManager.h"
@@ -10,9 +11,13 @@
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Misc/App.h"
+#include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "Player/RPGPlayerState.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RPGSecurityTelemetrySubsystem)
 
@@ -65,6 +70,74 @@ namespace RPGSecurityTelemetry
 		}
 		return nullptr;
 	}
+
+	bool SplitJsonDocuments(
+		const FString& Contents,
+		TArray<FString>& OutDocuments)
+	{
+		OutDocuments.Reset();
+		int32 StartIndex = INDEX_NONE;
+		int32 ObjectDepth = 0;
+		bool bInString = false;
+		bool bEscaped = false;
+		for (int32 Index = 0; Index < Contents.Len(); ++Index)
+		{
+			const TCHAR Character = Contents[Index];
+			if (bInString)
+			{
+				if (bEscaped)
+				{
+					bEscaped = false;
+				}
+				else if (Character == TEXT('\\'))
+				{
+					bEscaped = true;
+				}
+				else if (Character == TEXT('"'))
+				{
+					bInString = false;
+				}
+				continue;
+			}
+
+			if (Character == TEXT('"'))
+			{
+				if (ObjectDepth == 0)
+				{
+					return false;
+				}
+				bInString = true;
+			}
+			else if (Character == TEXT('{'))
+			{
+				if (ObjectDepth == 0)
+				{
+					StartIndex = Index;
+				}
+				++ObjectDepth;
+			}
+			else if (Character == TEXT('}'))
+			{
+				if (ObjectDepth <= 0)
+				{
+					return false;
+				}
+				--ObjectDepth;
+				if (ObjectDepth == 0)
+				{
+					OutDocuments.Add(Contents.Mid(
+						StartIndex,
+						Index - StartIndex + 1));
+					StartIndex = INDEX_NONE;
+				}
+			}
+			else if (ObjectDepth == 0 && !FChar::IsWhitespace(Character))
+			{
+				return false;
+			}
+		}
+		return ObjectDepth == 0 && !bInString && !bEscaped;
+	}
 }
 
 void URPGSecurityTelemetrySubsystem::Initialize(
@@ -72,11 +145,33 @@ void URPGSecurityTelemetrySubsystem::Initialize(
 {
 	Super::Initialize(Collection);
 	bShuttingDown = false;
+	bAvailable = false;
+	bDeadLetterPending = false;
+	RevokedMembers.Reset();
+	bRevocationsDirty = false;
 	Queue.SetCapacity(QueueCapacity);
-	if (!bEnabled || !IsRunningDedicatedServer())
+	bool bEligibleServerRuntime = IsRunningDedicatedServer();
+#if !UE_BUILD_SHIPPING
+	const bool bDevelopmentListenServerOverride = FParse::Param(
+		FCommandLine::Get(),
+		TEXT("RPGSecurityTelemetryDevListenServer"));
+	bEligibleServerRuntime |= bDevelopmentListenServerOverride;
+#endif
+	if (!bEnabled || !bEligibleServerRuntime)
 	{
 		return;
 	}
+
+#if !UE_BUILD_SHIPPING
+	if (bDevelopmentListenServerOverride)
+	{
+		UE_LOG(
+			LogRPGSecurityTelemetry,
+			Warning,
+			TEXT("Development listen-server security telemetry override is "
+				"enabled. This mode is only for local automated tests."));
+	}
+#endif
 
 	GameServerToken = FPlatformMisc::GetEnvironmentVariable(
 		TEXT("PROJECT_RPG_BACKEND_GAME_SERVER_TOKEN")).TrimStartAndEnd();
@@ -96,12 +191,14 @@ void URPGSecurityTelemetrySubsystem::Initialize(
 
 	ApiUrl = ApiUrl.TrimStartAndEnd();
 	ApiUrl.RemoveFromEnd(TEXT("/"));
-	if (ApiUrl.IsEmpty())
+	if (!ApiUrl.StartsWith(TEXT("http://"), ESearchCase::IgnoreCase)
+		&& !ApiUrl.StartsWith(TEXT("https://"), ESearchCase::IgnoreCase))
 	{
 		UE_LOG(
 			LogRPGSecurityTelemetry,
 			Warning,
-			TEXT("Security telemetry is unavailable because ApiUrl is empty."));
+			TEXT("Security telemetry is unavailable because ApiUrl must use "
+				"an http:// or https:// scheme."));
 		return;
 	}
 
@@ -118,8 +215,9 @@ void URPGSecurityTelemetrySubsystem::Initialize(
 	DeadLetterPath = FPaths::Combine(
 		SpoolDirectory,
 		DungeonSessionId + TEXT(".deadletter.jsonl"));
-	bAvailable = true;
-	LoadPersistedEvents();
+	RevocationPath = FPaths::Combine(SpoolDirectory, DungeonSessionId + TEXT(".revocations.json"));
+	bAvailable = RestorePersistedState();
+	if (!bAvailable) return;
 	PostWorldInitializationHandle =
 		FWorldDelegates::OnPostWorldInitialization.AddUObject(
 			this,
@@ -160,10 +258,14 @@ void URPGSecurityTelemetrySubsystem::Deinitialize()
 			Queue.Num());
 	}
 	Queue.Reset();
+	bDeadLetterPending = false;
+	RevokedMembers.Reset();
+	bRevocationsDirty = false;
 	GameServerToken.Reset();
 	DungeonSessionId.Reset();
 	SpoolPath.Reset();
 	DeadLetterPath.Reset();
+	RevocationPath.Reset();
 	Super::Deinitialize();
 }
 
@@ -192,6 +294,7 @@ bool URPGSecurityTelemetrySubsystem::EnqueueViolation(
 	FGuid CharacterId;
 	const FString SteamId =
 		PlayerState->GetAuthenticatedSteamId().TrimStartAndEnd();
+	if (IsMemberRevoked(PlayerState->GetBackendCharacterId(), SteamId)) return false;
 	if (!FGuid::Parse(PlayerState->GetBackendCharacterId(), CharacterId)
 		|| !RPGSecurityTelemetry::IsAsciiDigits(SteamId)
 		|| !FMath::IsFinite(Violation.Score)
@@ -255,7 +358,7 @@ bool URPGSecurityTelemetrySubsystem::EnqueueViolation(
 bool URPGSecurityTelemetrySubsystem::FlushNow()
 {
 	if (!bAvailable || bShuttingDown || Queue.Num() == 0
-		|| Queue.HasBatchInFlight() || ActiveRequest.IsValid())
+		|| (Queue.HasBatchInFlight() && !bDeadLetterPending) || ActiveRequest.IsValid())
 	{
 		return false;
 	}
@@ -263,10 +366,93 @@ bool URPGSecurityTelemetrySubsystem::FlushNow()
 	return ActiveRequest.IsValid();
 }
 
+bool URPGSecurityTelemetrySubsystem::IsMemberRevoked(const FString& CharacterId, const FString& SteamId) const
+{
+	FGuid Parsed;
+	if (!FGuid::Parse(CharacterId, Parsed)) return false;
+	const FString* RevokedSteam = RevokedMembers.Find(Parsed.ToString(EGuidFormats::DigitsWithHyphensLower));
+	return RevokedSteam && *RevokedSteam == SteamId;
+}
+
+bool URPGSecurityTelemetrySubsystem::QuarantineRevokedDungeonMember(const FString& ExpectedSessionId,
+	const FString& CharacterId, const FString& SteamId)
+{
+	FGuid CharacterGuid;
+	if (!bAvailable || bShuttingDown || DungeonSessionId != ExpectedSessionId
+		|| !FGuid::Parse(CharacterId, CharacterGuid) || !CharacterGuid.IsValid()
+		|| SteamId.Len() != 17 || !RPGSecurityTelemetry::IsAsciiDigits(SteamId)) return false;
+	const FString CanonicalCharacter = CharacterGuid.ToString(EGuidFormats::DigitsWithHyphensLower);
+	if (const FString* Existing = RevokedMembers.Find(CanonicalCharacter); Existing && *Existing != SteamId) return false;
+	if (!RevokedMembers.Contains(CanonicalCharacter) && RevokedMembers.Num() >= 128) return false;
+	if (!RevokedMembers.Contains(CanonicalCharacter))
+	{
+		RevokedMembers.Add(CanonicalCharacter, SteamId);
+		bRevocationsDirty = true;
+	}
+	const auto Reserved = Queue.GetReservedEvents();
+	// A terminally rejected batch no longer owns an HTTP request. Keep its
+	// reservation through revocation until local preservation succeeds.
+	if (!bDeadLetterPending && Reserved.ContainsByPredicate([this](const FRPGSecurityTelemetryEvent& Event)
+		{ return IsMemberRevoked(Event.CharacterId, Event.SteamId); }))
+	{
+		// A canceled mixed batch may already be committed remotely. Preserve the
+		// remaining members and retry their stable EventIds; never undo backend data.
+		const auto Canceled = ActiveRequest;
+		ActiveRequest.Reset(); // A copied late callback cannot consume a new batch.
+		if (Canceled.IsValid())
+		{
+			Canceled->OnProcessRequestComplete().Unbind();
+			Canceled->CancelRequest();
+		}
+		Queue.CompleteBatch(false);
+		CurrentBatchAttempt = 0;
+	}
+	const bool bPreserved = QuarantineRevokedPendingEvents();
+	ScheduleFlush(bPreserved ? 0.f : GetRetryDelaySeconds());
+	return bPreserved;
+}
+
+bool URPGSecurityTelemetrySubsystem::QuarantineRevokedPendingEvents()
+{
+	// The tombstone must survive a restart before evidence can leave the queue.
+	if (!PersistRevocationsIfNeeded())
+	{
+		UE_LOG(LogRPGSecurityTelemetry, Error, TEXT("Revoked member audit quarantine could not be persisted; delivery paused."));
+		return false;
+	}
+	const TArray<FRPGSecurityTelemetryEvent> Reserved = Queue.GetReservedEvents();
+	TArray<FRPGSecurityTelemetryEvent> Pending;
+	for (const auto& Event : Queue.GetEvents())
+	{
+		if (IsMemberRevoked(Event.CharacterId, Event.SteamId)
+			&& !Reserved.ContainsByPredicate([&Event](const auto& Entry) { return Entry.EventId == Event.EventId; }))
+			Pending.Add(Event);
+	}
+	// Never delete evidence if the durable quarantine cannot be written.
+	for (const auto& Event : Pending)
+	{
+		if (!AppendEventToFile(Event, DeadLetterPath))
+		{
+			UE_LOG(LogRPGSecurityTelemetry, Error, TEXT("Revoked member audit quarantine could not be persisted; delivery paused."));
+			return false;
+		}
+	}
+	for (const auto& Event : Pending) Queue.RemovePendingMemberEvents(Event.CharacterId, Event.SteamId);
+	if (!Pending.IsEmpty())
+	{
+		DeliveryFailureDropCount += Pending.Num();
+		// If rewriting fails, the original spool still preserves evidence. Durable
+		// tombstones filter it again before delivery after a restart.
+		if (!PersistQueueSnapshot())
+			UE_LOG(LogRPGSecurityTelemetry, Error, TEXT("Audit quarantine preserved, but queue spool rewrite failed."));
+	}
+	return true;
+}
+
 void URPGSecurityTelemetrySubsystem::ScheduleFlush(const float DelaySeconds)
 {
 	if (!bAvailable || bShuttingDown || Queue.Num() == 0
-		|| Queue.HasBatchInFlight() || ActiveRequest.IsValid())
+		|| (Queue.HasBatchInFlight() && !bDeadLetterPending) || ActiveRequest.IsValid())
 	{
 		return;
 	}
@@ -277,11 +463,23 @@ void URPGSecurityTelemetrySubsystem::ScheduleFlush(const float DelaySeconds)
 		return;
 	}
 
-	World->GetTimerManager().SetTimer(
+	FTimerManager& Timers = World->GetTimerManager();
+	const float RequestedDelay = FMath::Max(0.01f, DelaySeconds);
+	if (Timers.TimerExists(FlushTimerHandle))
+	{
+		// New observations must neither bypass retry backoff nor postpone an
+		// already scheduled flush. A healthy full batch may flush earlier.
+		if (CurrentBatchAttempt > 0 || bDeadLetterPending
+			|| Timers.GetTimerRemaining(FlushTimerHandle) <= RequestedDelay)
+		{
+			return;
+		}
+	}
+	Timers.SetTimer(
 		FlushTimerHandle,
 		this,
 		&URPGSecurityTelemetrySubsystem::Flush,
-		FMath::Max(0.01f, DelaySeconds),
+		RequestedDelay,
 		false);
 }
 
@@ -289,6 +487,38 @@ void URPGSecurityTelemetrySubsystem::Flush()
 {
 	if (!bAvailable || bShuttingDown || ActiveRequest.IsValid())
 	{
+		return;
+	}
+	if (!QuarantineRevokedPendingEvents())
+	{
+		ScheduleFlush(GetRetryDelaySeconds());
+		return;
+	}
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UWorld* World = GameInstance->GetWorld())
+		{
+			// FlushNow can run before the timer; cancel that old deadline so it
+			// cannot interfere with the next acknowledgement or retry schedule.
+			World->GetTimerManager().ClearTimer(FlushTimerHandle);
+		}
+	}
+
+	if (bDeadLetterPending)
+	{
+		// The terminal response was already received. Retry only the local
+		// evidence write; do not POST this rejected batch again in this process.
+		FinishPendingDeadLetter();
+		return;
+	}
+
+	// A legacy spool may predate the durable local revocation file. Wait for
+	// this world's authenticated membership read and quarantine exact immutable
+	// receipts before reserving ANY event for a new delivery batch.
+	if (Queue.Num() == 0) return;
+	if (!PrepareMembershipDelivery())
+	{
+		ScheduleFlush(GetRetryDelaySeconds());
 		return;
 	}
 
@@ -305,16 +535,12 @@ void URPGSecurityTelemetrySubsystem::Flush()
 		Batch,
 		Body))
 	{
-		AppendReservedBatchToDeadLetter();
-		DeliveryFailureDropCount += Queue.GetReservedCount();
-		Queue.CompleteBatch(true);
-		PersistQueueSnapshot();
-		CurrentBatchAttempt = 0;
 		UE_LOG(
 			LogRPGSecurityTelemetry,
 			Error,
-			TEXT("Discarded a security telemetry batch that could not be encoded."));
-		ScheduleFlush(0.0f);
+			TEXT("Security telemetry batch could not be encoded; local preservation required."));
+		bDeadLetterPending = true;
+		FinishPendingDeadLetter();
 		return;
 	}
 
@@ -322,7 +548,7 @@ void URPGSecurityTelemetrySubsystem::Flush()
 		CurrentBatchAttempt + 1,
 		MaximumAttempts);
 	FHttpRequestRef Request = FHttpModule::Get().CreateRequest();
-	Request->SetURL(ApiUrl / TEXT("security/events/batch"));
+	Request->SetURL(ApiUrl + TEXT("/security/events/batch"));
 	Request->SetVerb(TEXT("POST"));
 	Request->SetHeader(TEXT("Accept"), TEXT("application/json"));
 	Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
@@ -340,6 +566,9 @@ void URPGSecurityTelemetrySubsystem::Flush()
 		Request->OnProcessRequestComplete().Unbind();
 		ActiveRequest.Reset();
 		Queue.CompleteBatch(false);
+		UE_LOG(LogRPGSecurityTelemetry, Warning,
+			TEXT("Security telemetry retry scheduled: HTTP=0 Attempt=%d Delay=%.2fs Queued=%d."),
+			CurrentBatchAttempt, GetRetryDelaySeconds(), Queue.Num());
 		ScheduleFlush(GetRetryDelaySeconds());
 	}
 }
@@ -349,7 +578,7 @@ void URPGSecurityTelemetrySubsystem::HandleRequestComplete(
 	TSharedPtr<IHttpResponse, ESPMode::ThreadSafe> Response,
 	const bool bWasSuccessful)
 {
-	if (Request != ActiveRequest)
+	if (!Request.IsValid() || Request != ActiveRequest)
 	{
 		return;
 	}
@@ -370,11 +599,8 @@ void URPGSecurityTelemetrySubsystem::HandleRequestComplete(
 	const bool bPermanentFailure = Response.IsValid()
 		&& StatusCode >= 400 && StatusCode < 500
 		&& StatusCode != 408 && StatusCode != 429;
-	const bool bDiscardBatch = bAcknowledged || bPermanentFailure;
-	if (bDiscardBatch && !bAcknowledged)
+	if (bPermanentFailure)
 	{
-		AppendReservedBatchToDeadLetter();
-		DeliveryFailureDropCount += Queue.GetReservedCount();
 		const FString ResponseDetail = Response.IsValid()
 			? RPGSecurityTelemetry::SanitizeDetail(
 				Response->GetContentAsString())
@@ -382,20 +608,29 @@ void URPGSecurityTelemetrySubsystem::HandleRequestComplete(
 		UE_LOG(
 			LogRPGSecurityTelemetry,
 			Error,
-			TEXT("Discarded security telemetry after HTTP %d and %d attempt(s): %s"),
+			TEXT("Security telemetry rejected after HTTP %d and %d attempt(s); local preservation required: %s"),
 			StatusCode,
 			CurrentBatchAttempt,
 			*ResponseDetail);
+		bDeadLetterPending = true;
+		FinishPendingDeadLetter();
+		return;
+	}
+	if (!bAcknowledged)
+	{
+		UE_LOG(LogRPGSecurityTelemetry, Warning,
+			TEXT("Security telemetry retry scheduled: HTTP=%d Attempt=%d Delay=%.2fs Queued=%d."),
+			StatusCode, CurrentBatchAttempt, GetRetryDelaySeconds(), Queue.Num());
 	}
 
-	Queue.CompleteBatch(bDiscardBatch);
-	if (bDiscardBatch)
+	Queue.CompleteBatch(bAcknowledged);
+	if (bAcknowledged)
 	{
 		CurrentBatchAttempt = 0;
 		PersistQueueSnapshot();
 	}
 	ScheduleFlush(
-		bDiscardBatch ? 0.0f : GetRetryDelaySeconds());
+		bAcknowledged ? 0.0f : GetRetryDelaySeconds());
 }
 
 void URPGSecurityTelemetrySubsystem::HandlePostWorldInitialization(
@@ -410,6 +645,95 @@ void URPGSecurityTelemetrySubsystem::HandlePostWorldInitialization(
 	ScheduleFlush(0.0f);
 }
 
+bool URPGSecurityTelemetrySubsystem::RestorePersistedState()
+{
+	if (!LoadPersistedRevocations())
+	{
+		UE_LOG(LogRPGSecurityTelemetry, Error, TEXT("Security telemetry revocation recovery failed; delivery disabled and spool preserved."));
+		return false;
+	}
+	LoadPersistedEvents();
+	return true;
+}
+
+bool URPGSecurityTelemetrySubsystem::LoadPersistedRevocations()
+{
+	if (!bPersistToDisk) return true;
+	if (RevocationPath.IsEmpty()) return false;
+	TMap<FString, FString> Recovered;
+	bool bHasPendingSnapshot = false;
+	// A valid unfinished rename may contain newer tombstones than the main file.
+	// Merge both; any corrupt/conflicting file disables delivery rather than guessing.
+	for (const FString& Path : {RevocationPath, RevocationPath + TEXT(".tmp")})
+	{
+		if (!IFileManager::Get().FileExists(*Path)) continue;
+		const int64 Size = IFileManager::Get().FileSize(*Path);
+		if (Size <= 0 || Size > 65536) return false;
+		FString Contents;
+		TSharedPtr<FJsonObject> Root;
+		if (!FFileHelper::LoadFileToString(Contents, *Path)
+			|| !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Contents), Root) || !Root) return false;
+		double Version = 0;
+		FString Session;
+		const TArray<TSharedPtr<FJsonValue>>* Members = nullptr;
+		if (!Root->TryGetNumberField(TEXT("schemaVersion"), Version) || Version != 1
+			|| !Root->TryGetStringField(TEXT("dungeonSessionId"), Session) || Session != DungeonSessionId
+			|| !Root->TryGetArrayField(TEXT("members"), Members) || Members->Num() > 128) return false;
+		TSet<FString> Seen;
+		for (const auto& Value : *Members)
+		{
+			const TSharedPtr<FJsonObject>* Member = nullptr;
+			FString Character, Steam;
+			FGuid ParsedCharacter;
+			if (!Value || !Value->TryGetObject(Member) || !Member || !Member->IsValid()
+				|| !(*Member)->TryGetStringField(TEXT("characterId"), Character)
+				|| !FGuid::Parse(Character, ParsedCharacter) || !ParsedCharacter.IsValid()
+				|| !(*Member)->TryGetStringField(TEXT("steamId"), Steam)
+				|| Steam.Len() != 17 || !RPGSecurityTelemetry::IsAsciiDigits(Steam)) return false;
+			Character = ParsedCharacter.ToString(EGuidFormats::DigitsWithHyphensLower);
+			if (Seen.Contains(Character)) return false;
+			Seen.Add(Character);
+			if (const auto* Existing = Recovered.Find(Character); Existing && *Existing != Steam) return false;
+			Recovered.Add(Character, Steam);
+			if (Recovered.Num() > 128) return false;
+		}
+		bHasPendingSnapshot |= Path.EndsWith(TEXT(".tmp"));
+	}
+	RevokedMembers = MoveTemp(Recovered);
+	bRevocationsDirty = bHasPendingSnapshot;
+	return PersistRevocationsIfNeeded();
+}
+
+bool URPGSecurityTelemetrySubsystem::PersistRevocationsIfNeeded()
+{
+	if (!bRevocationsDirty) return true;
+	if (!bPersistToDisk) { bRevocationsDirty = false; return true; }
+	if (RevocationPath.IsEmpty()
+		|| !IFileManager::Get().MakeDirectory(*FPaths::GetPath(RevocationPath), true)) return false;
+	auto Root = MakeShared<FJsonObject>();
+	Root->SetNumberField(TEXT("schemaVersion"), 1);
+	Root->SetStringField(TEXT("dungeonSessionId"), DungeonSessionId);
+	TArray<FString> Characters;
+	RevokedMembers.GetKeys(Characters);
+	Characters.Sort();
+	TArray<TSharedPtr<FJsonValue>> Members;
+	for (const auto& Character : Characters)
+	{
+		auto Member = MakeShared<FJsonObject>();
+		Member->SetStringField(TEXT("characterId"), Character);
+		Member->SetStringField(TEXT("steamId"), RevokedMembers.FindChecked(Character));
+		Members.Add(MakeShared<FJsonValueObject>(Member));
+	}
+	Root->SetArrayField(TEXT("members"), Members);
+	FString Contents;
+	const FString TemporaryPath = RevocationPath + TEXT(".tmp");
+	if (!FJsonSerializer::Serialize(Root, TJsonWriterFactory<>::Create(&Contents))
+		|| !FFileHelper::SaveStringToFile(Contents, *TemporaryPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM)
+		|| !IFileManager::Get().Move(*RevocationPath, *TemporaryPath, true, true, false, true)) return false;
+	bRevocationsDirty = false;
+	return true;
+}
+
 void URPGSecurityTelemetrySubsystem::LoadPersistedEvents()
 {
 	if (!bPersistToDisk || SpoolPath.IsEmpty()
@@ -418,8 +742,8 @@ void URPGSecurityTelemetrySubsystem::LoadPersistedEvents()
 		return;
 	}
 
-	TArray<FString> Lines;
-	if (!FFileHelper::LoadFileToStringArray(Lines, *SpoolPath))
+	FString Contents;
+	if (!FFileHelper::LoadFileToString(Contents, *SpoolPath))
 	{
 		UE_LOG(
 			LogRPGSecurityTelemetry,
@@ -428,26 +752,33 @@ void URPGSecurityTelemetrySubsystem::LoadPersistedEvents()
 			*SpoolPath);
 		return;
 	}
+	TArray<FString> Documents;
+	if (!RPGSecurityTelemetry::SplitJsonDocuments(Contents, Documents))
+	{
+		UE_LOG(
+			LogRPGSecurityTelemetry,
+			Error,
+			TEXT("Security telemetry spool %s is structurally invalid; "
+				"the original file was preserved."),
+			*SpoolPath);
+		return;
+	}
 
 	int32 RecoveredCount = 0;
-	int32 InvalidLineCount = 0;
-	for (const FString& Line : Lines)
+	int32 InvalidDocumentCount = 0;
+	for (const FString& Document : Documents)
 	{
-		if (Line.IsEmpty())
-		{
-			continue;
-		}
 		FString PersistedSessionId;
 		TArray<FRPGSecurityTelemetryEvent> PersistedEvents;
 		if (!FRPGSecurityTelemetryJsonCodec::DeserializeBatch(
-			Line,
+			Document,
 			PersistedSessionId,
 			PersistedEvents)
 			|| !PersistedSessionId.Equals(
 				DungeonSessionId,
 				ESearchCase::IgnoreCase))
 		{
-			++InvalidLineCount;
+			++InvalidDocumentCount;
 			continue;
 		}
 		for (FRPGSecurityTelemetryEvent& Event : PersistedEvents)
@@ -455,15 +786,17 @@ void URPGSecurityTelemetrySubsystem::LoadPersistedEvents()
 			RecoveredCount += Queue.Enqueue(MoveTemp(Event)) ? 1 : 0;
 		}
 	}
+	// Restore/filter tombstones before rewriting the recovered spool or scheduling POST.
+	if (!QuarantineRevokedPendingEvents()) return;
 	PersistQueueSnapshot();
-	if (InvalidLineCount > 0)
+	if (InvalidDocumentCount > 0)
 	{
 		UE_LOG(
 			LogRPGSecurityTelemetry,
 			Warning,
-			TEXT("Security telemetry recovered %d event(s); invalid spool lines=%d."),
+			TEXT("Security telemetry recovered %d event(s); invalid spool documents=%d."),
 			RecoveredCount,
-			InvalidLineCount);
+			InvalidDocumentCount);
 	}
 	else
 	{
@@ -517,6 +850,33 @@ bool URPGSecurityTelemetrySubsystem::AppendReservedBatchToDeadLetter() const
 		bSucceeded = AppendEventToFile(Event, DeadLetterPath) && bSucceeded;
 	}
 	return bSucceeded;
+}
+
+bool URPGSecurityTelemetrySubsystem::FinishPendingDeadLetter()
+{
+	if (!IsInGameThread() || !bAvailable || bShuttingDown || !bDeadLetterPending
+		|| !Queue.HasBatchInFlight() || ActiveRequest.IsValid()) return false;
+	if (!AppendReservedBatchToDeadLetter())
+	{
+		UE_LOG(LogRPGSecurityTelemetry, Warning,
+			TEXT("Security telemetry preservation failed; reserved evidence retained and only local storage will retry."));
+		ScheduleFlush(GetRetryDelaySeconds());
+		return false;
+	}
+	const int32 PreservedCount = Queue.GetReservedCount();
+	Queue.CompleteBatch(true);
+	bDeadLetterPending = false;
+	DeliveryFailureDropCount += PreservedCount;
+	CurrentBatchAttempt = 0;
+	if (!PersistQueueSnapshot())
+	{
+		// Durable dead-letter evidence already exists. Preserve the old spool on
+		// failure; a restart may replay stable EventIds, never invent a receipt.
+		UE_LOG(LogRPGSecurityTelemetry, Warning,
+			TEXT("Security telemetry dead-letter preserved, but spool rewrite failed; original spool retained."));
+	}
+	ScheduleFlush(0.0f);
+	return true;
 }
 
 bool URPGSecurityTelemetrySubsystem::PersistQueueSnapshot() const

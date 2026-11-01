@@ -1,6 +1,7 @@
 #include "Security/RPGSecurityTelemetryTypes.h"
 
 #include "Dom/JsonObject.h"
+#include "Policies/CondensedJsonPrintPolicy.h"
 #include "Serialization/JsonSerializer.h"
 
 namespace RPGSecurityTelemetryCodec
@@ -44,7 +45,7 @@ void FRPGSecurityTelemetryQueue::SetCapacity(const int32 InCapacity)
 	Capacity = FMath::Max(1, InCapacity);
 	while (Events.Num() > Capacity)
 	{
-		const int32 EvictionIndex = FindOldestEvictableIndex();
+		const int32 EvictionIndex = FindLowestSeverityEvictableIndex();
 		if (EvictionIndex == INDEX_NONE)
 		{
 			break;
@@ -68,8 +69,10 @@ bool FRPGSecurityTelemetryQueue::Enqueue(FRPGSecurityTelemetryEvent Event)
 
 	if (Events.Num() >= Capacity)
 	{
-		const int32 EvictionIndex = FindOldestEvictableIndex();
-		if (EvictionIndex == INDEX_NONE)
+		const int32 EvictionIndex = FindLowestSeverityEvictableIndex();
+		if (EvictionIndex == INDEX_NONE ||
+			static_cast<uint8>(Events[EvictionIndex].Severity) >
+				static_cast<uint8>(Event.Severity))
 		{
 			++DroppedCount;
 			return false;
@@ -123,6 +126,14 @@ void FRPGSecurityTelemetryQueue::Reset()
 	DroppedCount = 0;
 }
 
+int32 FRPGSecurityTelemetryQueue::RemovePendingMemberEvents(const FString& CharacterId, const FString& SteamId)
+{
+	return Events.RemoveAll([this, &CharacterId, &SteamId](const FRPGSecurityTelemetryEvent& Event)
+	{
+		return !IsReserved(Event.EventId) && Event.CharacterId == CharacterId && Event.SteamId == SteamId;
+	});
+}
+
 TArray<FRPGSecurityTelemetryEvent>
 FRPGSecurityTelemetryQueue::GetReservedEvents() const
 {
@@ -143,16 +154,20 @@ bool FRPGSecurityTelemetryQueue::IsReserved(const FGuid& EventId) const
 	return ReservedEventIds.Contains(EventId);
 }
 
-int32 FRPGSecurityTelemetryQueue::FindOldestEvictableIndex() const
+int32 FRPGSecurityTelemetryQueue::FindLowestSeverityEvictableIndex() const
 {
+	int32 CandidateIndex = INDEX_NONE;
 	for (int32 Index = 0; Index < Events.Num(); ++Index)
 	{
-		if (!IsReserved(Events[Index].EventId))
+		if (!IsReserved(Events[Index].EventId) &&
+			(CandidateIndex == INDEX_NONE ||
+				static_cast<uint8>(Events[Index].Severity) <
+					static_cast<uint8>(Events[CandidateIndex].Severity)))
 		{
-			return Index;
+			CandidateIndex = Index;
 		}
 	}
-	return INDEX_NONE;
+	return CandidateIndex;
 }
 
 bool FRPGSecurityTelemetryJsonCodec::SerializeBatch(
@@ -217,8 +232,11 @@ bool FRPGSecurityTelemetryJsonCodec::SerializeBatch(
 	}
 	Root->SetArrayField(TEXT("events"), JsonEvents);
 
-	const TSharedRef<TJsonWriter<>> Writer =
-		TJsonWriterFactory<>::Create(&OutJson);
+	const TSharedRef<
+		TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+		TJsonWriterFactory<
+			TCHAR,
+			TCondensedJsonPrintPolicy<TCHAR>>::Create(&OutJson);
 	return FJsonSerializer::Serialize(Root, Writer);
 }
 

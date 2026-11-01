@@ -282,9 +282,18 @@ struct PROJECT_RPG_API FRPGSkillSecurityProfile
 		meta = (ClampMin = "1"))
 	int32 MaximumHitsPerActivation = 64;
 
+	/** Base damage multiplied by the frozen skill scalar, before GE attack/defense/critical calculation. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage",
 		meta = (ClampMin = "1.0"))
 	float MaximumDamagePerHit = 10000000.0f;
+
+	/** Absolute safety ceiling for the integer -> float -> integer damage meta attribute. */
+	static constexpr float MaximumSupportedFinalDamage = 1000000000.0f;
+
+	/** Final calculated HP damage, after attack/defense/critical scaling. Over-limit hits are rejected, not clamped. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Damage",
+		meta = (ClampMin = "1.0", ClampMax = "1000000000.0"))
+	float MaximumFinalDamagePerHit = MaximumSupportedFinalDamage;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
 	FRPGSkillMovementSecurityProfile AuthorizedMovement;

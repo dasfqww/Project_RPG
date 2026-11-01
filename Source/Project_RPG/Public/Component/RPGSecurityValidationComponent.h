@@ -8,6 +8,7 @@
 class UGameplayAbility;
 class URPGSecurityPolicy;
 class APlayerController;
+class URPGCharacterMovementComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	FRPGSecurityViolationReported,
@@ -94,7 +95,14 @@ public:
 		float ExtraDistance,
 		FName Reason);
 
-	/** Ends only the matching movement window, so overlapping tasks do not cancel each other. */
+	/** Creates a server-owned window; its handle prevents stale tasks cancelling a newer one. */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "RPG|Security")
+	FGuid BeginMovementAuthorization(float DurationSeconds, float ExtraDistance, FName Reason);
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "RPG|Security")
+	void EndMovementAuthorization(FGuid AuthorizationHandle, bool bResetBaseline = false);
+
+	/** Legacy name-based cancellation. Prefer handles when operations can overlap. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "RPG|Security")
 	void CancelMovementAuthorization(
 		FName Reason,
@@ -190,10 +198,13 @@ private:
 	double AuthorizedMovementEndsAt = 0.0;
 	float AuthorizedExtraDistance = 0.0f;
 	FName AuthorizedMovementReason;
+	FGuid ActiveMovementAuthorization;
 	ERPGSecurityEnforcementState EnforcementState =
 		ERPGSecurityEnforcementState::Monitoring;
 	FTimerHandle AutomaticRemovalTimerHandle;
 	FRPGMovementSecuritySample PreviousMovementSample;
+	TWeakObjectPtr<URPGCharacterMovementComponent> SampledMovementComponent;
+	FVector PreviousBaseMovementTotal = FVector::ZeroVector;
 	TArray<double> AbilityActivationHistory;
 	TMap<FName, double> LastAbilityActivationByClass;
 	TMap<ERPGSecurityViolationType, double> LastLogTimeByType;

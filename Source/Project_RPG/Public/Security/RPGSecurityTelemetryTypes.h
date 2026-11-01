@@ -21,7 +21,9 @@ struct PROJECT_RPG_API FRPGSecurityTelemetryEvent
 
 /**
  * Bounded single-flight queue. Reserved entries cannot be evicted while an
- * HTTP request owns them, and only an acknowledged batch is removed.
+ * HTTP request owns them, and only an acknowledged batch is removed. At
+ * capacity, lower-severity pending evidence is discarded before higher-
+ * severity evidence; a lower-severity arrival cannot displace a higher one.
  */
 class PROJECT_RPG_API FRPGSecurityTelemetryQueue
 {
@@ -32,6 +34,8 @@ public:
 	bool Enqueue(FRPGSecurityTelemetryEvent Event);
 	TArray<FRPGSecurityTelemetryEvent> BeginBatch(int32 MaximumBatchSize);
 	void CompleteBatch(bool bRemoveReservedEvents);
+	/** Caller has preserved evidence elsewhere; reserved events are never removed. */
+	int32 RemovePendingMemberEvents(const FString& CharacterId, const FString& SteamId);
 	void Reset();
 
 	int32 Num() const { return Events.Num(); }
@@ -46,7 +50,7 @@ public:
 
 private:
 	bool IsReserved(const FGuid& EventId) const;
-	int32 FindOldestEvictableIndex() const;
+	int32 FindLowestSeverityEvictableIndex() const;
 
 	int32 Capacity = 512;
 	int64 DroppedCount = 0;

@@ -72,10 +72,15 @@ void UAbilityTask_AuthorizedMovement::Activate()
 				TEXT("The authoritative avatar has no Security Validation Component.")));
 			return;
 		}
-		Security->AuthorizeMovementDiscontinuity(
+		AuthorizationHandle = Security->BeginMovementAuthorization(
 			CachedProfile.DurationSeconds,
 			CachedProfile.ExtraDistance,
 			EffectiveReason);
+		if (!AuthorizationHandle.IsValid())
+		{
+			Reject(FText::FromString(TEXT("The server rejected movement authorization.")));
+			return;
+		}
 		bAuthorizationApplied = true;
 	}
 
@@ -83,6 +88,11 @@ void UAbilityTask_AuthorizedMovement::Activate()
 	if (ShouldBroadcastAbilityTaskDelegates())
 	{
 		OnAuthorized.Broadcast();
+	}
+	// A Blueprint delegate can synchronously cancel its ability/task.
+	if (bResolved)
+	{
+		return;
 	}
 	if (UWorld* World = GetWorld())
 	{
@@ -141,8 +151,8 @@ void UAbilityTask_AuthorizedMovement::RevokeAuthorization()
 		? AvatarActor->FindComponentByClass<URPGSecurityValidationComponent>()
 		: nullptr)
 	{
-		Security->CancelMovementAuthorization(
-			EffectiveReason,
+		Security->EndMovementAuthorization(
+			AuthorizationHandle,
 			CachedProfile.bResetBaselineWhenFinished);
 	}
 	bAuthorizationApplied = false;

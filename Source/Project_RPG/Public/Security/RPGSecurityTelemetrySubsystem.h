@@ -30,6 +30,11 @@ public:
 		const FRPGSecurityViolation& Violation,
 		float RiskAfter);
 
+	/** Native server receipt consumer; never rolls back an already accepted audit.
+	 * Matching pending evidence is preserved in dead-letter storage, not erased. */
+	bool QuarantineRevokedDungeonMember(const FString& ExpectedSessionId,
+		const FString& CharacterId, const FString& SteamId);
+
 	UFUNCTION(BlueprintPure, Category = "RPG|Security|Telemetry")
 	bool IsAvailable() const { return bAvailable; }
 
@@ -47,6 +52,20 @@ public:
 	bool FlushNow();
 
 private:
+	friend struct FRPGDungeonAuthorityRevocationTestAccess;
+	friend struct FRPGTelemetryRecoveryTestAccess;
+	friend struct FRPGDungeonMembershipTestAccess;
+	/** Reuses the current server's validated read; absence/error never revokes a member. */
+	bool PrepareMembershipDelivery();
+	bool QuarantineRevokedPendingEvents();
+	bool IsMemberRevoked(const FString& CharacterId, const FString& SteamId) const;
+	bool RestorePersistedState();
+	bool LoadPersistedRevocations();
+	bool PersistRevocationsIfNeeded();
+	TMap<FString, FString> RevokedMembers;
+	bool bRevocationsDirty = false;
+	friend class FRPGSecurityTelemetryScheduleTest;
+
 	void ScheduleFlush(float DelaySeconds);
 	void Flush();
 	void HandleRequestComplete(
@@ -61,6 +80,8 @@ private:
 		const FRPGSecurityTelemetryEvent& Event,
 		const FString& FilePath) const;
 	bool AppendReservedBatchToDeadLetter() const;
+	/** Completes local rejection only after evidence is preserved; never starts HTTP. */
+	bool FinishPendingDeadLetter();
 	bool PersistQueueSnapshot() const;
 	float GetRetryDelaySeconds() const;
 
@@ -108,8 +129,11 @@ private:
 	FString DungeonSessionId;
 	FString SpoolPath;
 	FString DeadLetterPath;
+	FString RevocationPath;
 	FRPGSecurityTelemetryQueue Queue;
 	FTimerHandle FlushTimerHandle;
 	FDelegateHandle PostWorldInitializationHandle;
 	TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> ActiveRequest;
+	/** A terminally rejected reserved batch awaits local preservation, not another POST. */
+	bool bDeadLetterPending = false;
 };

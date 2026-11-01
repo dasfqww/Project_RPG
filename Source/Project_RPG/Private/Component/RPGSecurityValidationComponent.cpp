@@ -1,4 +1,8 @@
 #include "Component/RPGSecurityValidationComponent.h"
+#include "Component/RPGCharacterMovementComponent.h"
+#include "Security/RPGDungeonGameplayAuthority.h"
+
+#include "Components/SkeletalMeshComponent.h"
 
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -351,6 +355,11 @@ bool URPGSecurityValidationComponent::CanPerformProtectedAction(
 		OutReason = TEXT("Only authority may evaluate protected actions.");
 		return false;
 	}
+	if (IsDungeonGameplayRevoked(GetOwner()))
+	{
+		OutReason = TEXT("Dungeon gameplay authority was revoked.");
+		return false;
+	}
 
 	const FRPGSecurityEnforcementConfig& Enforcement =
 		GetPolicyConfigRef().Enforcement;
@@ -464,15 +473,35 @@ void URPGSecurityValidationComponent::AuthorizeMovementDiscontinuity(
 	const float ExtraDistance,
 	const FName Reason)
 {
-	if (!IsAuthorityOwner())
+	BeginMovementAuthorization(DurationSeconds, ExtraDistance, Reason);
+}
+
+FGuid URPGSecurityValidationComponent::BeginMovementAuthorization(
+	const float DurationSeconds, const float ExtraDistance, const FName Reason)
+{
+	if (!IsAuthorityOwner() || IsDungeonGameplayRevoked(GetOwner()) || !FMath::IsFinite(DurationSeconds) ||
+		!FMath::IsFinite(ExtraDistance) || DurationSeconds <= 0.0f || ExtraDistance < 0.0f)
 	{
-		return;
+		return {};
 	}
 
+	ActiveMovementAuthorization = FGuid::NewGuid();
 	AuthorizedMovementEndsAt = GetServerTimeSeconds() +
 		FMath::Clamp(DurationSeconds, 0.0f, 10.0f);
 	AuthorizedExtraDistance = FMath::Clamp(ExtraDistance, 0.0f, 100000.0f);
 	AuthorizedMovementReason = Reason;
+	return ActiveMovementAuthorization;
+}
+
+void URPGSecurityValidationComponent::EndMovementAuthorization(
+	const FGuid AuthorizationHandle, const bool bResetBaseline)
+{
+	if (!IsAuthorityOwner() || !AuthorizationHandle.IsValid() ||
+		AuthorizationHandle != ActiveMovementAuthorization)
+	{
+		return;
+	}
+	CancelMovementAuthorization(NAME_None, bResetBaseline);
 }
 
 void URPGSecurityValidationComponent::CancelMovementAuthorization(
@@ -488,6 +517,7 @@ void URPGSecurityValidationComponent::CancelMovementAuthorization(
 	AuthorizedMovementEndsAt = 0.0;
 	AuthorizedExtraDistance = 0.0f;
 	AuthorizedMovementReason = NAME_None;
+	ActiveMovementAuthorization.Invalidate();
 	if (bResetBaseline)
 	{
 		ResetMovementBaseline();
@@ -527,6 +557,8 @@ void URPGSecurityValidationComponent::ResetMovementBaseline()
 	bHasMovementBaseline = false;
 	ConsecutiveSpeedViolationSamples = 0;
 	PreviousMovementSample = FRPGMovementSecuritySample();
+	SampledMovementComponent.Reset();
+	PreviousBaseMovementTotal = FVector::ZeroVector;
 }
 
 double URPGSecurityValidationComponent::GetServerTimeSeconds() const
@@ -549,13 +581,28 @@ void URPGSecurityValidationComponent::SampleMovement()
 	const double Now = GetServerTimeSeconds();
 	FRPGMovementSecuritySample Current;
 	Current.Location = Character->GetActorLocation();
+	FRPGMovementSecuritySample PreviousForValidation = PreviousMovementSample;
+	auto* RPGMovement = Cast<URPGCharacterMovementComponent>(Movement);
+	const FVector BaseTotal = RPGMovement ? RPGMovement->GetServerBasedMovementTotal() : FVector::ZeroVector;
+	if (bHasMovementBaseline && RPGMovement && SampledMovementComponent.Get() == RPGMovement
+		&& !BaseTotal.ContainsNaN() && !PreviousBaseMovementTotal.ContainsNaN())
+	{
+		// Keep the stored sample in world space. Only this comparison removes
+		// actual server-applied carry; self movement and teleports remain in it.
+		PreviousForValidation.Location += BaseTotal - PreviousBaseMovementTotal;
+	}
+	SampledMovementComponent = RPGMovement;
+	PreviousBaseMovementTotal = BaseTotal;
 	Current.Velocity = Movement->Velocity;
 	Current.ServerTimeSeconds = Now;
 	Current.DeclaredMaximumSpeed = FMath::Max(0.0f, Movement->GetMaxSpeed());
 	// Falling is deliberately not exempt: otherwise a speed hack can jump before
 	// accelerating. Root motion is server-authored, while exceptional dashes and
 	// knockbacks must use AuthorizeMovementDiscontinuity below.
-	Current.bSkipHorizontalSpeedCheck = Movement->HasAnimRootMotion();
+	// HasAnimRootMotion() is valid only inside PerformMovement(), not this
+	// independent security tick. Inspect the server's authored montage instead.
+	Current.bSkipHorizontalSpeedCheck = Character->GetMesh() &&
+		Character->GetMesh()->IsPlayingRootMotion();
 	if (Now <= AuthorizedMovementEndsAt && AuthorizedExtraDistance > 0.0f)
 	{
 		Current.AuthorizedExtraDistance = AuthorizedExtraDistance;
@@ -565,6 +612,7 @@ void URPGSecurityValidationComponent::SampleMovement()
 	{
 		AuthorizedExtraDistance = 0.0f;
 		AuthorizedMovementReason = NAME_None;
+		ActiveMovementAuthorization.Invalidate();
 	}
 
 	if (Now < SpawnGraceEndsAt || !bHasMovementBaseline)
@@ -576,7 +624,7 @@ void URPGSecurityValidationComponent::SampleMovement()
 
 	const FRPGMovementSecurityResult Result =
 		FRPGSecurityValidationMath::ValidateMovement(
-			PreviousMovementSample,
+			PreviousForValidation,
 			Current,
 			GetPolicyConfigRef().Movement);
 	PreviousMovementSample = Current;

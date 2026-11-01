@@ -5,7 +5,9 @@
 #include "Component/RPGSecurityValidationComponent.h"
 #include "FunctionLibrary/RPGCombatFunctionLibrary.h"
 #include "GameplayEffect.h"
+#include "GameFramework/Pawn.h"
 #include "RPGGameplayTags.h"
+#include "Security/RPGDamageExecutionGuard.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RPGSecurityBlueprintLibrary)
 
@@ -225,12 +227,19 @@ bool URPGSecurityBlueprintLibrary::ApplyAuthorizedServerDamage(
 		return false;
 	}
 	Spec.Data->SetSetByCallerMagnitude(SetByCallerDamageTag, Damage);
+	if (!FRPGDamageExecutionGuard::Supports(*Spec.Data, *SourceASC))
+	{
+		OutError = FText::FromString(TEXT("Authorized damage requires an instant effect with one native TakeDamage execution and no extra damage paths."));
+		return false;
+	}
+	FRPGDamageExecutionGuard DamageReceipt(*Spec.Data, *SourceASC, *TargetASC, SecurityProfile.MaximumFinalDamagePerHit);
 	OutEffectHandle = SourceASC->ApplyGameplayEffectSpecToTarget(
 		*Spec.Data,
 		TargetASC);
-	if (!OutEffectHandle.WasSuccessfullyApplied())
+	if (!OutEffectHandle.WasSuccessfullyApplied() || !DamageReceipt.WasApproved())
 	{
-		OutError = FText::FromString(TEXT("The target rejected the damage GameplayEffect."));
+		OutEffectHandle = FActiveGameplayEffectHandle();
+		OutError = FText::FromString(TEXT("The damage effect was rejected or its final calculated damage was invalid/over the skill cap."));
 		return false;
 	}
 	return true;

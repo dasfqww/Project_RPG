@@ -36,6 +36,8 @@ public:
 
 	/**
 	 * Applies one server-produced hit using an authored skill profile.
+	 * Requires an instant GE with one native TakeDamage execution (no additional damage paths).
+	 * False also covers invalid/over-cap final calculation; effect-applied callbacks alone are not damage approval.
 	 * Cosmetic clients receive False and can only play presentation separately.
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly,

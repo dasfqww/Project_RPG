@@ -65,6 +65,7 @@ private:
 	FRPGSkillMovementSecurityProfile CachedProfile;
 	FTimerHandle FinishTimerHandle;
 	FName EffectiveReason = NAME_None;
+	FGuid AuthorizationHandle;
 	bool bAuthorizationApplied = false;
 	bool bStarted = false;
 	bool bResolved = false;

@@ -41,6 +41,65 @@ bool FRPGSecurityNormalMovementTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRPGSecurityServerTimeJitterTest,
+	"ProjectRPG.Security.Movement.AcceptsServerTimeJitterAndResumesAfterGap",
+	EAutomationTestFlags::EditorContext |
+		EAutomationTestFlags::EngineFilter)
+
+bool FRPGSecurityServerTimeJitterTest::RunTest(const FString& Parameters)
+{
+	FRPGMovementSecurityConfig Config;
+	FRPGMovementSecuritySample Previous;
+	Previous.ServerTimeSeconds = 10.0;
+	Previous.DeclaredMaximumSpeed = 400.0f;
+	Previous.Velocity = FVector(400.0f, 0.0f, 0.0f);
+
+	// These are authoritative server samples, not client-reported timestamps.
+	// Irregular sample intervals must use the elapsed server time, not a fixed tick.
+	for (const double DeltaSeconds : { 0.03, 0.40, 0.08, 0.31 })
+	{
+		FRPGMovementSecuritySample Current = Previous;
+		Current.ServerTimeSeconds += DeltaSeconds;
+		Current.Location.X += 400.0 * DeltaSeconds;
+		const FRPGMovementSecurityResult Result =
+			FRPGSecurityValidationMath::ValidateMovement(Previous, Current, Config);
+		TestTrue(TEXT("Irregular but plausible server movement is accepted"),
+			Result.bValid);
+		TestFalse(TEXT("Sub-second jitter is not a sample gap"),
+			Result.bSampleGapTooLarge);
+		Previous = Current;
+	}
+
+	FRPGMovementSecuritySample Current = Previous;
+	Current.ServerTimeSeconds += 1.5;
+	Current.Location.X += 600.0;
+	const FRPGMovementSecurityResult Gap =
+		FRPGSecurityValidationMath::ValidateMovement(Previous, Current, Config);
+	TestTrue(TEXT("Long server sampling gap is accepted for resync"), Gap.bValid);
+	TestTrue(TEXT("Long gap is explicitly classified"), Gap.bSampleGapTooLarge);
+
+	Previous = Current;
+	Current.ServerTimeSeconds += 0.1;
+	Current.Location.X += 40.0;
+	const FRPGMovementSecurityResult Resumed =
+		FRPGSecurityValidationMath::ValidateMovement(Previous, Current, Config);
+	TestTrue(TEXT("Normal movement after resync is accepted"), Resumed.bValid);
+	TestFalse(TEXT("Short resumed sample is checked"),
+		Resumed.bSampleGapTooLarge);
+
+	Previous = Current;
+	Current.ServerTimeSeconds += 0.1;
+	Current.Location.X += 180.0;
+	const FRPGMovementSecurityResult SpeedSpike =
+		FRPGSecurityValidationMath::ValidateMovement(Previous, Current, Config);
+	TestFalse(TEXT("Resync does not disable later speed checks"),
+		SpeedSpike.bValid);
+	TestTrue(TEXT("Later spike is classified as speed abuse"),
+		SpeedSpike.bSpeedViolation);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRPGSecuritySpeedHackMovementTest,
 	"ProjectRPG.Security.Movement.RejectsWalkingSpeedSpike",
 	EAutomationTestFlags::EditorContext |
