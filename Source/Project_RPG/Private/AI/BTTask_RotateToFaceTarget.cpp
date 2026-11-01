@@ -2,6 +2,7 @@
 
 
 #include "AI/BTTask_RotateToFaceTarget.h"
+#include "Combat/RPGCombatControlTypes.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "AIController.h"
 #include "Kismet/KismetMathLibrary.h"
@@ -53,6 +54,7 @@ EBTNodeResult::Type UBTTask_RotateToFaceTarget::ExecuteTask(UBehaviorTreeCompone
 	AActor* TargetActor = Cast<AActor>(ActorObject);
 
 	APawn* OwningPawn = OwnerComp.GetAIOwner()->GetPawn();
+	if (RPGCombatControl::IsActionBlocked(OwningPawn)) return EBTNodeResult::Failed;
 
 	FRotateToFaceTargetTaskMemory* Memory = CastInstanceNodeMemory<FRotateToFaceTargetTaskMemory>(NodeMemory);
 	check(Memory);
@@ -60,7 +62,7 @@ EBTNodeResult::Type UBTTask_RotateToFaceTarget::ExecuteTask(UBehaviorTreeCompone
 	Memory->OwningPawn = OwningPawn;
 	Memory->TargetActor = TargetActor;
 
-	if (!Memory->IsValid())
+	if (!Memory->IsValid() || RPGCombatControl::IsActionBlocked(Memory->OwningPawn.Get()))
 	{
 		return EBTNodeResult::Failed;
 	}
@@ -78,9 +80,11 @@ void UBTTask_RotateToFaceTarget::TickTask(UBehaviorTreeComponent& OwnerComp, uin
 {
 	FRotateToFaceTargetTaskMemory* Memory = CastInstanceNodeMemory<FRotateToFaceTargetTaskMemory>(NodeMemory);
 
-	if (!Memory->IsValid())
+	if (!Memory->IsValid() || RPGCombatControl::IsActionBlocked(Memory->OwningPawn.Get()))
 	{
+		Memory->Reset();
 		FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
+		return;
 	}
 
 	if (HasReachedAnglePrecision(Memory->OwningPawn.Get(), Memory->TargetActor.Get()))

@@ -4,18 +4,23 @@
 
 #include "CoreMinimal.h"
 #include "GameMode/RPGGameModeBase.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "RPGBossBattleGameMode.generated.h"
 
 
-class ARPGNonPlayerCharacter;
+class ARPGBossCharacter;
+class APlayerController;
+class ACharacter;
+struct FRPGBossState;
 class URPGWidgetBase;
 
 UENUM(BlueprintType)
 enum class EBossBattleState : uint8
 {
-	InProgress,   // ¿¸≈ı ¡¯«‡ ¡ﬂ
-	Victory,     // «√∑π¿ÃæÓ∞° ∫∏Ω∫∏¶ √≥ƒ°«‘
-	Defeated        // Ω√∞£ √ ∞˙ ∂«¥¬ ¿¸∏Í µÓ¿∏∑Œ Ω«∆–
+	InProgress,   // Ï†ÑÌà¨ ÏßÑÌñâ Ï§ë
+	Victory,     // ÌîåÎ†àÏù¥Ïñ¥Í∞Ä Î≥¥Ïä§Î•º Ï≤òÏπòÌï®
+	Defeated,       // ÏãúÍ∞Ñ Ï¥àÍ≥º ÎòêÎäî Ï†ÑÎ©∏ Îì±ÏúºÎ°ú Ïã§Ìå®
+	Waiting         // Boss startup/ASC grant has not completed yet
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnBattleStateChanged, EBossBattleState, BattleState);
@@ -32,7 +37,9 @@ public:
 	ARPGBossBattleGameMode();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaTime) override;
+	virtual void Logout(AController* Exiting) override;
 
 	void SpawnBoss();
 
@@ -41,6 +48,13 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void Defeated();
+
+	/** Server-only restart; replaces the boss and restores registered player pawns. */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Battle")
+	void RestartBattle();
+
+	/** Only a registered arena participant may request a retry from a client. */
+	bool TryRestartBattleForParticipant(APlayerController* Requester, int32 ExpectedBattleRevision = INDEX_NONE);
 
 	UFUNCTION(BlueprintCallable)
 	void DisplayResultWidget(TSubclassOf<URPGWidgetBase> InWidgetClass, USoundBase* InSound);
@@ -58,6 +72,8 @@ public:
 	FOnBossCleared OnBossCleared;*/
 
 protected:
+	virtual bool IsOnlineDungeonBattle() const;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Battle")
 	EBossBattleState CurrentBossBattleState;
 
@@ -65,16 +81,20 @@ protected:
 	TObjectPtr<AActor> SpawnPoint;
 
 	UPROPERTY(EditDefaultsOnly, Category = "BossCharacter")
-	TSubclassOf<ARPGNonPlayerCharacter> BossClass;
+	TSubclassOf<ARPGBossCharacter> BossClass;
 
 	UPROPERTY()
-	TObjectPtr<ARPGNonPlayerCharacter> BossCharacter;
+	TObjectPtr<ARPGBossCharacter> BossCharacter;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Battle")
 	float BattleTimeLimit;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Battle")
 	int32 DeathCount;
+
+	/** Only living player pawns near the arena can join this encounter. */
+	UPROPERTY(EditDefaultsOnly, Category = "Battle", meta = (ClampMin = "1.0"))
+	float ParticipationRadius = 15000.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Clear")
 	TSubclassOf<URPGWidgetBase> VictoryWidgetClass;
@@ -88,7 +108,45 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Clear")
 	TObjectPtr<USoundBase> FailedSound;
 
-	FTimerHandle BattleTimerHandle;
+	TArray<TWeakObjectPtr<APlayerController>> Participants;
+	struct FParticipantRetryState
+	{
+		TWeakObjectPtr<APawn> LastPawn;
+		FTransform EntryTransform;
+	};
+	TMap<TWeakObjectPtr<APlayerController>, FParticipantRetryState> ParticipantRetryStates;
+
+	struct FDisabledParticipantMovement
+	{
+		TWeakObjectPtr<APlayerController> Controller;
+		TWeakObjectPtr<ACharacter> Character;
+		TEnumAsByte<EMovementMode> PreviousMode = MOVE_Walking;
+		uint8 PreviousCustomMode = 0;
+	};
+	TArray<FDisabledParticipantMovement> DisabledParticipantMovement;
+
+private:
+	friend struct FRPGDungeonDifficultyTestAccess;
+	UFUNCTION()
+	void HandleBackendDungeonDifficultyConfirmed(ERPGGameDifficulty Difficulty);
+	bool bBossSpawnEndingPlay = false;
+	FTimerHandle BackendDifficultySpawnTimer;
+	friend struct FRPGDungeonGameplayRevocationTestAccess;
+	void TryStartBattle();
+	void RegisterLivingParticipants();
+	bool HasLivingParticipant() const;
+	void RestoreParticipantMovement();
+	bool ResetParticipantsForRetry();
+	bool bRestartingBattle = false;
+
+	UFUNCTION()
+	void HandleBossStartUpReady();
+
+	UFUNCTION()
+	void HandleBossStateChanged(const FRPGBossState& Previous, const FRPGBossState& NewState);
+
+	UFUNCTION()
+	void HandleBossDestroyed(AActor* DestroyedActor);
 
 public:
 	FORCEINLINE EBossBattleState GetCurrentBossBattleState() const { return CurrentBossBattleState; }
