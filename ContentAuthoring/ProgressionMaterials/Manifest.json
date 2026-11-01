@@ -1,0 +1,141 @@
+{
+    "version":  "FirstSlice.Materials.v1",
+    "installedInOriginalProject":  false,
+    "assets":  [
+                   {
+                       "path":  "Content/Blueprints/GameData/Item/Progression/DA_Item_ProgressionOre.uasset",
+                       "sha256":  "9a528899e5d23302ff2a814d6b1a90b8d83102296b9b7c780d77e41b5b4c24e7",
+                       "bytes":  2269,
+                       "asset":  "/Game/Blueprints/GameData/Item/Progression/DA_Item_ProgressionOre",
+                       "properties":  {
+                                          "expected_primary_asset_id":  "RPGItemDefinition:GameItem.Material.Progression.Ore",
+                                          "definition_version":  1,
+                                          "category":  "Craft",
+                                          "max_stack_size":  999,
+                                          "grid_size":  [
+                                                            1,
+                                                            1
+                                                        ],
+                                          "display_name":  "성장 광석",
+                                          "description":  "첫 성장 구간의 장비 강화 재료.",
+                                          "fragment_count":  0,
+                                          "validation":  {
+                                                             "result":  "\u003cDataValidationResult.VALID: 1\u003e",
+                                                             "errors":  [
+
+                                                                        ],
+                                                             "warnings":  [
+
+                                                                          ]
+                                                         }
+                                      }
+                   },
+                   {
+                       "path":  "Content/Blueprints/GameData/Item/Progression/DA_Item_ProgressionToken.uasset",
+                       "sha256":  "22581ade377dc46794ac3f22470288569cf79801acafa6651b58ea26d646ca5f",
+                       "bytes":  2293,
+                       "asset":  "/Game/Blueprints/GameData/Item/Progression/DA_Item_ProgressionToken",
+                       "properties":  {
+                                          "expected_primary_asset_id":  "RPGItemDefinition:GameItem.Material.Progression.Token",
+                                          "definition_version":  1,
+                                          "category":  "Craft",
+                                          "max_stack_size":  999,
+                                          "grid_size":  [
+                                                            1,
+                                                            1
+                                                        ],
+                                          "display_name":  "제작 증표",
+                                          "description":  "첫 성장 구간의 목표 장비 선택 제작 재료.",
+                                          "fragment_count":  0,
+                                          "validation":  {
+                                                             "result":  "\u003cDataValidationResult.VALID: 1\u003e",
+                                                             "errors":  [
+
+                                                                        ],
+                                                             "warnings":  [
+
+                                                                          ]
+                                                         }
+                                      }
+                   },
+                   {
+                       "path":  "Content/Blueprints/GameData/DungeonReward/Progression/DA_DungeonReward_Intro1.uasset",
+                       "sha256":  "963406374ea4dcb23ae5e5fc2cec70ca2f56b4f435cb389385e3d26da866b390",
+                       "bytes":  2823,
+                       "asset":  "/Game/Blueprints/GameData/DungeonReward/Progression/DA_DungeonReward_Intro1",
+                       "properties":  {
+                                          "intended_dungeon_id":  "Progression.Intro1",
+                                          "reward_version":  "FirstSlice.v1",
+                                          "currency_count":  0,
+                                          "ore_quantity":  2,
+                                          "token_quantity":  0,
+                                          "bind_state":  "CharacterBound",
+                                          "random_equipment_count":  0,
+                                          "validation":  {
+                                                             "result":  "\u003cDataValidationResult.VALID: 1\u003e",
+                                                             "errors":  [
+
+                                                                        ],
+                                                             "warnings":  [
+
+                                                                          ]
+                                                         }
+                                      }
+                   },
+                   {
+                       "path":  "Content/Blueprints/GameData/DungeonReward/Progression/DA_DungeonReward_Intro2.uasset",
+                       "sha256":  "4cab863c03ab75ec378014a7911021bf3de5154bc292f041a6f7d3f4e2f48cda",
+                       "bytes":  2823,
+                       "asset":  "/Game/Blueprints/GameData/DungeonReward/Progression/DA_DungeonReward_Intro2",
+                       "properties":  {
+                                          "intended_dungeon_id":  "Progression.Intro2",
+                                          "reward_version":  "FirstSlice.v1",
+                                          "currency_count":  0,
+                                          "ore_quantity":  2,
+                                          "token_quantity":  0,
+                                          "bind_state":  "CharacterBound",
+                                          "random_equipment_count":  0,
+                                          "validation":  {
+                                                             "result":  "\u003cDataValidationResult.VALID: 1\u003e",
+                                                             "errors":  [
+
+                                                                        ],
+                                                             "warnings":  [
+
+                                                                          ]
+                                                         }
+                                      }
+                   },
+                   {
+                       "path":  "Content/Blueprints/GameData/DungeonReward/Progression/DA_DungeonReward_Intro3.uasset",
+                       "sha256":  "7321276a6b8c4f5ec2e33ec1f12c036f97997c1554f33d5c8f5986ee27c1c264",
+                       "bytes":  2823,
+                       "asset":  "/Game/Blueprints/GameData/DungeonReward/Progression/DA_DungeonReward_Intro3",
+                       "properties":  {
+                                          "intended_dungeon_id":  "Progression.Intro3",
+                                          "reward_version":  "FirstSlice.v1",
+                                          "currency_count":  0,
+                                          "ore_quantity":  2,
+                                          "token_quantity":  0,
+                                          "bind_state":  "CharacterBound",
+                                          "random_equipment_count":  0,
+                                          "validation":  {
+                                                             "result":  "\u003cDataValidationResult.VALID: 1\u003e",
+                                                             "errors":  [
+
+                                                                        ],
+                                                             "warnings":  [
+
+                                                                          ]
+                                                         }
+                                      }
+                   }
+               ],
+    "tagConfig":  {
+                      "sha256":  "1ceafce50033a3c8dd2b74c4328844cc4fdab1129dc0f7b02b3552e09b9da4ed",
+                      "path":  "Config/Tags/ProgressionMaterials.ini"
+                  },
+    "authoringModuleSha256":  "aa6c9cb08578832686ceb5cbc474a43cf7db76f0121a335e78ef17ad00127810",
+    "gameplayOrSettlementExecuted":  false,
+    "installAfterCurrentTrainingValidationHandoff":  true
+}

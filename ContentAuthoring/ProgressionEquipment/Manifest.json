@@ -1,0 +1,388 @@
+{
+    "version":  "FirstSlice.Equipment.v1",
+    "installedInOriginalProject":  false,
+    "assets":  [
+                   {
+                       "path":  "Content/Blueprints/GameData/Item/Progression/DA_Item_Progression_StarterGreatSword.uasset",
+                       "asset":  "/Game/Blueprints/GameData/Item/Progression/DA_Item_Progression_StarterGreatSword",
+                       "sha256":  "c52eb4389a5de2ddde6d40014fac09b407273043c334c4a137032722a0682591",
+                       "bytes":  3330,
+                       "model":  "StarterGreatSword",
+                       "properties":  {
+                                          "model":  "StarterGreatSword",
+                                          "expected_primary_asset_id":  "RPGItemDefinition:GameItem.Equipment.Progression.Starter.GreatSword",
+                                          "definition_version":  1,
+                                          "slot_index":  9,
+                                          "compatible_slot":  "\u003cEquipmentSlotType.WEAPON_PRIMARY_R: 9\u003e",
+                                          "max_stack_size":  1,
+                                          "grid_size":  [
+                                                            1,
+                                                            1
+                                                        ],
+                                          "equipment":  {
+                                                            "weapon_type":  "\u003cRPGGladiatorWeaponType.GREAT_SWORD: 3\u003e",
+                                                            "weapon_hand_type":  {
+                                                                                     "native_enum":  "WeaponHandType",
+                                                                                     "entry":  "Count",
+                                                                                     "value":  3
+                                                                                 },
+                                                            "utility_type":  {
+                                                                                 "native_enum":  "RPGGladiatorUtilityType",
+                                                                                 "entry":  "Count",
+                                                                                 "value":  2
+                                                                             },
+                                                            "equipped_actor_class":  "/Game/Blueprints/Weapon/BP_PlayerWeapon.BP_PlayerWeapon_C",
+                                                            "attach_socket":  "WeaponHandSocket",
+                                                            "equipped_actor_relative_transform":  "(Rotation=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),Translation=(X=0.000000,Y=0.000000,Z=0.000000),Scale3D=(X=1.000000,Y=1.000000,Z=1.000000))",
+                                                            "granted_ability_sets":  [
+
+                                                                                     ]
+                                                        },
+                                          "rolled_stat_fragment_count":  0,
+                                          "growth_instance_initialized":  false,
+                                          "validation":  {
+                                                             "result":  "\u003cDataValidationResult.VALID: 1\u003e",
+                                                             "errors":  [
+
+                                                                        ],
+                                                             "warnings":  [
+
+                                                                          ]
+                                                         }
+                                      }
+                   },
+                   {
+                       "path":  "Content/Blueprints/GameData/Item/Progression/DA_Item_Progression_StarterChest.uasset",
+                       "asset":  "/Game/Blueprints/GameData/Item/Progression/DA_Item_Progression_StarterChest",
+                       "sha256":  "1f86281306b0e9a3b4cd2ba2d51be6e1ce8406b5019bbf45ca14550753552fbc",
+                       "bytes":  2856,
+                       "model":  "StarterChest",
+                       "properties":  {
+                                          "model":  "StarterChest",
+                                          "expected_primary_asset_id":  "RPGItemDefinition:GameItem.Equipment.Progression.Starter.Chest",
+                                          "definition_version":  1,
+                                          "slot_index":  1,
+                                          "compatible_slot":  "\u003cEquipmentSlotType.CHEST: 1\u003e",
+                                          "max_stack_size":  1,
+                                          "grid_size":  [
+                                                            1,
+                                                            1
+                                                        ],
+                                          "equipment":  {
+                                                            "weapon_type":  {
+                                                                                "native_enum":  "RPGGladiatorWeaponType",
+                                                                                "entry":  "Count",
+                                                                                "value":  7
+                                                                            },
+                                                            "weapon_hand_type":  {
+                                                                                     "native_enum":  "WeaponHandType",
+                                                                                     "entry":  "Count",
+                                                                                     "value":  3
+                                                                                 },
+                                                            "utility_type":  {
+                                                                                 "native_enum":  "RPGGladiatorUtilityType",
+                                                                                 "entry":  "Count",
+                                                                                 "value":  2
+                                                                             },
+                                                            "equipped_actor_class":  "None",
+                                                            "attach_socket":  "None",
+                                                            "equipped_actor_relative_transform":  "(Rotation=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),Translation=(X=0.000000,Y=0.000000,Z=0.000000),Scale3D=(X=1.000000,Y=1.000000,Z=1.000000))",
+                                                            "granted_ability_sets":  [
+
+                                                                                     ]
+                                                        },
+                                          "rolled_stat_fragment_count":  0,
+                                          "growth_instance_initialized":  false,
+                                          "validation":  {
+                                                             "result":  "\u003cDataValidationResult.VALID: 1\u003e",
+                                                             "errors":  [
+
+                                                                        ],
+                                                             "warnings":  [
+
+                                                                          ]
+                                                         }
+                                      }
+                   },
+                   {
+                       "path":  "Content/Blueprints/GameData/Item/Progression/DA_Item_Progression_StarterGloves.uasset",
+                       "asset":  "/Game/Blueprints/GameData/Item/Progression/DA_Item_Progression_StarterGloves",
+                       "sha256":  "f38a4f0e7c74db7e2268c725e30bba15f6793eef8d404e780e1f91d3aba883f8",
+                       "bytes":  2863,
+                       "model":  "StarterGloves",
+                       "properties":  {
+                                          "model":  "StarterGloves",
+                                          "expected_primary_asset_id":  "RPGItemDefinition:GameItem.Equipment.Progression.Starter.Gloves",
+                                          "definition_version":  1,
+                                          "slot_index":  4,
+                                          "compatible_slot":  "\u003cEquipmentSlotType.HANDS: 4\u003e",
+                                          "max_stack_size":  1,
+                                          "grid_size":  [
+                                                            1,
+                                                            1
+                                                        ],
+                                          "equipment":  {
+                                                            "weapon_type":  {
+                                                                                "native_enum":  "RPGGladiatorWeaponType",
+                                                                                "entry":  "Count",
+                                                                                "value":  7
+                                                                            },
+                                                            "weapon_hand_type":  {
+                                                                                     "native_enum":  "WeaponHandType",
+                                                                                     "entry":  "Count",
+                                                                                     "value":  3
+                                                                                 },
+                                                            "utility_type":  {
+                                                                                 "native_enum":  "RPGGladiatorUtilityType",
+                                                                                 "entry":  "Count",
+                                                                                 "value":  2
+                                                                             },
+                                                            "equipped_actor_class":  "None",
+                                                            "attach_socket":  "None",
+                                                            "equipped_actor_relative_transform":  "(Rotation=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),Translation=(X=0.000000,Y=0.000000,Z=0.000000),Scale3D=(X=1.000000,Y=1.000000,Z=1.000000))",
+                                                            "granted_ability_sets":  [
+
+                                                                                     ]
+                                                        },
+                                          "rolled_stat_fragment_count":  0,
+                                          "growth_instance_initialized":  false,
+                                          "validation":  {
+                                                             "result":  "\u003cDataValidationResult.VALID: 1\u003e",
+                                                             "errors":  [
+
+                                                                        ],
+                                                             "warnings":  [
+
+                                                                          ]
+                                                         }
+                                      }
+                   },
+                   {
+                       "path":  "Content/Blueprints/GameData/Item/Progression/DA_Item_Progression_EnduranceGreatSword.uasset",
+                       "asset":  "/Game/Blueprints/GameData/Item/Progression/DA_Item_Progression_EnduranceGreatSword",
+                       "sha256":  "90e6b77c3998973bfff950191d730261b44a1779ce8ad2194f274a0f4ec22646",
+                       "bytes":  3356,
+                       "model":  "EnduranceGreatSword",
+                       "properties":  {
+                                          "model":  "EnduranceGreatSword",
+                                          "expected_primary_asset_id":  "RPGItemDefinition:GameItem.Equipment.Progression.Target.EnduranceGreatSword",
+                                          "definition_version":  1,
+                                          "slot_index":  9,
+                                          "compatible_slot":  "\u003cEquipmentSlotType.WEAPON_PRIMARY_R: 9\u003e",
+                                          "max_stack_size":  1,
+                                          "grid_size":  [
+                                                            1,
+                                                            1
+                                                        ],
+                                          "equipment":  {
+                                                            "weapon_type":  "\u003cRPGGladiatorWeaponType.GREAT_SWORD: 3\u003e",
+                                                            "weapon_hand_type":  {
+                                                                                     "native_enum":  "WeaponHandType",
+                                                                                     "entry":  "Count",
+                                                                                     "value":  3
+                                                                                 },
+                                                            "utility_type":  {
+                                                                                 "native_enum":  "RPGGladiatorUtilityType",
+                                                                                 "entry":  "Count",
+                                                                                 "value":  2
+                                                                             },
+                                                            "equipped_actor_class":  "/Game/Blueprints/Weapon/BP_PlayerWeapon.BP_PlayerWeapon_C",
+                                                            "attach_socket":  "WeaponHandSocket",
+                                                            "equipped_actor_relative_transform":  "(Rotation=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),Translation=(X=0.000000,Y=0.000000,Z=0.000000),Scale3D=(X=1.000000,Y=1.000000,Z=1.000000))",
+                                                            "granted_ability_sets":  [
+
+                                                                                     ]
+                                                        },
+                                          "rolled_stat_fragment_count":  0,
+                                          "growth_instance_initialized":  false,
+                                          "validation":  {
+                                                             "result":  "\u003cDataValidationResult.VALID: 1\u003e",
+                                                             "errors":  [
+
+                                                                        ],
+                                                             "warnings":  [
+
+                                                                          ]
+                                                         }
+                                      }
+                   },
+                   {
+                       "path":  "Content/Blueprints/GameData/Item/Progression/DA_Item_Progression_CirculationGreatSword.uasset",
+                       "asset":  "/Game/Blueprints/GameData/Item/Progression/DA_Item_Progression_CirculationGreatSword",
+                       "sha256":  "3c2f30d3ac65a7e9c3f3ed9ad2c2fce22b5e192121f6613cbed0acbb498fc3d5",
+                       "bytes":  3370,
+                       "model":  "CirculationGreatSword",
+                       "properties":  {
+                                          "model":  "CirculationGreatSword",
+                                          "expected_primary_asset_id":  "RPGItemDefinition:GameItem.Equipment.Progression.Target.CirculationGreatSword",
+                                          "definition_version":  1,
+                                          "slot_index":  9,
+                                          "compatible_slot":  "\u003cEquipmentSlotType.WEAPON_PRIMARY_R: 9\u003e",
+                                          "max_stack_size":  1,
+                                          "grid_size":  [
+                                                            1,
+                                                            1
+                                                        ],
+                                          "equipment":  {
+                                                            "weapon_type":  "\u003cRPGGladiatorWeaponType.GREAT_SWORD: 3\u003e",
+                                                            "weapon_hand_type":  {
+                                                                                     "native_enum":  "WeaponHandType",
+                                                                                     "entry":  "Count",
+                                                                                     "value":  3
+                                                                                 },
+                                                            "utility_type":  {
+                                                                                 "native_enum":  "RPGGladiatorUtilityType",
+                                                                                 "entry":  "Count",
+                                                                                 "value":  2
+                                                                             },
+                                                            "equipped_actor_class":  "/Game/Blueprints/Weapon/BP_PlayerWeapon.BP_PlayerWeapon_C",
+                                                            "attach_socket":  "WeaponHandSocket",
+                                                            "equipped_actor_relative_transform":  "(Rotation=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),Translation=(X=0.000000,Y=0.000000,Z=0.000000),Scale3D=(X=1.000000,Y=1.000000,Z=1.000000))",
+                                                            "granted_ability_sets":  [
+
+                                                                                     ]
+                                                        },
+                                          "rolled_stat_fragment_count":  0,
+                                          "growth_instance_initialized":  false,
+                                          "validation":  {
+                                                             "result":  "\u003cDataValidationResult.VALID: 1\u003e",
+                                                             "errors":  [
+
+                                                                        ],
+                                                             "warnings":  [
+
+                                                                          ]
+                                                         }
+                                      }
+                   },
+                   {
+                       "path":  "Content/Blueprints/GameData/Item/Progression/DA_Item_Progression_TargetChest.uasset",
+                       "asset":  "/Game/Blueprints/GameData/Item/Progression/DA_Item_Progression_TargetChest",
+                       "sha256":  "c1d791ab578a8332ed461df2f5b56bec81a00d3c8da979dc1e86fc9a47aedccd",
+                       "bytes":  2849,
+                       "model":  "TargetChest",
+                       "properties":  {
+                                          "model":  "TargetChest",
+                                          "expected_primary_asset_id":  "RPGItemDefinition:GameItem.Equipment.Progression.Target.Chest",
+                                          "definition_version":  1,
+                                          "slot_index":  1,
+                                          "compatible_slot":  "\u003cEquipmentSlotType.CHEST: 1\u003e",
+                                          "max_stack_size":  1,
+                                          "grid_size":  [
+                                                            1,
+                                                            1
+                                                        ],
+                                          "equipment":  {
+                                                            "weapon_type":  {
+                                                                                "native_enum":  "RPGGladiatorWeaponType",
+                                                                                "entry":  "Count",
+                                                                                "value":  7
+                                                                            },
+                                                            "weapon_hand_type":  {
+                                                                                     "native_enum":  "WeaponHandType",
+                                                                                     "entry":  "Count",
+                                                                                     "value":  3
+                                                                                 },
+                                                            "utility_type":  {
+                                                                                 "native_enum":  "RPGGladiatorUtilityType",
+                                                                                 "entry":  "Count",
+                                                                                 "value":  2
+                                                                             },
+                                                            "equipped_actor_class":  "None",
+                                                            "attach_socket":  "None",
+                                                            "equipped_actor_relative_transform":  "(Rotation=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),Translation=(X=0.000000,Y=0.000000,Z=0.000000),Scale3D=(X=1.000000,Y=1.000000,Z=1.000000))",
+                                                            "granted_ability_sets":  [
+
+                                                                                     ]
+                                                        },
+                                          "rolled_stat_fragment_count":  0,
+                                          "growth_instance_initialized":  false,
+                                          "validation":  {
+                                                             "result":  "\u003cDataValidationResult.VALID: 1\u003e",
+                                                             "errors":  [
+
+                                                                        ],
+                                                             "warnings":  [
+
+                                                                          ]
+                                                         }
+                                      }
+                   },
+                   {
+                       "path":  "Content/Blueprints/GameData/Item/Progression/DA_Item_Progression_TargetGloves.uasset",
+                       "asset":  "/Game/Blueprints/GameData/Item/Progression/DA_Item_Progression_TargetGloves",
+                       "sha256":  "2656961d50e382c5031008b982130ffbbaabe76f8451b879d10a82ce5be4da7b",
+                       "bytes":  2856,
+                       "model":  "TargetGloves",
+                       "properties":  {
+                                          "model":  "TargetGloves",
+                                          "expected_primary_asset_id":  "RPGItemDefinition:GameItem.Equipment.Progression.Target.Gloves",
+                                          "definition_version":  1,
+                                          "slot_index":  4,
+                                          "compatible_slot":  "\u003cEquipmentSlotType.HANDS: 4\u003e",
+                                          "max_stack_size":  1,
+                                          "grid_size":  [
+                                                            1,
+                                                            1
+                                                        ],
+                                          "equipment":  {
+                                                            "weapon_type":  {
+                                                                                "native_enum":  "RPGGladiatorWeaponType",
+                                                                                "entry":  "Count",
+                                                                                "value":  7
+                                                                            },
+                                                            "weapon_hand_type":  {
+                                                                                     "native_enum":  "WeaponHandType",
+                                                                                     "entry":  "Count",
+                                                                                     "value":  3
+                                                                                 },
+                                                            "utility_type":  {
+                                                                                 "native_enum":  "RPGGladiatorUtilityType",
+                                                                                 "entry":  "Count",
+                                                                                 "value":  2
+                                                                             },
+                                                            "equipped_actor_class":  "None",
+                                                            "attach_socket":  "None",
+                                                            "equipped_actor_relative_transform":  "(Rotation=(X=0.000000,Y=0.000000,Z=0.000000,W=1.000000),Translation=(X=0.000000,Y=0.000000,Z=0.000000),Scale3D=(X=1.000000,Y=1.000000,Z=1.000000))",
+                                                            "granted_ability_sets":  [
+
+                                                                                     ]
+                                                        },
+                                          "rolled_stat_fragment_count":  0,
+                                          "growth_instance_initialized":  false,
+                                          "validation":  {
+                                                             "result":  "\u003cDataValidationResult.VALID: 1\u003e",
+                                                             "errors":  [
+
+                                                                        ],
+                                                             "warnings":  [
+
+                                                                          ]
+                                                         }
+                                      }
+                   }
+               ],
+    "tagConfig":  {
+                      "path":  "Config/Tags/ProgressionEquipment.ini",
+                      "sha256":  "270a294a83f465d1272f5cb28b00b04b7713080062d2d1d7dfa65cdbe4c7ecc5"
+                  },
+    "sourceTemplate":  "/Game/Blueprints/GameData/Item/Weapons/DA_Item_GreatSword",
+    "sourceTemplateSha256":  "8426a799192574d4d6499e63b9d9da959903f9c4a37f375cd71e0c30bd403a0f",
+    "authoringModule":  {
+                            "path":  "C:\\UE5\\Project_RPG\\Saved\\BuildChecks\\ProgressionEquipmentAssets-20261031\\Temp\\RuntimeProject\\Binaries\\Win64\\UnrealEditor-Project_RPG.dll",
+                            "sha256":  "9968dda8acd89aa21b8eb76d2099e7edb5ee27d8b09f92f7a8a946532ea32034"
+                        },
+    "registryIds":  {
+                        "StarterGreatSword":  "RPGItemDefinition:GameItem.Equipment.Progression.Starter.GreatSword",
+                        "StarterChest":  "RPGItemDefinition:GameItem.Equipment.Progression.Starter.Chest",
+                        "StarterGloves":  "RPGItemDefinition:GameItem.Equipment.Progression.Starter.Gloves",
+                        "EnduranceGreatSword":  "RPGItemDefinition:GameItem.Equipment.Progression.Target.EnduranceGreatSword",
+                        "CirculationGreatSword":  "RPGItemDefinition:GameItem.Equipment.Progression.Target.CirculationGreatSword",
+                        "TargetChest":  "RPGItemDefinition:GameItem.Equipment.Progression.Target.Chest",
+                        "TargetGloves":  "RPGItemDefinition:GameItem.Equipment.Progression.Target.Gloves"
+                    },
+    "runtimeGrowthInitialized":  false,
+    "specialWeaponEffectsImplemented":  false,
+    "serverAllowlistImplemented":  false,
+    "gameplayOrGrantExecuted":  false
+}
