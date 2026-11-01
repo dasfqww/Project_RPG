@@ -1,10 +1,12 @@
 param(
     [string]$BaseUrl = 'http://127.0.0.1:3000',
     [string]$AdminToken = $env:PROJECT_RPG_BACKEND_ADMIN_TOKEN,
-    [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12)
+    [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12),
+    [string]$DungeonId = 'Dungeon.RaidSwordMan'
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Tools/Request-DungeonDeparture.ps1')
 
 if ([string]::IsNullOrWhiteSpace($AdminToken)) {
     throw 'PROJECT_RPG_BACKEND_ADMIN_TOKEN or -AdminToken is required.'
@@ -167,6 +169,21 @@ $character = Invoke-JsonRequest `
     -Body @{ name = "Item$([Guid]::NewGuid().ToString('N').Substring(0, 8))" } `
     -ExpectedStatus 201
 $characterId = [Guid]$character.characterId
+$starterItems = Invoke-JsonRequest `
+    -Method Get `
+    -Uri "$BaseUrl/api/items?ownerType=Character&ownerId=$characterId&includeTerminal=false&limit=20" `
+    -Headers $playerHeaders `
+    -Body $null `
+    -ExpectedStatus 200
+$starterWeapons = @($starterItems.items | Where-Object {
+    $_.definitionName -eq 'GameItem.Equipment.Weapon.GreatSword' -and
+    $_.location.containerType -eq 'Equipment' -and
+    $_.location.slotIndex -eq 9
+})
+if ($starterItems.items.Count -ne 1 -or $starterWeapons.Count -ne 1) {
+    throw 'New character did not receive exactly one equipped starter weapon.'
+}
+$starterItemId = [Guid]$starterWeapons[0].state.instanceId
 $serverId = "item-smoke-server-$RunId"
 $session = Invoke-JsonRequest `
     -Method Post `
@@ -174,10 +191,11 @@ $session = Invoke-JsonRequest `
     -Headers $playerHeaders `
     -Body @{
         characterId = $characterId
-        dungeonId = 'Dungeon.ItemSmoke'
+        dungeonId = $DungeonId
         difficulty = 'Normal'
     } `
     -ExpectedStatus 201
+$null = Request-RPGDungeonDeparture $BaseUrl $session.dungeonSessionId $characterId $playerHeaders
 $session = Invoke-JsonRequest `
     -Method Post `
     -Uri "$BaseUrl/api/dungeon-sessions/$($session.dungeonSessionId)/activate" `
@@ -301,7 +319,9 @@ $activeItems = Invoke-JsonRequest `
     -Headers $playerHeaders `
     -Body $null `
     -ExpectedStatus 200
-if ($activeItems.items.Count -ne 1 -or $activeItems.items[0].state.instanceId -ne $itemId) {
+if ($activeItems.items.Count -ne 2 -or
+    @($activeItems.items | Where-Object { $_.state.instanceId -eq $itemId }).Count -ne 1 -or
+    @($activeItems.items | Where-Object { $_.state.instanceId -eq $starterItemId }).Count -ne 1) {
     throw 'The character owner projection did not return the committed item.'
 }
 
@@ -465,7 +485,8 @@ $remainingItems = Invoke-JsonRequest `
     -Headers $playerHeaders `
     -Body $null `
     -ExpectedStatus 200
-if ($remainingItems.items.Count -ne 0) {
+if ($remainingItems.items.Count -ne 1 -or
+    $remainingItems.items[0].state.instanceId -ne $starterItemId) {
     throw 'A terminal tombstone leaked into the active item projection.'
 }
 

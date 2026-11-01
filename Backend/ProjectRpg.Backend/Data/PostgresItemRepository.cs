@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Npgsql;
@@ -8,7 +9,7 @@ using ProjectRpg.Backend.Domain;
 
 namespace ProjectRpg.Backend.Data;
 
-public sealed class PostgresItemRepository(
+public sealed partial class PostgresItemRepository(
     NpgsqlDataSource dataSource,
     ILogger<PostgresItemRepository> logger) : IItemRepository
 {
@@ -17,7 +18,7 @@ public sealed class PostgresItemRepository(
         owner_type, owner_id, container_type, container_id, slot_index,
         generation_seed, quantity, instance_tags, stat_values, revision,
         lifecycle_state, bind_state, durability_current, durability_maximum,
-        expires_at, creation_source, is_locked
+        expires_at, creation_source, is_locked, equipment_progression
         """;
 
     private static readonly JsonSerializerOptions ReceiptJsonOptions = CreateJsonOptions();
@@ -111,6 +112,7 @@ public sealed class PostgresItemRepository(
             await connection.BeginTransactionAsync(cancellationToken);
         try
         {
+            await AcquireMutationOwnerLocksAsync(connection, transaction, request, cancellationToken);
             await AcquireRequestLockAsync(
                 connection,
                 transaction,
@@ -169,6 +171,14 @@ public sealed class PostgresItemRepository(
                         ItemRepositoryCommitStatus.RevisionConflict,
                         committedAt);
                 }
+            }
+
+            if (request.Mutations.Any(mutation =>
+                storedRecords[mutation.NewRecord.ItemId]?.State.EquipmentProgression is not null
+                && mutation.NewRecord.State.EquipmentProgression is null))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt);
             }
 
             ItemRecord[] writtenRecords = request.Mutations
@@ -267,9 +277,13 @@ public sealed class PostgresItemRepository(
         NpgsqlTransaction transaction,
         ItemRepositoryCommitRequest request,
         DateTimeOffset committedAt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool isReward = false,
+        Func<Task>? beforeWrite = null)
     {
-        if (!ItemRecordRules.TryValidateCommit(request, out _))
+        if (!(isReward
+            ? ItemRecordRules.TryValidateRewardCommit(request, out _)
+            : ItemRecordRules.TryValidateCommit(request, out _)))
         {
             return Failure(
                 request,
@@ -277,6 +291,7 @@ public sealed class PostgresItemRepository(
                 committedAt);
         }
 
+        await AcquireMutationOwnerLocksAsync(connection, transaction, request, cancellationToken);
         await AcquireRequestLockAsync(
             connection,
             transaction,
@@ -336,6 +351,11 @@ public sealed class PostgresItemRepository(
             }
         }
 
+        if (request.Mutations.Any(mutation =>
+            storedRecords[mutation.NewRecord.ItemId]?.State.EquipmentProgression is not null
+            && mutation.NewRecord.State.EquipmentProgression is null))
+            return Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt);
+
         ItemRecord[] writtenRecords = request.Mutations
             .Select(mutation => ItemRecordRules.SnapshotWithRevision(
                 mutation.NewRecord,
@@ -350,6 +370,7 @@ public sealed class PostgresItemRepository(
                 committedAt);
         }
 
+        if (beforeWrite is not null) await beforeWrite();
         foreach ((Guid itemId, ItemRecord? stored) in storedRecords)
         {
             if (stored is not null)
@@ -390,6 +411,118 @@ public sealed class PostgresItemRepository(
             result,
             cancellationToken);
         return result;
+    }
+
+    internal async Task<ItemRepositoryCommitResult> CommitPickupInTransactionAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, ItemRepositoryCommitRequest request,
+        bool consumed, TimeProvider clock, Func<Task> authorize, CancellationToken cancellationToken)
+    {
+        await AcquireMutationOwnerLocksAsync(connection, transaction, request, cancellationToken);
+        await AcquireRequestLockAsync(connection, transaction, request.RequestId, cancellationToken);
+        await authorize(); // Live expiry/member validation after owner/request lock waits, even for retries.
+        var receipt = await ReadReceiptAsync(connection, transaction, request.RequestId, cancellationToken);
+        if (consumed)
+            return receipt is null ? Failure(request, ItemRepositoryCommitStatus.InternalError, clock.GetUtcNow())
+                : DungeonPickupReceiptRules.Matches(request, receipt)
+                    ? receipt with { Status = ItemRepositoryCommitStatus.AlreadyCommitted }
+                    : Failure(request, ItemRepositoryCommitStatus.IdempotencyConflict, clock.GetUtcNow());
+        if (receipt is not null)
+            return Failure(request, ItemRepositoryCommitStatus.IdempotencyConflict, clock.GetUtcNow());
+        // Reuse CAS/location/record/receipt writes; beforeWrite checks time again after item-row waits.
+        return await CommitInTransactionAsync(connection, transaction, request, clock.GetUtcNow(), cancellationToken,
+            beforeWrite: authorize);
+    }
+
+    internal async Task<ItemRepositoryCommitResult> CommitRewardInTransactionAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        ItemRepositoryCommitRequest grant,
+        IReadOnlyList<int>? maxStackSizes,
+        DateTimeOffset committedAt,
+        CancellationToken cancellationToken)
+    {
+        // The party transaction already holds all character-owner locks. Check the receipt
+        // before reading inventory: replay must never recalculate delivery after items move.
+        await AcquireRequestLockAsync(connection, transaction, grant.RequestId, cancellationToken);
+        ItemRepositoryCommitResult? receipt = await ReadReceiptAsync(
+            connection, transaction, grant.RequestId, cancellationToken);
+        if (receipt is not null)
+        {
+            return IsSameCommand(receipt, grant)
+                ? receipt with { Status = ItemRepositoryCommitStatus.AlreadyCommitted }
+                : Failure(grant, ItemRepositoryCommitStatus.IdempotencyConflict, committedAt);
+        }
+
+        await using (NpgsqlCommand command = new(
+            "SELECT EXISTS (SELECT 1 FROM item_records WHERE item_id = ANY(@item_ids));", connection, transaction))
+        {
+            command.Parameters.AddWithValue("item_ids", grant.Mutations.Select(mutation => mutation.NewRecord.ItemId).ToArray());
+            if ((bool)(await command.ExecuteScalarAsync(cancellationToken))!)
+            {
+                return Failure(grant, ItemRepositoryCommitStatus.RevisionConflict, committedAt);
+            }
+        }
+
+        string sql = $"""
+            SELECT {ItemColumns} FROM item_records
+            WHERE owner_type = @owner_type AND owner_id = @owner_id
+              AND lifecycle_state = 'Active' AND container_type = 'Inventory'
+              AND container_id = @owner_id AND slot_index >= 0 AND slot_index < @capacity
+            ORDER BY slot_index, item_id;
+            """;
+        List<ItemRecord> inventory = [];
+        await using (NpgsqlCommand command = new(sql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("owner_type", grant.Actor.Type.ToString());
+            command.Parameters.AddWithValue("owner_id", grant.Actor.OwnerId);
+            command.Parameters.AddWithValue("capacity", DungeonRewardDeliveryPlanner.InventorySlotCapacity);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken)) inventory.Add(ReadItemRecord(reader));
+        }
+
+        ItemRepositoryCommitRequest planned = DungeonRewardDeliveryPlanner.Plan(grant, maxStackSizes, inventory);
+        return await CommitInTransactionAsync(
+            connection, transaction, planned, committedAt, cancellationToken, isReward: true);
+    }
+
+    private static async Task AcquireMutationOwnerLocksAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        ItemRepositoryCommitRequest request,
+        CancellationToken cancellationToken)
+    {
+        List<ItemOwnerRef> owners = [request.Actor, .. request.Mutations.Select(mutation => mutation.NewRecord.Owner)];
+        // Include old owners for ownership transfers as well as the destinations.
+        await using (NpgsqlCommand command = new(
+            "SELECT DISTINCT owner_type, owner_id FROM item_records WHERE item_id = ANY(@item_ids);",
+            connection, transaction))
+        {
+            command.Parameters.AddWithValue("item_ids", request.Mutations.Select(mutation => mutation.NewRecord.ItemId).ToArray());
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                owners.Add(new ItemOwnerRef(ParseEnum<ItemOwnerType>(reader.GetString(0)), reader.GetString(1)));
+            }
+        }
+        await AcquireOwnerLocksAsync(connection, transaction, owners, cancellationToken);
+    }
+
+    internal static async Task AcquireOwnerLocksAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        IEnumerable<ItemOwnerRef> owners,
+        CancellationToken cancellationToken)
+    {
+        // Same ordering for normal commits and whole-party grants prevents lock inversion.
+        foreach (long key in owners.Select(owner => BinaryPrimitives.ReadInt64LittleEndian(
+            SHA256.HashData(Encoding.UTF8.GetBytes($"item_owner|{owner.Type}|{owner.OwnerId}"))))
+            .Distinct().Order())
+        {
+            await using NpgsqlCommand command = new(
+                "SELECT pg_advisory_xact_lock(@lock_key);", connection, transaction);
+            command.Parameters.AddWithValue("lock_key", key);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 
     private static bool IsSameCommand(
@@ -471,7 +604,7 @@ public sealed class PostgresItemRepository(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task WriteRecordAsync(
+    internal static async Task WriteRecordAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         ItemRecord record,
@@ -485,14 +618,14 @@ public sealed class PostgresItemRepository(
                 owner_type, owner_id, container_type, container_id, slot_index,
                 generation_seed, quantity, instance_tags, stat_values, revision,
                 lifecycle_state, bind_state, durability_current,
-                durability_maximum, expires_at, creation_source, is_locked,
+                durability_maximum, expires_at, creation_source, is_locked, equipment_progression,
                 created_at, updated_at)
             VALUES (
                 @item_id, @definition_type, @definition_name, @definition_version,
                 @owner_type, @owner_id, @container_type, @container_id, @slot_index,
                 @generation_seed, @quantity, @instance_tags, @stat_values, @revision,
                 @lifecycle_state, @bind_state, @durability_current,
-                @durability_maximum, @expires_at, @creation_source, @is_locked,
+                @durability_maximum, @expires_at, @creation_source, @is_locked, @equipment_progression,
                 @updated_at, @updated_at);
             """;
         const string updateSql = """
@@ -509,6 +642,7 @@ public sealed class PostgresItemRepository(
                 quantity = @quantity,
                 instance_tags = @instance_tags,
                 stat_values = @stat_values,
+                equipment_progression = @equipment_progression,
                 revision = @revision,
                 lifecycle_state = @lifecycle_state,
                 bind_state = @bind_state,
@@ -577,6 +711,9 @@ public sealed class PostgresItemRepository(
             NpgsqlDbType.Jsonb).Value = JsonSerializer.Serialize(
                 record.State.StatValues,
                 ReceiptJsonOptions);
+        command.Parameters.Add("equipment_progression", NpgsqlDbType.Jsonb).Value =
+            record.State.EquipmentProgression is null ? DBNull.Value
+                : JsonSerializer.Serialize(record.State.EquipmentProgression, ReceiptJsonOptions);
         command.Parameters.AddWithValue("revision", record.Revision);
         command.Parameters.AddWithValue(
             "lifecycle_state",
@@ -712,7 +849,10 @@ public sealed class PostgresItemRepository(
             reader.GetInt32(9),
             reader.GetInt32(10),
             instanceTags,
-            statValues);
+            statValues,
+            reader.IsDBNull(21) ? null
+                : JsonSerializer.Deserialize<FirstSliceEquipmentProgressionState>(reader.GetString(21), ReceiptJsonOptions)
+                    ?? throw new InvalidDataException("Stored equipment progression is not an object."));
         ItemRecordMetadata metadata = new(
             ParseEnum<ItemBindState>(reader.GetString(15)),
             new ItemDurability(

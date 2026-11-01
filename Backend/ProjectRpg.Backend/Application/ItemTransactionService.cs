@@ -57,15 +57,45 @@ public sealed class ItemTransactionService(
         ItemRepositoryCommitResult result,
         ItemRepositoryCommitRequest request)
     {
-        return string.Equals(
-                result.Operation,
-                request.Operation,
-                StringComparison.Ordinal)
-            && string.Equals(
-                result.CommandFingerprint,
-                request.CommandFingerprint,
-                StringComparison.Ordinal)
-            && result.Actor == request.Actor;
+        if (result.Status is not (ItemRepositoryCommitStatus.Committed or ItemRepositoryCommitStatus.AlreadyCommitted)
+            || result.RequestId != request.RequestId
+            || !string.Equals(result.Operation, request.Operation, StringComparison.Ordinal)
+            || !string.Equals(result.CommandFingerprint, request.CommandFingerprint, StringComparison.Ordinal)
+            || result.Actor != request.Actor
+            || result.AffectedQuantity != request.AffectedQuantity
+            || result.Records.Count != request.Mutations.Count)
+        {
+            return false;
+        }
+
+        // The declared fingerprint is not proof of an unchanged command. Compare
+        // the original receipt, never today's item state (which may have moved on).
+        for (int index = 0; index < request.Mutations.Count; index++)
+        {
+            ItemRecordMutation mutation = request.Mutations[index];
+            ItemRecord expected = mutation.NewRecord;
+            ItemRecord actual = result.Records[index];
+            if (mutation.ExpectedRevision == long.MaxValue
+                || actual.Revision != mutation.ExpectedRevision + 1
+                || actual.DefinitionType != expected.DefinitionType
+                || actual.DefinitionName != expected.DefinitionName
+                || actual.DefinitionVersion != expected.DefinitionVersion
+                || actual.Owner != expected.Owner
+                || actual.Location != expected.Location
+                || actual.LifecycleState != expected.LifecycleState
+                || actual.Metadata != expected.Metadata
+                || actual.State.InstanceId != expected.State.InstanceId
+                || actual.State.GenerationSeed != expected.State.GenerationSeed
+                || actual.State.Quantity != expected.State.Quantity
+                || actual.State.EquipmentProgression != expected.State.EquipmentProgression
+                || !actual.State.InstanceTags.SequenceEqual(expected.State.InstanceTags, StringComparer.Ordinal)
+                || !actual.State.StatValues.SequenceEqual(expected.State.StatValues))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static ItemRepositoryCommitResult Failure(

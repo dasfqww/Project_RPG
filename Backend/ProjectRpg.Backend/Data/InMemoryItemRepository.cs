@@ -9,6 +9,38 @@ public sealed class InMemoryItemRepository(
     private readonly Dictionary<Guid, ItemRepositoryCommitResult> _receipts = [];
     private readonly object _gate = transactionGate.SyncRoot;
 
+    internal object TransactionSyncRoot => _gate;
+
+    internal void SeedStarter(ItemRecord record) => SeedStarters([record]);
+
+    internal void SeedStarters(IReadOnlyList<ItemRecord> records)
+    {
+        if (records.Count == 0) throw new InvalidOperationException("A starter batch cannot be empty.");
+        ItemRecord[] pending = records.Select(record => ItemRecordRules.SnapshotWithRevision(record, record.Revision)).ToArray();
+        HashSet<Guid> identities = [];
+        HashSet<(ItemOwnerRef Owner, ItemLocation Location)> locations = [];
+        foreach (ItemRecord item in pending)
+        {
+            if (!ItemRecordRules.TryValidateRecord(item, out string error) || item.Revision != 1
+                || item.Metadata.CreationSource != "CharacterCreation" || item.LifecycleState != ItemLifecycleState.Active
+                || item.Owner != pending[0].Owner || !identities.Add(item.ItemId) || !locations.Add((item.Owner, item.Location)))
+                throw new InvalidOperationException("Invalid starter equipment batch: " + error);
+        }
+        lock (_gate)
+        {
+            // Check the ENTIRE batch before publishing any item. Character creation
+            // holds this same gate and the character gate until all records exist.
+            foreach (ItemRecord item in pending)
+            {
+                if (_records.ContainsKey(item.ItemId) || _records.Values.Any(existing =>
+                    existing.LifecycleState == ItemLifecycleState.Active && existing.Owner == item.Owner
+                    && existing.Location == item.Location))
+                    throw new InvalidOperationException("Starter equipment identity or slot already exists.");
+            }
+            foreach (ItemRecord item in pending) _records.Add(item.ItemId, item);
+        }
+    }
+
     internal sealed record Snapshot(
         Dictionary<Guid, ItemRecord> Records,
         Dictionary<Guid, ItemRepositoryCommitResult> Receipts);
@@ -91,6 +123,51 @@ public sealed class InMemoryItemRepository(
         ItemRepositoryCommitRequest request,
         DateTimeOffset committedAt,
         CancellationToken cancellationToken)
+        => CommitCore(request, committedAt, cancellationToken, isReward: false);
+
+    internal Task<ItemRepositoryCommitResult> CommitRewardAsync(
+        ItemRepositoryCommitRequest request,
+        DateTimeOffset committedAt,
+        CancellationToken cancellationToken)
+        => CommitCore(request, committedAt, cancellationToken, isReward: true);
+
+    internal IReadOnlyList<ItemRecord> FindInventory(ItemOwnerRef owner)
+    {
+        lock (_gate)
+        {
+            return _records.Values.Where(record =>
+                DungeonRewardDeliveryPlanner.IsInventoryRecord(record, owner)).ToArray();
+        }
+    }
+
+    internal Task<ItemRepositoryCommitResult> CommitRewardGrantAsync(
+        ItemRepositoryCommitRequest grant,
+        IReadOnlyList<int>? maxStackSizes,
+        DateTimeOffset committedAt,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (_receipts.TryGetValue(grant.RequestId, out ItemRepositoryCommitResult? receipt))
+            {
+                return Task.FromResult(receipt with { Status = ItemRepositoryCommitStatus.AlreadyCommitted });
+            }
+            // Even a fully merged reward must not hide a deterministic grant-ID collision.
+            if (grant.Mutations.Any(mutation => _records.ContainsKey(mutation.NewRecord.ItemId)))
+            {
+                return Task.FromResult(Failure(grant, ItemRepositoryCommitStatus.RevisionConflict, committedAt));
+            }
+            ItemRepositoryCommitRequest planned = DungeonRewardDeliveryPlanner.Plan(grant, maxStackSizes, FindInventory(grant.Actor));
+            return CommitRewardAsync(planned, committedAt, cancellationToken);
+        }
+    }
+
+    private Task<ItemRepositoryCommitResult> CommitCore(
+        ItemRepositoryCommitRequest request,
+        DateTimeOffset committedAt,
+        CancellationToken cancellationToken,
+        bool isReward)
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
@@ -105,7 +182,9 @@ public sealed class InMemoryItemRepository(
                 });
             }
 
-            if (!ItemRecordRules.TryValidateCommit(request, out _))
+            if (!(isReward
+                ? ItemRecordRules.TryValidateRewardCommit(request, out _)
+                : ItemRecordRules.TryValidateCommit(request, out _)))
             {
                 return Task.FromResult(
                     Failure(
@@ -146,6 +225,15 @@ public sealed class InMemoryItemRepository(
                             ItemRepositoryCommitStatus.RevisionConflict,
                             committedAt));
                 }
+            }
+
+            // An old client must not erase a stored growth value by omitting the new field.
+            foreach (ItemRecordMutation mutation in request.Mutations)
+            {
+                if (_records.TryGetValue(mutation.NewRecord.ItemId, out ItemRecord? existing)
+                    && existing.State.EquipmentProgression is not null
+                    && mutation.NewRecord.State.EquipmentProgression is null)
+                    return Task.FromResult(Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt));
             }
 
             Dictionary<Guid, ItemRecord> candidates = new(_records);

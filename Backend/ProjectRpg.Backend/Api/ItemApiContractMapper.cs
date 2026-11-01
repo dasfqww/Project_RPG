@@ -140,7 +140,10 @@ internal static class ItemApiContractMapper
                         new ItemStatValueContract(
                             stat.StatTag,
                             stat.Value))
-                    .ToArray()),
+                    .ToArray(),
+                record.State.EquipmentProgression is { } progression
+                    ? new ItemEquipmentProgressionContract(progression.GrowthBandId, progression.RuleVersion, progression.Level)
+                    : null),
             record.Revision,
             record.LifecycleState.ToString(),
             new ItemRecordMetadataContract(
@@ -203,6 +206,24 @@ internal static class ItemApiContractMapper
             return false;
         }
 
+        FirstSliceEquipmentProgressionState? progression = null;
+        if (contract.State.EquipmentProgression is { } growth)
+        {
+            if (growth.GrowthBandId is null || growth.RuleVersion is null || growth.Level is null)
+            {
+                record = EmptyRecord();
+                error = "Equipment progression requires growthBandId, ruleVersion, and level.";
+                return false;
+            }
+            progression = new(growth.GrowthBandId, growth.RuleVersion.Value, growth.Level.Value);
+            if (!FirstSliceEquipmentProgression.IsValidState(progression))
+            {
+                record = EmptyRecord();
+                error = "Equipment progression is unsupported or outside +0..+3.";
+                return false;
+            }
+        }
+
         ItemInstanceState state = new(
             contract.State.InstanceId,
             contract.State.GenerationSeed,
@@ -212,7 +233,8 @@ internal static class ItemApiContractMapper
                 .Select(stat => new ItemStatValue(
                     stat!.StatTag!,
                     stat.Value))
-                .ToArray());
+                .ToArray(),
+            progression);
         ItemRecordMetadata metadata = new(
             bindState,
             new ItemDurability(
