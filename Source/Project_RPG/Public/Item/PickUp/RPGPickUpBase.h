@@ -9,10 +9,13 @@
 #include "RPGPickUpBase.generated.h"
 
 class USphereComponent;
+class UDataTable;
+class UStaticMeshComponent;
 class ARPGPlayer;
 class URPGItemBase;
 class URPGItemNameWidget;
 class UWidgetComponent;
+class URPGPickupGrantComponent;
 
 UCLASS()
 class PROJECT_RPG_API ARPGPickUpBase : public AActor, public IInteractionInterface
@@ -24,6 +27,10 @@ public:
 	ARPGPickUpBase();
 
 	virtual void BeginPlay() override;
+	virtual void PostInitializeComponents() override;
+	/** Read-only identity of this logical server drop, not a client grant parameter. */
+	UFUNCTION(BlueprintPure, Category = "Pickup | Authority")
+	FGuid GetPickupDropId() const { return PickupDropId; }
 	
 	
 
@@ -34,6 +41,8 @@ public:
 	//void InitializePickUp(const TSubclassOf<URPGItemBase> BaseClass, const int32 InQuantity);
 
 	void InitializeDrop(URPGItemBase* ItemToDrop, const int32 InQuantity);
+	/** Initializes a fresh server drop without reviving the retired mutable item path. */
+	bool InitializeServerDropQuantity(int32 Quantity);
 
 	void PickedUp();
 	bool TryClaimPickup();
@@ -42,6 +51,12 @@ public:
 	bool IsAvailableForPickup() const { return bIsAvailableForPickup; }
 
 protected:
+	UPROPERTY(Transient, Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category = "Pickup | Authority")
+	FGuid PickupDropId;
+
+	UPROPERTY(VisibleAnywhere, Category = "Pickup | Authority")
+	TObjectPtr<URPGPickupGrantComponent> PickupGrantComponent;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Pickup | Components")
 	TObjectPtr<UStaticMeshComponent> PickupMesh;
 

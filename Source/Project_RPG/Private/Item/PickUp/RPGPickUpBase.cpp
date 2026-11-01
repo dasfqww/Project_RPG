@@ -2,13 +2,17 @@
 
 
 #include "Item/PickUp/RPGPickUpBase.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/GameInstance.h"
+#include "LatentActions.h"
 #include "Components/SphereComponent.h"
 #include "Character/RPGPlayer.h"
 #include "Component/RPGAbilitySystemComponent.h"
 #include "RPGGameplayTags.h"
 #include "Item/RPGItemBase.h"
 #include "Component/Item/RPGItemComponent.h"
-#include "Component/RPGInventoryComponent.h"
+#include "Component/RPGItemCommandComponent.h"
+#include "Component/RPGPickupGrantComponent.h"
 #include "Controller/RPGPlayerController.h"
 #include "UI/RPGItemNameWidget.h"
 #include "Components/WidgetComponent.h"
@@ -24,6 +28,7 @@
 ARPGPickUpBase::ARPGPickUpBase()
 {
     PrimaryActorTick.bCanEverTick = false;
+    PickupGrantComponent = CreateDefaultSubobject<URPGPickupGrantComponent>(TEXT("PickupGrant"));
 
     PickupMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PickupMesh"));
     PickupMesh->SetSimulatePhysics(true);
@@ -50,16 +55,27 @@ void ARPGPickUpBase::BeginPlay()
     InteractableData = InstanceInteractableData;
 }
 
+void ARPGPickUpBase::PostInitializeComponents()
+{
+    Super::PostInitializeComponents();
+    // Generate on the spawned authority instance, never in a CDO/asset constructor.
+    if (HasAuthority() && !PickupDropId.IsValid()) PickupDropId = FGuid::NewGuid();
+}
+
 void ARPGPickUpBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps); 
 
     DOREPLIFETIME(ThisClass, ItemManifest);
+    DOREPLIFETIME(ThisClass, PickupDropId);
     DOREPLIFETIME(ThisClass, bIsAvailableForPickup);
 }
 
 void ARPGPickUpBase::InitItemManifest(FItemManifest CopyOfManifest, FName InPoolName)
 {
+    if (!HasAuthority() || (PickupGrantComponent && PickupGrantComponent->IsPending())) return;
+    // Pool reuse / fresh manifest means a NEW logical drop. Pending grants cannot reinitialize it.
+    PickupDropId = FGuid::NewGuid();
     ItemManifest = CopyOfManifest;
     OwningPoolName = InPoolName;
     bIsAvailableForPickup = true;
@@ -159,6 +175,28 @@ void ARPGPickUpBase::BeginFocus()
     }
 }
 
+bool ARPGPickUpBase::InitializeServerDropQuantity(const int32 Quantity)
+{
+    if (!HasAuthority() || IsActorBeingDestroyed() || !bIsAvailableForPickup || IsHidden() ||
+        (PickupGrantComponent && PickupGrantComponent->IsPending()) || Quantity <= 0 || Quantity > MAX_int8 ||
+        !ItemManifest.GetItemTag().IsValid() || ItemManifest.GetItemCategory() == EItemCategory::None)
+    {
+        return false;
+    }
+    FStackableFragment* Stack = ItemManifest.GetFragmentOfTypeMutable<FStackableFragment>();
+    if (Stack ? Stack->GetMaxQuantity() < 1 || Quantity > Stack->GetMaxQuantity() : Quantity != 1)
+    {
+        return false;
+    }
+    if (Stack) Stack->SetQuantity(Quantity);
+    ItemQuantity = Quantity;
+    InstanceInteractableData.Quantity = Quantity;
+    // Preserve the authored/native pickup's name and interaction action.
+    InteractableData.Quantity = Quantity;
+    ForceNetUpdate();
+    return true;
+}
+
 void ARPGPickUpBase::EndFocus()
 {
     if (PickupMesh)
@@ -194,52 +232,12 @@ void ARPGPickUpBase::UpdateInteractableData()
 
 void ARPGPickUpBase::TakePickup(APlayerController* PlayerController)
 { 
-    if (!bIsAvailableForPickup) return;
-
-    //URPGInventoryComponent* InventoryComp = URPGCoreFunctionLibrary::GetInventoryComponent(PlayerController);
-    URPGInventoryComponent* InventoryComp = 
-        URPGCoreFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(PlayerController);
-
-    if (/*!IsValid(ItemComp) ||*/ !IsValid(InventoryComp)) return;
-    
-    InventoryComp->TryAddItem(this);
-        
-    /*if (!IsPendingKillPending())
+    if (!bIsAvailableForPickup || !IsValid(PlayerController)) return;
+    if (URPGItemCommandComponent* Commands =
+        PlayerController->FindComponentByClass<URPGItemCommandComponent>())
     {
-        if (ItemReference)
-        {
-            if (URPGInventoryComponent* PlayerInventory=Taker->GetRPGInventory())
-            {
-                const FItemAddResult AddResult = PlayerInventory->HandleAddItem(ItemReference);
-
-                switch (AddResult.OperationResult)
-                {                    
-                case EItemAddResult::IAR_NoItemAdded:
-                    break;
-                case EItemAddResult::IAR_PartialAmountItemAdded:
-                    UpdateInteractableData();
-                    if (ARPGPlayerController* PC =Cast<ARPGPlayerController>(Taker->Controller))
-                    {
-                        PC->UpdateInteractionWidget();
-                    }
-                    break;
-                case EItemAddResult::IAR_AllItemAdded:
-                    Destroy();
-                    break;
-                }
-
-                UE_LOG(LogTemp, Warning, TEXT("%s"), *AddResult.ResultMessage.ToString());
-            }
-            else
-            {
-                Debug::Print("Player Inventory component is null..");
-            }
-        }
-        else
-        {
-            Debug::Print("Pickup internal item reference was somehow null..");
-        }
-    }*/
+        Commands->ServerPickupItem(this);
+    }
 }
 
 //void ARPGPickUpBase::OnPickedUp()
@@ -248,7 +246,7 @@ void ARPGPickUpBase::TakePickup(APlayerController* PlayerController)
 
 void ARPGPickUpBase::PickedUp()
 {
-    if (!HasAuthority()) return;
+    if (!HasAuthority() || (PickupGrantComponent && PickupGrantComponent->IsPending())) return;
 
     bIsAvailableForPickup = false;
     ForceNetUpdate();
@@ -278,7 +276,8 @@ bool ARPGPickUpBase::TryClaimPickup()
 
 void ARPGPickUpBase::ReleasePickupClaim()
 {
-    if (!HasAuthority() || IsHidden())
+    if (!HasAuthority() || IsHidden() ||
+        (PickupGrantComponent && PickupGrantComponent->IsPending()))
     {
         return;
     }
@@ -289,7 +288,7 @@ void ARPGPickUpBase::ReleasePickupClaim()
 
 void ARPGPickUpBase::SetPickupQuantity(int32 Quantity)
 {
-    if (!HasAuthority())
+    if (!HasAuthority() || (PickupGrantComponent && PickupGrantComponent->IsPending()))
     {
         return;
     }
