@@ -14,9 +14,14 @@ class PROJECT_RPG_API URPGUserFacingExperienceDefinition : public UPrimaryDataAs
 	GENERATED_BODY()
 
 public:
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
+#endif
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Experience", meta = (AllowedTypes = "Map"))
 	FPrimaryAssetId MapID;
 
+	/** Optional explicit selection. A valid ID overrides RPGExperience URL arguments; empty uses the existing map/URL selection. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Experience", meta = (AllowedTypes = "RPGExperienceDefinition"))
 	FPrimaryAssetId ExperienceID;
 
@@ -50,6 +55,7 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Experience", meta = (ClampMin = 1))
 	int32 MaxPlayerCount = 4;
 
+	/** Builds request data only; returns null for an incomplete or unsupported explicit ExperienceID. */
 	UFUNCTION(BlueprintCallable, meta = (WorldContext = "WorldContextObject"))
 	UCommonSession_HostSessionRequest* CreateHostingRequest(const UObject* WorldContextObject) const;
 };

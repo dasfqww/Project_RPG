@@ -1,0 +1,25 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0",
+  "FriendlyName": "RPG Client Presentation",
+  "Description": "Optional per-world client viewport presentation.",
+  "Category": "Game Features",
+  "CanContainContent": true,
+  "ExplicitlyLoaded": true,
+  "BuiltInInitialFeatureState": "Registered",
+  "EnabledByDefault": true,
+  "Modules": [
+    {
+      "Name": "RPGClientPresentationRuntime",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "GameFeatures",
+      "Enabled": true
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0",
+  "FriendlyName": "RPG Client UI",
+  "Description": "Additional local-player widgets owned by world-scoped GameFeature actions.",
+  "Category": "Game Features",
+  "CanContainContent": true,
+  "ExplicitlyLoaded": true,
+  "BuiltInInitialFeatureState": "Registered",
+  "EnabledByDefault": true,
+  "Modules": [
+    {
+      "Name": "RPGClientUIRuntime",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "GameFeatures",
+      "Enabled": true
+    }
+  ]
+}

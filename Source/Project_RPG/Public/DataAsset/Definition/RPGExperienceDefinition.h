@@ -31,12 +31,12 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Gameplay")
 	TArray<FString> GameFeaturesToEnable;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Gameplay")
+	UPROPERTY(EditDefaultsOnly, Category = "Gameplay", meta = (AssetBundles = "Client,Server"))
 	TObjectPtr<const UPrimaryDataAsset> DefaultPawnData;
 
 	UPROPERTY(EditDefaultsOnly, Instanced, Category = "Actions")
 	TArray<TObjectPtr<UGameFeatureAction>> Actions;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Gameplay")
+	UPROPERTY(EditDefaultsOnly, Category = "Gameplay", meta = (AssetBundles = "Client,Server"))
 	TArray<TObjectPtr<URPGExperienceActionSet>> ActionSets;
 };

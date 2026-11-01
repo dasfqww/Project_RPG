@@ -47,7 +47,5 @@ void URPGGameFeaturePolicy::GetGameFeatureLoadingMode(
 	bool& bLoadClientData,
 	bool& bLoadServerData) const
 {
-	// RPG 프로젝트의 클라이언트/서버 로드 모드 설정
-	bLoadClientData = true;  // 항상 클라이언트 데이터 로드
-	bLoadServerData = !IsRunningDedicatedServer();  // 전용 서버가 아닐 때만 서버 데이터 로드
+	Super::GetGameFeatureLoadingMode(bLoadClientData, bLoadServerData);
 }

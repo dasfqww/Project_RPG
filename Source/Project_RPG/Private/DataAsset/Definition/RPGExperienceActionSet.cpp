@@ -4,6 +4,7 @@
 
 #if WITH_EDITOR
 #include "Misc/DataValidation.h"
+#include "RPGExperienceValidation.h"
 #endif
 
 #define LOCTEXT_NAMESPACE "RPGExperience"
@@ -15,7 +16,8 @@ URPGExperienceActionSet::URPGExperienceActionSet()
 #if WITH_EDITOR
 EDataValidationResult URPGExperienceActionSet::IsDataValid(FDataValidationContext& Context) const
 {
-	EDataValidationResult Result = Super::IsDataValid(Context);
+	EDataValidationResult Result = CombineDataValidationResults(Super::IsDataValid(Context),
+		RPGExperienceValidation::ValidateFeatures(GameFeaturesToEnable, *this, Context));
 
 	for (int32 ActionIndex = 0; ActionIndex < Actions.Num(); ++ActionIndex)
 	{

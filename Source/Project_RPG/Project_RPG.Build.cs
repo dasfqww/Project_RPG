@@ -18,9 +18,10 @@ public class Project_RPG : ModuleRules
             "AnimationCore", "HTTP", "Json", "JsonUtilities", "MoviePlayer", "AssetRegistry",
             "IrisCore", "ModelViewViewModel",
             "OnlineSubsystem", "OnlineSubsystemUtils",
-            "CommonUI", "CommonInput", "CommonCoroutine", "CommonUser","UIExtension", "GameFeatures", "CommonGame" });
+            "CommonUI", "CommonInput", "CommonCoroutine", "CommonUser","UIExtension", "GameFeatures", "CommonGame", "DeveloperSettings", "ModularGameplay" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
+		PrivateDependencyModuleNames.AddRange(new string[] { "CommonLoadingScreen", "ApplicationCore" });
+		AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenSSL");
 
 		// Registers this module's native FastArray serializers with Iris.
 		// Without this, replicated RPG FastArray properties are rejected when
