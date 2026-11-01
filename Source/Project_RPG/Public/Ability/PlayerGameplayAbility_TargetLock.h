@@ -88,6 +88,8 @@ private:
 	UPROPERTY()
 		FVector2D TargetLockWidgetSize = FVector2D::ZeroVector;
 
-	UPROPERTY()
-		float CachedDefaultMaxWalkSpeed = 0.f;
+	FGuid TargetLockSpeedLimit;
+	TWeakObjectPtr<class URPGCharacterMovementComponent> TargetLockMovement;
+
+	TWeakObjectPtr<class UEnhancedInputLocalPlayerSubsystem> AppliedTargetLockInputSubsystem;
 };

@@ -11,13 +11,14 @@
 
 class URPGAbilitySystemComponent;
 class URPGAttributeSet;
-class URPGHealthComponent;
 class URPGEquipComponent;
 class URPGEquipmentComponent;
 class URPGAuthoritativeEquipmentComponent;
 class UDataAsset_StartUpDataBase;
 class UMotionWarpingComponent;
 class UDamageFontWidget;
+class URPGCombatReactionComponent;
+class URPGCombatControlComponent;
 
 UCLASS()
 class PROJECT_RPG_API ARPGBaseCharacter : public ACharacter, 
@@ -27,7 +28,7 @@ class PROJECT_RPG_API ARPGBaseCharacter : public ACharacter,
 
 public:
 	// Sets default values for this character's properties
-	ARPGBaseCharacter();
+	ARPGBaseCharacter(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	virtual void BeginPlay() override;
 
@@ -47,12 +48,16 @@ public:
 
 	//~ Begin APawn Interface.
 	virtual void PossessedBy(AController* NewController) override;
+	virtual void UnPossessed() override;
 	virtual void OnRep_PlayerState() override;
 	//~ End APawn Interface
 
 	void ShowDamageFont(float Damage, FVector Location, bool bCriticalAttack, bool bIsPlayerDamage);
 
 	void ShowInvincibleFont(FVector Location);
+
+	/** Character reuse invalidates transient combat presentation from the previous life. */
+	virtual uint32 GetCombatPresentationRevision() const { return 0; }
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AbilitySystem")
@@ -61,8 +66,10 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AbilitySystem")
 		TObjectPtr<URPGAttributeSet> RPGAttributeSet;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Health")
-		TObjectPtr<URPGHealthComponent> RPGHealthComponent;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat|Reaction")
+	TObjectPtr<URPGCombatReactionComponent> CombatReactionComponent;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat|Control")
+	TObjectPtr<URPGCombatControlComponent> CombatControlComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment")
 		TObjectPtr<URPGEquipComponent> EquipComponent;
@@ -94,7 +101,8 @@ protected:
 public:
 	FORCEINLINE URPGAbilitySystemComponent* GetRPGAbilitySystemComponent() const { return RPGAbilitySystemComponent; }
 	FORCEINLINE URPGAttributeSet* GetRPGAttributeSet() const { return RPGAttributeSet; }
-	FORCEINLINE URPGHealthComponent* GetRPGHealthComponent() const { return RPGHealthComponent; }
+	FORCEINLINE URPGCombatReactionComponent* GetCombatReactionComponent() const { return CombatReactionComponent; }
+	FORCEINLINE URPGCombatControlComponent* GetCombatControlComponent() const { return CombatControlComponent; }
 	//FORCEINLINE TSubclassOf<UGameplayEffect> GetHealingEffect() const { return HealingEffect; }
 	FORCEINLINE USceneComponent* GetNS_SceneComponent() const { return NS_SceneComponent; }
 };

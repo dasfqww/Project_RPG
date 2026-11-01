@@ -2,6 +2,7 @@
 
 
 #include "Ability/RPGPlayerGameplayAbility.h"
+#include "Ability/Skill/RPGGreatSwordResolveAbility.h"
 #include "Character/RPGPlayer.h"
 #include "Controller/RPGPlayerController.h"
 #include "Component/RPGAbilitySystemComponent.h"
@@ -16,9 +17,14 @@
 #include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "FunctionLibrary/RPGCombatFunctionLibrary.h"
 #include "Manager/SoundManager.h"
+#include "Engine/World.h"
+#include "Sound/SoundClass.h"
 #include "GameInstance/RPGGameInstance.h"
 #include "GameplayEffect/GE_CoolDown.h"
 #include "NiagaraFunctionLibrary.h"
+#include "AI/RPGBossAIComponent.h"
+#include "AI/RPGBossThreatComponent.h"
+#include "EngineUtils.h"
 
 #include "RPGGameplayTags.h"
 #include "RPGDebugHelper.h"
@@ -239,6 +245,14 @@ void URPGPlayerGameplayAbility::ActivateAbility(const FGameplayAbilitySpecHandle
 	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
 	const FGameplayEventData* TriggerEventData)
 {
+	// A per-execution instance does not receive the grant-time OnAvatarSet callback.
+	const URPGAttributeSet* Attributes = RefreshAttributeSetFromActorInfo(ActorInfo);
+	if (!Attributes)
+	{
+		UE_LOG(LogTemp, Error, TEXT("RPG_ABILITY_ATTRIBUTES_UNAVAILABLE Ability=%s"), *GetName());
+	}
+	// Capture before Super/Blueprint callbacks; never acquire a new encounter at impact.
+	CaptureLegacyBossEncounters(ActorInfo ? Cast<APawn>(ActorInfo->AvatarActor.Get()) : nullptr);
 	if (!ApplyManaCost(ActorInfo)) // ���� �Ҹ� ���� ��
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Not enough mana to activate ability."));
@@ -247,35 +261,17 @@ void URPGPlayerGameplayAbility::ActivateAbility(const FGameplayAbilitySpecHandle
 		return;
 	}
 
-	if (!CachedAttributeSet)
-	{
-		UE_LOG(LogTemp, Error, TEXT("[%s] ActivateAbility() - CachedAttributeSet is NULL! Trying to reinitialize..."), *GetName());
-
-		// ������ �ٽ� �ʱ�ȭ
-		if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
-		{
-			CachedAttributeSet = ActorInfo->AbilitySystemComponent->GetSet<URPGAttributeSet>();
-		}
-
-		if (!CachedAttributeSet)
-		{
-			UE_LOG(LogTemp, Error, TEXT("[%s] ActivateAbility() - CachedAttributeSet is STILL NULL!"), *GetName());
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[%s] ActivateAbility() - CachedAttributeSet Reinitialized Successfully!"), *GetName());
-		}
-	}
-
-	
-
-	AttackSpeed = CachedAttributeSet ? CachedAttributeSet->GetAttackSpeed() : 1.0f;
+	AttackSpeed = Attributes ? Attributes->GetAttackSpeed() : 1.0f;
 
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 }
 
 void URPGPlayerGameplayAbility::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
+	if (!IsEndAbilityValid(Handle, ActorInfo)) return;
+	LegacyBossEncounters.Reset();
+	LegacyBossSource.Reset();
+	LegacyBossController.Reset();
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 
 
@@ -283,6 +279,8 @@ void URPGPlayerGameplayAbility::EndAbility(const FGameplayAbilitySpecHandle Hand
 
 void URPGPlayerGameplayAbility::OnAvatarSet(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
 {
+	CachedPlayer.Reset();
+	CachedPlayerController.Reset();
 	Super::OnAvatarSet(ActorInfo, Spec);
 
 	LoadSkillData(SkillName);
@@ -290,27 +288,20 @@ void URPGPlayerGameplayAbility::OnAvatarSet(const FGameplayAbilityActorInfo* Act
 
 ARPGPlayer* URPGPlayerGameplayAbility::GetPlayerCharacterFromActorInfo()
 {
-	if (!CachedPlayer.IsValid())
-	{
-		CachedPlayer = Cast<ARPGPlayer>(CurrentActorInfo->AvatarActor);
-	}
-
-	return CachedPlayer.IsValid() ? CachedPlayer.Get() : nullptr;
+	CachedPlayer = CurrentActorInfo ? Cast<ARPGPlayer>(CurrentActorInfo->AvatarActor.Get()) : nullptr;
+	return CachedPlayer.Get();
 }
 
 ARPGPlayerController* URPGPlayerGameplayAbility::GetPlayerControllerFromActorInfo()
 {
-	if (!CachedPlayerController.IsValid())
-	{
-		CachedPlayerController = Cast<ARPGPlayerController>(CurrentActorInfo->PlayerController);
-	}
-
-	return CachedPlayerController.IsValid() ? CachedPlayerController.Get() : nullptr;
+	CachedPlayerController = CurrentActorInfo ? Cast<ARPGPlayerController>(CurrentActorInfo->PlayerController.Get()) : nullptr;
+	return CachedPlayerController.Get();
 }
 
 UPlayerCombatComponent* URPGPlayerGameplayAbility::GetPlayerCombatComponentFromActorInfo()
 {
-	return GetPlayerCharacterFromActorInfo()->GetPlayerCombatComponent();
+	const ARPGPlayer* Player = GetPlayerCharacterFromActorInfo();
+	return Player ? Player->GetPlayerCombatComponent() : nullptr;
 }
 
 FGameplayEffectSpecHandle URPGPlayerGameplayAbility::MakePlayerDamageEffectSpecHandle
@@ -505,6 +496,15 @@ void URPGPlayerGameplayAbility::HandleApplyDamage(const FGameplayEventData& InGa
 	}
 
 	float Damage = SkillDamage;
+	const ERPGAttackHitReactionPolicy ReactionPolicy = GetGrantedHitReactionPolicy();
+	const float StunDuration = GetGrantedStunDuration();
+	const FRPGKnockbackSettings Knockback = GetGrantedKnockback();
+	const FRPGSlowSettings Slow = GetGrantedSlow();
+	const FRPGBurnSettings Burn = GetGrantedBurn();
+	const FRPGDefenseReductionSettings DefenseReduction = GetGrantedDefenseReduction();
+	const FRPGDamageTakenIncreaseSettings DamageTakenIncrease = GetGrantedDamageTakenIncrease();
+	const FRPGStaggerSettings Stagger = GetGrantedStagger();
+	const FRPGApprovedHitContext HitContext(SourceActor, CachedTargetActor);
 
 	//float CalcDamage = CalculateCriticalDamage(CachedTargetActor, Damage);
 
@@ -514,11 +514,7 @@ void URPGPlayerGameplayAbility::HandleApplyDamage(const FGameplayEventData& InGa
 
 	//ERPGSuccessType SuccessType;
 
-	if (!URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
-		SourceActor,
-		ServerHit,
-		GameplayEffectSpecHandle,
-		BuildLegacyDamageSecurityProfile()))
+	if (!ApplyLegacyDamageToServerHit(ServerHit, GameplayEffectSpecHandle))
 	{
 		return;
 	}
@@ -537,15 +533,65 @@ void URPGPlayerGameplayAbility::HandleApplyDamage(const FGameplayEventData& InGa
 	EventData.Target = CachedTargetActor;
 
 	// �̺�Ʈ ����(��Ʈ ���׼� �±� ����)
-	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(CachedTargetActor, HitReactTag, EventData);
+	if (!TryRouteApprovedHitReaction(ServerHit, ReactionPolicy, StunDuration, Knockback, Slow, HitContext, Burn, Stagger, DefenseReduction, DamageTakenIncrease))
+	{
+		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(CachedTargetActor, HitReactTag, EventData);
+	}
 
 	GainIdentity();
+}
+
+bool URPGPlayerGameplayAbility::ApplyLegacyDamageToServerHit(const FHitResult& ServerHit,
+	const FGameplayEffectSpecHandle& DamageSpec)
+{
+	AActor* Target = ServerHit.GetActor();
+	auto* Threat = IsValid(Target) ? Target->FindComponentByClass<URPGBossThreatComponent>() : nullptr;
+	const auto* Boss = IsValid(Target) ? Target->FindComponentByClass<URPGBossAIComponent>() : nullptr;
+	if (Threat || Boss)
+	{
+		APawn* Source = Cast<APawn>(GetAvatarActorFromActorInfo());
+		const int32* Encounter = Threat ? LegacyBossEncounters.Find(Threat) : nullptr;
+		if (!IsActive() || !Threat || !IsValid(Source) || !Source->HasAuthority() ||
+			Source != LegacyBossSource.Get() || !LegacyBossController.IsValid() ||
+			Source->GetController() != LegacyBossController.Get() || !Encounter || *Encounter <= 0 ||
+			!DamageSpec.IsValid()) return false; // A boss must never fall through to generic NPC damage.
+		// AOE shares one spec across targets: keep each actual server hit in its own context.
+		FGameplayEffectSpecHandle HitSpec(new FGameplayEffectSpec(*DamageSpec.Data));
+		FGameplayEffectContextHandle Context = DamageSpec.Data->GetContext().Duplicate();
+		Context.AddHitResult(ServerHit, true);
+		HitSpec.Data->SetContext(Context);
+		float HealthDamage = 0.f;
+		bool bThreatAdded = false;
+		return Threat->ApplyDamageFromServerHit(Source, ServerHit, HitSpec, *Encounter,
+			BuildLegacyDamageSecurityProfile(), HealthDamage, bThreatAdded);
+	}
+	return URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
+		GetAvatarActorFromActorInfo(), ServerHit, DamageSpec, BuildLegacyDamageSecurityProfile());
+}
+
+void URPGPlayerGameplayAbility::CaptureLegacyBossEncounters(APawn* Source)
+{
+	++LegacyDamageActivationSerial;
+	LegacyBossEncounters.Reset();
+	LegacyBossSource.Reset();
+	LegacyBossController.Reset();
+	if ((EventTag != RPGGameplayTags::Player_Event_AOE && EventTag != RPGGameplayTags::Shared_Event_Hit) ||
+		!IsValid(Source) || !Source->HasAuthority() || !IsValid(Source->GetController()) || !Source->GetWorld()) return;
+	LegacyBossSource = Source;
+	LegacyBossController = Source->GetController();
+	for (TActorIterator<APawn> It(Source->GetWorld()); It; ++It)
+	{
+		const auto* Boss = It->FindComponentByClass<URPGBossAIComponent>();
+		auto* Threat = It->FindComponentByClass<URPGBossThreatComponent>();
+		if (Boss && Threat && Boss->GetBossState().EncounterState == ERPGBossEncounterState::InCombat)
+			LegacyBossEncounters.Add(Threat, Boss->GetBossState().EncounterId);
+	}
 }
 
 void URPGPlayerGameplayAbility::HandleApplyAOEDamage(const FGameplayEventData& InGameplayEventData)
 {
 	AActor* SourceActor = GetAvatarActorFromActorInfo();
-	if (!SourceActor || !SourceActor->HasAuthority())
+	if (!IsActive() || !SourceActor || !SourceActor->HasAuthority())
 	{
 		return;
 	}
@@ -592,19 +638,19 @@ void URPGPlayerGameplayAbility::HandleApplyAOEDamage(const FGameplayEventData& I
 		BuildLegacyDamageSecurityProfile();
 	TSet<TWeakObjectPtr<AActor>> AppliedActors;
 	int32 AppliedTargetCount = 0;
+	const uint32 ActivationSerial = LegacyDamageActivationSerial;
 	for (const FHitResult& Hit : HitResults)
 	{
+		// Instant GE callbacks may end and restart this same per-actor instance.
+		if (!IsActive() || ActivationSerial != LegacyDamageActivationSerial ||
+			GetAvatarActorFromActorInfo() != SourceActor) break;
 		AActor* HitActor = Hit.GetActor();
 		if (!HitActor || AppliedActors.Contains(HitActor) ||
 			AppliedTargetCount >= SecurityProfile.MaximumTargetsPerQuery)
 		{
 			continue;
 		}
-		if (!URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
-			SourceActor,
-			Hit,
-			GameplayEffectSpecHandle,
-			SecurityProfile))
+		if (!ApplyLegacyDamageToServerHit(Hit, GameplayEffectSpecHandle))
 		{
 			continue;
 		}
@@ -620,7 +666,7 @@ void URPGPlayerGameplayAbility::HandleApplyAOEDamage(const FGameplayEventData& I
 		}
 	}
 
-	if (AppliedTargetCount > 0)
+	if (AppliedTargetCount > 0 && IsActive() && ActivationSerial == LegacyDamageActivationSerial)
 	{
 		GainIdentity();
 	}
@@ -643,6 +689,9 @@ URPGPlayerGameplayAbility::BuildLegacyDamageSecurityProfile() const
 void URPGPlayerGameplayAbility::GainIdentity()
 {
 	AActor* SourceActor = GetAvatarActorFromActorInfo();
+	// This authored identity has native per-cast/full-combo confirmations. Legacy
+	// per-target effects must not fill Rage or bypass its acquisition/credit rule.
+	if (URPGGreatSwordResolveAbility::IsConfiguredFor(SourceActor)) return;
 	if (!SourceActor || !SourceActor->HasAuthority())
 	{
 		return;
@@ -730,6 +779,7 @@ bool URPGPlayerGameplayAbility::ApplyManaCost(const FGameplayAbilityActorInfo* A
 	}
 
 	UAbilitySystemComponent* AbilitySystemComponent = ActorInfo->AbilitySystemComponent.Get();
+	if (!IsValid(AbilitySystemComponent)) return false;
 	const URPGAttributeSet* AttributeSet = AbilitySystemComponent->GetSet<URPGAttributeSet>();
 
 	if (AttributeSet)

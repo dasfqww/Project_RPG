@@ -3,16 +3,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Ability/RPGAbilitySet.h"
-#include "DataAsset/Definition/RPGGladiatorData.h"
 #include "Economy/RPGCurrencyTypes.h"
+#include "Economy/RPGDungeonRewardTypes.h"
 #include "ModularPlayerState.h"
 #include "RPGPlayerState.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
-	FRPGGladiatorClassChanged,
-	ERPGGladiatorCharacterClass,
-	SelectedClass);
+struct FRPGEconomyWalletResult;
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRPGDungeonRewardDelivered,
+	const FRPGDungeonRewardDeliveryNotice&, Notice);
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	FRPGCharacterIdentityChanged,
 	const FString&,
@@ -38,16 +37,20 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "RPG|Class")
-	void ServerSelectClass(ERPGGladiatorCharacterClass NewClass);
-
-	UFUNCTION(BlueprintPure, Category = "RPG|Class")
-	ERPGGladiatorCharacterClass GetSelectedClass() const { return SelectedClass; }
-
 	void SetAuthenticatedIdentity(
 		const FString& InCharacterId,
 		const FString& InSteamId,
-		const FString& InDungeonSessionId);
+		const FString& InDungeonSessionId,
+		int64 InConnectionGeneration = 0);
+	/** Server-only consumed-ticket generation; not proof of admission confirmation. */
+	int64 GetBackendConnectionGeneration() const { return BackendConnectionGeneration; }
+
+	/** Native server boundary; caller must first verify an immutable opt-out receipt.
+	 * The exact identity is revoked once. Re-admission requires a new PlayerState.
+	 * This does not itself cancel combat or eject the connection. */
+	bool RevokeAuthenticatedIdentity(FString ExpectedSessionId,
+		FString ExpectedCharacterId, FString ExpectedSteamId);
+	bool IsAuthenticatedIdentityRevoked() const { return bAuthenticatedIdentityRevoked; }
 
 	UFUNCTION(BlueprintPure, Category = "RPG|Online")
 	const FString& GetBackendCharacterId() const { return BackendCharacterId; }
@@ -65,6 +68,7 @@ public:
 	bool HasAuthenticatedCharacter() const
 	{
 		return !BackendCharacterId.IsEmpty()
+			&& !bAuthenticatedIdentityRevoked
 			&& !AuthenticatedSteamId.IsEmpty()
 			&& !BackendDungeonSessionId.IsEmpty();
 	}
@@ -84,8 +88,12 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "RPG|Economy")
 	void RefreshCurrencyWallet();
 
-	UPROPERTY(BlueprintAssignable, Category = "RPG|Class")
-	FRPGGladiatorClassChanged OnSelectedClassChanged;
+	bool CanApplyCompletedRewardWallet(const FRPGEconomyWalletResult& Wallet, const FString& SessionId) const;
+	bool ApplyCompletedRewardWallet(const FRPGEconomyWalletResult& Wallet, const FRPGDungeonRewardDeliveryNotice& Notice);
+	UFUNCTION(BlueprintPure, Category = "RPG|Reward")
+	FRPGDungeonRewardDeliveryNotice GetRewardDeliveryNotice() const { return RewardDeliveryNotice; }
+	UPROPERTY(BlueprintAssignable, Category = "RPG|Reward")
+	FRPGDungeonRewardDelivered OnDungeonRewardDelivered;
 
 	UPROPERTY(BlueprintAssignable, Category = "RPG|Online")
 	FRPGCharacterIdentityChanged OnCharacterIdentityChanged;
@@ -98,12 +106,6 @@ public:
 
 protected:
 	UFUNCTION()
-	void HandlePawnSet(APlayerState* Player, APawn* NewPawn, APawn* OldPawn);
-
-	UFUNCTION()
-	void OnRep_SelectedClass();
-
-	UFUNCTION()
 	void OnRep_BackendCharacterId();
 
 	UFUNCTION()
@@ -111,12 +113,13 @@ protected:
 
 	UFUNCTION()
 	void OnRep_CurrencyWallet();
+	UFUNCTION()
+	void OnRep_RewardDeliveryNotice();
+	UPROPERTY(ReplicatedUsing = OnRep_RewardDeliveryNotice)
+	FRPGDungeonRewardDeliveryNotice RewardDeliveryNotice;
 
 	void HandleCurrencyTransactionCommitted(
 		const FRPGEconomyCommitResult& Result);
-
-	UPROPERTY(ReplicatedUsing = OnRep_SelectedClass, BlueprintReadOnly, Category = "RPG|Class")
-	ERPGGladiatorCharacterClass SelectedClass = ERPGGladiatorCharacterClass::Count;
 
 	/** Backend-owned character GUID, assigned only after join-ticket validation. */
 	UPROPERTY(
@@ -151,8 +154,12 @@ protected:
 	TArray<FRPGCurrencyBalance> CurrencyBalances;
 
 private:
-	UPROPERTY(Transient)
-	FRPGAbilitySet_GrantedHandles ClassAbilitySetHandles;
+	friend struct FRPGDungeonAuthorityRevocationTestAccess;
+	void HandleCurrencyWalletLoaded(FRPGEconomyWalletResult Result,
+		const FString& RequestedCharacterId, const FString& RequestedSteamId,
+		const FString& RequestedSessionId, uint64 RequestGeneration);
+	bool bAuthenticatedIdentityRevoked = false;
+	int64 BackendConnectionGeneration = 0;
 
 	uint64 CurrencyWalletRequestGeneration = 0;
 	FTimerHandle CurrencyWalletRefreshTimerHandle;

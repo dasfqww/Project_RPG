@@ -4,6 +4,8 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Project_RPGEditorUtilities.generated.h"
 
+class UBlueprint;
+
 UCLASS()
 class UProject_RPGEditorUtilities : public UBlueprintFunctionLibrary
 {
@@ -17,4 +19,8 @@ public:
 	/** 프로젝트 내의 모든 데이터 검증(Validation)을 실행합니다. */
 	UFUNCTION(BlueprintCallable, Category = "ProjectRPG|Editor")
 	static void RunAllValidations();
+
+	/** Upgrade the audited NPC melee success branch without removing its other hit effects. */
+	UFUNCTION(BlueprintCallable, Category = "ProjectRPG|Editor")
+	static bool ConfigureNPCMeleeHitReactionBranch(UBlueprint* Blueprint);
 };

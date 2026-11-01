@@ -14,6 +14,7 @@ class ARPGPlayerController;
 class UPlayerCombatComponent;
 class UAbilityTask_WaitGameplayEvent;
 class UNiagaraSystem;
+class URPGBossThreatComponent;
 
 /**
  * 
@@ -99,11 +100,14 @@ protected:
 
 	void LoadSkillData(const FName& SkillRowName);
 
-	void HandleApplyDamage(const FGameplayEventData& InGameplayEventData);
+	virtual void HandleApplyDamage(const FGameplayEventData& InGameplayEventData);
 	
-	void HandleApplyAOEDamage(const FGameplayEventData& InGameplayEventData);
+	virtual void HandleApplyAOEDamage(const FGameplayEventData& InGameplayEventData);
 
 	FRPGSkillSecurityProfile BuildLegacyDamageSecurityProfile() const;
+	/** Keep the authored hit feedback while allowing an opt-in authoritative damage route. */
+	virtual bool ApplyLegacyDamageToServerHit(const FHitResult& ServerHit,
+		const FGameplayEffectSpecHandle& DamageSpec);
 
 	void GainIdentity();
 
@@ -186,6 +190,12 @@ protected:
 	float GainIdentityAmount;
 
 private:
+	void CaptureLegacyBossEncounters(APawn* Source);
+	TMap<TWeakObjectPtr<URPGBossThreatComponent>, int32> LegacyBossEncounters;
+	TWeakObjectPtr<APawn> LegacyBossSource;
+	TWeakObjectPtr<AController> LegacyBossController;
+	uint32 LegacyDamageActivationSerial = 0;
+
 	TWeakObjectPtr<ARPGPlayer> CachedPlayer;
 	TWeakObjectPtr<ARPGPlayerController> CachedPlayerController;
 

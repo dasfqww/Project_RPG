@@ -27,6 +27,7 @@ public:
 
 	virtual void PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual void OnAttributeAggregatorCreated(const FGameplayAttribute& Attribute, FAggregator* NewAggregator) const override;
 
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_AttackSpeed, Category = "Speed")
 	FGameplayAttributeData AttackSpeed;
@@ -35,6 +36,7 @@ public:
 	UFUNCTION()
 	void OnRep_AttackSpeed(const FGameplayAttributeData& OldValue);
 
+	/** Dimensionless speed scale (neutral 1), matching the authored Player startup GE. */
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MoveSpeed, Category = "Speed")
 	FGameplayAttributeData MoveSpeed;
 	ATTRIBUTE_ACCESSORS(URPGAttributeSet, MoveSpeed);

@@ -1,7 +1,9 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Character/RPGPlayer.h"
+#include "Component/Combat/RPGCombatControlComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -11,17 +13,29 @@
 #include "Component/RPGAbilitySystemComponent.h"
 #include "DataAsset/StartUpData/DataAsset_PlayerStartUpData.h"
 #include "Component/Combat/PlayerCombatComponent.h"
+#include "Component/Equipment/RPGPlayerWeaponLoadoutComponent.h"
 #include "Component/UI/PlayerUIComponent.h"
+#include "Component/Skill/RPGPlayerSkillComponent.h"
+#include "PlayerClass/RPGPlayerClassComponent.h"
+#include "PlayerClass/Development/RPGPlayerClassDevelopmentComponent.h"
+#include "Progression/RPGCharacterProgressionComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Component/UI/QuickSlotComponent.h"
 #include "Component/RPGInventoryComponent.h"
 #include "Component/RPGSecurityValidationComponent.h"
+#include "Component/RPGPlayerMovementComponent.h"
+#include "Player/RPGPlayerState.h"
+#include "Security/RPGDungeonGameplayAuthority.h"
 #include "GameMode/RPGGameModeBase.h"
+#include "Attribute/RPGAttributeSet.h"
+#include "Abilities/GameplayAbility.h"
+#include "Net/UnrealNetwork.h"
 
 #include "RPGGameplayTags.h"
 #include "RPGDebugHelper.h"
 
-ARPGPlayer::ARPGPlayer():
+ARPGPlayer::ARPGPlayer(const FObjectInitializer& ObjectInitializer):
+	Super(ObjectInitializer.SetDefaultSubobjectClass<URPGPlayerMovementComponent>(ACharacter::CharacterMovementComponentName)),
 	TargetArmLength(400.f)
 {
 	PrimaryActorTick.bStartWithTickEnabled = true;
@@ -52,7 +66,12 @@ ARPGPlayer::ARPGPlayer():
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
 
 	PlayerCombatComponent = CreateDefaultSubobject<UPlayerCombatComponent>(TEXT("PlayerCombatComp"));
+	WeaponLoadoutComponent = CreateDefaultSubobject<URPGPlayerWeaponLoadoutComponent>(TEXT("WeaponLoadoutComponent"));
 	PlayerUIComponent = CreateDefaultSubobject<UPlayerUIComponent>(TEXT("PlayerUIComp"));
+	PlayerSkillComponent = CreateDefaultSubobject<URPGPlayerSkillComponent>(TEXT("PlayerSkillComponent"));
+	PlayerClassComponent = CreateDefaultSubobject<URPGPlayerClassComponent>(TEXT("PlayerClassComponent"));
+	CharacterProgressionComponent = CreateDefaultSubobject<URPGCharacterProgressionComponent>(TEXT("CharacterProgressionComponent"));
+	ClassDevelopmentComponent = CreateDefaultSubobject<URPGPlayerClassDevelopmentComponent>(TEXT("ClassDevelopmentComponent"));
 	SecurityValidationComponent =
 		CreateDefaultSubobject<URPGSecurityValidationComponent>(
 			TEXT("SecurityValidationComponent"));
@@ -69,10 +88,36 @@ ARPGPlayer::ARPGPlayer():
 	BaseEyeHeight = 75.f;
 }
 
+void ARPGPlayer::ProcessEvent(UFunction* Function, void* Parms)
+{
+	// UE 5.8's packed move _Implementation is non-virtual. Gate the actual RPC
+	// dispatch, not a shadow method that the inherited exec thunk would bypass.
+	static const FName PackedMoveName = GET_FUNCTION_NAME_CHECKED(ACharacter, ServerMovePacked);
+	if (Function && Function->GetFName() == PackedMoveName
+		&& Function->HasAllFunctionFlags(FUNC_Net | FUNC_NetServer)
+		&& HasAuthority() && IsDungeonGameplayRevoked(this)) return;
+	Super::ProcessEvent(Function, Parms);
+}
+
 void ARPGPlayer::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
+	if (IsDungeonGameplayRevoked(NewController) || IsDungeonGameplayRevoked(this))
+	{
+		if (const auto* State = GetPlayerState<ARPGPlayerState>())
+			RPGAbilitySystemComponent->RevokeDungeonGameplayAuthority(*State);
+		return;
+	}
 
+	if (bApplyingStartup) return;
+	if (InitializedStartupASC.IsValid())
+	{
+		if (InitializedStartupASC.Get() == RPGAbilitySystemComponent)
+			PlayerClassComponent->NotifyAbilitySystemReady(*RPGAbilitySystemComponent, StartupAbilityGrantLevel);
+		CharacterProgressionComponent->NotifyOwnerContextChanged();
+		WeaponLoadoutComponent->RefreshLoadout();
+		return;
+	}
 	if (!CharacterStartUpData.IsNull())
 	{
 		if (UDataAsset_StartUpDataBase* LoadedData = CharacterStartUpData.LoadSynchronous())
@@ -104,16 +149,93 @@ void ARPGPlayer::PossessedBy(AController* NewController)
 				}
 			}
 
+			// Publish before startup callbacks can synchronously reenter PossessedBy.
+			TGuardValue<bool> StartupGuard(bApplyingStartup, true);
+			InitializedStartupASC = RPGAbilitySystemComponent;
+			StartupAbilityGrantLevel = AbilityApplyLevel;
 			LoadedData->GiveToAbilitySystemComponent(RPGAbilitySystemComponent, AbilityApplyLevel);
+			if (!IsActorBeingDestroyed() && !IsDungeonGameplayRevoked(this)
+				&& RPGAbilitySystemComponent->GetAvatarActor() == this)
+				PlayerClassComponent->NotifyAbilitySystemReady(*RPGAbilitySystemComponent, AbilityApplyLevel);
 		}
 	}
+	CharacterProgressionComponent->NotifyOwnerContextChanged();
+	WeaponLoadoutComponent->RefreshLoadout();
+}
+
+void ARPGPlayer::PawnClientRestart()
+{
+	Super::PawnClientRestart();
+	// Initial spec/RPC replication can precede local Controller assignment.
+	// Refresh cached GAS player context only after the engine has restarted the Pawn.
+	if (RPGAbilitySystemComponent)
+	{
+		RPGAbilitySystemComponent->RefreshLocalAbilityActorInfo();
+	}
+	WeaponLoadoutComponent->RefreshPresentation();
 }
 
 void ARPGPlayer::BeginPlay()
 {
+	InitialCapsuleCollision = GetCapsuleComponent()->GetCollisionEnabled();
+	bInitialPauseAnims = GetMesh()->bPauseAnims;
+	bPresentationCaptured = true;
 	Super::BeginPlay();
+	if (EncounterRecoveryRevision != 0) ApplyEncounterRecovery();
+	// Server weapon collision uses animated sockets even when no mesh is rendered.
+	// ACharacter's AlwaysTickPose default does not refresh those bone transforms.
+	if (HasAuthority())
+	{
+		GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	}
 
 	
+}
+
+void ARPGPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ThisClass, EncounterRecoveryRevision);
+}
+
+bool ARPGPlayer::RestoreEncounterPresentation()
+{
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
+	const URPGAttributeSet* Attributes = ASC ? ASC->GetSet<URPGAttributeSet>() : nullptr;
+	if (!HasAuthority() || !ASC || ASC->GetAvatarActor() != this || !bPresentationCaptured ||
+		!Attributes || !FMath::IsFinite(Attributes->GetCurrentHealth()) || Attributes->GetCurrentHealth() <= 0.f ||
+		ASC->HasMatchingGameplayTag(RPGGameplayTags::Shared_Status_Death) || IsDungeonGameplayRevoked(this)) return false;
+	const FGameplayTagContainer DeathAbilities(RPGGameplayTags::Shared_Ability_Death);
+	ASC->CancelAbilities(&DeathAbilities);
+	if (!IsValid(this) || IsActorBeingDestroyed() || ASC->GetAvatarActor() != this) return false;
+	for (const FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
+	{
+		if (Spec.IsActive() && Spec.Ability && Spec.Ability->GetAssetTags().HasTag(RPGGameplayTags::Shared_Ability_Death))
+			return false;
+	}
+	++EncounterRecoveryRevision;
+	GetCombatControlComponent()->ResetForAvatarReuse();
+	ApplyEncounterRecovery();
+	ForceNetUpdate();
+	return true;
+}
+
+void ARPGPlayer::OnRep_EncounterRecoveryRevision()
+{
+	if (EncounterRecoveryRevision != 0) ApplyEncounterRecovery();
+}
+
+void ARPGPlayer::ApplyEncounterRecovery()
+{
+	if (!bPresentationCaptured || IsActorBeingDestroyed() || IsDungeonGameplayRevoked(this)) return;
+	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent())
+	{
+		const FGameplayTagContainer DeathAbilities(RPGGameplayTags::Shared_Ability_Death);
+		ASC->CancelAbilities(&DeathAbilities);
+	}
+	if (!IsValid(this) || IsActorBeingDestroyed()) return;
+	GetCapsuleComponent()->SetCollisionEnabled(InitialCapsuleCollision);
+	GetMesh()->bPauseAnims = bInitialPauseAnims;
 }
 
 void ARPGPlayer::Tick(float DeltaTime)

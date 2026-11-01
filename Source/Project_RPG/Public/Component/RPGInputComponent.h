@@ -61,7 +61,8 @@ inline void URPGInputComponent::BindNativeInputActions(const UDataAsset_InputCon
 		// 1. 태그로부터 함수 이름 생성 (예: InputTag.Move -> Input_Move)
 		FString TagString = Config.InputTag.ToString();
 		if (TagString.StartsWith(TEXT("InputTag.QuickSkill.")) ||
-			TagString.StartsWith(TEXT("InputTag.QuickItem.")))
+			TagString.StartsWith(TEXT("InputTag.QuickItem.")) ||
+			TagString == TEXT("InputTag.ShowSkillWindow"))
 		{
 			continue;
 		}
@@ -75,7 +76,11 @@ inline void URPGInputComponent::BindNativeInputActions(const UDataAsset_InputCon
 		if (TargetFunc)
 		{
 			// 3. 함수가 존재하면 바인딩 (범용 래퍼 함수 이용)
-			BindAction(Config.InputAction, ETriggerEvent::Triggered, this, &ThisClass::ExecuteReflectionHandler, FuncName, (UObject*)ContextObject);
+			const ETriggerEvent TriggerEvent = (TagString == TEXT("InputTag.ShowEquipmentWidget")
+				|| TagString == TEXT("InputTag.ToggleMenu"))
+				? ETriggerEvent::Started
+				: ETriggerEvent::Triggered;
+			BindAction(Config.InputAction, TriggerEvent, this, &ThisClass::ExecuteReflectionHandler, FuncName, (UObject*)ContextObject);
 		}
 		else
 		{
@@ -126,6 +131,8 @@ inline void URPGInputComponent::BindAbilityInputAction(const UDataAsset_InputCon
 		BindAction(AbilityInputActionConfig.InputAction, ETriggerEvent::Started, ContextObject, InputPressedFunc,
 				AbilityInputActionConfig.InputTag);
 		BindAction(AbilityInputActionConfig.InputAction, ETriggerEvent::Completed, ContextObject, InputReleasedFunc,
-				AbilityInputActionConfig.InputTag);		
+				AbilityInputActionConfig.InputTag);
+		BindAction(AbilityInputActionConfig.InputAction, ETriggerEvent::Canceled, ContextObject, InputReleasedFunc,
+				AbilityInputActionConfig.InputTag);
 	}
 }

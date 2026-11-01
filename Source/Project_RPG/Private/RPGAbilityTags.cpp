@@ -53,6 +53,7 @@ namespace RPGGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(Player_Status_Rage_None, "Player.Status.Rage.None");
 	UE_DEFINE_GAMEPLAY_TAG(Player_Status_Identity_Full, "Player.Status.Identity.Full");
 	UE_DEFINE_GAMEPLAY_TAG(Player_Status_Identity_None, "Player.Status.Identity.None");
+	UE_DEFINE_GAMEPLAY_TAG(Player_Status_Identity_GreatSword_Ready, "Player.Status.Identity.GreatSword.Ready");
 
 	UE_DEFINE_GAMEPLAY_TAG(Player_SetByCaller_AttackType_Light, "Player.SetByCaller.AttackType.Light");
 	UE_DEFINE_GAMEPLAY_TAG(Player_SetByCaller_AttackType_Heavy, "Player.SetByCaller.AttackType.Heavy");

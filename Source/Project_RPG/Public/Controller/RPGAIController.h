@@ -20,6 +20,8 @@ public:
 	ARPGAIController(const FObjectInitializer& ObjectInitializer);
 
 	virtual ETeamAttitude::Type GetTeamAttitudeTowards(const AActor& Other) const;
+	virtual void Tick(float DeltaSeconds) override;
+	virtual FPathFollowingRequestResult MoveTo(const FAIMoveRequest& Request, FNavPathSharedPtr* OutPath = nullptr) override;
 
 protected:
 	virtual void BeginPlay() override;
@@ -34,6 +36,10 @@ protected:
 		virtual void OnNPCPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus);
 
 private:
+	/** Keep encounter-owned ordinary NPCs on a living encounter participant.
+	 * Returns true when the summon path owns TargetActor instead of perception. */
+	bool RefreshEncounterSummonTarget();
+
 	UPROPERTY(EditDefaultsOnly, Category = "Detour Crowd Avoidance Config")
 		bool bEnableDetourCrowdAvoidance = true;
 

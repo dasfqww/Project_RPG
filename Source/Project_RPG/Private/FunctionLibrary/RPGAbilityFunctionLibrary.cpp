@@ -7,6 +7,7 @@
 #include "ScalableFloat.h"
 #include "GameplayEffect.h"
 #include "RPGGameplayTags.h"
+#include "Security/RPGDamageExecutionGuard.h"
 
 namespace RPGAbilityFunctionLibrary
 {
@@ -127,9 +128,10 @@ bool URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
 	}
 
 	float Damage = 0.0f;
-	if (RPGAbilityFunctionLibrary::TryGetDamageMagnitude(
+	const bool bDamageSpec = RPGAbilityFunctionLibrary::TryGetDamageMagnitude(
 		*InSpecHandle.Data,
-		Damage))
+		Damage);
+	if (bDamageSpec)
 	{
 		FText RejectionReason;
 		if (!URPGSecurityBlueprintLibrary::ValidateAuthorizedServerHit(
@@ -151,14 +153,22 @@ bool URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
 	{
 		return false;
 	}
+	TOptional<FRPGDamageExecutionGuard> DamageReceipt;
+	if (bDamageSpec)
+	{
+		if (!FRPGDamageExecutionGuard::Supports(*InSpecHandle.Data, *SourceASC)) return false;
+		DamageReceipt.Emplace(*InSpecHandle.Data, *SourceASC, *TargetASC, SecurityProfile.MaximumFinalDamagePerHit);
+	}
 
 	const FActiveGameplayEffectHandle ActiveGameplayEffectHandle =
 		SourceASC->ApplyGameplayEffectSpecToTarget(
 			*InSpecHandle.Data,
 			TargetASC);
+	if (!ActiveGameplayEffectHandle.WasSuccessfullyApplied() ||
+		(DamageReceipt.IsSet() && !DamageReceipt->WasApproved())) return false;
 	if (OutActiveHandle)
 	{
 		*OutActiveHandle = ActiveGameplayEffectHandle;
 	}
-	return ActiveGameplayEffectHandle.WasSuccessfullyApplied();
+	return true;
 }

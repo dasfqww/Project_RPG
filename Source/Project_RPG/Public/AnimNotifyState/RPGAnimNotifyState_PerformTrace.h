@@ -85,6 +85,7 @@ public:
 	FRPGWeaponTraceDebugParams TraceDebugParams;
 
 private:
+	friend class FRPGEquipmentTraceSnapshotTest;
 	struct FRuntimeState
 	{
 		TWeakObjectPtr<ARPGWeaponBase> WeaponActor;

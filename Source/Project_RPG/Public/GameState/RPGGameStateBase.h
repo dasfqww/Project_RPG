@@ -6,6 +6,8 @@
 #include "GameFramework/GameStateBase.h"
 #include "RPGGameStateBase.generated.h"
 
+class URPGExperienceManagerComponent;
+
 /**
  * Small, server-authored snapshot used by clients and automated smoke tests to
  * prove that the game net driver is replicating through Iris.
@@ -52,6 +54,7 @@ class PROJECT_RPG_API ARPGGameStateBase : public AGameStateBase
 public:
 	ARPGGameStateBase();
 
+	virtual void PreInitializeComponents() override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void GetLifetimeReplicatedProps(
@@ -63,11 +66,17 @@ public:
 		return NetworkSessionSnapshot;
 	}
 
+	UFUNCTION(BlueprintPure, Category = "RPG|Experience")
+	URPGExperienceManagerComponent* GetExperienceManagerComponent() const { return ExperienceManagerComponent; }
+
 	/** Fired on clients whenever the server-authored snapshot is received. */
 	UPROPERTY(BlueprintAssignable, Category = "RPG|Network")
 	FRPGNetworkSessionSnapshotChanged OnNetworkSessionSnapshotChanged;
 
 private:
+	UPROPERTY(VisibleAnywhere, Category = "RPG|Experience")
+	TObjectPtr<URPGExperienceManagerComponent> ExperienceManagerComponent;
+
 	void RefreshAuthoritativeNetworkSnapshot();
 	bool IsLocalGameNetDriverUsingIris() const;
 	void LogClientSnapshot() const;

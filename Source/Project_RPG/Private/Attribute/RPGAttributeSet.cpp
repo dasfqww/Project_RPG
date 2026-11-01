@@ -1,7 +1,10 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Attribute/RPGAttributeSet.h"
+#include "AI/RPGBossAIComponent.h"
 #include "GameplayEffectExtension.h"
+#include "GameplayEffectAggregator.h"
+#include "GameplayEffectAggregatorLibrary.h"
 #include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "RPGGameplayTags.h"
 #include "Interface/PawnUIInterface.h"
@@ -9,6 +12,7 @@
 #include "Component/UI/PlayerUIComponent.h"
 #include "Character/RPGBaseCharacter.h"
 #include "Character/RPGPlayer.h"
+#include "Character/RPGNonPlayerCharacter.h"
 #include "Net/UnrealNetwork.h"
 
 #include "RPGDebugHelper.h"
@@ -28,6 +32,7 @@ URPGAttributeSet::URPGAttributeSet()
 	InitIdentityGainMultiplier(1.f);
 	InitAttack(1.f);
 	InitDefense(1.f);
+	InitMoveSpeed(1.f);
 	InitMoveSpeedPercent(0.f);
 	InitAttackSpeedPercent(0.f);
 	InitDrainLifePercent(0.f);
@@ -35,6 +40,13 @@ URPGAttributeSet::URPGAttributeSet()
 	InitActiveEffectDuration(0.f);
 	InitCriticalChance(0.3f);
 	InitCriticalDamage(2.f);
+}
+
+void URPGAttributeSet::OnAttributeAggregatorCreated(const FGameplayAttribute& Attribute, FAggregator* Aggregator) const
+{
+	Super::OnAttributeAggregatorCreated(Attribute, Aggregator);
+	if (Aggregator && Attribute == GetMoveSpeedAttribute())
+		Aggregator->EvaluationMetaData = &FAggregatorEvaluateMetaDataLibrary::MostNegativeMod_AllPositiveMods;
 }
 
 void URPGAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -148,10 +160,12 @@ void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		// 게이지 상태에 따른 태그 관리
 		if (GetCurrentIdentityGauge() == GetMaxIdentityGauge())
 		{
+			URPGAbilityFunctionLibrary::RemoveGameplayTagFromActorIfFound(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Identity_None);
 			URPGAbilityFunctionLibrary::AddGameplayTagToActorIfNone(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Identity_Full);
 		}
 		else if (GetCurrentIdentityGauge() == 0.f)
 		{
+			URPGAbilityFunctionLibrary::RemoveGameplayTagFromActorIfFound(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Identity_Full);
 			URPGAbilityFunctionLibrary::AddGameplayTagToActorIfNone(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Identity_None);
 		}
 		else
@@ -240,10 +254,31 @@ void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		//TODO: notify the ui
 		if (GetCurrentHealth() == 0.f)
 		{
-			URPGAbilityFunctionLibrary::AddGameplayTagToActorIfNone(
-				Data.Target.GetAvatarActor(), 
-				RPGGameplayTags::Shared_Status_Death
-			);
+			// Boss death is terminal. Publish this loose tag through GAS/Iris as well as the local count.
+			AActor* Avatar = Data.Target.GetAvatarActor();
+			if (IsValid(Avatar) && Avatar->HasAuthority() && Avatar->FindComponentByClass<URPGBossAIComponent>())
+			{
+				if (!Data.Target.HasMatchingGameplayTag(RPGGameplayTags::Shared_Status_Death))
+				{
+					Data.Target.AddLooseGameplayTag(RPGGameplayTags::Shared_Status_Death, 1, EGameplayTagReplicationState::TagOnly);
+				}
+			}
+			else if (IsValid(Avatar) && Avatar->HasAuthority() && Avatar->IsA<ARPGNonPlayerCharacter>())
+			{
+				// Ordinary AI has no owning player connection. Publish server death
+				// through GAS as well; clients never decide whether an NPC is dead.
+				if (!Data.Target.HasMatchingGameplayTag(RPGGameplayTags::Shared_Status_Death))
+				{
+					Data.Target.AddLooseGameplayTag(RPGGameplayTags::Shared_Status_Death, 1, EGameplayTagReplicationState::TagOnly);
+				}
+			}
+			else
+			{
+				URPGAbilityFunctionLibrary::AddGameplayTagToActorIfNone(
+					Data.Target.GetAvatarActor(),
+					RPGGameplayTags::Shared_Status_Death
+				);
+			}
 			
 		}
 	}

@@ -11,6 +11,6 @@ void URPGAnimNotify_CustomPlaySound::Notify(USkeletalMeshComponent* MeshComp, UA
 	{
 		FVector Location = MeshComp->GetComponentLocation();
 
-		USoundManager::Get()->Play(Sound, Location);
+		USoundManager::Get(MeshComp)->Play(Sound, Location);
 	}
 }

@@ -7,6 +7,7 @@
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "Manager/TeamManager.h"
+#include "Security/RPGDungeonGameplayAuthority.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RPGHitQuerySubsystem)
 
@@ -360,7 +361,7 @@ bool URPGHitQuerySubsystem::ExecuteHitQuery(
 	{
 		const RPGHitQuery::FCandidate& Candidate = Pair.Value;
 		AActor* TargetActor = Candidate.Actor.Get();
-		if (!IsValid(TargetActor) ||
+		if (!IsValid(TargetActor) || IsDungeonGameplayRevoked(Context.SourceActor) || IsDungeonGameplayRevoked(TargetActor) ||
 			ExplicitlyIgnored.Contains(TargetActor) ||
 			(!Filter.bIncludeSourceActor && TargetActor == Context.SourceActor))
 		{
@@ -474,7 +475,7 @@ bool URPGHitQuerySubsystem::IsTargetEligible(
 	const TArray<TObjectPtr<AActor>>& IgnoredActors) const
 {
 	UWorld* World = GetWorld();
-	if (!World || !IsValid(TargetActor) ||
+	if (!World || !IsValid(TargetActor) || IsDungeonGameplayRevoked(SourceActor) || IsDungeonGameplayRevoked(TargetActor) ||
 		(!Filter.bIncludeSourceActor && TargetActor == SourceActor) ||
 		IgnoredActors.Contains(TargetActor))
 	{

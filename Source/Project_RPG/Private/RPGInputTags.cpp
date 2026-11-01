@@ -9,6 +9,7 @@ namespace RPGGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_Look, "InputTag.Look");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_CameraZoom, "InputTag.CameraZoom");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_ShowEquipmentWidget, "InputTag.ShowEquipmentWidget");
+	UE_DEFINE_GAMEPLAY_TAG(InputTag_ShowSkillWindow, "InputTag.ShowSkillWindow");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_EquipWeapon, "InputTag.EquipWeapon");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_UnequipWeapon, "InputTag.UnequipWeapon");
 	UE_DEFINE_GAMEPLAY_TAG(InputTag_LightAttack_GreatSword, "InputTag.LightAttack.GreatSword");

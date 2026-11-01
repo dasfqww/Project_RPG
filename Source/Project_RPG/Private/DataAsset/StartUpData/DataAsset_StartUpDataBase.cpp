@@ -4,6 +4,7 @@
 #include "DataAsset/StartUpData/DataAsset_StartUpDataBase.h"
 #include "Component/RPGAbilitySystemComponent.h"
 #include "Ability/RPGGameplayAbility.h"
+#include "PlayerClass/RPGPlayerClassComponent.h"
 
 void UDataAsset_StartUpDataBase::GiveToAbilitySystemComponent(URPGAbilitySystemComponent* InASCToGive, int32 ApplyLevel)
 {
@@ -39,6 +40,9 @@ void UDataAsset_StartUpDataBase::GrantAbilities(const TArray<TSubclassOf<URPGGam
 	for (const TSubclassOf<URPGGameplayAbility>& Ability : InAbilitiesToGive)
 	{
 		if (!Ability) continue;
+		const auto* ClassOwner = InASCToGive->GetAvatarActor()
+			? InASCToGive->GetAvatarActor()->FindComponentByClass<URPGPlayerClassComponent>() : nullptr;
+		if (ClassOwner && ClassOwner->RoutesAbilityToClass(Ability.Get())) continue;
 
 		FGameplayAbilitySpec AbilitySpec(Ability);
 		AbilitySpec.SourceObject = InASCToGive->GetAvatarActor();

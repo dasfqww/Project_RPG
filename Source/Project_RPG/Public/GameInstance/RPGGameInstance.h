@@ -51,6 +51,7 @@ class PROJECT_RPG_API URPGGameInstance : public UGameInstance
 	GENERATED_BODY()
 public:
 	URPGGameInstance();
+	virtual bool DelayCompletionOfPendingNetGameTravel() override;
 
 	virtual void Init() override;
 

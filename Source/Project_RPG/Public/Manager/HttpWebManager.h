@@ -1,15 +1,37 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/Ticker.h"
 #include "Economy/RPGCurrencyTypes.h"
 #include "Economy/RPGDungeonRewardTypes.h"
 #include "Http.h"
+#include "Online/RPGBackendPlayerAuthState.h"
+#include "Online/RPGDungeonAbandonment.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Templates/SubclassOf.h"
 #include "Type/RPGStructTypes.h"
 #include "HttpWebManager.generated.h"
 
 class APlayerController;
 class FJsonObject;
+struct FRPGDungeonRewardSnapshotResult;
+struct FRPGDungeonMembershipSnapshotResult;
+struct FRPGCharacterProgressionResult;
+struct FRPGCharacterSkillConfiguration;
+struct FRPGEquipmentMutationCommand;
+struct FRPGEquipmentMutationHttpResult;
+class FRPGDungeonDisconnectionJournal;
+class FRPGDungeonConsumeJournal;
+
+USTRUCT(BlueprintType)
+struct PROJECT_RPG_API FRPGCharacterCreationOption
+{
+	GENERATED_BODY()
+	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Character") FString ClassId;
+	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Character") FString DisplayName;
+	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Character") FString Description;
+	static bool DecodeList(const FString& Body, TArray<FRPGCharacterCreationOption>& OutOptions);
+};
 
 USTRUCT(BlueprintType)
 struct PROJECT_RPG_API FRPGBackendCharacter
@@ -27,6 +49,18 @@ struct PROJECT_RPG_API FRPGBackendCharacter
 
 	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Character")
 	FString CreatedAt;
+
+	/** Optional display projection. Missing/invalid metadata never implies level one. */
+	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Character")
+	FString ProgressionState = TEXT("Unavailable");
+
+	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Character")
+	FString ClassId;
+
+	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Character")
+	int32 CharacterLevel = 0;
+
+	static bool Decode(const TSharedPtr<FJsonObject>& Object, FRPGBackendCharacter& OutCharacter);
 };
 
 USTRUCT(BlueprintType)
@@ -42,6 +76,10 @@ struct PROJECT_RPG_API FRPGDungeonSessionMember
 
 	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
 	FString LeaseExpiresAt;
+
+	/** Optional public character name from the authenticated session response; never identity/authority. */
+	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
+	FString CharacterName;
 };
 
 USTRUCT(BlueprintType)
@@ -66,6 +104,12 @@ struct PROJECT_RPG_API FRPGDungeonSession
 
 	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
 	FString ServerAddress;
+
+	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session") FString LeaderCharacterId;
+	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session") int64 LobbyRevision = 0;
+	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session") FString DepartureRequestId;
+	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session") int64 DepartureRequestRevision = 0;
+	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session") FString DepartureRequestedAt;
 
 	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
 	FString ExpiresAt;
@@ -97,6 +141,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	FOnCharacterCreated,
 	const FRPGBackendCharacter&, Character,
 	bool, bSuccess);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnCharacterCreationOptionsLoaded,
+	const TArray<FRPGCharacterCreationOption>&, Options, bool, bSuccess);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	FOnDungeonSessionUpdated,
 	const FRPGDungeonSession&, DungeonSession,
@@ -108,17 +154,21 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_FiveParams(
 	const FString&, JoinTicket,
 	const FString&, ExpiresAt,
 	bool, bSuccess);
+// Internal detailed completion; the existing Blueprint delegate keeps its signature.
+DECLARE_MULTICAST_DELEGATE_SixParams(FOnJoinTicketResult,
+	const FString&, const FString&, const FString&, const FString&, bool, const FString&);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
 	FOnDungeonRewardSettlementRequested,
 	const FString&, State,
 	int32, HttpStatus,
 	bool, bSuccess);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_FiveParams(
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_SixParams(
 	FOnJoinTicketConsumed,
 	const FString&, JoinTicket,
 	const FString&, DungeonSessionId,
 	const FString&, CharacterId,
 	const FString&, SteamId,
+	int64, ConnectionGeneration,
 	bool, bSuccess);
 
 /**
@@ -134,10 +184,6 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
-	void SaveInventoryToWeb(
-		const TArray<FItemSaveData>& InventoryData, const FString& CharacterId);
-	void LoadInventoryFromWeb(const FString& CharacterId);
-
 	/**
 	 * Exchanges a Steam Web API auth ticket (hex encoded) for a backend token.
 	 * Ticket creation remains in the Steam/OnlineSubsystem integration layer.
@@ -148,14 +194,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HTTP|Authentication")
 	void SetAccessToken(const FString& InAccessToken);
 
+	/** Clears the credential only. Account binding and selected gameplay state are not a logout. */
 	UFUNCTION(BlueprintCallable, Category = "HTTP|Authentication")
 	void ClearAccessToken();
 
 	UFUNCTION(BlueprintCallable, Category = "HTTP|Character")
 	void LoadCharacters();
+	UFUNCTION(BlueprintCallable, Category = "HTTP|Character")
+	void LoadCharacterCreationOptions();
 
 	UFUNCTION(BlueprintCallable, Category = "HTTP|Character")
-	void CreateCharacter(const FString& CharacterName);
+	void CreateCharacter(const FString& CharacterName, const FString& ClassId = TEXT(""));
 
 	UFUNCTION(BlueprintCallable, Category = "HTTP|Dungeon Session")
 	void CreateDungeonSession(
@@ -180,6 +229,16 @@ public:
 		const FString& DungeonSessionId,
 		const FString& CharacterId);
 
+	void SetDungeonDeparture(const FString& SessionId, const FString& CharacterId,
+		const FString& RequestId, int64 ExpectedRevision, bool bCancel);
+
+	/** Player-only, bodyless and idempotent. Does not clear client state or disconnect an actor. */
+	void AbandonDungeonSession(const FString& DungeonSessionId, const FString& CharacterId,
+		const FString& ExpectedSteamId);
+
+	/** Discards pre-disconnect client callbacks only; does not undo backend mutations or clear authentication. */
+	void InvalidatePlayerDungeonRequests();
+
 	/**
 	 * Requests a short-lived, single-use ticket for a character that currently
 	 * holds an active lease in the specified dungeon session.
@@ -190,7 +249,28 @@ public:
 		const FString& DungeonSessionId);
 
 	/** Dedicated Server only: atomically consumes a client join ticket. */
-	void ConsumeJoinTicket(const FString& JoinTicket);
+	void ConsumeJoinTicket(const FString& JoinTicket, const FString& ExpectedSteamId = FString());
+
+	/** Original PreLogin peer only: preserve its first observed socket loss, never a lookup/send timestamp. */
+	void ObserveDungeonConsumeConnectionLoss(const FString& JoinTicket, const FString& ExpectedSteamId,
+		FDateTime ObservedAtUtc);
+	bool HasExpiredDungeonConsumeRecovery(const FString& JoinTicket) const;
+
+	/** False while an observed disconnect has not been durably resolved; reads/heartbeats remain available. */
+	bool CanDispatchConfiguredDungeonConnectionMutation() const;
+
+	/** Server-local, bounded read-only JSON. Never sends/retries, reads files or clears a recovery guard. */
+	FString BuildConfiguredDungeonRecoveryDiagnostics(int32 MaxIntents = 32) const;
+
+	/** Dedicated Server only: confirms completed InitNewPlayer for the current ticket generation. */
+	bool ConfirmConfiguredDungeonMemberAdmission(const FString& DungeonSessionId,
+		const FString& CharacterId, const FString& SteamId, int64 ConnectionGeneration,
+		TFunction<void(bool, int32)> Completion);
+
+	/** Dedicated Server only: true after durable enqueue of this exact connection generation. */
+	bool ReportConfiguredDungeonMemberDisconnection(const FString& DungeonSessionId,
+		const FString& CharacterId, const FString& SteamId, int64 ConnectionGeneration,
+		FDateTime ObservedAtUtc);
 
 	/** Dedicated Server only: reports that the configured instance is ready. */
 	void StartConfiguredDungeonSession();
@@ -207,6 +287,34 @@ public:
 		const TArray<FRPGCurrencyChange>& CurrencyChanges,
 		const TArray<FRPGDungeonItemReward>& ItemRewards);
 
+	/** Read-only, session-bound status/snapshot; also valid in the post-session grace window. */
+	bool LoadConfiguredDungeonRewardSnapshot(const FString& CharacterId,
+		TFunction<void(FRPGDungeonRewardSnapshotResult)> Completion, const FString& RewardVersion = FString());
+	/** Assigned-server credential only; a player cannot supply a restore record to a Pawn. */
+	bool LoadConfiguredCharacterProgression(const FString& CharacterId,
+		TFunction<void(FRPGCharacterProgressionResult)> Completion);
+	/** Player credential only. Frontend eligibility and drafts belong to the lobby. */
+	bool LoadPlayerCharacterProgression(const FString& CharacterId, TFunction<void(FRPGCharacterProgressionResult)> Completion);
+	bool SavePlayerCharacterConfiguration(const FString& CharacterId, const FRPGCharacterSkillConfiguration& Command,
+		TFunction<void(FRPGCharacterProgressionResult)> Completion);
+	bool IsPlayerProgressionRequestInFlight() const { return ActivePlayerProgressionRequest.IsValid(); }
+
+	/** Pinned player/endpoint identity only, never exposes a bearer or service credential. */
+	bool GetPlayerEquipmentContext(FString& OutEndpoint, FString& OutSteamId) const;
+	/** Build only; the intent owner must durably save before dispatching this request. */
+	FHttpRequestPtr CreatePlayerEquipmentMutationRequest(const FRPGEquipmentMutationCommand& Command,
+		TFunction<void(FRPGEquipmentMutationHttpResult)> Completion);
+	/** Fresh owner-only read; no terminal history, no server credential. Build only. */
+	FHttpRequestPtr CreatePlayerEquipmentItemsRequest(FGuid CharacterId,
+		TFunction<void(FRPGEquipmentMutationHttpResult)> Completion);
+
+	/** Single in-flight, read-only GET using only the assigned server credential. */
+	bool LoadConfiguredDungeonMembershipSnapshot(
+		TFunction<void(FRPGDungeonMembershipSnapshotResult)> Completion);
+
+	/** Dedicated server only: process elapsed disconnects, then let the caller read authoritative receipts. */
+	bool ProcessConfiguredDungeonDisconnectionExpirations(TFunction<void()> Completion);
+
 	/** Appends the ticket as a URL option and starts the UE connection. */
 	UFUNCTION(BlueprintCallable, Category = "HTTP|Dungeon Session")
 	static bool ConnectWithJoinTicket(
@@ -215,7 +323,17 @@ public:
 		const FString& JoinTicket);
 
 	UFUNCTION(BlueprintPure, Category = "HTTP|Authentication")
-	bool HasAccessToken() const { return !AccessToken.IsEmpty(); }
+	bool HasAccessToken() const;
+	/** Endpoint identity only; never includes the player's credential. */
+	const FString& GetApiUrl() const { return ApiUrl; }
+
+	/** Native transport; the lobby coordinator owns gameplay/UI eligibility. */
+	bool RequestPlayerLogout(TFunction<bool()> CanFinalize, TFunction<void(bool)> Completion);
+	bool IsPlayerLogoutInFlight() const { return ActivePlayerLogoutRequest.IsValid(); }
+	bool HasPlayerLogoutCredential() const { return !PlayerAuth.LogoutAuthorization().IsEmpty(); }
+
+	/** Account remains pinned across credential expiry; switching accounts needs an explicit logout flow. */
+	const FString& GetAuthenticatedSteamId() const { return PlayerAuth.GetSteamId(); }
 
 	const FString& GetGameServerId() const { return GameServerId; }
 	const FString& GetConfiguredDungeonSessionId() const
@@ -229,16 +347,6 @@ public:
 			&& !ConfiguredDungeonSessionId.IsEmpty();
 	}
 
-	void OnSaveInventoryResponseReceived(
-		FHttpRequestPtr Request,
-		FHttpResponsePtr Response,
-		bool bWasSuccessful,
-		FString CharacterId);
-	void OnLoadInventoryResponseReceived(
-		FHttpRequestPtr Request,
-		FHttpResponsePtr Response,
-		bool bWasSuccessful,
-		FString CharacterId);
 	void OnAuthenticateResponseReceived(
 		FHttpRequestPtr Request,
 		FHttpResponsePtr Response,
@@ -256,13 +364,15 @@ public:
 		FHttpResponsePtr Response,
 		bool bWasSuccessful,
 		FString Operation,
-		FString ExpectedDungeonSessionId);
+		FString ExpectedDungeonSessionId,
+		uint64 RequestGeneration = 0);
 	void OnRequestJoinTicketResponseReceived(
 		FHttpRequestPtr Request,
 		FHttpResponsePtr Response,
 		bool bWasSuccessful,
 		FString CharacterId,
-		FString DungeonSessionId);
+		FString DungeonSessionId,
+		uint64 RequestGeneration = 0);
 	void OnConsumeJoinTicketResponseReceived(
 		FHttpRequestPtr Request,
 		FHttpResponsePtr Response,
@@ -296,12 +406,18 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "HTTP|Character")
 	FOnCharacterCreated OnCharacterCreated;
+	UPROPERTY(BlueprintAssignable, Category = "HTTP|Character")
+	FOnCharacterCreationOptionsLoaded OnCharacterCreationOptionsLoaded;
 
 	UPROPERTY(BlueprintAssignable, Category = "HTTP|Dungeon Session")
 	FOnDungeonSessionUpdated OnDungeonSessionUpdated;
 
 	UPROPERTY(BlueprintAssignable, Category = "HTTP|Dungeon Session")
+	FOnDungeonAbandonmentCompleted OnDungeonAbandonmentCompleted;
+
+	UPROPERTY(BlueprintAssignable, Category = "HTTP|Dungeon Session")
 	FOnJoinTicketIssued OnJoinTicketIssued;
+	FOnJoinTicketResult OnJoinTicketResult;
 
 	UPROPERTY()
 	FOnJoinTicketConsumed OnJoinTicketConsumed;
@@ -310,6 +426,142 @@ public:
 	FOnDungeonRewardSettlementRequested OnDungeonRewardSettlementRequested;
 
 private:
+	void OnCharacterCreationOptionsResponse(FHttpRequestPtr Request, FHttpResponsePtr Response,
+		bool bWasSuccessful, uint64 Generation);
+	uint64 CharacterCreationOptionsGeneration = 0;
+	void OnPlayerLogoutResponse(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful);
+	void BroadcastJoinTicketResult(const FString& DungeonSessionId, const FString& CharacterId,
+		const FString& JoinTicket, const FString& ExpiresAt, bool bSuccess, const FString& ErrorCode = FString());
+	friend struct FRPGBackendAuthTestAccess;
+	friend struct FRPGEquipmentMutationTestAccess;
+	friend class FRPGMenuFrontendTest;
+	friend struct FRPGDungeonDepartureJournalTestAccess;
+	friend struct FRPGSteamLobbyPublicationTestAccess;
+	friend struct FRPGDungeonAbandonmentTestAccess;
+	friend struct FRPGDungeonMembershipTestAccess;
+	friend struct FRPGDungeonDisconnectionOrderingTestAccess;
+	FHttpRequestPtr CreateConsumeJoinTicketRequest(const FString& JoinTicket, const FString& ExpectedSteamId = FString());
+	FHttpRequestPtr CreateDungeonRewardSettlementRequest(const FString& RewardVersion,
+		const TArray<FRPGCurrencyChange>& CurrencyChanges, const TArray<FRPGDungeonItemReward>& ItemRewards);
+	struct FDungeonMutationScope
+	{
+		FString BackendUrl, ServerId, SessionId;
+		TWeakObjectPtr<UWorld> World;
+	};
+	struct FDungeonConsumeRecovery
+	{
+		enum class EEvidenceOutcome : uint8
+		{
+			NotChecked, TransportFailure, HttpRejected, InvalidResponse, Unresolved,
+			ConsumptionRecorded, CancellationVerified
+		};
+		FDungeonMutationScope Scope;
+		FString RequestId, Body; // Memory only; never log a ticket or persist service credentials.
+		FString ExpectedSteamId, TicketHash, EvidenceBody, EvidenceCharacterId;
+		FDateTime LostAtUtc;
+		int64 EvidenceGeneration = 0;
+		FHttpRequestPtr EvidenceRequest;
+		double Deadline = 0.0, NextAttemptAt = 0.0;
+		int32 Retries = 0;
+		bool bWaiting = false, bUncertain = false, bExpired = false;
+		bool bRestoredWorldPending = false;
+		bool bSealRequested = false, bCancellationVerified = false;
+		// Diagnostic observations only: never persisted or used as admission/cancellation authority.
+		EEvidenceOutcome LastEvidenceOutcome = EEvidenceOutcome::NotChecked;
+		int32 LastEvidenceHttpStatus = 0;
+		FDateTime LastEvidenceCompletedAtUtc;
+		bool bLastEvidenceWasSeal = false;
+	};
+	FHttpRequestPtr CreateDungeonConsumeAttempt(const FString& Ticket, const TSharedRef<FDungeonConsumeRecovery>& Recovery);
+	FHttpRequestPtr TakeDueDungeonConsumeRetry(const FString& Ticket, double Now);
+	void DispatchDungeonConsumeAttempt(const FString& Ticket, const FHttpRequestPtr& Request);
+	void ExpireDungeonConsumeRecovery(const FString& Ticket, const TSharedRef<FDungeonConsumeRecovery>& Recovery);
+	FHttpRequestPtr TakeDueDungeonConsumeEvidence(const FString& Ticket, double Now);
+	void DispatchDungeonConsumeEvidence(const FString& Ticket, const FHttpRequestPtr& Request);
+	void CompleteDungeonConsumeEvidence(const FString& Ticket, const TSharedRef<FDungeonConsumeRecovery>& Recovery,
+		const FHttpRequestPtr& Request, const FHttpResponsePtr& Response, bool bTransport);
+	bool QueueDungeonConsumeEvidence(const FString& Ticket, const TSharedRef<FDungeonConsumeRecovery>& Recovery);
+	bool ResolveCancelledDungeonConsumeRecovery(const FString& Ticket, const TSharedRef<FDungeonConsumeRecovery>& Recovery);
+	void TickDungeonConsumeRecoveries();
+	void InitializeDungeonConsumeRecoveries(const FString& Directory);
+	bool RestoreDungeonConsumeRecoveries();
+	void BindRestoredDungeonConsumeWorld();
+	void PersistDungeonConsumeObservation(const TSharedRef<FDungeonConsumeRecovery>& Recovery);
+	void RetryDungeonConsumeObservationWrites(double Now);
+	TSharedPtr<FRPGDungeonConsumeJournal> DungeonConsumeJournal;
+	// Keep failed observations independently of HTTP/admission callback ownership.
+	TMap<FString, TSharedPtr<FDungeonConsumeRecovery>> PendingDungeonConsumeObservationWrites;
+	double NextDungeonConsumeObservationWriteAt = 0.0;
+	int32 DungeonConsumeObservationWriteRetries = 0;
+	// Unattributed/contradictory failures remain sticky; an empty retry queue cannot clear them.
+	bool bDungeonConsumePersistenceFailed = false;
+	bool IsDungeonDisconnectionOutboxReady() const;
+	TMap<FString, TSharedPtr<FDungeonConsumeRecovery>> DungeonConsumeRecoveries;
+	// Uncertain intents remain until durable handoff or verified cancellation AND journal cleanup.
+	bool bDungeonConsumeRecoveryCompleting = false;
+	FDungeonMutationScope CaptureDungeonMutationScope() const;
+	bool IsCurrentDungeonMutationScope(const FDungeonMutationScope& Scope) const;
+	void CancelDungeonConnectionMutations();
+	TMap<FString, FHttpRequestPtr> ActiveDungeonConsumeRequests;
+	FHttpRequestPtr ActiveDungeonSettlementRequest;
+	FHttpRequestPtr ActivePlayerProgressionRequest;
+	bool RequestPlayerProgression(const FString& CharacterId, const FRPGCharacterSkillConfiguration* Command,
+		TFunction<void(FRPGCharacterProgressionResult)> Completion);
+	struct FDungeonDisconnectionReport
+	{
+		FString DungeonSessionId;
+		FString CharacterId;
+		FString SteamId;
+		FString Body;
+		int64 ConnectionGeneration = 0;
+		FDateTime ObservedAtUtc;
+		int32 Attempts = 0;
+		double NextAttemptAt = 0.0;
+		FHttpRequestPtr Request;
+	};
+	struct FDungeonDisconnectionWrite
+	{
+		FDungeonMutationScope Scope;
+		TSharedPtr<FDungeonDisconnectionReport> Report;
+	};
+	bool PersistDungeonDisconnectionWrite(const FString& Key, const FDungeonDisconnectionWrite& Write);
+	void RetryDungeonDisconnectionWrites(double Now);
+	TMap<FString, FDungeonDisconnectionWrite> PendingDungeonDisconnectionWrites;
+	double NextDungeonDisconnectionWriteAt = 0.0;
+	int32 DungeonDisconnectionWriteRetries = 0;
+	void InitializeDungeonDisconnectionReports();
+	void InitializeDungeonDisconnectionReports(const FString& Directory);
+	bool RestoreDungeonDisconnectionReports();
+	void RetryDungeonJournalRestores(double Now);
+	// Startup restore is distinct from a later, attributable write failure. Never
+	// replace a loaded journal or replay its entries again after an HTTP ACK.
+	bool bDungeonDisconnectionRestorePending = false;
+	bool bDungeonConsumeRestorePending = false;
+	double NextDungeonJournalRestoreAt = 0.0;
+	int32 DungeonJournalRestoreRetries = 0;
+	bool TickDungeonDisconnectionReports(float DeltaTime);
+	TSharedPtr<FRPGDungeonDisconnectionJournal> DungeonDisconnectionJournal;
+	TMap<FString, TSharedPtr<FDungeonDisconnectionReport>> DungeonDisconnectionReports;
+	FTSTicker::FDelegateHandle DungeonDisconnectionTicker;
+	bool SendDungeonDisconnectionAttempt(const TSharedRef<FDungeonDisconnectionReport>& Report);
+	FHttpRequestPtr CreateDungeonDisconnectionAttempt(const TSharedRef<FDungeonDisconnectionReport>& Report);
+	bool ScheduleDungeonDisconnectionRetry(const TSharedRef<FDungeonDisconnectionReport>& Report,
+		int32 CompletedAttempt, int32 HttpStatus);
+	bool bDungeonDisconnectionReportShutdown = false;
+	// Unattributed/contradictory failures remain sticky; tracked I/O retries are separate.
+	bool bDungeonDisconnectionPersistenceFailed = false;
+	FHttpRequestPtr CreateConfiguredDungeonMembershipRequest(
+		TFunction<void(FRPGDungeonMembershipSnapshotResult)> Completion);
+	FHttpRequestPtr CreateConfiguredDungeonDisconnectionExpirationsRequest(TFunction<void()> Completion);
+	void CancelDungeonMembershipRequest();
+	FHttpRequestPtr ActiveDungeonMembershipRequest;
+	uint64 DungeonMembershipRequestGeneration = 0;
+	bool bDungeonMembershipTransportShutdown = false;
+	void OnAbandonDungeonSessionResponse(FHttpRequestPtr Request, FHttpResponsePtr Response,
+		bool bWasSuccessful, FString SessionId, FString CharacterId, FString ExpectedSteamId,
+		uint64 RequestGeneration);
+	FHttpRequestRef CreateDungeonAbandonmentRequest(const FString& SessionId,
+		const FString& CharacterId, const FString& ExpectedSteamId);
 	UPROPERTY(Config, EditAnywhere, Category = "HTTP")
 	FString ApiUrl = TEXT("http://localhost:3000/api");
 
@@ -317,7 +569,15 @@ private:
 	float RequestTimeoutSeconds = 10.f;
 
 	/** Kept in memory only; never persist this token in a packaged client config. */
-	FString AccessToken;
+	FRPGBackendPlayerAuthState PlayerAuth;
+	uint64 PlayerDungeonRequestGeneration = 0;
+	FHttpRequestPtr ActiveAuthenticationRequest;
+	FHttpRequestPtr ActivePlayerLogoutRequest;
+	TFunction<bool()> PlayerLogoutContextValidator;
+	TFunction<void(bool)> PlayerLogoutCompletion;
+	double ActiveAuthenticationRequestStartedSeconds = -1.0;
+	bool AcceptPlayerResponse(const FHttpRequestPtr& Request, const FHttpResponsePtr& Response,
+		bool& bWasSuccessful);
 
 	/** Loaded from PROJECT_RPG_BACKEND_GAME_SERVER_TOKEN on a dedicated server only. */
 	FString BackendServiceToken;

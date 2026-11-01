@@ -14,21 +14,37 @@
 #include "RPGGameplayTags.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Component/RPGCharacterMovementComponent.h"
 #include "EnhancedInputSubsystems.h"
 
 #include "RPGDebugHelper.h"
 
 void UPlayerGameplayAbility_TargetLock::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
+	if (!IsValid(GetPlayerCharacterFromActorInfo()) ||
+		!IsValid(GetPlayerControllerFromActorInfo()) ||
+		!GetPlayerControllerFromActorInfo()->GetLocalPlayer())
+	{
+		CancelTargetLockAbility();
+		return;
+	}
 	TryLockOnTarget();
-	InitTargetLockMovement();
+	// Target discovery/widget setup can cancel and clean up this activation.
+	if (!IsActive()) return;
 	InitTargetLockMappingContext();
+	if (!AppliedTargetLockInputSubsystem.IsValid())
+	{
+		CancelTargetLockAbility();
+		return;
+	}
+	InitTargetLockMovement();
 
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 }
 
 void UPlayerGameplayAbility_TargetLock::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
+	if (!IsEndAbilityValid(Handle, ActorInfo)) return;
 	ResetTargetLockMovement();
 	ResetTargetLockMappingContext();
 	CleanUp();
@@ -38,7 +54,10 @@ void UPlayerGameplayAbility_TargetLock::EndAbility(const FGameplayAbilitySpecHan
 
 void UPlayerGameplayAbility_TargetLock::OnTargetLockTick(float DeltaTime)
 {
-	if (!CurrentLockedActor ||
+	if (!IsActive()) return;
+	if (!IsValid(CurrentLockedActor) ||
+		!IsValid(GetPlayerCharacterFromActorInfo()) ||
+		!IsValid(GetPlayerControllerFromActorInfo()) ||
 		URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(CurrentLockedActor,RPGGameplayTags::Shared_Status_Death) ||
 		URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(GetPlayerCharacterFromActorInfo(), 
 			RPGGameplayTags::Shared_Status_Death)
@@ -49,6 +68,7 @@ void UPlayerGameplayAbility_TargetLock::OnTargetLockTick(float DeltaTime)
 	}
 
 	SetTargetLockWidgetPosition();
+	if (!IsActive()) return;
 
 	const bool bShouldOverrideRotation =
 		!URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(GetPlayerCharacterFromActorInfo(),
@@ -76,6 +96,7 @@ void UPlayerGameplayAbility_TargetLock::OnTargetLockTick(float DeltaTime)
 
 void UPlayerGameplayAbility_TargetLock::SwitchTarget(const FGameplayTag& InSwitchDirectionTag)
 {
+	if (!IsActive()) return;
 	GetAvailableActorsToLock();
 
 	TArray<AActor*> ActorsOnLeft;
@@ -83,6 +104,7 @@ void UPlayerGameplayAbility_TargetLock::SwitchTarget(const FGameplayTag& InSwitc
 	AActor* NewTargetToLock = nullptr;
 
 	GetAvailableActorsAroundTarget(ActorsOnLeft, ActorsOnRight);
+	if (!IsActive()) return;
 
 	if (InSwitchDirectionTag == RPGGameplayTags::Player_Event_SwitchTarget_Left)
 	{
@@ -171,7 +193,7 @@ AActor* UPlayerGameplayAbility_TargetLock::GetNearestTargetFromAvailableActors(c
 void UPlayerGameplayAbility_TargetLock::GetAvailableActorsAroundTarget(TArray<AActor*>& OutActorsOnLeft,
 	TArray<AActor*>& OutActorsOnRight)
 {
-	if (!CurrentLockedActor || AvailableActorsToLock.IsEmpty())
+	if (!IsValid(CurrentLockedActor) || AvailableActorsToLock.IsEmpty())
 	{
 		CancelTargetLockAbility();
 		return;
@@ -182,7 +204,7 @@ void UPlayerGameplayAbility_TargetLock::GetAvailableActorsAroundTarget(TArray<AA
 
 	for (AActor* AvailableActor : AvailableActorsToLock)
 	{
-		if (!AvailableActor || AvailableActor == CurrentLockedActor) continue;
+		if (!IsValid(AvailableActor) || AvailableActor == CurrentLockedActor) continue;
 
 		const FVector PlayerToAvailableNormalized = (AvailableActor->GetActorLocation() - PlayerLocation).GetSafeNormal();
 
@@ -215,7 +237,7 @@ void UPlayerGameplayAbility_TargetLock::DrawTargetLockWidget()
 
 void UPlayerGameplayAbility_TargetLock::SetTargetLockWidgetPosition()
 {
-	if (!DrawnTargetLockWidget || !CurrentLockedActor)
+	if (!IsValid(DrawnTargetLockWidget) || !IsValid(CurrentLockedActor))
 	{
 		CancelTargetLockAbility();
 		return;
@@ -250,20 +272,20 @@ void UPlayerGameplayAbility_TargetLock::SetTargetLockWidgetPosition()
 
 void UPlayerGameplayAbility_TargetLock::InitTargetLockMovement()
 {
-	CachedDefaultMaxWalkSpeed = GetPlayerCharacterFromActorInfo()->GetCharacterMovement()->MaxWalkSpeed;
-
-	GetPlayerCharacterFromActorInfo()->GetCharacterMovement()->MaxWalkSpeed = TargetLockMaxWalkSpeed;
+	ResetTargetLockMovement();
+	TargetLockMovement = Cast<URPGCharacterMovementComponent>(GetPlayerCharacterFromActorInfo()->GetCharacterMovement());
+	if (TargetLockMovement.IsValid()) TargetLockSpeedLimit = TargetLockMovement->BeginWalkSpeedLimit(TargetLockMaxWalkSpeed);
 }
 
 void UPlayerGameplayAbility_TargetLock::InitTargetLockMappingContext()
 {
-	const ULocalPlayer* LocalPlayer = GetPlayerControllerFromActorInfo()->GetLocalPlayer();
-
-	UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer);
-
-	check(Subsystem)
-
-		Subsystem->AddMappingContext(TargetLockMappingContext, 3);
+	const ARPGPlayerController* Controller = GetPlayerControllerFromActorInfo();
+	const ULocalPlayer* LocalPlayer = Controller ? Controller->GetLocalPlayer() : nullptr;
+	UEnhancedInputLocalPlayerSubsystem* Subsystem = LocalPlayer
+		? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer) : nullptr;
+	if (!Subsystem || !TargetLockMappingContext) return;
+	Subsystem->AddMappingContext(TargetLockMappingContext, 3);
+	AppliedTargetLockInputSubsystem = Subsystem;
 }
 
 void UPlayerGameplayAbility_TargetLock::CancelTargetLockAbility()
@@ -292,7 +314,7 @@ void UPlayerGameplayAbility_TargetLock::CleanUp()
 
 	TargetLockWidgetSize = FVector2D::ZeroVector;
 
-	CachedDefaultMaxWalkSpeed = 0.f;
+	ResetTargetLockMovement();
 }
 
 void UPlayerGameplayAbility_TargetLock::PublishLockedTarget()
@@ -306,24 +328,17 @@ void UPlayerGameplayAbility_TargetLock::PublishLockedTarget()
 
 void UPlayerGameplayAbility_TargetLock::ResetTargetLockMovement()
 {
-	if (CachedDefaultMaxWalkSpeed > 0.f)
-	{
-		GetPlayerCharacterFromActorInfo()->GetCharacterMovement()->MaxWalkSpeed = CachedDefaultMaxWalkSpeed;
-	}
+	if (TargetLockMovement.IsValid()) TargetLockMovement->EndWalkSpeedLimit(TargetLockSpeedLimit);
+	TargetLockSpeedLimit.Invalidate(); TargetLockMovement.Reset();
 }
 
 void UPlayerGameplayAbility_TargetLock::ResetTargetLockMappingContext()
 {
-	if (!GetPlayerControllerFromActorInfo())
+	// A cancelled target search never installed a context. Only release the
+	// subsystem actually used by this activation, not a replacement controller.
+	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = AppliedTargetLockInputSubsystem.Get())
 	{
-		return;
-	}
-
-	const ULocalPlayer* LocalPlayer = GetPlayerControllerFromActorInfo()->GetLocalPlayer();
-
-	UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer);
-
-	check(Subsystem)
-
 		Subsystem->RemoveMappingContext(TargetLockMappingContext);
+	}
+	AppliedTargetLockInputSubsystem.Reset();
 }

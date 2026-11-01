@@ -3,7 +3,7 @@
 #include "Abilities/GameplayAbilityTargetTypes.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "Component/Combat/PawnCombatComponent.h"
-#include "Component/Equipment/RPGEquipComponent.h"
+#include "Component/Equipment/RPGAuthoritativeEquipmentComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
@@ -116,20 +116,15 @@ ARPGWeaponBase* URPGAnimNotifyState_PerformTrace::ResolveWeapon(
 		return nullptr;
 	}
 
-	if (const URPGEquipComponent* EquipComponent =
-		Owner->FindComponentByClass<URPGEquipComponent>())
+	if (const URPGAuthoritativeEquipmentComponent* Equipment =
+		Owner->FindComponentByClass<URPGAuthoritativeEquipmentComponent>())
 	{
-		URPGItemBase* Item = nullptr;
-		AActor* SpawnedActor = nullptr;
-		EEquipmentSlotType SlotType = EEquipmentSlotType::None;
-		if (EquipComponent->FindEquippedWeapon(
-			WeaponHandType, Item, SpawnedActor, SlotType))
+		FRPGEquipmentSnapshot Snapshot;
+		if (Equipment->FindWeaponSnapshot(WeaponHandType, Snapshot))
 		{
-			if (ARPGWeaponBase* Weapon = Cast<ARPGWeaponBase>(SpawnedActor))
-			{
-				return Weapon;
-			}
+			return Cast<ARPGWeaponBase>(Snapshot.EquippedActor);
 		}
+		if (Equipment->HasWeaponSnapshots()) return nullptr;
 	}
 
 	if (const UPawnCombatComponent* CombatComponent =

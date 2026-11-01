@@ -12,21 +12,6 @@ class UMaterialInterface;
 class USkeletalMesh;
 class UTexture2D;
 class UUserWidget;
-class URPGAbilitySet;
-class URPGAbilitySystemComponent;
-struct FRPGAbilitySet_GrantedHandles;
-
-/** D1-compatible class identities. Kept separate from the project's current equipment enums. */
-UENUM(BlueprintType)
-enum class ERPGGladiatorCharacterClass : uint8
-{
-	Fighter,
-	Swordmaster,
-	Barbarian,
-	Wizard,
-	Archer,
-	Count UMETA(Hidden)
-};
 
 UENUM(BlueprintType)
 enum class ERPGGladiatorEquipmentSlotType : uint8
@@ -176,58 +161,6 @@ public:
 private:
 	UPROPERTY(EditDefaultsOnly)
 	TMap<ERPGGladiatorSkinType, FRPGDefaultArmorMeshSet> DefaultArmorMeshMap;
-};
-
-USTRUCT(BlueprintType)
-struct PROJECT_RPG_API FRPGDefaultItemEntry
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	ERPGGladiatorEquipmentSlotType EquipmentSlotType = ERPGGladiatorEquipmentSlotType::Count;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	TSubclassOf<UObject> ItemTemplateClass;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	ERPGGladiatorItemRarity ItemRarity = ERPGGladiatorItemRarity::Poor;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin = "1"))
-	int32 ItemCount = 1;
-};
-
-USTRUCT(BlueprintType)
-struct PROJECT_RPG_API FRPGClassInfoEntry
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	FText ClassName;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	TArray<FRPGDefaultItemEntry> DefaultItemEntries;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	TObjectPtr<URPGAbilitySet> ClassAbilitySet;
-};
-
-UCLASS(BlueprintType, Const, meta = (DisplayName = "RPG Class Data"))
-class PROJECT_RPG_API URPGClassData : public UPrimaryDataAsset
-{
-	GENERATED_BODY()
-
-public:
-	static const URPGClassData* GetDefaultClassData();
-	const FRPGClassInfoEntry* FindClassInfo(ERPGGladiatorCharacterClass CharacterClass) const;
-	bool GiveClassAbilitiesToAbilitySystem(
-		ERPGGladiatorCharacterClass CharacterClass,
-		URPGAbilitySystemComponent* AbilitySystemComponent,
-		FRPGAbilitySet_GrantedHandles* OutGrantedHandles = nullptr,
-		UObject* SourceObject = nullptr) const;
-
-private:
-	UPROPERTY(EditDefaultsOnly, meta = (ArraySizeEnum = "ERPGGladiatorCharacterClass"))
-	FRPGClassInfoEntry ClassInfoEntries[static_cast<int32>(ERPGGladiatorCharacterClass::Count)];
 };
 
 USTRUCT(BlueprintType)

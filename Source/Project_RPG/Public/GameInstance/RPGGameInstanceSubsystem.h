@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Engine/GameInstance.h"
+#include "Manager/RPGManagerContext.h"
 #include "RPGGameInstanceSubsystem.generated.h"
 
 /**
@@ -18,7 +20,7 @@ public:
 	static T* Get(UObject* WorldContextObject)
 	{
 		if (!WorldContextObject) return nullptr;
-		UGameInstance* GameInstance = WorldContextObject->GetWorld()->GetGameInstance();
+		UGameInstance* GameInstance = RPGManagerContext::ResolveGameInstance(WorldContextObject);
 		return GameInstance ? GameInstance->GetSubsystem<T>() : nullptr;
 	}
 };

@@ -2,14 +2,31 @@
 
 
 #include "GameInstance/RPGGameInstance.h"
+#include "UI/Option/RPGGraphicsOptionsRuntime.h"
+#include "UI/Option/RPGSoundOptionsRuntime.h"
 #include "MoviePlayer.h"
 #include "Manager/DataManager.h"
 #include "Manager/SoundManager.h"
 #include "FunctionLibrary/RPGCoreFunctionLibrary.h"
 #include "GameFramework/GameUserSettings.h"
 #include "DataTable/SkillData.h"
+#include "Framework/Application/SlateApplication.h"
 
 #include "RPGDebugHelper.h"
+#if !UE_BUILD_SHIPPING
+#include "Tests/RPGAirborneJoinGate.h"
+#endif
+
+bool URPGGameInstance::DelayCompletionOfPendingNetGameTravel()
+{
+	if (Super::DelayCompletionOfPendingNetGameTravel()) return true;
+#if !UE_BUILD_SHIPPING
+	return RPGAirborneJoinGate::DelayCompletion(*this);
+#else
+	return false;
+#endif
+}
+
 
 URPGGameInstance::URPGGameInstance()
 {
@@ -24,13 +41,15 @@ void URPGGameInstance::Init()
     FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &ThisClass::OnDestinationWorldLoaded);
     FWorldDelegates::OnPostWorldInitialization.AddUObject(this, &ThisClass::OnPostWorldInitialization);
 
-    USoundManager::Get()->Init(GetWorld());
+    USoundManager::Get(this)->Init(GetWorld());
 
-    //InitializeSoundOption();
 }
 
 void URPGGameInstance::Shutdown()
 {
+	FCoreUObjectDelegates::PreLoadMap.RemoveAll(this);
+	FCoreUObjectDelegates::PostLoadMapWithWorld.RemoveAll(this);
+	FWorldDelegates::OnPostWorldInitialization.RemoveAll(this);
 	Super::Shutdown();
 
 	
@@ -38,6 +57,12 @@ void URPGGameInstance::Shutdown()
 
 void URPGGameInstance::OnPreLoadMap(const FString& MapName)
 {
+    // Dedicated servers have no Slate application. Keep loading-screen widgets
+    // on presentation instances while retaining the authored gameplay data.
+    if (IsDedicatedServerInstance() || !FSlateApplication::IsInitialized())
+    {
+        return;
+    }
     FLoadingScreenAttributes LoadingScreenAttributes;
     LoadingScreenAttributes.bAutoCompleteWhenLoadingCompletes = true;
     LoadingScreenAttributes.MinimumLoadingScreenDisplayTime = 2.f;
@@ -50,104 +75,40 @@ void URPGGameInstance::OnPreLoadMap(const FString& MapName)
 
 void URPGGameInstance::OnDestinationWorldLoaded(UWorld* LoadedWorld)
 {
-    GetMoviePlayer()->StopMovie();
+    if (LoadedWorld && LoadedWorld->GetGameInstance() == this
+        && !IsDedicatedServerInstance() && FSlateApplication::IsInitialized())
+    {
+        GetMoviePlayer()->StopMovie();
+    }
 }
 
 void URPGGameInstance::OnPostWorldInitialization(UWorld* InWorld, const UWorld::InitializationValues IVS)
 {
-    if (InWorld)
+    if (InWorld && InWorld->GetGameInstance() == this)
     {
-        USoundManager::Get()->Init(GetWorld());
+        USoundManager::Get(this)->Init(InWorld);
     }
 }
 
 void URPGGameInstance::InitializeGraphicOption()
 {
-    FGraphicSaveData SavedData;
-    if (UDataManager::Get()->LoadGraphicOptionsFromJson(SavedData))
+    if (IRPGGraphicsOptionsRuntime* Runtime = IRPGGraphicsOptionsRuntime::Get())
     {
-        // 1. ���� ���� ���� �ҷ�����
-        UGameUserSettings* Settings = GEngine->GetGameUserSettings();
-        if (!Settings) return;
-
-        // 2. �ػ� �Ľ� (��: "1920x1080" ����)
-        FString ResolutionStr = SavedData.Resolution; // "1920x1080"
-        FString LeftStr, RightStr;
-        if (ResolutionStr.Split("x", &LeftStr, &RightStr))
-        {
-            int32 Width = FCString::Atoi(*LeftStr);
-            int32 Height = FCString::Atoi(*RightStr);
-            Settings->SetScreenResolution(FIntPoint(Width, Height));
-        }
-
-        // 3. â ��� ����
-        FString WindowModeStr = SavedData.WindowMode; // "Fullscreen", "Windowed", etc.
-        EWindowMode::Type WindowMode = EWindowMode::Windowed;
-        if (WindowModeStr == "Fullscreen")
-            WindowMode = EWindowMode::Fullscreen;
-        else if (WindowModeStr == "WindowedFullscreen")
-            WindowMode = EWindowMode::WindowedFullscreen;
-        else if (WindowModeStr == "Windowed")
-            WindowMode = EWindowMode::Windowed;
-
-        Settings->SetFullscreenMode(WindowMode);
-
-        // 4. VSync
-        bool bVSyncEnabled = SavedData.bVSync;
-        Settings->SetVSyncEnabled(bVSyncEnabled);
-
-        // 5. ���� ����
-        Settings->ApplySettings(false); // true�� �ε� ȭ�� ���� �� ����
-
-        // ���������� ����
-        Settings->SaveSettings();
-
-        /*Debug::Print(TEXT("Loaded Resolution: ")+SavedData.Resolution);
-        Debug::Print(TEXT("Loaded WindowMode: %s")+SavedData.WindowMode);
-        Debug::Print("Loaded VSync: ", SavedData.bVSync);*/
+        Runtime->InitializeForWorld(GetWorld());
     }
 }
 
 void URPGGameInstance::InitializeSoundOption()
 {
-    FSoundSaveData SavedData;
-    if (UDataManager::Get()->LoadSoundOptionsFromJson(SavedData))
+    if (IRPGSoundOptionsRuntime* Runtime = IRPGSoundOptionsRuntime::Get())
     {
-        USoundManager::Get()->SetMasterVolume(SavedData.MasterVolume);
-        USoundManager::Get()->SetMasterMute(SavedData.bMasterMuted, SavedData.MasterVolume);
-
-        //Debug::Print("Loaded MasterVolume: ", SavedData.MasterVolume);
-        //Debug::Print("Loaded MasterMute: ", SavedData.bMasterMuted);
-
-        // ���� �ʱ�ȭ
-        for (const auto& Pair : SavedData.Volumes)
-        {
-            ESoundType SoundType;
-            if(URPGCoreFunctionLibrary::TryConvertStringToEnum(Pair.Key, SoundType))  // ���ڿ� �� enum ��ȯ
-            {
-                USoundManager::Get()->SetVolume(SoundType, Pair.Value);
-
-                //Debug::Print("Loaded  %s Volume: %f: ", SavedData.Volumes[Pair.Key]);
-            }
-        }
-
-        // ��Ʈ �ʱ�ȭ
-        for (const auto& Pair : SavedData.Mutes)
-        {
-            ESoundType SoundType;
-            if (URPGCoreFunctionLibrary::TryConvertStringToEnum(Pair.Key, SoundType))  // ���ڿ� �� enum ��ȯ
-            {
-                USoundManager::Get()->SetMute(SoundType, Pair.Value, SavedData.Volumes[Pair.Key]);
-
-                //Debug::Print("Loaded  %s Mute: %f: ", SavedData.Mutes[Pair.Key]);
-            }
-        }
+        Runtime->InitializeForWorld(GetWorld());
     }
 }
 
 void URPGGameInstance::PlayBGM(USoundBase* InBGM)
 {
-    USoundManager::Get()->Play(InBGM, ESoundType::BGM);
+    USoundManager::Get(this)->Play(InBGM, ESoundType::BGM);
 }
 
 const FRPGSkillDataTable* URPGGameInstance::GetSkillData(FName SkillRowName) const

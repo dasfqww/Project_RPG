@@ -2,10 +2,19 @@
 
 #pragma once
 
+#include "Templates/SubclassOf.h"
 #include "GameplayTagContainer.h"
 #include "ScalableFloat.h"
 #include "StructUtils/InstancedStruct.h"
 #include "Type/RPGEnumTypes.h"
+#include "Combat/RPGHitReactionTypes.h"
+#include "Combat/RPGKnockbackTypes.h"
+#include "Combat/RPGSlowTypes.h"
+#include "Combat/RPGBurnTypes.h"
+#include "Combat/RPGDefenseReductionTypes.h"
+#include "Combat/RPGDamageTakenIncreaseTypes.h"
+#include "Combat/RPGStaggerTypes.h"
+#include "Combat/RPGCombatImmunityTypes.h"
 #include "RPGStructTypes.generated.h"
 
 class URPGPlayerLinkedAnimLayer;
@@ -14,9 +23,12 @@ class UInputMappingContext;
 class URPGItemBase;
 class UNiagaraSystem;
 class UAnimMontage;
+class UMaterialInterface;
+class UTexture2D;
 class URPGSkillAction;
 class URPGSkillExecutionPolicy;
 class URPGSkillTargetingPolicy;
+struct FGameplayAbilitySpec;
 
 /**
  * 유저의 개별 스킬 성장 데이터
@@ -45,7 +57,29 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 		TSubclassOf<URPGGameplayAbility> AbilityToGrant;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
+	ERPGAttackHitReactionPolicy HitReactionPolicy = ERPGAttackHitReactionPolicy::Legacy;
+	/** Optional approved-hit control, independent of cosmetic reaction policy. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat", meta=(ClampMin="0", ClampMax="10", Units="s"))
+	float StunDuration = 0.f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
+	FRPGKnockbackSettings Knockback;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
+	FRPGSlowSettings Slow;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combat|Status")
+	FRPGBurnSettings Burn;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combat|Status")
+	FRPGDefenseReductionSettings DefenseReduction;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combat|Status")
+	FRPGDamageTakenIncreaseSettings DamageTakenIncrease;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combat|Control")
+	FRPGStaggerSettings Stagger;
+	/** Protection of the caster while this granted ability is active. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
+	FRPGCombatImmunitySettings ActivationImmunities;
+
 	bool IsValid() const;
+	bool BuildAbilitySpec(int32 Level, UObject* SourceObject, FGameplayAbilitySpec& OutSpec) const;
 };
 
 USTRUCT(BlueprintType)
@@ -100,6 +134,10 @@ struct FRPGSkillTripodOption
 {
 	GENERATED_BODY()
 
+	/** Stable save identity within its unlock tier; never inferred from display text or option order. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "General")
+	FName PersistenceId;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "General")
 	FText OptionName;
 
@@ -112,6 +150,10 @@ struct FRPGSkillTripodOption
 	/** 1. 수치 변조: 데미지, 쿨감 등 (기존 기능) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic")
 	TArray<FRPGSkillModifier> StatModifiers;
+
+	/** Flat seconds from selected tiers are summed before the cooldown scalar and minimum. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic", meta = (ClampMin = "0", Units = "s"))
+	float CooldownReductionSeconds = 0.0f;
 
 	/** 2. 로직 분기 태그 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic")
@@ -401,7 +443,12 @@ struct FRPGQuickSlotContent
 	FGameplayTag AbilityTag; // 스킬 태그 (GAS)
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "QuickSlot")
-	TObjectPtr<URPGItemBase> Item; // 아이템
+	FGuid ItemId;
 
-	bool IsEmpty() const { return !AbilityTag.IsValid() && !Item; }
+	/** Compatibility pin only; runtime shortcuts use ItemId exclusively. */
+	UPROPERTY(NotReplicated, Transient, BlueprintReadWrite, Category = "QuickSlot",
+		meta = (DeprecatedProperty, DeprecationMessage = "Use ItemId and inventory projection."))
+	TObjectPtr<URPGItemBase> Item;
+
+	bool IsEmpty() const { return !AbilityTag.IsValid() && !ItemId.IsValid(); }
 };

@@ -2,6 +2,8 @@
 
 #include "GameState/RPGGameStateBase.h"
 
+#include "Components/GameFrameworkComponentManager.h"
+#include "Manager/Component/RPGExperienceManagerComponent.h"
 #include "Engine/NetDriver.h"
 #include "Engine/World.h"
 #include "Misc/CommandLine.h"
@@ -36,10 +38,19 @@ ARPGGameStateBase::ARPGGameStateBase()
 	bReplicates = true;
 	bAlwaysRelevant = true;
 	SetNetUpdateFrequency(10.f);
+	ExperienceManagerComponent = CreateDefaultSubobject<URPGExperienceManagerComponent>(TEXT("ExperienceManager"));
+}
+
+void ARPGGameStateBase::PreInitializeComponents()
+{
+	Super::PreInitializeComponents();
+	UGameFrameworkComponentManager::AddGameFrameworkComponentReceiver(this);
 }
 
 void ARPGGameStateBase::BeginPlay()
 {
+	UGameFrameworkComponentManager::SendGameFrameworkComponentExtensionEvent(
+		this, UGameFrameworkComponentManager::NAME_GameActorReady);
 	Super::BeginPlay();
 
 	if (!HasAuthority())
@@ -67,6 +78,7 @@ void ARPGGameStateBase::EndPlay(
 {
 	GetWorldTimerManager().ClearTimer(NetworkSnapshotRefreshTimer);
 	Super::EndPlay(EndPlayReason);
+	UGameFrameworkComponentManager::RemoveGameFrameworkComponentReceiver(this);
 }
 
 void ARPGGameStateBase::GetLifetimeReplicatedProps(
@@ -111,7 +123,10 @@ void ARPGGameStateBase::RefreshAuthoritativeNetworkSnapshot()
 			NetworkSessionSnapshot.Revision);
 	}
 
-	if (IsIrisRequiredForNetworkTest()
+	// The test flag survives local lobby travel. Standalone has no network
+	// driver by design; keep enforcing Iris in actual network worlds only.
+	if (World && World->GetNetMode() != NM_Standalone
+		&& IsIrisRequiredForNetworkTest()
 		&& !NetworkSessionSnapshot.bServerUsesIris)
 	{
 		UE_LOG(

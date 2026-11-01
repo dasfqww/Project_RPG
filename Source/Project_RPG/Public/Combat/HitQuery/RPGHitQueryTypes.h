@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
+#include "Engine/HitResult.h"
 #include "GameplayTagContainer.h"
 #include "RPGHitQueryTypes.generated.h"
 

@@ -3,7 +3,9 @@
 
 #include "Character/RPGBaseCharacter.h"
 #include "Component/RPGAbilitySystemComponent.h"
-#include "Component/RPGHealthComponent.h"
+#include "Component/Combat/RPGCombatReactionComponent.h"
+#include "Component/Combat/RPGCombatControlComponent.h"
+#include "Component/RPGCharacterMovementComponent.h"
 #include "Attribute/RPGAttributeSet.h"
 #include "Component/Equipment/RPGEquipComponent.h"
 #include "Component/Equipment/RPGEquipmentComponent.h"
@@ -16,7 +18,8 @@
 #include "RPGDebugHelper.h"
 
 // Sets default values
-ARPGBaseCharacter::ARPGBaseCharacter()
+ARPGBaseCharacter::ARPGBaseCharacter(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<URPGCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 	//DamageFontDestroyTime(2.0f)
 {
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
@@ -29,7 +32,8 @@ ARPGBaseCharacter::ARPGBaseCharacter()
 
 	RPGAttributeSet = CreateDefaultSubobject<URPGAttributeSet>(TEXT("RPGAttributeSet"));
 
-	RPGHealthComponent = CreateDefaultSubobject<URPGHealthComponent>(TEXT("RPGHealthComponent"));
+	CombatReactionComponent = CreateDefaultSubobject<URPGCombatReactionComponent>(TEXT("CombatReactionComponent"));
+	CombatControlComponent = CreateDefaultSubobject<URPGCombatControlComponent>(TEXT("CombatControlComponent"));
 
 	EquipComponent = CreateDefaultSubobject<URPGEquipComponent>(TEXT("EquipComponent"));
 
@@ -103,8 +107,17 @@ void ARPGBaseCharacter::OnRep_PlayerState()
 	}
 }
 
+void ARPGBaseCharacter::UnPossessed()
+{
+	CombatControlComponent->ResetForAvatarReuse();
+	Super::UnPossessed();
+}
+
 void ARPGBaseCharacter::ShowDamageFont(float Damage, FVector Location, bool bCriticalAttack, bool bIsPlayerDamage)
 {
+	// GAS damage runs on dedicated servers, where Slate and a viewport do not exist.
+	// Presentation must not interrupt authoritative health/death processing.
+	if (GetNetMode() == NM_DedicatedServer) return;
 	if (DamageFontWidgetClass)
 	{
 		UDamageFontWidget* DamageWidget = CreateWidget<UDamageFontWidget>(GetWorld(), DamageFontWidgetClass);
@@ -118,6 +131,7 @@ void ARPGBaseCharacter::ShowDamageFont(float Damage, FVector Location, bool bCri
 
 void ARPGBaseCharacter::ShowInvincibleFont(FVector Location)
 {
+	if (GetNetMode() == NM_DedicatedServer) return;
 	if (DamageFontWidgetClass)
 	{
 		UDamageFontWidget* DamageWidget = CreateWidget<UDamageFontWidget>(GetWorld(), DamageFontWidgetClass);
