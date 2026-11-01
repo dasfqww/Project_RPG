@@ -45,6 +45,13 @@ struct PROJECT_RPG_API FRPGSkillRuntimeSpec
 	UPROPERTY(BlueprintReadOnly, Transient, Category = "Skill")
 	FGameplayTag SkillTag;
 
+	UPROPERTY(BlueprintReadOnly, Transient, Category = "Skill|Identity")
+	bool bGreatSwordRageSkill = false;
+	UPROPERTY(BlueprintReadOnly, Transient, Category = "Skill|Identity")
+	float GreatSwordRageCost = 50.f;
+	UPROPERTY(BlueprintReadOnly, Transient, Category = "Skill|Identity")
+	float GreatSwordRageDamageMultiplier = 1.15f;
+
 	/** Presentation name frozen with this activation; never reread mutable selection/definition state. */
 	UPROPERTY(BlueprintReadOnly, Transient, Category = "Skill|Presentation")
 	FText DisplayName;

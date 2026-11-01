@@ -324,7 +324,7 @@ try {
     $combatProof=$null
     if ($VerifyCombat) {
         $combatProof=Get-Content -LiteralPath (Join-Path $runRoot 'Combat.proof.json') -Raw | ConvertFrom-Json
-        if ($combatProof.choice -cne $ChargeChoice -or $combatProof.successfulHits -ne 6 -or $combatProof.identitySpent -ne 100 -or
+        if ($combatProof.choice -cne $ChargeChoice -or $combatProof.successfulHits -ne 6 -or $combatProof.identitySpent -ne 50 -or $combatProof.finalGauge -ne 50 -or
             $combatProof.empoweredDamage -le $combatProof.baseDamage -or $combatProof.cooldown -ne 12 -or $combatProof.manaCost -ne 0 -or
             $combatProof.stagger -ne 100 -or $combatProof.partBreak -ne 100 -or $combatProof.excludedContributionTargets -ne 3) {throw 'Combat proof mismatch.'}
     }

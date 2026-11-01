@@ -2,6 +2,7 @@
 
 
 #include "Component/RPGAbilitySystemComponent.h"
+#include "Ability/Skill/RPGGreatSwordResolveAbility.h"
 #include "Ability/RPGGameplayAbility.h"
 #include "Combat/RPGCombatControlTypes.h"
 #include "Component/Combat/RPGCombatControlComponent.h"
@@ -156,6 +157,7 @@ bool URPGAbilitySystemComponent::RevokeDungeonGameplayAuthority(const ARPGPlayer
 			}
 		}
 	}
+	URPGGreatSwordResolveAbility::RevokeFor(GetAvatarActor());
 	CancelAllAbilities();
 	return true;
 }

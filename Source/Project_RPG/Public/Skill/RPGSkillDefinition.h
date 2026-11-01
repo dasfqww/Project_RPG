@@ -133,6 +133,16 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Config")
 	FGameplayTag SkillTag;
 
+	/** Explicit identity classification. Execution policy and skill names do not imply rage. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Identity")
+	bool bGreatSwordRageSkill = false;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Identity", meta = (ClampMin = "0.01", ClampMax = "100"))
+	float GreatSwordRageCost = 50.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Identity", meta = (ClampMin = "1.0"))
+	float GreatSwordRageDamageMultiplier = 1.15f;
+
 	// ---------------------------------------------------
 	// 2. 동작 로직 및 비주얼
 	// ---------------------------------------------------

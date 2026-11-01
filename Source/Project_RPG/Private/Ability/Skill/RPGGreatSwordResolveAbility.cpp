@@ -1,6 +1,11 @@
 #include "Ability/Skill/RPGGreatSwordResolveAbility.h"
 
 #include "Ability/RPGComboSkillAbility.h"
+#include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
+#include "Animation/AnimMontage.h"
+#include "Component/UI/QuickSlotComponent.h"
+#include "GameplayEffect/GE_CoolDown.h"
+#include "Skill/RPGClassSkillEligibility.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "Attribute/RPGAttributeSet.h"
@@ -36,6 +41,36 @@ namespace
 	{
 		return IsValid(Avatar) ? UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Avatar) : nullptr;
 	}
+	TArray<const URPGSkillDefinition*> RegisteredRageSkills(const FGameplayAbilityActorInfo* Info)
+	{
+		TArray<const URPGSkillDefinition*> Result;
+		auto* ASC = Info ? Info->AbilitySystemComponent.Get() : nullptr;
+		if (!ASC) return Result;
+		FScopedAbilityListLock Lock(*ASC);
+		TSet<FGameplayTag> Seen;
+		for (const auto& Spec : ASC->GetActivatableAbilities())
+		{
+			const auto* Skill = Cast<URPGGameplayAbility_SkillContainer>(Spec.GetPrimaryInstance() ? Spec.GetPrimaryInstance() : Spec.Ability.Get());
+			const auto* Definition = Skill ? Skill->GetSkillDefinition() : nullptr;
+			if (Definition && Definition->bGreatSwordRageSkill && !Seen.Contains(Definition->SkillTag)
+				&& RPGClassSkillEligibility::CanActivate(Info->AvatarActor.Get(), Definition->SkillTag, Definition, Skill->GetClass(), Spec.Handle))
+			{
+				Seen.Add(Definition->SkillTag);
+				Result.Add(Definition);
+			}
+		}
+		return Result;
+	}
+	bool EntryIdle(const FGameplayAbilityActorInfo* Info, FGameplayAbilitySpecHandle Self)
+	{
+		auto* ASC = Info ? Info->AbilitySystemComponent.Get() : nullptr;
+		if (!ASC || RPGCombatControl::IsActionBlocked(Info->AvatarActor.Get())) return false;
+		FScopedAbilityListLock Lock(*ASC);
+		for (const auto& Spec : ASC->GetActivatableAbilities())
+			if (Spec.Handle != Self && Spec.IsActive() && RPGCombatControl::IsStunAffectedAbility(Spec.Ability)) return false;
+		return true;
+	}
+
 }
 
 URPGGreatSwordResolveGaugeEffect::URPGGreatSwordResolveGaugeEffect()
@@ -52,8 +87,7 @@ URPGGreatSwordResolveGaugeEffect::URPGGreatSwordResolveGaugeEffect()
 
 URPGGreatSwordResolveReadyEffect::URPGGreatSwordResolveReadyEffect()
 {
-	DurationPolicy = EGameplayEffectDurationType::HasDuration;
-	DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(10.f));
+	DurationPolicy = EGameplayEffectDurationType::Infinite;
 	FInheritedTagContainer Tags;
 	Tags.Added.AddTag(RPGGameplayTags::Player_Status_Identity_GreatSword_Ready);
 	auto* Granted = CreateDefaultSubobject<UTargetTagsGameplayEffectComponent>(TEXT("ResolveReadyTags"));
@@ -100,6 +134,7 @@ bool URPGGreatSwordResolveAbility::CanActivateAbility(FGameplayAbilitySpecHandle
 		&& Stats && FMath::IsFinite(Stats->GetCurrentIdentityGauge()) && Stats->GetCurrentIdentityGauge() >= 100.f
 		&& FMath::IsNearlyEqual(Stats->GetMaxIdentityGauge(), 100.f)
 		&& !ASC->HasMatchingGameplayTag(RPGGameplayTags::Player_Status_Identity_GreatSword_Ready)
+		&& EntryIdle(Info, Handle) && !RegisteredRageSkills(Info).IsEmpty()
 		&& Super::CanActivateAbility(Handle, Info, SourceTags, TargetTags, OptionalRelevantTags);
 }
 
@@ -142,18 +177,41 @@ void URPGGreatSwordResolveAbility::ActivateAbility(FGameplayAbilitySpecHandle Ha
 	ArmedCombatRevision = Avatar ? Avatar->GetCombatPresentationRevision() : 0;
 	const auto* Control = Avatar ? Avatar->FindComponentByClass<URPGCombatControlComponent>() : nullptr;
 	ArmedLifetimeEpoch = Control ? Control->GetLifetimeEpoch() : 0;
-	const bool bConsumed = Avatar && Growth && ApplyGaugeDelta(*this, -100.f);
-	if (bConsumed && IsActive() && CanUseIdentity(Info, Handle)
-		&& Avatar->GetCombatPresentationRevision() == ArmedCombatRevision)
+	const auto Registered = RegisteredRageSkills(Info);
+	bool bEntered = false;
+	if (Avatar && Growth && !Registered.IsEmpty() && EntryIdle(Info, Handle))
 	{
 		FGameplayEffectContextHandle Context = ArmedASC->MakeEffectContext();
 		Context.SetAbility(this); Context.AddSourceObject(this);
 		const auto Spec = ArmedASC->MakeOutgoingSpec(URPGGreatSwordResolveReadyEffect::StaticClass(), 1.f, Context);
 		if (Spec.IsValid()) ReadyEffect = ArmedASC->ApplyGameplayEffectSpecToSelf(*Spec.Data);
-		// Applying a GE may remove this grant or end its Pawn. Never leave a detached opportunity.
-		if (!CanUseIdentity(Info, Handle)) RemoveOpportunity();
+		bEntered = ReadyEffect.IsValid() && CanUseIdentity(Info, Handle)
+			&& Avatar->GetCombatPresentationRevision() == ArmedCombatRevision;
+		if (!bEntered) RemoveOpportunity();
+		else for (const auto* Definition : Registered)
+		{
+			// Same generic GE is used by every skill, so match its exact source too.
+			FGameplayEffectQuery Query;
+			Query.EffectDefinition = UGE_CoolDown::StaticClass();
+			Query.EffectSource = Definition;
+			ArmedASC->RemoveActiveEffects(Query);
+			if (!CanUseIdentity(Info, Handle)) { RemoveOpportunity(); bEntered = false; break; }
+		}
 	}
-	if (IsActive()) EndAbility(Handle, Info, ActivationInfo, true, !bConsumed);
+	if (bEntered && IsActive())
+	{
+		auto* Montage = LoadObject<UAnimMontage>(nullptr, TEXT("/Game/Blueprints/Character/Player/Anim/Montage/AM_ActivateRage.AM_ActivateRage"));
+		if (Montage && Info->GetAnimInstance())
+		{
+			auto* Task = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(this, NAME_None, Montage);
+			Task->OnCompleted.AddDynamic(this, &ThisClass::FinishEntryMontage);
+			Task->OnInterrupted.AddDynamic(this, &ThisClass::FinishEntryMontage);
+			Task->OnCancelled.AddDynamic(this, &ThisClass::FinishEntryMontage);
+			Task->ReadyForActivation();
+			return;
+		}
+	}
+	if (IsActive()) EndAbility(Handle, Info, ActivationInfo, true, !bEntered);
 }
 
 bool URPGGreatSwordResolveAbility::HasCurrentOpportunity() const
@@ -167,7 +225,7 @@ bool URPGGreatSwordResolveAbility::HasCurrentOpportunity() const
 		|| Growth->GetSkillRestoreGeneration() != ArmedRestoreGeneration || !Control
 		|| Control->GetLifetimeEpoch() != ArmedLifetimeEpoch) return false;
 	const auto* Effect = ArmedASC->GetActiveGameplayEffect(ReadyEffect);
-	return Effect && Effect->GetTimeRemaining(Avatar->GetWorld()->GetTimeSeconds()) > 0.f;
+	return Effect != nullptr;
 }
 
 void URPGGreatSwordResolveAbility::RemoveOpportunity()
@@ -181,6 +239,8 @@ void URPGGreatSwordResolveAbility::OnRemoveAbility(const FGameplayAbilityActorIn
 {
 	TGuardValue<bool> Guard(bChangingState, true);
 	RemoveOpportunity();
+	if (Info && Info->IsNetAuthority() && Info->AbilitySystemComponent.IsValid())
+		Info->AbilitySystemComponent->SetNumericAttributeBase(URPGAttributeSet::GetCurrentIdentityGaugeAttribute(), 0.f);
 	Super::OnRemoveAbility(Info, Spec);
 }
 
@@ -190,7 +250,7 @@ void URPGGreatSwordResolveAbility::AwardConfirmedSkillHit(URPGGameplayAbility_Sk
 	auto* ASC = FindASC(Avatar);
 	const auto* Owner = IsValid(Avatar) ? Avatar->FindComponentByClass<URPGPlayerClassComponent>() : nullptr;
 	const auto* Identity = ASC ? ASC->FindAbilitySpecFromClass(StaticClass()) : nullptr;
-	if (!Skill.IsActive() || !Owner || !Identity || !CanUseIdentity(Skill.GetCurrentActorInfo(), Identity->Handle)
+	if (Skill.SuppressesResolveGain() || IsBerserk(Avatar) || !Skill.IsActive() || !Owner || !Identity || !CanUseIdentity(Skill.GetCurrentActorInfo(), Identity->Handle)
 		|| !Owner->CanUseAbilitySpec(Skill.GetCurrentAbilitySpecHandle(), Skill.GetClass())) return;
 	ApplyGaugeDelta(Skill, 20.f);
 }
@@ -199,28 +259,71 @@ void URPGGreatSwordResolveAbility::AwardCompletedBasicCombo(URPGComboSkillAbilit
 {
 	auto* ASC = FindASC(Combo.GetAvatarActorFromActorInfo());
 	const auto* Identity = ASC ? ASC->FindAbilitySpecFromClass(StaticClass()) : nullptr;
-	if (!Combo.IsActive() || !Identity || !CanUseIdentity(Combo.GetCurrentActorInfo(), Identity->Handle)
+	if (Combo.SuppressesResolveGain() || IsBerserk(Combo.GetAvatarActorFromActorInfo()) || !Combo.IsActive() || !Identity || !CanUseIdentity(Combo.GetCurrentActorInfo(), Identity->Handle)
 		|| !Combo.GetAssetTags().HasTagExact(RPGGameplayTags::Player_Ability_Attack_Light_GreatSword)) return;
 	ApplyGaugeDelta(Combo, 10.f);
 }
 
-void URPGGreatSwordResolveAbility::ConsumeForCommittedSkill(URPGGameplayAbility_SkillContainer& Skill, float& OutMultiplier)
+
+bool URPGGreatSwordResolveAbility::IsBerserk(const AActor* Avatar)
 {
-	OutMultiplier = 1.f;
-	auto* Avatar = Skill.GetAvatarActorFromActorInfo();
+	const auto* ASC = FindASC(const_cast<AActor*>(Avatar));
+	return ASC && ASC->GetAvatarActor() == Avatar
+		&& ASC->HasMatchingGameplayTag(RPGGameplayTags::Player_Status_Identity_GreatSword_Ready);
+}
+
+void URPGGreatSwordResolveAbility::FinishEntryMontage()
+{
+	if (IsActive()) EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
+}
+
+void URPGGreatSwordResolveAbility::RevokeFor(AActor* Avatar)
+{
 	if (!IsValid(Avatar) || !Avatar->HasAuthority()) return;
 	auto* ASC = FindASC(Avatar);
-	const auto* Owner = IsValid(Avatar) ? Avatar->FindComponentByClass<URPGPlayerClassComponent>() : nullptr;
-	const FGameplayTag Tag = Skill.GetActiveSkillSpec().SkillTag;
-	if (!Skill.IsActive() || !Skill.GetActiveSkillSpec().ExecutionPolicyClass || !Owner
-		|| !Owner->CanUseAbilitySpec(Skill.GetCurrentAbilitySpecHandle(), Skill.GetClass())
-		|| (Tag != RPGGameplayTags::Player_Ability_Skill_Charge && Tag != RPGGameplayTags::Player_Ability_Skill_WhirlWind)) return;
-	if (Tag == RPGGameplayTags::Player_Ability_Skill_Charge
-		&& !Skill.GetActiveSkillSpec().ExecutionPolicyClass->IsChildOf(URPGSkillExecutionPolicy_Charge::StaticClass())) return;
 	const auto* Spec = ASC ? ASC->FindAbilitySpecFromClass(StaticClass()) : nullptr;
 	auto* Identity = Spec ? Cast<URPGGreatSwordResolveAbility>(Spec->GetPrimaryInstance()) : nullptr;
-	if (!Identity || !Identity->HasCurrentOpportunity() || RPGCombatControl::IsActionBlocked(Avatar)) return;
+	if (!Identity) return;
 	TGuardValue<bool> Guard(Identity->bChangingState, true);
-	OutMultiplier = 1.25f; // Freeze BEFORE removal delegates can dispatch this cast's first hit.
 	Identity->RemoveOpportunity();
+	ASC->SetNumericAttributeBase(URPGAttributeSet::GetCurrentIdentityGaugeAttribute(), 0.f);
+}
+
+bool URPGGreatSwordResolveAbility::CanCommitSkill(const URPGGameplayAbility_SkillContainer& Skill)
+{
+	if (!IsBerserk(Skill.GetAvatarActorFromActorInfo())) return true;
+	const auto& Runtime = Skill.GetActiveSkillSpec();
+	if (!Runtime.bGreatSwordRageSkill) return true;
+	auto* ASC = Skill.GetAbilitySystemComponentFromActorInfo();
+	const auto* Stats = ASC ? ASC->GetSet<URPGAttributeSet>() : nullptr;
+	return Stats && FMath::IsFinite(Runtime.GreatSwordRageCost) && Runtime.GreatSwordRageCost > 0.f
+		&& Runtime.GreatSwordRageCost <= 100.f && FMath::IsFinite(Runtime.GreatSwordRageDamageMultiplier)
+		&& Runtime.GreatSwordRageDamageMultiplier >= 1.f
+		&& FMath::IsFinite(Stats->GetCurrentIdentityGauge()) && Stats->GetCurrentIdentityGauge() >= Runtime.GreatSwordRageCost;
+}
+
+bool URPGGreatSwordResolveAbility::ConsumeForCommittedSkill(URPGGameplayAbility_SkillContainer& Skill,
+	float& OutMultiplier, bool& OutSuppressGain)
+{
+	OutMultiplier = 1.f;
+	OutSuppressGain = IsBerserk(Skill.GetAvatarActorFromActorInfo());
+	if (!OutSuppressGain) return true;
+	const auto* Avatar = Skill.GetAvatarActorFromActorInfo();
+	if (!IsValid(Avatar)) return false;
+	if (!Avatar->HasAuthority()) return true;
+	if (!Skill.IsActive() || !CanCommitSkill(Skill)) return false;
+	const auto* Owner = Avatar->FindComponentByClass<URPGPlayerClassComponent>();
+	if (!Owner || !Owner->CanUseAbilitySpec(Skill.GetCurrentAbilitySpecHandle(), Skill.GetClass())) return false;
+	auto* ASC = Skill.GetAbilitySystemComponentFromActorInfo();
+	const auto* Spec = ASC ? ASC->FindAbilitySpecFromClass(StaticClass()) : nullptr;
+	auto* Identity = Spec ? Cast<URPGGreatSwordResolveAbility>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!Identity || !Identity->HasCurrentOpportunity()) return false;
+	const auto& Runtime = Skill.GetActiveSkillSpec();
+	if (!Runtime.bGreatSwordRageSkill) return true;
+	TGuardValue<bool> Guard(Identity->bChangingState, true);
+	OutMultiplier = Runtime.GreatSwordRageDamageMultiplier;
+	if (!ApplyGaugeDelta(Skill, -Runtime.GreatSwordRageCost)) { OutMultiplier = 1.f; return false; }
+	const auto* Stats = ASC->GetSet<URPGAttributeSet>();
+	if (!Stats || Stats->GetCurrentIdentityGauge() <= 0.f) Identity->RemoveOpportunity();
+	return true;
 }

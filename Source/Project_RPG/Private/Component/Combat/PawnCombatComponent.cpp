@@ -2,6 +2,7 @@
 
 
 #include "Component/Combat/PawnCombatComponent.h"
+#include "Ability/Skill/RPGGreatSwordResolveAbility.h"
 #include "Component/Equipment/RPGAuthoritativeEquipmentComponent.h"
 #include "Item/Weapon/RPGWeaponBase.h"
 #include "Components/BoxComponent.h"
@@ -72,6 +73,8 @@ void UPawnCombatComponent::BindEquipmentNotifications()
 
 void UPawnCombatComponent::HandleEquipmentChanged()
 {
+	if (GetCharacterCurrentEquippedWeaponType() != ERPGGladiatorWeaponType::GreatSword)
+		URPGGreatSwordResolveAbility::RevokeFor(GetOwner());
 	if (CollisionWeapon.Get() != GetCharacterCurrentEquippedWeapon())
 	{
 		StopWeaponCollision();
@@ -136,6 +139,7 @@ void UPawnCombatComponent::RegisterSpawnedWeapon(FGameplayTag InWeaponTagToRegis
 	if (bRegisterAsEquippedWeapon)
 	{
 		CurrentEquippedWeaponTag = InWeaponTagToRegister;
+		HandleEquipmentChanged();
 	}
 
 	const FString WeaponString = FString::Printf(TEXT("A weapon named: %s has been registered using the tag %s"),

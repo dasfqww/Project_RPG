@@ -97,6 +97,8 @@ void URPGGameplayAbility_SkillContainer::ActivateAbility(
 	const uint64 ActivationSerial = ++SkillDamageActivationSerial;
 	ServerAppliedHitCount = 0;
 	CommittedResolveDamageMultiplier = 1.f;
+	bCommittedDuringBerserk = false;
+	bSkillCommitted = false;
 	bResolveHitAwarded = false;
 	bFinisherHitAttempted = false;
 	SkillMontageAnimInstance.Reset();
@@ -262,18 +264,23 @@ bool URPGGameplayAbility_SkillContainer::StartSkillAfterTargetReady()
 bool URPGGameplayAbility_SkillContainer::CommitSkillAndNotifyCooldown()
 {
 	const uint64 ActivationSerial = SkillDamageActivationSerial;
+	if (bSkillCommitted) return IsActive();
+	if (!URPGGreatSwordResolveAbility::CanCommitSkill(*this)) return false;
+	// Reserve before GAS delegates can reenter this same commit.
+	bSkillCommitted = true;
 	// Do not call the legacy CoolDown(): it commits again before broadcasting.
 	if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
 	{
 		return false;
 	}
 	if (!IsActive() || SkillDamageActivationSerial != ActivationSerial) return false;
-	// The server consumes the opportunity once at commit, before any montage hit.
+	// Freeze cost, damage and gain suppression immediately after the accepted commit.
+	if (!URPGGreatSwordResolveAbility::ConsumeForCommittedSkill(*this, CommittedResolveDamageMultiplier, bCommittedDuringBerserk)) return false;
+	if (!IsActive() || SkillDamageActivationSerial != ActivationSerial) return false;
 	if (!StartActivationImmunity(ActiveSkillSpec.ActivationImmunities)
 		|| !IsActive() || SkillDamageActivationSerial != ActivationSerial) return false;
 	// Cancellation/misses never refund it; all hits of this cast use the same value.
 	bMontageImmunityReady = true;
-	URPGGreatSwordResolveAbility::ConsumeForCommittedSkill(*this, CommittedResolveDamageMultiplier);
 	if (!IsActive() || SkillDamageActivationSerial != ActivationSerial) return false;
 	if (!CurrentActorInfo || !CurrentActorInfo->IsLocallyControlled()) return true;
 	IPawnUIInterface* PawnUI = Cast<IPawnUIInterface>(CurrentActorInfo->AvatarActor.Get());
@@ -388,6 +395,8 @@ void URPGGameplayAbility_SkillContainer::EndAbility(
 	ActiveSkillSpec.Reset();
 	ServerAppliedHitCount = 0;
 	CommittedResolveDamageMultiplier = 1.f;
+	bCommittedDuringBerserk = false;
+	bSkillCommitted = false;
 	bResolveHitAwarded = false;
 	bSkillInputPressed = false;
 
@@ -1311,12 +1320,7 @@ bool URPGGameplayAbility_SkillContainer::ExecuteAuthorizedSkillDamageInternal(
 	const float DamageScalar = DamageScalarTag.IsValid()
 		? ActiveSkillSpec.GetStatScalar(DamageScalarTag)
 		: 1.0f;
-	float ResolveMultiplier = CommittedResolveDamageMultiplier;
-	if (ResolveMultiplier > 1.f && ActiveSkillSpec.SkillTag == RPGGameplayTags::Player_Ability_Skill_Charge)
-	{
-		const auto* Charge = Cast<URPGSkillExecutionPolicy_Charge>(ActiveExecutionPolicy);
-		if (!Charge || !Charge->WasReleasedAtMaximumCharge()) ResolveMultiplier = 1.f;
-	}
+	const float ResolveMultiplier = CommittedResolveDamageMultiplier;
 	const float FinalDamage = BaseDamage * DamageScalar * ResolveMultiplier;
 	if (!FMath::IsFinite(FinalDamage) || FinalDamage <= 0.0f ||
 		FinalDamage > ActiveSkillSpec.SecurityProfile.MaximumDamagePerHit)

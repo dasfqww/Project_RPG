@@ -71,6 +71,11 @@ EDataValidationResult URPGSkillDefinition::IsDataValid(
 		Result = EDataValidationResult::Invalid;
 	};
 
+	if (bGreatSwordRageSkill && (!FMath::IsFinite(GreatSwordRageCost) || GreatSwordRageCost <= 0.f
+		|| GreatSwordRageCost > 100.f || !FMath::IsFinite(GreatSwordRageDamageMultiplier) || GreatSwordRageDamageMultiplier < 1.f))
+	{
+		Fail(FText::FromString(TEXT("Rage skills require a finite cost in (0, 100] and damage multiplier >= 1.")));
+	}
 	if (!SkillTag.IsValid())
 	{
 		Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidSkillTag",
@@ -546,6 +551,9 @@ void URPGSkillDefinition::BuildRuntimeSpec(
 
 	OutSpec.Reset();
 	OutSpec.SkillTag = SkillTag;
+	OutSpec.bGreatSwordRageSkill = bGreatSwordRageSkill;
+	OutSpec.GreatSwordRageCost = GreatSwordRageCost;
+	OutSpec.GreatSwordRageDamageMultiplier = GreatSwordRageDamageMultiplier;
 	OutSpec.DisplayName = SkillName;
 	OutSpec.SkillLevel = NormalizedSaveData.SkillLevel;
 	OutSpec.Icon = SkillIcon;

@@ -1,4 +1,5 @@
 #include "Skill/RPGClassSkillEligibility.h"
+#include "Ability/Skill/RPGGreatSwordResolveAbility.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
@@ -46,7 +47,7 @@ bool RPGClassSkillEligibility::CanRestoreConfiguration(const AActor* Avatar)
 {
 	UAbilitySystemComponent* ASC = IsValid(Avatar)
 		? UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(const_cast<AActor*>(Avatar)) : nullptr;
-	if (!ASC || ASC->GetAvatarActor() != Avatar || IsDungeonGameplayRevoked(Avatar)) return false;
+	if (!ASC || ASC->GetAvatarActor() != Avatar || IsDungeonGameplayRevoked(Avatar) || URPGGreatSwordResolveAbility::IsBerserk(Avatar)) return false;
 	FScopedAbilityListLock Lock(*ASC);
 	const auto* ClassOwner = Avatar->FindComponentByClass<URPGPlayerClassComponent>();
 	for (const FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())

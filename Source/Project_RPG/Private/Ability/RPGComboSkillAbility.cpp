@@ -34,6 +34,7 @@ void URPGComboSkillAbility::ActivateAbility(const FGameplayAbilitySpecHandle Han
 	const FGameplayEventData* TriggerEventData)
 {
 	++ResolveDamageSerial;
+	bStartedDuringBerserk = URPGGreatSwordResolveAbility::IsBerserk(ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr);
 	if (GetWorld())
 	{
 		GetWorld()->GetTimerManager().ClearTimer(ComboCountResetTimerHandle);
@@ -353,6 +354,7 @@ void URPGComboSkillAbility::RecordResolveComboHit(int32 Step, uint64 Serial, boo
 void URPGComboSkillAbility::ResetComboCount()
 {
 	++ResolveDamageSerial;
+	bStartedDuringBerserk = false;
 	ResolveComboHitSteps.Reset(); ResolveStepCount = 0; ResolveCurrentStep = INDEX_NONE;
 	ResolveComboMontage.Reset(); bResolveComboAwarded = false;
 	CurrentComboCount = InitComboCount;

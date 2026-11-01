@@ -5,6 +5,9 @@
 void FRPGSkillRuntimeSpec::Reset()
 {
 	SkillTag = FGameplayTag::EmptyTag;
+	bGreatSwordRageSkill = false;
+	GreatSwordRageCost = 50.f;
+	GreatSwordRageDamageMultiplier = 1.15f;
 	DisplayName = FText::GetEmpty();
 	SkillLevel = 1;
 	SelectedTripodIndices.Reset();

@@ -1,4 +1,5 @@
 #include "Tests/RPGCharacterProgressionCombatProbe.h"
+#include "Ability/Skill/RPGGreatSwordResolveAbility.h"
 #include "Component/Combat/RPGCombatContributionComponent.h"
 
 #include "AIController.h"
@@ -233,14 +234,14 @@ bool FRPGCharacterProgressionCombatProbe::TickServer(APlayerController& PC, URPG
 		const auto* Effect = ASC.GetActiveGameplayEffect(Cooldowns[0]);
 		if (!Effect || !FMath::IsNearlyEqual(Effect->Spec.GetDuration(), ExpectedDuration) || ExpectedDuration != AuthoredChargeCooldown)
 			return Fail(TEXT("CombatCooldownCommit"));
-		ExpectedSetByCaller = Runtime.BaseDamage * Runtime.GetStatScalar(FGameplayTag::RequestGameplayTag(TEXT("Shared.Stat.Damage"))) * (Round == 6 ? 1.25f : 1.f);
+		ExpectedSetByCaller = Runtime.BaseDamage * Runtime.GetStatScalar(FGameplayTag::RequestGameplayTag(TEXT("Shared.Stat.Damage"))) * (Round == 6 ? 1.15f : 1.f);
 		const float Damage = static_cast<int32>(ExpectedSetByCaller * Attributes->GetAttack());
 		if (!FMath::IsFinite(Damage) || Damage < 1.f || Damage > 100000.f) return Fail(TEXT("CombatDamageBounds"));
 		if (Round == 1) BaseDamage = Damage;
 		if (Round == 6)
 		{
 			BoostDamage = Damage;
-			if (Attributes->GetCurrentIdentityGauge() != 0.f) return Fail(TEXT("CombatIdentityCostNotConsumed"));
+			if (Attributes->GetCurrentIdentityGauge() != 50.f) return Fail(TEXT("CombatIdentityCostNotConsumed"));
 		}
 		if (Round > 0) TotalDamage += Damage;
 		Targets[0]->ExpectedHealth = ARPGSkillDamageNetworkTarget::BaselineHealth - TotalDamage;
@@ -267,7 +268,7 @@ bool FRPGCharacterProgressionCombatProbe::TickServer(APlayerController& PC, URPG
 				|| Contribution.bStaggerComplete != (ExpectedUnits == 100.f) || Contribution.bPartBroken != (ExpectedUnits == 100.f))
 				return Fail(TEXT("CombatServerContributionMismatch"));
 		}
-		const float Gauge = Round == 6 ? 20.f : Round * 20.f;
+		const float Gauge = Round == 6 ? 50.f : Round * 20.f;
 		if (EventCount != ExpectedHits || Attributes->GetCurrentIdentityGauge() != Gauge) return Fail(TEXT("CombatNotifyOrGaugeMultiplicity"));
 		if (!Write(Gate(Gates, Round, TEXT("done")))) return Fail(TEXT("CombatResultWrite"));
 		UE_LOG(LogTemp, Display, TEXT("PROGRESSION_COMBAT_E2E HIT Round=%d Effects=%d Events=%d Health=%g Gauge=%g Excluded=3"), Round, EffectCounts[0], EventCount, Targets[0]->Attributes()->GetCurrentHealth(), Gauge);
@@ -278,9 +279,9 @@ bool FRPGCharacterProgressionCombatProbe::TickServer(APlayerController& PC, URPG
 		if (!static_cast<const UGameplayAbility&>(Skill).CheckCooldown(Handle, ASC.AbilityActorInfo.Get())) return Fail(TEXT("CombatCooldownExpiry"));
 		if (Round == 6)
 		{
-			const FString Body = FString::Printf(TEXT("{\"choice\":\"%s\",\"successfulHits\":6,\"cancelledHits\":0,\"excludedTargets\":3,\"baseDamage\":%g,\"empoweredDamage\":%g,\"totalDamage\":%g,\"manaCost\":0,\"cooldown\":%g,\"identityEarned\":100,\"identitySpent\":100,\"finalGauge\":20,\"stagger\":100,\"partBreak\":100,\"contributionPerTargetPerActivation\":20,\"excludedContributionTargets\":3}"), *Choice, BaseDamage, BoostDamage, TotalDamage, ExpectedDuration);
+			const FString Body = FString::Printf(TEXT("{\"choice\":\"%s\",\"successfulHits\":6,\"cancelledHits\":0,\"excludedTargets\":3,\"baseDamage\":%g,\"empoweredDamage\":%g,\"totalDamage\":%g,\"manaCost\":0,\"cooldown\":%g,\"identityEarned\":100,\"identitySpent\":50,\"finalGauge\":50,\"stagger\":100,\"partBreak\":100,\"contributionPerTargetPerActivation\":20,\"excludedContributionTargets\":3}"), *Choice, BaseDamage, BoostDamage, TotalDamage, ExpectedDuration);
 			if (!FFileHelper::SaveStringToFile(Body, *FPaths::Combine(Gates, TEXT("Combat.proof.json")))) return Fail(TEXT("CombatProofWrite"));
-			UE_LOG(LogTemp, Display, TEXT("PROGRESSION_COMBAT_E2E PASS Role=Server Choice=%s Hits=6 Cancel=1 IdentityCost=100"), *Choice);
+			UE_LOG(LogTemp, Display, TEXT("PROGRESSION_COMBAT_E2E PASS Role=Server Choice=%s Hits=6 Cancel=1 IdentityCost=50"), *Choice);
 			bPassed = true;
 			return true;
 		}
@@ -331,9 +332,9 @@ bool FRPGCharacterProgressionCombatProbe::TickClient(APlayerController& PC, URPG
 		Phase = 1;
 		return false;
 	}
-	if (Phase == 1 && Round == 6 && FPlatformTime::Seconds() - PhaseAt > 5.0 && Attributes->GetCurrentIdentityGauge() != 0.f)
-		return Fail(TEXT("CombatIdentityInputDidNotConsume"));
-	if (Phase == 1 && FPlatformTime::Seconds() - PhaseAt > 0.8 && (Round != 6 || Attributes->GetCurrentIdentityGauge() == 0.f))
+	if (Phase == 1 && Round == 6 && FPlatformTime::Seconds() - PhaseAt > 5.0 && !URPGGreatSwordResolveAbility::IsBerserk(PC.GetPawn()))
+		return Fail(TEXT("CombatIdentityInputDidNotEnter"));
+	if (Phase == 1 && FPlatformTime::Seconds() - PhaseAt > 0.8 && (Round != 6 || URPGGreatSwordResolveAbility::IsBerserk(PC.GetPawn())))
 	{
 		if (!static_cast<const UGameplayAbility&>(Skill).CanActivateAbility(Handle, ASC.AbilityActorInfo.Get())) return Fail(TEXT("CombatFreshInputRejected"));
 		Serial = Skill.GetSkillActivationSerial();
@@ -353,7 +354,7 @@ bool FRPGCharacterProgressionCombatProbe::TickClient(APlayerController& PC, URPG
 	{
 		if (!bSawReceivedCooldown) return Fail(TEXT("CombatReceivedCooldownMissing"));
 		if (Attributes->GetCurrentMana() != InitialMana) return Fail(TEXT("CombatOwnerManaMismatch"));
-		const float Gauge = Round == 6 ? 20.f : Round * 20.f;
+		const float Gauge = Round == 6 ? 50.f : Round * 20.f;
 		if (Attributes->GetCurrentIdentityGauge() != Gauge) return false;
 		for (auto& Target : Targets)
 			if (Target->Attributes()->GetCurrentHealth() != Target->ExpectedHealth) return false;
@@ -386,7 +387,7 @@ bool FRPGCharacterProgressionCombatProbe::TickClient(APlayerController& PC, URPG
 		if (!Write(Gate(Gates, Round, TEXT("observed")))) return Fail(TEXT("CombatOwnerObservationWrite"));
 		if (Round == 6)
 		{
-			UE_LOG(LogTemp, Display, TEXT("PROGRESSION_COMBAT_E2E PASS Role=Client Choice=%s Hits=6 Cancel=1 IdentityCost=100"), *Choice);
+			UE_LOG(LogTemp, Display, TEXT("PROGRESSION_COMBAT_E2E PASS Role=Client Choice=%s Hits=6 Cancel=1 IdentityCost=50"), *Choice);
 			bPassed = true;
 			return true;
 		}

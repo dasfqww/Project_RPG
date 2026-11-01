@@ -30,6 +30,7 @@ public:
 	//~ End UGameplayAbility Interface
 
 	virtual void PlaySkillMontage() override;
+	bool SuppressesResolveGain() const { return bStartedDuringBerserk; }
 
 	UFUNCTION()
 	void OnComboMontageCompleted();
@@ -62,6 +63,7 @@ private:
 	uint64 ResolveDamageSerial = 0;
 	int32 ResolveCurrentStep = INDEX_NONE, ResolveStepCount = 0;
 	bool bResolveComboAwarded = false;
+	bool bStartedDuringBerserk = false;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Skill", meta = (AllowPrivateAccess = "true"))
 	FMultipleSectionData DefaultAttackSectionData;

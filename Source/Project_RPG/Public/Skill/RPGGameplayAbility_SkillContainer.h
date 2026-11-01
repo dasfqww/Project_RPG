@@ -37,6 +37,7 @@ class PROJECT_RPG_API URPGGameplayAbility_SkillContainer
 	, public IRPGSkillTargetingHost
 {
 	GENERATED_BODY()
+	friend class FRPGGreatSwordBerserkTest;
 
 public:
 	URPGGameplayAbility_SkillContainer();
@@ -76,6 +77,7 @@ public:
 	/** Native task ownership survives spec reset, but changes before a later activation. */
 	uint64 GetSkillActivationSerial() const { return SkillDamageActivationSerial; }
 	const URPGSkillDefinition* GetSkillDefinition() const { return SkillDefinition; }
+	bool SuppressesResolveGain() const { return bCommittedDuringBerserk; }
 	/** Activation-owned strategy; observers must retain activation identity and their own weak reference. */
 	const URPGSkillExecutionPolicy* GetActiveExecutionPolicy() const { return ActiveExecutionPolicy.Get(); }
 
@@ -252,6 +254,8 @@ protected:
 
 	bool bSkillInputPressed = false;
 	float CommittedResolveDamageMultiplier = 1.f;
+	bool bCommittedDuringBerserk = false;
+	bool bSkillCommitted = false;
 	bool bResolveHitAwarded = false;
 	bool bFinisherHitAttempted = false;
 	TWeakObjectPtr<UAnimInstance> SkillMontageAnimInstance;

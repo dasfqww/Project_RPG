@@ -16,7 +16,7 @@ public:
 	URPGGreatSwordResolveGaugeEffect();
 };
 
-/** Source-owned ten-second opportunity, consumed by one committed main skill. */
+/** Source-owned berserk state. No duration or periodic gauge drain. */
 UCLASS(NotBlueprintable)
 class URPGGreatSwordResolveReadyEffect final : public UGameplayEffect
 {
@@ -44,9 +44,15 @@ public:
 	static void AwardConfirmedSkillHit(URPGGameplayAbility_SkillContainer& Skill);
 	static void AwardCompletedBasicCombo(URPGComboSkillAbility& Combo);
 	/** Called once AFTER the skill commits. The result is frozen for all hits of that cast. */
-	static void ConsumeForCommittedSkill(URPGGameplayAbility_SkillContainer& Skill, float& OutMultiplier);
+	static bool CanCommitSkill(const URPGGameplayAbility_SkillContainer& Skill);
+	static bool ConsumeForCommittedSkill(URPGGameplayAbility_SkillContainer& Skill, float& OutMultiplier, bool& OutSuppressGain);
+	static bool IsBerserk(const AActor* Avatar);
+	/** Trusted lifecycle callers only: death, avatar reuse and combat authority revocation. */
+	static void RevokeFor(AActor* Avatar);
 
 private:
+	UFUNCTION()
+	void FinishEntryMontage();
 	static bool CanUseIdentity(const FGameplayAbilityActorInfo* ActorInfo, FGameplayAbilitySpecHandle Handle);
 	static bool ApplyGaugeDelta(UGameplayAbility& SourceAbility, float Delta);
 	bool HasCurrentOpportunity() const;
