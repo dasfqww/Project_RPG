@@ -10,6 +10,7 @@ class APlayerController;
 class FOnlineSession;
 class FOnlineSessionSearch;
 class URPGDungeonSessionSubsystem;
+struct FRPGDungeonSession;
 enum class ERPGDungeonClientFlowState : uint8;
 
 UENUM(BlueprintType)
@@ -141,6 +142,7 @@ public:
 	 * Publishes the backend-verified allocator output after the session becomes
 	 * connectable.
 	 * Only the Steam lobby owner can update this metadata.
+	 * Ready server metadata is published automatically; this remains an explicit retry.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "RPG|Online|Lobby")
 	bool PublishDungeonServerAddress();
@@ -201,6 +203,8 @@ public:
 	FRPGSteamLobbyInviteAccepted OnPartyInviteAccepted;
 
 private:
+	friend struct FRPGSteamLobbyPublicationTestAccess;
+
 	enum class EPendingOperation : uint8
 	{
 		None,
@@ -230,6 +234,16 @@ private:
 		ERPGSteamLobbyState NewState,
 		const FString& ErrorCode = FString());
 	void ClearCurrentLobby();
+	void TryAutomaticallyPublishDungeonServer();
+	bool TryMarkAutomaticServerPublication(
+		const FRPGDungeonSession& Session,
+		const FString& SelectedCharacterId,
+		const FRPGSteamLobbyInfo& NamedLobby,
+		bool bHosting,
+		bool bAuthenticated,
+		bool bBackendIdle);
+	static FRPGSteamLobbyInfo MakeServerPublication(const FRPGDungeonSession& Session);
+	static bool SameServerPublication(const FRPGSteamLobbyInfo& Left, const FRPGSteamLobbyInfo& Right);
 	void RefreshCurrentLobbyFromNamedSession();
 	FRPGSteamLobbyInfo BuildLobbyInfo(
 		const FOnlineSession& Session,
@@ -259,6 +273,10 @@ private:
 
 	UPROPERTY(Transient)
 	FRPGSteamLobbyInfo CurrentLobby;
+
+	// An attempt, not an acknowledgement: failed OSS updates may mutate local settings.
+	// Unchanged metadata is not retried by polling; the explicit publish action may retry.
+	FRPGSteamLobbyInfo LastServerPublicationAttempt;
 
 	UPROPERTY(Transient)
 	TArray<FRPGSteamLobbyInfo> LastSearchResults;

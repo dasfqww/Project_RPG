@@ -1,6 +1,9 @@
 #include "Online/RPGSteamLobbySubsystem.h"
 
 #include "Online/RPGDungeonSessionSubsystem.h"
+#include "Engine/GameInstance.h"
+#include "Manager/HttpWebManager.h"
+#include "Subsystems/SubsystemCollection.h"
 
 #include "Online/OnlineSessionNames.h"
 #include "Interfaces/OnlineExternalUIInterface.h"
@@ -208,6 +211,7 @@ bool URPGSteamLobbySubsystem::CreatePartyLobby(const int32 MaxPlayers)
 		Settings.Set(ServerIdKey, DungeonSession.ServerId, Advertisement);
 	}
 
+	LastServerPublicationAttempt = FRPGSteamLobbyInfo();
 	if (!BeginOperation(
 		EPendingOperation::Create,
 		ERPGSteamLobbyState::CreatingLobby))
@@ -421,6 +425,7 @@ bool URPGSteamLobbySubsystem::PublishDungeonServerAddress()
 		NormalizedAddress,
 		Advertisement);
 
+	LastServerPublicationAttempt = MakeServerPublication(DungeonSession);
 	if (!BeginOperation(
 		EPendingOperation::Update,
 		ERPGSteamLobbyState::UpdatingLobby))
@@ -496,6 +501,11 @@ bool URPGSteamLobbySubsystem::LeavePartyLobby()
 	if (IsLobbyRequestInFlight())
 	{
 		RejectRequest(TEXT("lobby_request_in_flight"));
+		return false;
+	}
+	if (DungeonFlow && DungeonFlow->IsRequestInFlight())
+	{
+		FailOperation(TEXT("dungeon_flow_busy"));
 		return false;
 	}
 	if (!EnsureSessionInterface())
@@ -635,6 +645,14 @@ bool URPGSteamLobbySubsystem::BeginOperation(
 	const EPendingOperation Operation,
 	const ERPGSteamLobbyState RequestState)
 {
+	if (const auto* Web = GetGameInstance() ? GetGameInstance()->GetSubsystem<UHttpWebManager>() : nullptr)
+	{
+		if (Web->IsPlayerLogoutInFlight())
+		{
+			RejectRequest(TEXT("backend_logout_in_flight"));
+			return false;
+		}
+	}
 	if (IsLobbyRequestInFlight())
 	{
 		RejectRequest(TEXT("lobby_request_in_flight"));
@@ -783,12 +801,89 @@ void URPGSteamLobbySubsystem::SetLobbyState(
 	LobbyState = NewState;
 	LastErrorCode = ErrorCode;
 	OnLobbyStateChanged.Broadcast(LobbyState, LastErrorCode);
+	if (NewState == ERPGSteamLobbyState::InLobby)
+	{
+		// Creation or another OSS operation may have delayed a backend-ready event.
+		TryAutomaticallyPublishDungeonServer();
+	}
 }
 
 void URPGSteamLobbySubsystem::ClearCurrentLobby()
 {
 	CurrentLobby = FRPGSteamLobbyInfo();
+	LastServerPublicationAttempt = FRPGSteamLobbyInfo();
 	OnLobbyChanged.Broadcast(CurrentLobby);
+}
+
+FRPGSteamLobbyInfo URPGSteamLobbySubsystem::MakeServerPublication(
+	const FRPGDungeonSession& Session)
+{
+	FRPGSteamLobbyInfo Publication;
+	Publication.DungeonSessionId = Session.DungeonSessionId;
+	Publication.DungeonState = Session.State;
+	Publication.ServerId = Session.ServerId;
+	Publication.ServerAddress = Session.ServerAddress.TrimStartAndEnd();
+	return Publication;
+}
+
+bool URPGSteamLobbySubsystem::SameServerPublication(
+	const FRPGSteamLobbyInfo& Left,
+	const FRPGSteamLobbyInfo& Right)
+{
+	return Left.DungeonSessionId.Equals(Right.DungeonSessionId, ESearchCase::CaseSensitive)
+		&& Left.DungeonState.Equals(Right.DungeonState, ESearchCase::CaseSensitive)
+		&& Left.ServerId.Equals(Right.ServerId, ESearchCase::CaseSensitive)
+		&& Left.ServerAddress.Equals(Right.ServerAddress, ESearchCase::CaseSensitive);
+}
+
+bool URPGSteamLobbySubsystem::TryMarkAutomaticServerPublication(
+	const FRPGDungeonSession& Session,
+	const FString& SelectedCharacterId,
+	const FRPGSteamLobbyInfo& NamedLobby,
+	const bool bHosting,
+	const bool bAuthenticated,
+	const bool bBackendIdle)
+{
+	if (IsLobbyRequestInFlight() || !bBackendIdle || !bHosting || !bAuthenticated
+		|| !Session.State.Equals(TEXT("InProgress"), ESearchCase::CaseSensitive)
+		|| Session.DungeonSessionId.IsEmpty() || SelectedCharacterId.IsEmpty()
+		|| !Session.DungeonSessionId.Equals(NamedLobby.DungeonSessionId, ESearchCase::CaseSensitive)
+		|| Session.ServerId.TrimStartAndEnd().IsEmpty() || Session.ServerAddress.TrimStartAndEnd().IsEmpty()
+		|| !Session.Members.ContainsByPredicate([&SelectedCharacterId](const FRPGDungeonSessionMember& Member)
+			{ return Member.CharacterId.Equals(SelectedCharacterId, ESearchCase::CaseSensitive); }))
+	{
+		return false;
+	}
+
+	const FRPGSteamLobbyInfo Publication = MakeServerPublication(Session);
+	if (SameServerPublication(Publication, LastServerPublicationAttempt)
+		|| SameServerPublication(Publication, NamedLobby))
+	{
+		return false;
+	}
+
+	// Mark before dispatch/delegate broadcasts, including synchronous rejection.
+	LastServerPublicationAttempt = Publication;
+	return true;
+}
+
+void URPGSteamLobbySubsystem::TryAutomaticallyPublishDungeonServer()
+{
+	if (!DungeonFlow || !SessionInterface.IsValid()) return;
+	const FNamedOnlineSession* NamedSession = SessionInterface->GetNamedSession(PartyLobbySessionName);
+	if (!NamedSession) return;
+	UGameInstance* Instance = GetGameInstance();
+	const UHttpWebManager* Web = Instance ? Instance->GetSubsystem<UHttpWebManager>() : nullptr;
+	const bool bAuthenticated = Web && Web->HasAccessToken() && !Web->GetAuthenticatedSteamId().IsEmpty();
+	const bool bBackendIdle = !DungeonFlow->IsRequestInFlight()
+		&& DungeonFlow->GetFlowState() == ERPGDungeonClientFlowState::InSession
+		&& !DungeonFlow->HasUnresolvedDungeonAbandonment();
+	if (TryMarkAutomaticServerPublication(DungeonFlow->GetCurrentDungeonSession(),
+		DungeonFlow->GetSelectedCharacterId(), BuildLobbyInfo(*NamedSession, INDEX_NONE, 0),
+		NamedSession->bHosting, bAuthenticated, bBackendIdle))
+	{
+		PublishDungeonServerAddress(); // Existing host/session checks and OSS ordering remain authoritative.
+	}
 }
 
 void URPGSteamLobbySubsystem::RefreshCurrentLobbyFromNamedSession()
@@ -967,6 +1062,8 @@ void URPGSteamLobbySubsystem::HandleUpdateSessionComplete(
 	if (!bSuccess)
 	{
 		FailOperation(TEXT("update_lobby_failed"));
+		// A different assignment may have arrived while this update was pending.
+		TryAutomaticallyPublishDungeonServer();
 		return;
 	}
 
@@ -1094,5 +1191,9 @@ void URPGSteamLobbySubsystem::HandleDungeonFlowStateChanged(
 					? TEXT("leave_backend_session_failed")
 					: ErrorCode);
 		}
+	}
+	if (NewState == ERPGDungeonClientFlowState::InSession)
+	{
+		TryAutomaticallyPublishDungeonServer();
 	}
 }

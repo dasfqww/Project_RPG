@@ -1,6 +1,7 @@
 #include "Online/RPGSteamAuthSubsystem.h"
 
 #include "Manager/HttpWebManager.h"
+#include "Engine/GameInstance.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSubsystemNames.h"
 
@@ -23,7 +24,10 @@ void URPGSteamAuthSubsystem::Deinitialize()
 
 void URPGSteamAuthSubsystem::LoginToBackendWithSteam(const int32 LocalUserNum)
 {
-	if (bLoginRequestInFlight || IsRunningDedicatedServer()
+	if (bLoginRequestInFlight) return;
+	if (const auto* Web = GetGameInstance() ? GetGameInstance()->GetSubsystem<UHttpWebManager>() : nullptr)
+		if (Web->IsPlayerLogoutInFlight()) return;
+	if (IsRunningDedicatedServer()
 		|| RemoteServiceIdentity.IsEmpty())
 	{
 		CompleteLogin(false);
@@ -54,12 +58,23 @@ void URPGSteamAuthSubsystem::LoginToBackendWithSteam(const int32 LocalUserNum)
 
 void URPGSteamAuthSubsystem::LoginToDevelopmentBackend(const FString& SteamId)
 {
+	if (bLoginRequestInFlight) return;
+	if (const auto* Web = GetGameInstance() ? GetGameInstance()->GetSubsystem<UHttpWebManager>() : nullptr)
+		if (Web->IsPlayerLogoutInFlight()) return;
 #if UE_BUILD_SHIPPING
 	UE_LOG(LogTemp, Error,
 		TEXT("Development backend authentication is disabled in Shipping builds."));
 	CompleteLogin(false);
 #else
-	if (bLoginRequestInFlight || SteamId.IsEmpty())
+	if (IsRunningDedicatedServer() || !FRPGBackendPlayerAuthState::IsSteamId(SteamId))
+	{
+		CompleteLogin(false);
+		return;
+	}
+	const UHttpWebManager* Web = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<UHttpWebManager>() : nullptr;
+	if (Web && !Web->GetAuthenticatedSteamId().IsEmpty()
+		&& !Web->GetAuthenticatedSteamId().Equals(SteamId, ESearchCase::CaseSensitive))
 	{
 		CompleteLogin(false);
 		return;
@@ -104,7 +119,6 @@ void URPGSteamAuthSubsystem::BeginBackendExchange(const FString& Ticket)
 		return;
 	}
 
-	WebManager->ClearAccessToken();
 	WebManager->OnBackendAuthenticationCompleted.RemoveDynamic(
 		this, &ThisClass::HandleBackendAuthenticationCompleted);
 	WebManager->OnBackendAuthenticationCompleted.AddDynamic(

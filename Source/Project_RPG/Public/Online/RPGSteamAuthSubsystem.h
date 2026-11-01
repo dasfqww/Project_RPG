@@ -35,6 +35,7 @@ public:
 	FRPGSteamBackendLoginCompleted OnLoginCompleted;
 
 private:
+	friend struct FRPGBackendAuthTestAccess;
 	void HandleSteamTicketReceived(
 		int32 LocalUserNum,
 		bool bWasSuccessful,
