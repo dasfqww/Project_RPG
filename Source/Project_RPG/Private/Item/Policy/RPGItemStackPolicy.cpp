@@ -2,6 +2,7 @@
 
 #include "Item/RPGItemInstance.h"
 #include "Item/RPGItemRuntimeTypes.h"
+#include "Item/Persistence/RPGItemRecord.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RPGItemStackPolicy)
 
@@ -20,13 +21,31 @@ bool FRPGItemStackPolicy::AreInstanceStatesCompatible(
 	const FRPGItemInstanceState& First,
 	const FRPGItemInstanceState& Second)
 {
-	if (!(First.GetInstanceTags() == Second.GetInstanceTags()))
+	// Equipment progression is per-instance and must never be merged into a stack.
+	return !First.GetEquipmentProgression().IsSet() && !Second.GetEquipmentProgression().IsSet() &&
+		AreInstanceValuesCompatible(First.GetInstanceTags(), First.GetStatValues(),
+		Second.GetInstanceTags(), Second.GetStatValues());
+}
+
+bool FRPGItemStackPolicy::AreMetadataCompatible(
+	const FRPGItemRecordMetadata& First, const FRPGItemRecordMetadata& Second)
+{
+	// Do not wash binding, durability or expiration by moving units into another stack.
+	// CreationSource remains an audit label on each original record, not a stack property.
+	return First.BindState == Second.BindState &&
+		First.Durability.Current == Second.Durability.Current &&
+		First.Durability.Maximum == Second.Durability.Maximum &&
+		First.ExpiresAtUtc == Second.ExpiresAtUtc;
+}
+
+bool FRPGItemStackPolicy::AreInstanceValuesCompatible(
+	const FGameplayTagContainer& FirstTags, const TArray<FRPGItemStatValue>& FirstStats,
+	const FGameplayTagContainer& SecondTags, const TArray<FRPGItemStatValue>& SecondStats)
+{
+	if (!(FirstTags == SecondTags))
 	{
 		return false;
 	}
-
-	const TArray<FRPGItemStatValue>& FirstStats = First.GetStatValues();
-	const TArray<FRPGItemStatValue>& SecondStats = Second.GetStatValues();
 	if (FirstStats.Num() != SecondStats.Num())
 	{
 		return false;

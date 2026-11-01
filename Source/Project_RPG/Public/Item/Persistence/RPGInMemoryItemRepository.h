@@ -1,12 +1,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
+#if WITH_DEV_AUTOMATION_TESTS
+
 #include "Item/Persistence/RPGItemRepository.h"
 
 /**
- * Thread-safe reference implementation used by automation tests and offline
- * servers. Production shards should implement the same contract in their DB
- * adapter so revisions and idempotency receipts survive process restarts.
+ * Thread-safe repository reference implementation for automation fixtures only.
+ * Online gameplay commits through the backend; this is not a durable store.
  */
 class PROJECT_RPG_API FRPGInMemoryItemRepository final
 	: public IRPGItemRepository
@@ -33,3 +35,5 @@ private:
 	TMap<FGuid, FRPGItemRecord> Records;
 	TMap<FGuid, FRPGItemRepositoryCommitResult> CommitResults;
 };
+
+#endif // WITH_DEV_AUTOMATION_TESTS

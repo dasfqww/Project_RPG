@@ -1,5 +1,13 @@
 # Item Backend Gateway
 
+`FRPGItemRecordMetadata.CreationSource` preserves a backend audit string such as
+`DungeonClear.pve_hard_v1` (maximum 128 characters). It does not require a
+registered GameplayTag. Instance tags and stat tags still require registered
+GameplayTags. See [dungeon reward persistence E2E](DUNGEON_REWARD_PERSISTENCE_E2E.md)
+for dedicated-server settlement and recovery verification.
+Reward attachments can be listed and claimed through the same authoritative
+Item V2 command pipeline; see [reward mail](REWARD_MAIL.md).
+
 ## 목적
 
 Dedicated Server가 Item V2 API를 비동기로 호출하는 경계다. 게임 규칙과

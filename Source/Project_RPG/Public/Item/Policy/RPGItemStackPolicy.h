@@ -1,10 +1,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "RPGItemStackPolicy.generated.h"
 
 class URPGItemInstance;
 struct FRPGItemInstanceState;
+struct FRPGItemStatValue;
+struct FRPGItemRecordMetadata;
 
 USTRUCT(BlueprintType)
 struct PROJECT_RPG_API FRPGItemStackTransfer
@@ -34,6 +37,11 @@ public:
 	static bool AreInstanceStatesCompatible(
 		const FRPGItemInstanceState& First,
 		const FRPGItemInstanceState& Second);
+	static bool AreInstanceValuesCompatible(
+		const FGameplayTagContainer& FirstTags, const TArray<FRPGItemStatValue>& FirstStats,
+		const FGameplayTagContainer& SecondTags, const TArray<FRPGItemStatValue>& SecondStats);
+	static bool AreMetadataCompatible(
+		const FRPGItemRecordMetadata& First, const FRPGItemRecordMetadata& Second);
 
 	static FRPGItemStackTransfer CalculateTransfer(
 		const URPGItemInstance& Source,

@@ -1,6 +1,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
+#if WITH_DEV_AUTOMATION_TESTS
+
 #include "Item/Transaction/RPGItemClock.h"
 #include "Item/Transaction/RPGItemTransactionTypes.h"
 
@@ -10,11 +13,11 @@ class IRPGItemRepository;
 struct FRPGItemRepositoryCommitResult;
 
 /**
- * Authoritative application service for item state transitions.
+ * Synchronous item transaction reference service for automation fixtures only.
  *
  * Callers provide the authenticated actor and expected revisions. The service
  * owns validation and delegates only the atomic compare-and-swap commit to the
- * repository.
+ * repository. Online gameplay uses the async command orchestrator and backend.
  */
 class PROJECT_RPG_API FRPGItemTransactionService
 {
@@ -68,3 +71,5 @@ private:
 	FRPGSystemItemClock SystemClock;
 	const IRPGItemClock* Clock = nullptr;
 };
+
+#endif // WITH_DEV_AUTOMATION_TESTS

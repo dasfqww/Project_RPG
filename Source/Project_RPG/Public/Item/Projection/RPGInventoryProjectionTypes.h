@@ -51,6 +51,8 @@ public:
 		return RolledStats;
 	}
 
+	const FRPGEquipmentProgressionState& GetEquipmentProgression() const { return EquipmentProgression; }
+
 	bool HasSamePayload(const FRPGInventoryProjectionEntry& Other) const;
 	void CopyPayloadFrom(const FRPGInventoryProjectionEntry& Other);
 
@@ -95,6 +97,9 @@ private:
 
 	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	TArray<FRPGItemStatValue> RolledStats;
+
+	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	FRPGEquipmentProgressionState EquipmentProgression;
 };
 
 /** Delta-replicated collection reconciled by stable item identity. */

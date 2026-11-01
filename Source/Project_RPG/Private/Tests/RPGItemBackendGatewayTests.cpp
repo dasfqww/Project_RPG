@@ -67,7 +67,7 @@ bool MakeRecord(
 	Location.ContainerId = Owner.OwnerId;
 	Location.SlotIndex = 3;
 	FRPGItemRecordMetadata Metadata;
-	Metadata.CreationSource = RPGGameplayTags::GameItem_Craft_fruit;
+	Metadata.CreationSource = TEXT("DungeonClear.codec_reward_v1");
 	return FRPGItemRecord::TryRestore(
 		FPrimaryAssetId(
 			FPrimaryAssetType(FName(TEXT("RPGItemDefinition"))),
@@ -200,6 +200,9 @@ class FFakeRetryTransport final : public IRPGItemBackendTransport
 {
 public:
 	TArray<FRPGItemBackendHttpRequest> Requests;
+	bool bFailFirst = true;
+	bool bSuccessBody = true;
+	int32 HttpStatus = 200;
 
 	virtual void Send(
 		const FRPGItemBackendHttpRequest& Request,
@@ -207,15 +210,15 @@ public:
 	{
 		Requests.Add(Request);
 		FRPGItemBackendHttpResponse Response;
-		if (Requests.Num() == 1)
+		if (bFailFirst && Requests.Num() == 1)
 		{
 			Completion(MoveTemp(Response));
 			return;
 		}
 
 		Response.bTransportSuccessful = true;
-		Response.StatusCode = 200;
-		BuildCommitResponse(Request.Body, Response.Body);
+		Response.StatusCode = HttpStatus;
+		if (bSuccessBody) BuildCommitResponse(Request.Body, Response.Body);
 		Completion(MoveTemp(Response));
 	}
 };
@@ -234,6 +237,9 @@ bool FRPGItemBackendCodecTest::RunTest(const FString& Parameters)
 	FRPGItemRecord Record;
 	TestTrue(TEXT("A test record can be restored"),
 		MakeRecord(LargeRevision, Record));
+	TestFalse(TEXT("The backend audit label is not a registered gameplay tag"),
+		FGameplayTag::RequestGameplayTag(
+			FName(*Record.GetMetadata().CreationSource), false).IsValid());
 	const FRPGItemRepositoryCommitRequest Request =
 		MakeCommitRequest(Record);
 
@@ -279,6 +285,22 @@ bool FRPGItemBackendCodecTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Persistent instance tags are restored"),
 			LoadedRecords[0].GetState().HasInstanceTag(
 				RPGGameplayTags::GameItem_Craft_fruit));
+		TestEqual(TEXT("An unregistered backend audit label is preserved"),
+			LoadedRecords[0].GetMetadata().CreationSource,
+			Record.GetMetadata().CreationSource);
+	}
+	TSharedPtr<FJsonObject> LoadRoot;
+	if (ParseJson(LoadJson, LoadRoot))
+	{
+		const TSharedPtr<FJsonObject> LoadedObject =
+			LoadRoot->GetArrayField(TEXT("items"))[0]->AsObject();
+		LoadedObject->GetObjectField(TEXT("metadata"))->SetStringField(
+			TEXT("creationSource"), FString::ChrN(129, TEXT('x')));
+		FString InvalidJson;
+		SerializeJson(LoadRoot.ToSharedRef(), InvalidJson);
+		TestFalse(TEXT("Audit labels over the backend's 128-character limit are rejected"),
+			FRPGItemBackendJsonCodec::DeserializeLoadResponse(
+				InvalidJson, LoadedRecords, &Error));
 	}
 	return true;
 }
@@ -330,6 +352,45 @@ bool FRPGItemBackendRetryTest::RunTest(const FString& Parameters)
 			? Result.Records[0].GetRevision()
 			: static_cast<int64>(-1),
 		static_cast<int64>(1));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGItemBackendSuccessHttpStatusTest,
+	"ProjectRPG.Item.Backend.SuccessBodyRequiresHttp200",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGItemBackendSuccessHttpStatusTest::RunTest(const FString&)
+{
+	using namespace RPGItemBackendGatewayTests;
+	FRPGItemRecord Record; MakeRecord(0, Record); const auto Request = MakeCommitRequest(Record);
+	for (const int32 Code : {201, 400, 401, 403, 409, 500})
+	{
+		const auto Transport = MakeShared<FFakeRetryTransport, ESPMode::ThreadSafe>();
+		Transport->bFailFirst = false; Transport->HttpStatus = Code;
+		FRPGItemBackendGateway Gateway(StaticCastSharedRef<IRPGItemBackendTransport>(Transport), 1);
+		FRPGItemBackendCommitResult Result;
+		Gateway.Commit(Request, [&Result](FRPGItemBackendCommitResult R) { Result = MoveTemp(R); });
+		TestFalse(TEXT("Non-200 success body never resolves a commit"), Result.WasSuccessful());
+		TestEqual(TEXT("Untrusted success becomes a protocol error"), Result.Status, ERPGItemBackendStatus::ProtocolError);
+		TestEqual(TEXT("HTTP status preserved"), Result.HttpStatusCode, Code);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGItemBackendAmbiguousAttemptTest,
+	"ProjectRPG.Item.Backend.LostAttemptThenAuthFailureRemainsUncertain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGItemBackendAmbiguousAttemptTest::RunTest(const FString&)
+{
+	using namespace RPGItemBackendGatewayTests;
+	FRPGItemRecord Record; MakeRecord(0, Record); const auto Request = MakeCommitRequest(Record);
+	const auto Transport = MakeShared<FFakeRetryTransport, ESPMode::ThreadSafe>();
+	Transport->HttpStatus = 401; Transport->bSuccessBody = false;
+	FRPGItemBackendGateway Gateway(StaticCastSharedRef<IRPGItemBackendTransport>(Transport), 2);
+	FRPGItemBackendCommitResult Result;
+	Gateway.Commit(Request, [&Result](FRPGItemBackendCommitResult R) { Result = MoveTemp(R); });
+	TestEqual(TEXT("Final attempt can be unauthorized"), Result.Status, ERPGItemBackendStatus::Unauthorized);
+	TestTrue(TEXT("Final 401 does not erase earlier lost commit possibility"), Result.bCommitOutcomeUncertain);
+	TestEqual(TEXT("Same body used for both wire attempts"), Transport->Requests[0].Body, Transport->Requests[1].Body);
 	return true;
 }
 

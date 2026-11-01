@@ -17,6 +17,12 @@ public:
 		FRPGItemBackendCommitResult& OutResult,
 		FString* OutError = nullptr);
 
+	/** Restore a frozen command from the server-only pickup journal. */
+	static bool DeserializeCommitRequest(
+		const FString& Json,
+		FRPGItemRepositoryCommitRequest& OutRequest,
+		FString* OutError = nullptr);
+
 	static bool DeserializeLoadResponse(
 		const FString& Json,
 		TArray<FRPGItemRecord>& OutRecords,

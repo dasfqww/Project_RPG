@@ -1,7 +1,10 @@
 #include "Tests/RPGItemCommandE2EProbeComponent.h"
 
+#include "Character/RPGPlayer.h"
 #include "Component/RPGInventoryProjectionComponent.h"
+#include "Component/RPGSecurityValidationComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/FileManager.h"
 #include "HAL/PlatformTime.h"
 #include "Item/Projection/RPGInventoryProjectionTypes.h"
 #include "Misc/CommandLine.h"
@@ -21,6 +24,7 @@ URPGItemCommandE2EProbeComponent::URPGItemCommandE2EProbeComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.bStartWithTickEnabled = false;
+	SetIsReplicatedByDefault(true);
 }
 
 void URPGItemCommandE2EProbeComponent::BeginPlay()
@@ -31,6 +35,15 @@ void URPGItemCommandE2EProbeComponent::BeginPlay()
 	return;
 #else
 	APlayerController* Controller = Cast<APlayerController>(GetOwner());
+	if (Controller && FParse::Param(FCommandLine::Get(), TEXT("RPGNPCDropPickupE2E")))
+	{
+		bNPCPickupProbe = true;
+		if (Controller->IsLocalController())
+			if (auto* Commands = Controller->FindComponentByClass<URPGItemCommandComponent>())
+				Commands->OnItemCommandCompleted.AddDynamic(this, &ThisClass::HandleCommandCompleted);
+		SetComponentTickEnabled(true);
+		return;
+	}
 	if (!Controller ||
 		!Controller->IsLocalController() ||
 		Controller->GetNetMode() != NM_Client)
@@ -52,6 +65,13 @@ void URPGItemCommandE2EProbeComponent::BeginPlay()
 	{
 		return;
 	}
+	bVerifyRestrictedGate = FParse::Param(
+		FCommandLine::Get(),
+		TEXT("RPGItemE2ERestricted"));
+	FParse::Value(
+		FCommandLine::Get(),
+		TEXT("RPGItemE2ERestrictedReleaseFile="),
+		RestrictedReleaseFile);
 	if (!bHasConsumableParameter ||
 		!bHasEquipmentParameter ||
 		!FGuid::Parse(ConsumableItemIdText, ConsumableItemId) ||
@@ -85,6 +105,7 @@ void URPGItemCommandE2EProbeComponent::BeginPlay()
 void URPGItemCommandE2EProbeComponent::EndPlay(
 	const EEndPlayReason::Type EndPlayReason)
 {
+	NPCPickupProbe.Stop();
 	FinishProbe();
 	Super::EndPlay(EndPlayReason);
 }
@@ -97,6 +118,11 @@ void URPGItemCommandE2EProbeComponent::TickComponent(
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 #if !UE_BUILD_SHIPPING
+	if (bNPCPickupProbe)
+	{
+		if (auto* Controller = Cast<APlayerController>(GetOwner())) NPCPickupProbe.Tick(*Controller);
+		return;
+	}
 	if (FPlatformTime::Seconds() >= DeadlineSeconds)
 	{
 		FailProbe(TEXT("Timeout"));
@@ -251,8 +277,61 @@ void URPGItemCommandE2EProbeComponent::TickComponent(
 			return;
 		}
 
+		if (bVerifyRestrictedGate)
+		{
+			Phase = EProbePhase::WaitingForRestrictionRelease;
+			UE_LOG(LogRPGItemE2E, Display,
+				TEXT("RPG_ITEM_E2E RESTRICTION_READY"));
+			return;
+		}
+
 		UE_LOG(LogRPGItemE2E, Display,
-			TEXT("RPG_ITEM_E2E PASS ConsumeItem=%s Quantity=%d Revision=%lld EquipItem=%s InventorySlot=%d Revision=%lld"),
+			TEXT("RPG_ITEM_E2E PASS ConsumeItem=%s Quantity=%d Revision=%lld EquipItem=%s InventorySlot=%d Revision=%lld RestrictedGate=false"),
+			*ConsumableItemId.ToString(EGuidFormats::DigitsWithHyphensLower),
+			ConsumableEntry.GetQuantity(),
+			ConsumableEntry.GetRevision(),
+			*EquipmentItemId.ToString(EGuidFormats::DigitsWithHyphensLower),
+			EquipmentEntry.GetSlotIndex(),
+			EquipmentEntry.GetRevision());
+		FinishProbe();
+		return;
+
+	case EProbePhase::WaitingForRestrictionRelease:
+		if (!RestrictedReleaseFile.IsEmpty()
+			&& !IFileManager::Get().FileExists(*RestrictedReleaseFile))
+		{
+			return;
+		}
+		Phase = EProbePhase::WaitingForRestrictionConfirmation;
+		ServerForceRestrictedState();
+		UE_LOG(LogRPGItemE2E, Display,
+			TEXT("RPG_ITEM_E2E RESTRICTION_REQUESTED"));
+		return;
+
+	case EProbePhase::WaitingForRestrictionConfirmation:
+	case EProbePhase::WaitingForRestrictedConsumeResult:
+		return;
+
+	case EProbePhase::WaitingForRestrictedProjection:
+		if (ConsumableEntry.GetContainerType() !=
+				ERPGItemContainerType::Inventory ||
+			ConsumableEntry.GetSlotIndex() != 0 ||
+			ConsumableEntry.GetQuantity() !=
+				InitialConsumableQuantity - 1 ||
+			ConsumableEntry.GetRevision() !=
+				InitialConsumableRevision + 1 ||
+			EquipmentEntry.GetContainerType() !=
+				ERPGItemContainerType::Inventory ||
+			EquipmentEntry.GetSlotIndex() != UnequipInventorySlotIndex ||
+			EquipmentEntry.GetQuantity() != 1 ||
+			EquipmentEntry.GetRevision() != InitialEquipmentRevision + 2)
+		{
+			FailProbe(TEXT("RestrictedCommandMutatedProjection"));
+			return;
+		}
+
+		UE_LOG(LogRPGItemE2E, Display,
+			TEXT("RPG_ITEM_E2E PASS ConsumeItem=%s Quantity=%d Revision=%lld EquipItem=%s InventorySlot=%d Revision=%lld RestrictedGate=true"),
 			*ConsumableItemId.ToString(EGuidFormats::DigitsWithHyphensLower),
 			ConsumableEntry.GetQuantity(),
 			ConsumableEntry.GetRevision(),
@@ -265,10 +344,95 @@ void URPGItemCommandE2EProbeComponent::TickComponent(
 #endif
 }
 
+void URPGItemCommandE2EProbeComponent::ServerForceRestrictedState_Implementation()
+{
+#if !UE_BUILD_SHIPPING
+	if (!FParse::Param(FCommandLine::Get(), TEXT("RPGItemE2ERestricted")))
+	{
+		ClientConfirmRestrictedState(false, 0.0f);
+		return;
+	}
+
+	const APlayerController* Controller = Cast<APlayerController>(GetOwner());
+	APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+	URPGSecurityValidationComponent* Security = Pawn
+		? Pawn->FindComponentByClass<URPGSecurityValidationComponent>()
+		: nullptr;
+	if (!Security)
+	{
+		ClientConfirmRestrictedState(false, 0.0f);
+		return;
+	}
+
+	if (!Security->IsRestricted())
+	{
+		const FRPGSecurityPolicyConfig Policy =
+			Security->GetEffectivePolicyConfig();
+		const float RequiredScore = FMath::Max(
+			1.0f,
+			Policy.Enforcement.RestrictedRiskThreshold -
+				Security->GetRiskScore() + 0.01f);
+		Security->ReportViolation(
+			ERPGSecurityViolationType::InvalidDamage,
+			ERPGSecurityViolationSeverity::Critical,
+			RequiredScore,
+			TEXT("Development E2E forced Restricted state."));
+	}
+
+	UE_LOG(LogRPGItemE2E, Display,
+		TEXT("RPG_ITEM_E2E SERVER_RESTRICTED Ready=%d Risk=%.2f"),
+		Security->IsRestricted() ? 1 : 0,
+		Security->GetRiskScore());
+	ClientConfirmRestrictedState(
+		Security->IsRestricted(),
+		Security->GetRiskScore());
+#endif
+}
+
+void URPGItemCommandE2EProbeComponent::ClientConfirmRestrictedState_Implementation(
+	const bool bRestricted,
+	const float RiskScore)
+{
+#if !UE_BUILD_SHIPPING
+	if (Phase != EProbePhase::WaitingForRestrictionConfirmation)
+	{
+		FailProbe(TEXT("UnexpectedRestrictionConfirmation"));
+		return;
+	}
+	if (!bRestricted)
+	{
+		FailProbe(TEXT("ServerDidNotEnterRestrictedState"));
+		return;
+	}
+
+	APlayerController* Controller = Cast<APlayerController>(GetOwner());
+	URPGItemCommandComponent* Commands = Controller
+		? Controller->FindComponentByClass<URPGItemCommandComponent>()
+		: nullptr;
+	if (!Commands)
+	{
+		FailProbe(TEXT("CommandComponentUnavailableAfterRestriction"));
+		return;
+	}
+
+	RequestId = FGuid::NewGuid();
+	Phase = EProbePhase::WaitingForRestrictedConsumeResult;
+	Commands->ServerConsumeItem(
+		RequestId,
+		ConsumableItemId,
+		InitialConsumableRevision + 1);
+	UE_LOG(LogRPGItemE2E, Display,
+		TEXT("RPG_ITEM_E2E RESTRICTED_CONSUME_SENT Request=%s Risk=%.2f"),
+		*RequestId.ToString(EGuidFormats::DigitsWithHyphensLower),
+		RiskScore);
+#endif
+}
+
 void URPGItemCommandE2EProbeComponent::HandleCommandCompleted(
 	const FRPGItemCommandClientResult Result)
 {
 #if !UE_BUILD_SHIPPING
+	if (bNPCPickupProbe) { NPCPickupProbe.HandleResult(Result); return; }
 	if (Result.RequestId != RequestId)
 	{
 		return;
@@ -281,6 +445,20 @@ void URPGItemCommandE2EProbeComponent::HandleCommandCompleted(
 		? StaticEnum<ERPGItemCommandResultCode>()->GetNameStringByValue(
 			static_cast<int64>(Result.Result))
 		: TEXT("Unknown");
+	if (Phase == EProbePhase::WaitingForRestrictedConsumeResult)
+	{
+		if (Result.Result != ERPGItemCommandResultCode::Forbidden)
+		{
+			const FString FailureReason = FString::Printf(
+				TEXT("RestrictedCommandResult=%s"),
+				*ResultName);
+			FailProbe(*FailureReason);
+			return;
+		}
+		Phase = EProbePhase::WaitingForRestrictedProjection;
+		return;
+	}
+
 	if (!bResultSucceeded)
 	{
 		const FString FailureReason = FString::Printf(
@@ -333,6 +511,18 @@ void URPGItemCommandE2EProbeComponent::FailProbe(const TCHAR* Reason)
 		break;
 	case EProbePhase::WaitingForUnequipProjection:
 		Stage = TEXT("UnequipProjection");
+		break;
+	case EProbePhase::WaitingForRestrictionConfirmation:
+		Stage = TEXT("RestrictionConfirmation");
+		break;
+	case EProbePhase::WaitingForRestrictionRelease:
+		Stage = TEXT("RestrictionRelease");
+		break;
+	case EProbePhase::WaitingForRestrictedConsumeResult:
+		Stage = TEXT("RestrictedConsumeResult");
+		break;
+	case EProbePhase::WaitingForRestrictedProjection:
+		Stage = TEXT("RestrictedProjection");
 		break;
 	}
 	UE_LOG(LogRPGItemE2E, Error,

@@ -4,7 +4,8 @@
 
 bool FRPGItemInstanceState::IsValid() const
 {
-	return InstanceId.IsValid() && Quantity > 0;
+	return InstanceId.IsValid() && Quantity > 0 && EquipmentProgression.IsValid() &&
+		(!EquipmentProgression.IsSet() || Quantity == 1);
 }
 
 bool FRPGItemInstanceState::TryRestore(
@@ -13,9 +14,11 @@ bool FRPGItemInstanceState::TryRestore(
 	const int32 InQuantity,
 	const FGameplayTagContainer& InInstanceTags,
 	const TArray<FRPGItemStatValue>& InStatValues,
-	FRPGItemInstanceState& OutState)
+	FRPGItemInstanceState& OutState,
+	const FRPGEquipmentProgressionState& InEquipmentProgression)
 {
-	if (!InInstanceId.IsValid() || InQuantity < 0)
+	if (!InInstanceId.IsValid() || InQuantity < 0 || !InEquipmentProgression.IsValid() ||
+		(InEquipmentProgression.IsSet() && InQuantity > 1))
 	{
 		return false;
 	}
@@ -38,6 +41,7 @@ bool FRPGItemInstanceState::TryRestore(
 	RestoredState.Quantity = InQuantity;
 	RestoredState.InstanceTags = InInstanceTags;
 	RestoredState.StatValues = InStatValues;
+	RestoredState.EquipmentProgression = InEquipmentProgression;
 	OutState = MoveTemp(RestoredState);
 	return true;
 }
@@ -72,6 +76,7 @@ void FRPGItemInstanceState::Initialize(
 	Quantity = InQuantity;
 	InstanceTags.Reset();
 	StatValues.Reset();
+	EquipmentProgression = FRPGEquipmentProgressionState();
 }
 
 void FRPGItemInstanceState::SetQuantity(const int32 InQuantity)

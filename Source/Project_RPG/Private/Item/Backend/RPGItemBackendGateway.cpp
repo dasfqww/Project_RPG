@@ -136,6 +136,8 @@ struct FCommitContext final
 	int32 MaximumAttempts = 1;
 	int32 Attempts = 0;
 	FRPGItemBackendCommitCompletion Completion;
+	bool bReceiptOnly = false;
+	bool bCommitOutcomeUncertain = false;
 
 	FCommitContext(
 		TSharedRef<IRPGItemBackendTransport, ESPMode::ThreadSafe> InTransport,
@@ -164,6 +166,7 @@ struct FCommitContext final
 
 	void Handle(FRPGItemBackendHttpResponse Response)
 	{
+		bCommitOutcomeUncertain |= !bReceiptOnly && IsTransient(Response);
 		if (IsTransient(Response) && Attempts < MaximumAttempts)
 		{
 			Send();
@@ -185,6 +188,13 @@ struct FCommitContext final
 		}
 
 		FRPGItemBackendCommitResult ParsedResult;
+		if (bReceiptOnly && Response.StatusCode != 200)
+		{
+			Result.Status = StatusFromHttp(Response.StatusCode);
+			Result.Error = TEXT("The persisted pickup receipt is not available.");
+			Complete(MoveTemp(Result));
+			return;
+		}
 		FString ParseError;
 		if (FRPGItemBackendJsonCodec::DeserializeCommitResponse(
 			Response.Body,
@@ -192,6 +202,14 @@ struct FCommitContext final
 			&ParseError))
 		{
 			ParsedResult.HttpStatusCode = Response.StatusCode;
+			// A success-shaped body on an error response is not a commit receipt.
+			if (ParsedResult.WasSuccessful() && Response.StatusCode != 200)
+			{
+				Result.Status = ERPGItemBackendStatus::ProtocolError;
+				Result.Error = TEXT("An item commit success requires HTTP 200.");
+				Complete(MoveTemp(Result));
+				return;
+			}
 			if (ParsedResult.RequestId != CommitRequest.RequestId ||
 				ParsedResult.Operation != CommitRequest.Operation ||
 				ParsedResult.CommandFingerprint !=
@@ -217,6 +235,7 @@ struct FCommitContext final
 
 	void Complete(FRPGItemBackendCommitResult Result)
 	{
+		Result.bCommitOutcomeUncertain |= bCommitOutcomeUncertain && !Result.WasSuccessful();
 		FRPGItemBackendCommitCompletion Callback = MoveTemp(Completion);
 		if (Callback)
 		{
@@ -269,6 +288,29 @@ void FRPGItemBackendGateway::LoadItems(
 			MoveTemp(Request),
 			MaximumAttempts,
 			MoveTemp(Completion));
+	Context->Send();
+}
+
+void FRPGItemBackendGateway::LoadCommitReceipt(
+	const FRPGItemRepositoryCommitRequest& ExpectedRequest,
+	FRPGItemBackendCommitCompletion Completion) const
+{
+	if (!Completion) return;
+	FString Body, Error;
+	if (!FRPGItemBackendJsonCodec::SerializeCommitRequest(ExpectedRequest, Body, &Error))
+	{
+		FRPGItemBackendCommitResult Result;
+		Result.Status = ERPGItemBackendStatus::InvalidRequest;
+		Completion(MoveTemp(Result));
+		return;
+	}
+	FRPGItemBackendHttpRequest HttpRequest;
+	HttpRequest.Verb = TEXT("GET");
+	HttpRequest.RelativePath = TEXT("item-transactions/") +
+		ExpectedRequest.RequestId.ToString(EGuidFormats::DigitsWithHyphensLower);
+	const auto Context = MakeShared<RPGItemBackendGateway::FCommitContext, ESPMode::ThreadSafe>(
+		Transport, ExpectedRequest, MoveTemp(HttpRequest), MaximumAttempts, MoveTemp(Completion));
+	Context->bReceiptOnly = true;
 	Context->Send();
 }
 

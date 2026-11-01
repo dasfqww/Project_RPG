@@ -326,6 +326,15 @@ TSharedRef<FJsonObject> SerializeRecord(const FRPGItemRecord& Record)
 		StatValues.Add(MakeShared<FJsonValueObject>(StatObject));
 	}
 	StateObject->SetArrayField(TEXT("statValues"), MoveTemp(StatValues));
+	const FRPGEquipmentProgressionState& Growth = State.GetEquipmentProgression();
+	if (Growth.IsSet())
+	{
+		TSharedRef<FJsonObject> GrowthObject = MakeShared<FJsonObject>();
+		GrowthObject->SetStringField(TEXT("growthBandId"), Growth.GrowthBandId);
+		GrowthObject->SetNumberField(TEXT("ruleVersion"), Growth.RuleVersion);
+		GrowthObject->SetNumberField(TEXT("level"), Growth.Level);
+		StateObject->SetObjectField(TEXT("equipmentProgression"), GrowthObject);
+	}
 	Object->SetObjectField(TEXT("state"), StateObject);
 	SetInt64Field(Object, TEXT("revision"), Record.GetRevision());
 	Object->SetStringField(
@@ -359,9 +368,7 @@ TSharedRef<FJsonObject> SerializeRecord(const FRPGItemRecord& Record)
 	}
 	MetadataObject->SetStringField(
 		TEXT("creationSource"),
-		Metadata.CreationSource.IsValid()
-			? Metadata.CreationSource.ToString()
-			: FString());
+		Metadata.CreationSource);
 	MetadataObject->SetBoolField(TEXT("isLocked"), Metadata.bLocked);
 	Object->SetObjectField(TEXT("metadata"), MetadataObject);
 	return Object;
@@ -477,7 +484,7 @@ bool TryParseRecord(
 	for (const TSharedPtr<FJsonValue>& StatValue : *StatValueObjects)
 	{
 		const TSharedPtr<FJsonObject> StatObject =
-			StatValue.IsValid() ? StatValue->AsObject() : nullptr;
+			StatValue.IsValid() && StatValue->Type == EJson::Object ? StatValue->AsObject() : nullptr;
 		FString StatTagString;
 		double Value = 0.0;
 		if (!StatObject.IsValid() ||
@@ -497,6 +504,27 @@ bool TryParseRecord(
 		}
 	}
 
+	FRPGEquipmentProgressionState Growth;
+	const TSharedPtr<FJsonValue> GrowthValue = (*StateObject)->TryGetField(TEXT("equipmentProgression"));
+	if (GrowthValue.IsValid() && !GrowthValue->IsNull())
+	{
+		const TSharedPtr<FJsonObject> GrowthObject = GrowthValue->Type == EJson::Object ? GrowthValue->AsObject() : nullptr;
+		double Version = 0.0;
+		double Level = 0.0;
+		if (!GrowthObject.IsValid() ||
+			!GrowthObject->TryGetStringField(TEXT("growthBandId"), Growth.GrowthBandId) ||
+			!GrowthObject->TryGetNumberField(TEXT("ruleVersion"), Version) ||
+			!GrowthObject->TryGetNumberField(TEXT("level"), Level) ||
+			!FMath::IsFinite(Version) || !FMath::IsFinite(Level) ||
+			Version != 1.0 || Level < 0.0 || Level > 3.0 || FMath::FloorToDouble(Level) != Level)
+		{
+			return false;
+		}
+		Growth.RuleVersion = 1;
+		Growth.Level = static_cast<int32>(Level);
+		if (!Growth.IsSet() || !Growth.IsValid()) return false;
+	}
+
 	FRPGItemInstanceState State;
 	if (!FRPGItemInstanceState::TryRestore(
 		InstanceId,
@@ -504,7 +532,8 @@ bool TryParseRecord(
 		Quantity,
 		InstanceTags,
 		StatValues,
-		State))
+		State,
+		Growth))
 	{
 		return false;
 	}
@@ -528,20 +557,11 @@ bool TryParseRecord(
 		return false;
 	}
 
-	FString CreationSourceString;
 	if (!(*MetadataObject)->TryGetStringField(
-		TEXT("creationSource"), CreationSourceString))
+		TEXT("creationSource"), Metadata.CreationSource) ||
+		Metadata.CreationSource.Len() > 128)
 	{
 		return false;
-	}
-	if (!CreationSourceString.IsEmpty())
-	{
-		Metadata.CreationSource = FGameplayTag::RequestGameplayTag(
-			FName(*CreationSourceString), false);
-		if (!Metadata.CreationSource.IsValid())
-		{
-			return false;
-		}
 	}
 
 	const TSharedPtr<FJsonValue> ExpiresValue =
@@ -589,7 +609,7 @@ bool TryParseRecordArray(
 	for (const TSharedPtr<FJsonValue>& Value : Values)
 	{
 		FRPGItemRecord Record;
-		if (!Value.IsValid() ||
+		if (!Value.IsValid() || Value->Type != EJson::Object ||
 			!TryParseRecord(Value->AsObject(), Record) ||
 			ItemIds.Contains(Record.GetItemId()))
 		{
@@ -661,6 +681,53 @@ bool FRPGItemBackendJsonCodec::SerializeCommitRequest(
 		Request.AffectedQuantity);
 	Root->SetArrayField(TEXT("mutations"), MoveTemp(MutationValues));
 	return SerializeObject(Root, OutJson, OutError);
+}
+
+bool FRPGItemBackendJsonCodec::DeserializeCommitRequest(
+	const FString& Json,
+	FRPGItemRepositoryCommitRequest& OutRequest,
+	FString* OutError)
+{
+	using namespace RPGItemBackendJson;
+	OutRequest = {};
+	const TSharedPtr<FJsonObject> Root = ParseObject(Json, OutError);
+	FString RequestId, Operation;
+	const TSharedPtr<FJsonObject>* Actor = nullptr;
+	const TArray<TSharedPtr<FJsonValue>>* Mutations = nullptr;
+	FRPGItemRepositoryCommitRequest Request;
+	if (!Root || !Root->TryGetStringField(TEXT("requestId"), RequestId) ||
+		!FGuid::Parse(RequestId, Request.RequestId) ||
+		!Root->TryGetStringField(TEXT("operation"), Operation) || Operation.IsEmpty() ||
+		!Root->TryGetStringField(TEXT("commandFingerprint"), Request.CommandFingerprint) ||
+		!Root->TryGetObjectField(TEXT("actor"), Actor) || !Actor ||
+		!TryParseOwner(*Actor, Request.Actor) ||
+		!Root->TryGetNumberField(TEXT("affectedQuantity"), Request.AffectedQuantity) ||
+		!Root->TryGetArrayField(TEXT("mutations"), Mutations) || !Mutations ||
+		Mutations->IsEmpty() || Mutations->Num() > 16)
+	{
+		SetError(OutError, TEXT("Persisted item command is invalid."));
+		return false;
+	}
+	Request.Operation = FName(*Operation);
+	for (const TSharedPtr<FJsonValue>& Value : *Mutations)
+	{
+		const TSharedPtr<FJsonObject> Mutation = Value && Value->Type == EJson::Object
+			? Value->AsObject() : nullptr;
+		const TSharedPtr<FJsonObject>* Record = nullptr;
+		FRPGItemRecordMutation Parsed;
+		if (!Mutation || !Mutation->TryGetNumberField(TEXT("expectedRevision"), Parsed.ExpectedRevision) ||
+			!Mutation->TryGetObjectField(TEXT("newRecord"), Record) || !Record ||
+			!TryParseRecord(*Record, Parsed.NewRecord))
+		{
+			SetError(OutError, TEXT("Persisted item mutation is invalid."));
+			return false;
+		}
+		Request.Mutations.Add(MoveTemp(Parsed));
+	}
+	FString Validated;
+	if (!SerializeCommitRequest(Request, Validated, OutError)) return false;
+	OutRequest = MoveTemp(Request);
+	return true;
 }
 
 bool FRPGItemBackendJsonCodec::DeserializeCommitResponse(

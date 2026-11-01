@@ -85,6 +85,19 @@ bool URPGItemEquipmentDefinitionFragment::CanEquipInSlot(
 		CompatibleSlots.Contains(SlotType);
 }
 
+bool URPGItemEquipmentDefinitionFragment::HasValidIdentityForSlot(const EEquipmentSlotType Slot) const
+{
+	const bool bWeapon = Slot >= EEquipmentSlotType::Weapon_Primary_L
+		&& Slot <= EEquipmentSlotType::Weapon_Secondary_R;
+	const bool bUtility = Slot == EEquipmentSlotType::Utility_1 || Slot == EEquipmentSlotType::Utility_2;
+	return static_cast<uint8>(Slot) < static_cast<uint8>(EEquipmentSlotType::Count)
+		&& static_cast<uint8>(WeaponType) <= static_cast<uint8>(ERPGGladiatorWeaponType::Count)
+		&& static_cast<uint8>(WeaponHandType) <= static_cast<uint8>(EWeaponHandType::Count)
+		&& static_cast<uint8>(UtilityType) <= static_cast<uint8>(ERPGGladiatorUtilityType::Count)
+		&& (bWeapon || (WeaponType == ERPGGladiatorWeaponType::Count && WeaponHandType == EWeaponHandType::Count))
+		&& (bUtility || UtilityType == ERPGGladiatorUtilityType::Count);
+}
+
 #if WITH_EDITOR
 EDataValidationResult
 URPGItemEquipmentDefinitionFragment::ValidateDefinition(
@@ -109,6 +122,15 @@ URPGItemEquipmentDefinitionFragment::ValidateDefinition(
 		Context.AddError(NSLOCTEXT("RPGItemDefinition", "NoCompatibleSlots",
 			"An Equipment fragment must declare at least one compatible slot."));
 		Result = EDataValidationResult::Invalid;
+	}
+	for (const EEquipmentSlotType Slot : CompatibleSlots)
+	{
+		if (!HasValidIdentityForSlot(Slot))
+		{
+			Context.AddError(NSLOCTEXT("RPGItemDefinition", "InvalidEquipmentIdentity",
+				"Equipment weapon/hand/utility identity must be valid for every compatible slot."));
+			Result = EDataValidationResult::Invalid;
+		}
 	}
 	for (const URPGAbilitySet* AbilitySet : GrantedAbilitySets)
 	{

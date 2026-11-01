@@ -33,6 +33,25 @@ bool FRPGInventoryProjectionMapper::BuildInventorySnapshot(
 	TArray<FRPGInventoryProjectionEntry>& OutEntries,
 	FString* OutError)
 {
+	return BuildSnapshot(ExpectedOwner, Records, false, OutEntries, OutError);
+}
+
+bool FRPGInventoryProjectionMapper::BuildMailSnapshot(
+	const FRPGItemOwnerRef& ExpectedOwner,
+	const TArray<FRPGItemRecord>& Records,
+	TArray<FRPGInventoryProjectionEntry>& OutEntries,
+	FString* OutError)
+{
+	return BuildSnapshot(ExpectedOwner, Records, true, OutEntries, OutError);
+}
+
+bool FRPGInventoryProjectionMapper::BuildSnapshot(
+	const FRPGItemOwnerRef& ExpectedOwner,
+	const TArray<FRPGItemRecord>& Records,
+	const bool bMail,
+	TArray<FRPGInventoryProjectionEntry>& OutEntries,
+	FString* OutError)
+{
 	OutEntries.Reset();
 	if (!ExpectedOwner.IsValid() ||
 		ExpectedOwner.Type != ERPGItemOwnerType::Character)
@@ -45,6 +64,7 @@ bool FRPGInventoryProjectionMapper::BuildInventorySnapshot(
 
 	TSet<FGuid> ItemIds;
 	TSet<uint64> SlotKeys;
+	TSet<FString> MailSlotKeys;
 	for (const FRPGItemRecord& Record : Records)
 	{
 		if (!Record.IsStructurallyValid())
@@ -65,9 +85,11 @@ bool FRPGInventoryProjectionMapper::BuildInventorySnapshot(
 		}
 		const ERPGItemContainerType ContainerType =
 			Record.GetLocation().ContainerType;
-		if (!Record.IsActive() ||
-			(ContainerType != ERPGItemContainerType::Inventory &&
-				ContainerType != ERPGItemContainerType::Equipment))
+		const bool bSelectedContainer = bMail
+			? ContainerType == ERPGItemContainerType::Mail
+			: (ContainerType == ERPGItemContainerType::Inventory ||
+				ContainerType == ERPGItemContainerType::Equipment);
+		if (!Record.IsActive() || !bSelectedContainer)
 		{
 			continue;
 		}
@@ -77,7 +99,13 @@ bool FRPGInventoryProjectionMapper::BuildInventorySnapshot(
 		const uint64 SlotKey = RPGInventoryProjectionMapper::MakeSlotKey(
 			ContainerType,
 			SlotIndex);
-		if (ItemIds.Contains(ItemId) || SlotKeys.Contains(SlotKey))
+		// Different dungeon reward containers legitimately reuse attachment slots.
+		const FString MailSlotKey = FString::Printf(TEXT("%d:%s:%d"),
+			Record.GetLocation().ContainerId.Len(),
+			*Record.GetLocation().ContainerId, SlotIndex);
+		const bool bDuplicateSlot = bMail
+			? MailSlotKeys.Contains(MailSlotKey) : SlotKeys.Contains(SlotKey);
+		if (ItemIds.Contains(ItemId) || bDuplicateSlot)
 		{
 			RPGInventoryProjectionMapper::SetError(
 				OutError,
@@ -87,6 +115,7 @@ bool FRPGInventoryProjectionMapper::BuildInventorySnapshot(
 		}
 		ItemIds.Add(ItemId);
 		SlotKeys.Add(SlotKey);
+		MailSlotKeys.Add(MailSlotKey);
 
 		FRPGInventoryProjectionEntry& Entry =
 			OutEntries.AddDefaulted_GetRef();
@@ -103,6 +132,7 @@ bool FRPGInventoryProjectionMapper::BuildInventorySnapshot(
 		Entry.bLocked = Record.GetMetadata().bLocked;
 		Entry.InstanceTags = Record.GetState().GetInstanceTags();
 		Entry.RolledStats = Record.GetState().GetStatValues();
+		Entry.EquipmentProgression = Record.GetState().GetEquipmentProgression();
 	}
 
 	OutEntries.Sort(

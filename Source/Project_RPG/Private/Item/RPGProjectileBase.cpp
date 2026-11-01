@@ -2,6 +2,7 @@
 
 
 #include "Item/RPGProjectileBase.h"
+#include "Combat/RPGCombatImmunityTypes.h"
 #include "Components/BoxComponent.h"
 #include "NiagaraComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
@@ -156,7 +157,7 @@ void ARPGProjectileBase::HandleApplyProjectileDamage(
 			ProjectileDamageEffectSpecHandle,
 			SecurityProfile);
 
-	if (bWasApplied)
+	if (bWasApplied && !RPGCombatImmunity::IsImmune(InHitPawn, ERPGCombatEffectKind::HitReaction))
 	{
 		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(
 			InHitPawn,

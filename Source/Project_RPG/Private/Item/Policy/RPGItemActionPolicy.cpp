@@ -35,6 +35,10 @@ bool FRPGItemActionPolicyRegistry::RegisterDefinition(
 			return false;
 		}
 		Policy.CompatibleEquipmentSlots = Equipment->CompatibleSlots;
+		for (const EEquipmentSlotType Slot : Equipment->CompatibleSlots)
+		{
+			if (!Equipment->HasValidIdentityForSlot(Slot)) return false;
+		}
 		for (const URPGAbilitySet* AbilitySet :
 			Equipment->GrantedAbilitySets)
 		{

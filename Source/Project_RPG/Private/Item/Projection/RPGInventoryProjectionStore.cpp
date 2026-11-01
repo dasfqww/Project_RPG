@@ -182,6 +182,14 @@ bool FRPGInventoryProjectionStore::TryBuildEntries(
 {
 	TArray<FRPGItemRecord> Records;
 	CandidateRecords.GenerateValueArray(Records);
+	// Validate both read models before changing the authoritative cache.
+	TArray<FRPGInventoryProjectionEntry> MailEntries;
+	if (!FRPGInventoryProjectionMapper::BuildMailSnapshot(
+		ExpectedOwner, Records, MailEntries, OutError))
+	{
+		OutEntries.Reset();
+		return false;
+	}
 	return FRPGInventoryProjectionMapper::BuildInventorySnapshot(
 		ExpectedOwner,
 		Records,

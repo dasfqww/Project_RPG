@@ -39,6 +39,29 @@ struct PROJECT_RPG_API FRPGItemMoveRequest
 	FRPGItemLocation Destination;
 };
 
+/** Keeps the original stack and inserts a new stack into an empty bag slot. */
+struct PROJECT_RPG_API FRPGItemSplitRequest
+{
+	FGuid RequestId;
+	FRPGItemOwnerRef Actor;
+	FGuid ItemId;
+	int64 ExpectedRevision = 0;
+	FRPGItemLocation Destination;
+	int32 Quantity = 0;
+};
+
+/** Exchanges two complete stacks in the same character inventory. */
+struct PROJECT_RPG_API FRPGItemSwapRequest
+{
+	FGuid RequestId;
+	FRPGItemOwnerRef Actor;
+	FGuid SourceItemId;
+	int64 ExpectedSourceRevision = 0;
+	FGuid DestinationItemId;
+	int64 ExpectedDestinationRevision = 0;
+	FString InventoryContainerId;
+};
+
 struct PROJECT_RPG_API FRPGItemStackTransferRequest
 {
 	FGuid RequestId;
@@ -75,6 +98,16 @@ struct PROJECT_RPG_API FRPGItemConsumeRequest
 	FRPGItemOwnerRef Actor;
 	FGuid ItemId;
 	int64 ExpectedRevision = 0;
+};
+
+/** Moves an existing attachment out of mail; never mints a replacement item. */
+struct PROJECT_RPG_API FRPGItemClaimMailRequest
+{
+	FGuid RequestId;
+	FRPGItemOwnerRef Actor;
+	FGuid ItemId;
+	int64 ExpectedRevision = 0;
+	FRPGItemLocation InventoryDestination;
 };
 
 struct PROJECT_RPG_API FRPGItemTransactionResult

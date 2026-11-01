@@ -1,5 +1,7 @@
 #include "Item/Transaction/RPGItemTransactionService.h"
 
+#if WITH_DEV_AUTOMATION_TESTS
+
 #include "Item/Definition/RPGItemDefinitionCatalog.h"
 #include "Item/Persistence/RPGItemRepository.h"
 #include "Item/Transaction/RPGItemActionCommandPlanner.h"
@@ -567,3 +569,5 @@ FRPGItemTransactionResult FRPGItemTransactionService::MakeFailure(
 	Result.Status = Status;
 	return Result;
 }
+
+#endif // WITH_DEV_AUTOMATION_TESTS

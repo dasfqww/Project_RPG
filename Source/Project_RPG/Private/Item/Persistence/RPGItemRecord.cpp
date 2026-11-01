@@ -59,8 +59,11 @@ bool FRPGItemRecord::IsStructurallyValid() const
 		DefinitionVersion < 1 ||
 		!Owner.IsValid() ||
 		!State.HasValidIdentity() ||
+		!State.GetEquipmentProgression().IsValid() ||
+		(State.GetEquipmentProgression().IsSet() && State.GetQuantity() > 1) ||
 		Revision < 0 ||
-		!Metadata.Durability.IsValid())
+		!Metadata.Durability.IsValid() ||
+		Metadata.CreationSource.Len() > 128)
 	{
 		return false;
 	}

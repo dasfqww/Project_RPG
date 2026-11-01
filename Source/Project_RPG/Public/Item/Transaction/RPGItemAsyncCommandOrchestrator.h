@@ -4,6 +4,8 @@
 #include "Item/Backend/RPGItemBackendTypes.h"
 #include "Item/Transaction/RPGItemActionCommandPlanner.h"
 
+class FRPGInventoryCommandJournal;
+
 class PROJECT_RPG_API IRPGItemAsyncCommitter
 {
 public:
@@ -30,7 +32,11 @@ class PROJECT_RPG_API IRPGItemFirstCommitSink
 public:
 	virtual ~IRPGItemFirstCommitSink() = default;
 
-	/** Called only for the first Succeeded receipt, never AlreadyApplied. */
+	/** Opt in only with an original, avatar-bound, idempotent consume effect sink. */
+	virtual bool SupportsScopedConsumeRecovery() const { return false; }
+	virtual bool PrepareConsume(const FRPGItemRepositoryCommitRequest& Request, FString& OutError) { return true; }
+	virtual void DiscardConsume(const FGuid& RequestId) {}
+	/** Succeeded, or scoped Consume AlreadyApplied; the latter must not repeat a delivered effect. */
 	virtual bool EnqueueFirstCommit(
 		const FRPGItemBackendCommitResult& Result,
 		FString& OutError) = 0;
@@ -43,7 +49,10 @@ enum class ERPGItemAsyncCommandStage : uint8
 	ProtocolRejected,
 	ProjectionRejected,
 	PostCommitRejected,
-	Completed
+	Completed,
+	Uncertain,
+	PersistenceRejected,
+	PreparationRejected
 };
 
 struct PROJECT_RPG_API FRPGItemAsyncCommandOutcome
@@ -77,8 +86,19 @@ public:
 		const IRPGItemActionPolicyCatalog& InActions,
 		IRPGItemAsyncCommitter& InCommitter,
 		IRPGItemCommitSink& InCommitSink,
-		IRPGItemFirstCommitSink& InFirstCommitSink);
+		IRPGItemFirstCommitSink& InFirstCommitSink,
+		TSharedPtr<FRPGInventoryCommandJournal> InInventoryJournal = {});
 
+	bool Move(
+		const FRPGItemMoveRequest& Request,
+		FRPGItemAsyncCommandCompletion Completion);
+	bool Swap(
+		const FRPGItemSwapRequest& Request,
+		FRPGItemAsyncCommandCompletion Completion);
+	bool TransferStack(
+		const FRPGItemStackTransferRequest& Request,
+		FRPGItemAsyncCommandCompletion Completion);
+	bool Split(const FRPGItemSplitRequest& Request, FRPGItemAsyncCommandCompletion Completion);
 	bool Equip(
 		const FRPGItemEquipRequest& Request,
 		FRPGItemAsyncCommandCompletion Completion);
@@ -88,6 +108,16 @@ public:
 	bool Consume(
 		const FRPGItemConsumeRequest& Request,
 		FRPGItemAsyncCommandCompletion Completion);
+	bool ClaimMail(
+		const FRPGItemClaimMailRequest& Request,
+		FRPGItemAsyncCommandCompletion Completion);
+
+	/** Resubmit the frozen server plan (including journal restores), never replan client input. */
+	bool RetryInventoryCommand(const FGuid& RequestId, const FRPGItemOwnerRef& Owner,
+		FRPGItemAsyncCommandCompletion Completion);
+	bool FindUncertainInventoryCommand(const FGuid& RequestId, const FRPGItemOwnerRef& Owner, FName& Operation) const;
+	bool HasUncertainInventoryCommands() const { return !UncertainInventoryRequests.IsEmpty(); }
+	bool IsInventoryPersistenceBlocked() const;
 
 private:
 	struct FCachedCompletion
@@ -103,6 +133,8 @@ private:
 	bool Submit(
 		FRPGItemCommandPlan&& Plan,
 		FRPGItemAsyncCommandCompletion Completion);
+	bool DispatchFrozen(const FRPGItemRepositoryCommitRequest& Request, FRPGItemAsyncCommandCompletion Completion);
+	bool IsRecoverableOperation(FName Operation) const;
 	void HandleCommit(
 		const FRPGItemRepositoryCommitRequest& Request,
 		FRPGItemAsyncCommandCompletion Completion,
@@ -114,4 +146,10 @@ private:
 	IRPGItemFirstCommitSink& FirstCommitSink;
 	TMap<FGuid, FCachedCompletion> CompletedRequests;
 	TArray<FGuid> CompletedRequestOrder;
+	TMap<FGuid, FRPGItemRepositoryCommitRequest> UncertainInventoryRequests;
+	TSet<FGuid> InventoryRetriesInFlight;
+	TSharedPtr<FRPGInventoryCommandJournal> InventoryJournal;
+	bool bPersistenceFailure = false;
+	// Server-created effect domain; never restored from a client or the bag journal.
+	const FGuid ConsumeEffectScope = FGuid::NewGuid();
 };

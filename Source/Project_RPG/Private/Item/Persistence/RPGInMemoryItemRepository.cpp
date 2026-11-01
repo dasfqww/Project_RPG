@@ -1,5 +1,7 @@
 #include "Item/Persistence/RPGInMemoryItemRepository.h"
 
+#if WITH_DEV_AUTOMATION_TESTS
+
 #include "Misc/ScopeLock.h"
 
 namespace
@@ -236,3 +238,5 @@ FRPGItemRepositoryCommitResult FRPGInMemoryItemRepository::Commit(
 	CommitResults.Add(Request.RequestId, Result);
 	return Result;
 }
+
+#endif // WITH_DEV_AUTOMATION_TESTS

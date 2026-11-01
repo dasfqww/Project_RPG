@@ -53,6 +53,18 @@ public:
 		const IRPGItemClock& InClock);
 
 	static bool TryDescribe(
+		const FRPGItemMoveRequest& Request,
+		FRPGItemCommandDescriptor& OutDescriptor);
+	static bool TryDescribe(
+		const FRPGItemSwapRequest& Request,
+		FRPGItemCommandDescriptor& OutDescriptor);
+	static bool TryDescribe(
+		const FRPGItemStackTransferRequest& Request,
+		FRPGItemCommandDescriptor& OutDescriptor);
+	static bool TryDescribe(const FRPGItemSplitRequest& Request, FRPGItemCommandDescriptor& OutDescriptor);
+	/** Stable identity, not an authorization token. Never accept a client-authored replacement ID. */
+	static FGuid MakeSplitItemId(const FGuid& RequestId, const FGuid& SourceItemId);
+	static bool TryDescribe(
 		const FRPGItemEquipRequest& Request,
 		FRPGItemCommandDescriptor& OutDescriptor);
 	static bool TryDescribe(
@@ -61,13 +73,25 @@ public:
 	static bool TryDescribe(
 		const FRPGItemConsumeRequest& Request,
 		FRPGItemCommandDescriptor& OutDescriptor);
+	static bool TryDescribe(
+		const FRPGItemClaimMailRequest& Request,
+		FRPGItemCommandDescriptor& OutDescriptor);
 
+	FRPGItemCommandPlan Prepare(
+		const FRPGItemMoveRequest& Request) const;
+	FRPGItemCommandPlan Prepare(
+		const FRPGItemSwapRequest& Request) const;
+	FRPGItemCommandPlan Prepare(
+		const FRPGItemStackTransferRequest& Request) const;
+	FRPGItemCommandPlan Prepare(const FRPGItemSplitRequest& Request) const;
 	FRPGItemCommandPlan Prepare(
 		const FRPGItemEquipRequest& Request) const;
 	FRPGItemCommandPlan Prepare(
 		const FRPGItemUnequipRequest& Request) const;
 	FRPGItemCommandPlan Prepare(
 		const FRPGItemConsumeRequest& Request) const;
+	FRPGItemCommandPlan Prepare(
+		const FRPGItemClaimMailRequest& Request) const;
 
 private:
 	bool TryLoadMutableRecord(

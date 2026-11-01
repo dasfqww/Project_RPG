@@ -51,6 +51,8 @@ struct PROJECT_RPG_API FRPGItemBackendLoadResult
 struct PROJECT_RPG_API FRPGItemBackendCommitResult
 {
 	ERPGItemBackendStatus Status = ERPGItemBackendStatus::Unavailable;
+	/** An earlier wire attempt may have committed before its response was lost. */
+	bool bCommitOutcomeUncertain = false;
 	int32 HttpStatusCode = 0;
 	FGuid RequestId;
 	FName Operation;

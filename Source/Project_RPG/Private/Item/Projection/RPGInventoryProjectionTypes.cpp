@@ -43,6 +43,7 @@ bool FRPGInventoryProjectionEntry::HasSamePayload(
 		ExpiresAtUtc == Other.ExpiresAtUtc &&
 		bLocked == Other.bLocked &&
 		InstanceTags == Other.InstanceTags &&
+		EquipmentProgression == Other.EquipmentProgression &&
 		RPGInventoryProjectionTypes::StatValuesEqual(
 			RolledStats,
 			Other.RolledStats);
@@ -64,6 +65,7 @@ void FRPGInventoryProjectionEntry::CopyPayloadFrom(
 	bLocked = Other.bLocked;
 	InstanceTags = Other.InstanceTags;
 	RolledStats = Other.RolledStats;
+	EquipmentProgression = Other.EquipmentProgression;
 }
 
 void FRPGInventoryProjectionList::PostReplicatedReceive(

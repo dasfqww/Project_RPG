@@ -26,6 +26,21 @@ public:
 		const FRPGItemRepositoryCommitRequest& Request,
 		FRPGItemBackendCommitCompletion Completion) const;
 
+	/** Prepare the immutable drop origin, then consume it using an empty-body POST. */
+	void CommitPickup(const FString& ServerId, const FGuid& SessionId, const FGuid& DropId,
+		const FRPGItemRepositoryCommitRequest& Request, FRPGItemBackendCommitCompletion Completion,
+		TFunction<bool()> CanContinue = {}) const;
+
+	/** GET-only recovery of v2 journals; an unconsumed origin never authorizes replay. */
+	void LoadPickupReceipt(const FString& ServerId, const FGuid& SessionId, const FGuid& DropId,
+		const FRPGItemRepositoryCommitRequest& Request, FRPGItemBackendCommitCompletion Completion,
+		TFunction<bool()> CanContinue = {}) const;
+
+	/** Read-only reconciliation; 404 never causes a new commit. */
+	void LoadCommitReceipt(
+		const FRPGItemRepositoryCommitRequest& ExpectedRequest,
+		FRPGItemBackendCommitCompletion Completion) const;
+
 private:
 	TSharedRef<IRPGItemBackendTransport, ESPMode::ThreadSafe> Transport;
 	int32 MaximumAttempts = 2;

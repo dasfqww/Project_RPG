@@ -12,4 +12,18 @@ public:
 		const TArray<FRPGItemRecord>& Records,
 		TArray<FRPGInventoryProjectionEntry>& OutEntries,
 		FString* OutError = nullptr);
+
+	static bool BuildMailSnapshot(
+		const FRPGItemOwnerRef& ExpectedOwner,
+		const TArray<FRPGItemRecord>& Records,
+		TArray<FRPGInventoryProjectionEntry>& OutEntries,
+		FString* OutError = nullptr);
+
+private:
+	static bool BuildSnapshot(
+		const FRPGItemOwnerRef& ExpectedOwner,
+		const TArray<FRPGItemRecord>& Records,
+		bool bMail,
+		TArray<FRPGInventoryProjectionEntry>& OutEntries,
+		FString* OutError);
 };

@@ -184,8 +184,9 @@ struct PROJECT_RPG_API FRPGItemRecordMetadata
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame)
 	FDateTime ExpiresAtUtc;
 
+	/** Backend audit label, such as DungeonClear.pve_hard_v1. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame)
-	FGameplayTag CreationSource;
+	FString CreationSource;
 
 	/** Locked records cannot be moved, merged, consumed, traded, or equipped. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame)

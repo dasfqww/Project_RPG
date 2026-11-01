@@ -60,6 +60,8 @@ public:
 	UFUNCTION(BlueprintPure, Category = "RPG|Item|Equipment")
 	bool CanEquipInSlot(EEquipmentSlotType SlotType) const;
 
+	bool HasValidIdentityForSlot(EEquipmentSlotType SlotType) const;
+
 #if WITH_EDITOR
 	virtual EDataValidationResult ValidateDefinition(
 		const URPGItemDefinition& Definition,
@@ -68,6 +70,16 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Equipment")
 	TSet<EEquipmentSlotType> CompatibleSlots;
+
+	/** Count preserves unauthored metadata; readers must not invent a weapon/utility identity. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Equipment|Identity")
+	ERPGGladiatorWeaponType WeaponType = ERPGGladiatorWeaponType::Count;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Equipment|Identity")
+	EWeaponHandType WeaponHandType = EWeaponHandType::Count;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Equipment|Identity")
+	ERPGGladiatorUtilityType UtilityType = ERPGGladiatorUtilityType::Count;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Equipment")
 	TSoftClassPtr<AActor> EquippedActorClass;

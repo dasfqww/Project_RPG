@@ -22,11 +22,37 @@ struct PROJECT_RPG_API FRPGItemStatValue
 	float Value = 0.0f;
 };
 
+/** Optional persisted growth value; the all-default value means no progression. */
+USTRUCT(BlueprintType)
+struct PROJECT_RPG_API FRPGEquipmentProgressionState
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, SaveGame)
+	FString GrowthBandId;
+	UPROPERTY(BlueprintReadOnly, SaveGame)
+	int32 RuleVersion = 0;
+	UPROPERTY(BlueprintReadOnly, SaveGame)
+	int32 Level = 0;
+
+	bool IsSet() const { return !GrowthBandId.IsEmpty() || RuleVersion != 0 || Level != 0; }
+	bool IsValid() const
+	{
+		return !IsSet() || (GrowthBandId.Equals(TEXT("FirstSlice"), ESearchCase::CaseSensitive) &&
+			RuleVersion == 1 && Level >= 0 && Level <= 3);
+	}
+	friend bool operator==(const FRPGEquipmentProgressionState& A, const FRPGEquipmentProgressionState& B)
+	{
+		return A.GrowthBandId.Equals(B.GrowthBandId, ESearchCase::CaseSensitive) &&
+			A.RuleVersion == B.RuleVersion && A.Level == B.Level;
+	}
+};
+
 /**
  * Mutable, replicated data that belongs to one item instance.
  *
  * Static authoring data deliberately remains on URPGItemDefinition. This state
- * only contains identity, stack quantity, and values rolled at creation time.
+ * contains identity, stack quantity, creation-time rolls, and optional persisted growth.
  */
 USTRUCT(BlueprintType)
 struct PROJECT_RPG_API FRPGItemInstanceState
@@ -49,13 +75,15 @@ public:
 		int32 InQuantity,
 		const FGameplayTagContainer& InInstanceTags,
 		const TArray<FRPGItemStatValue>& InStatValues,
-		FRPGItemInstanceState& OutState);
+		FRPGItemInstanceState& OutState,
+		const FRPGEquipmentProgressionState& InEquipmentProgression = FRPGEquipmentProgressionState());
 
 	const FGuid& GetInstanceId() const { return InstanceId; }
 	int32 GetGenerationSeed() const { return GenerationSeed; }
 	int32 GetQuantity() const { return Quantity; }
 	const FGameplayTagContainer& GetInstanceTags() const { return InstanceTags; }
 	const TArray<FRPGItemStatValue>& GetStatValues() const { return StatValues; }
+	const FRPGEquipmentProgressionState& GetEquipmentProgression() const { return EquipmentProgression; }
 
 private:
 	void Initialize(int32 InGenerationSeed, int32 InQuantity);
@@ -81,6 +109,9 @@ private:
 
 	UPROPERTY(BlueprintReadOnly, SaveGame, meta = (AllowPrivateAccess = "true"))
 	TArray<FRPGItemStatValue> StatValues;
+
+	UPROPERTY(BlueprintReadOnly, SaveGame, meta = (AllowPrivateAccess = "true"))
+	FRPGEquipmentProgressionState EquipmentProgression;
 };
 
 /**
