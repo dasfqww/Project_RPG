@@ -1,10 +1,12 @@
 param(
     [string]$BaseUrl = 'http://127.0.0.1:3000',
     [string]$AdminToken = $env:PROJECT_RPG_BACKEND_ADMIN_TOKEN,
-    [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12)
+    [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12),
+    [string]$DungeonId = 'Dungeon.RaidSwordMan'
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Tools/Request-DungeonDeparture.ps1')
 
 if ([string]::IsNullOrWhiteSpace($AdminToken)) {
     throw 'PROJECT_RPG_BACKEND_ADMIN_TOKEN or -AdminToken is required.'
@@ -74,9 +76,10 @@ $session = Invoke-RestMethod `
     -ContentType 'application/json' `
     -Body (@{
         characterId = $character.characterId
-        dungeonId = 'Dungeon.SecuritySmoke'
+        dungeonId = $DungeonId
         difficulty = 'Normal'
     } | ConvertTo-Json -Compress)
+$null = Request-RPGDungeonDeparture $BaseUrl $session.dungeonSessionId $character.characterId $playerHeaders
 $session = Invoke-RestMethod `
     -Method Post `
     -Uri "$BaseUrl/api/dungeon-sessions/$($session.dungeonSessionId)/activate" `

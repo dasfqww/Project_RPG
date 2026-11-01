@@ -6,7 +6,8 @@ namespace ProjectRpg.Backend.Authentication;
 public sealed record IssuedAccessToken(
     string Token,
     string TokenHash,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    DateTimeOffset IssuedAt);
 
 public sealed class AccessTokenService(TimeProvider timeProvider)
 {
@@ -17,8 +18,9 @@ public sealed class AccessTokenService(TimeProvider timeProvider)
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');
-        DateTimeOffset expiresAt = timeProvider.GetUtcNow().Add(lifetime);
-        return new IssuedAccessToken(token, Hash(token), expiresAt);
+        DateTimeOffset issuedAt = timeProvider.GetUtcNow();
+        DateTimeOffset expiresAt = issuedAt.Add(lifetime);
+        return new IssuedAccessToken(token, Hash(token), expiresAt, issuedAt);
     }
 
     public string Hash(string token)

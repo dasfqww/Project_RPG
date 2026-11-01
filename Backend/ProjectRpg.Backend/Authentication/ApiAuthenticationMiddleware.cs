@@ -34,6 +34,8 @@ public sealed class ApiAuthenticationMiddleware(RequestDelegate next)
         }
 
         if (principal.IsSecurityTelemetryOnly
+            && !DungeonRewardSnapshotAccess.IsOwnReadOnlyRoute(context.Request.Method, context.Request.Path, principal)
+            && !DungeonMembershipSnapshotAccess.IsOwnReadOnlyRoute(context.Request.Method, context.Request.Path, principal)
             && !context.Request.Path.StartsWithSegments(
                 "/api/security",
                 StringComparison.OrdinalIgnoreCase))
