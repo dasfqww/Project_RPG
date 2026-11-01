@@ -66,8 +66,6 @@ public:
 	void PostReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize);
 	
 private:
-	void BroadcastChangedMessage(EEquipmentSlotType SlotType, URPGItemBase* Item, int32 Count);
-	
 	friend class URPGEquipmentComponent;
 
 	UPROPERTY()
@@ -84,8 +82,8 @@ struct TStructOpsTypeTraits<FRPGEquipmentList> : public TStructOpsTypeTraitsBase
 };
 
 /**
- * 장비 슬롯 데이터 관리 컴포넌트
- * 아이템의 슬롯 이동, 병합, 장착 규칙 검증을 담당
+ * Serialized Blueprint compatibility facade. It owns no live equipment state.
+ * Raw legacy writes are retired; use native item commands and equipment snapshots.
  */
 UCLASS(BlueprintType, meta=(BlueprintSpawnableComponent))
 class PROJECT_RPG_API URPGEquipmentComponent : public UPawnExtensionComponentBase
@@ -95,16 +93,12 @@ class PROJECT_RPG_API URPGEquipmentComponent : public UPawnExtensionComponentBas
 public:
 	URPGEquipmentComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
-protected:
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-	virtual bool ReplicateSubobjects(UActorChannel* Channel, FOutBunch* Bunch, FReplicationFlags* RepFlags) override;
-	
 public:
-	/** 장착 가능 여부 검증 */
+	/** Retired legacy validation; returns zero, not an unverified object quantity. */
 	UFUNCTION(BlueprintPure, Category = "RPG|Equipment")
 	int32 CanAddEquipment(URPGItemBase* Item, EEquipmentSlotType ToSlot) const;
 
-	/** 아이템 추가/제거 (서버 전용) */
+	/** Retired raw mutations; never infer a native transaction from legacy state. */
 	void AddEquipment_Internal(EEquipmentSlotType SlotType, URPGItemBase* Item, int32 Count);
 	URPGItemBase* RemoveEquipment_Internal(EEquipmentSlotType SlotType);
 
@@ -117,22 +111,18 @@ public:
 	static bool IsSecondaryWeaponSlot(EEquipmentSlotType SlotType);
 
 	/** 데이터 조회 */
-	UFUNCTION(BlueprintPure, Category = "RPG|Equipment")
+	UFUNCTION(BlueprintPure, Category = "RPG|Equipment", meta = (DeprecatedFunction,
+		DeprecationMessage = "Use AuthoritativeEquipment.FindSnapshotInSlot; legacy item objects are retired."))
 	URPGItemBase* GetItemInSlot(EEquipmentSlotType SlotType) const;
 	
 	UFUNCTION(BlueprintPure, Category = "RPG|Equipment")
 	int32 GetItemCountInSlot(EEquipmentSlotType SlotType) const;
 
-	const TArray<FRPGEquipmentEntry>& GetAllEntries() const { return EquipmentList.Entries; }
+	const TArray<FRPGEquipmentEntry>& GetAllEntries() const;
 
 	URPGEquipComponent* GetEquipComponent() const;
 
 public:
 	FOnRPGEquipmentChanged OnEquipmentChanged;
 	
-private:
-	UPROPERTY(Replicated)
-	FRPGEquipmentList EquipmentList;
-
-	friend struct FRPGEquipmentList;
 };

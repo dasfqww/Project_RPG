@@ -3,6 +3,7 @@
 #include "Ability/RPGGameplayAbility.h"
 #include "DataAsset/Definition/RPGGladiatorData.h"
 #include "Type/RPGEnumTypes.h"
+#include "Item/Equipment/RPGEquipmentSnapshot.h"
 #include "RPGGameplayAbility_Equipment.generated.h"
 
 class AActor;
@@ -38,12 +39,14 @@ struct PROJECT_RPG_API FRPGGladiatorEquipmentInfo
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<URPGItemBase> ItemInstance;
+
+	UPROPERTY(Transient)
+	FRPGEquipmentSnapshot Snapshot;
 };
 
 /**
- * D1 equipment-aware ability base adapted to the project's split Equip/Equipment/Combat components.
- * Explicit item or actor metadata is always enforced. The compatibility fallback is only used while
- * legacy items and weapon actors still have Count metadata or no spawned equipment actor.
+ * Reads native owner-only equipment snapshots. Legacy item objects are not activation evidence.
+ * Actor-only compatibility remains for startup weapons that have not become native item records.
  */
 UCLASS(Blueprintable)
 class PROJECT_RPG_API URPGGameplayAbility_Equipment : public URPGGameplayAbility
@@ -56,8 +59,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "RPG|Player|Equipment")
 	AActor* GetFirstEquipmentActor() const;
 
-	UFUNCTION(BlueprintPure, Category = "RPG|Player|Equipment")
+	UFUNCTION(BlueprintPure, Category = "RPG|Player|Equipment",
+		meta = (DeprecatedFunction, DeprecationMessage = "Use GetEquipmentItemId or GetEquipmentStatValueByItemId."))
 	URPGItemBase* GetEquipmentItemInstance(const AActor* InEquipmentActor) const;
+
+	UFUNCTION(BlueprintPure, Category = "RPG|Player|Equipment")
+	FGuid GetEquipmentItemId(const AActor* InEquipmentActor) const;
+
+	UFUNCTION(BlueprintPure, Category = "RPG|Player|Equipment")
+	float GetEquipmentStatValueByItemId(FGameplayTag InStatTag, FGuid ItemId) const;
 
 	UFUNCTION(BlueprintPure, Category = "RPG|Player|Equipment")
 	int32 GetEquipmentStatValue(FGameplayTag InStatTag, const AActor* InEquipmentActor) const;
@@ -91,6 +101,7 @@ protected:
 	bool bAllowIncompleteEquipmentCompatibility = true;
 
 private:
+	friend class FRPGEquipmentAbilitySnapshotTest;
 	enum class ERequirementResult : uint8
 	{
 		Satisfied,
@@ -99,8 +110,8 @@ private:
 	};
 
 	ERequirementResult ResolveEquipmentRequirement(const AActor* AvatarActor,
-		const FRPGGladiatorEquipmentInfo& EquipmentInfo, URPGItemBase*& OutItem,
-		AActor*& OutEquipmentActor, bool& bOutUsedCompatibilityFallback) const;
+		const FRPGGladiatorEquipmentInfo& EquipmentInfo, FRPGEquipmentSnapshot& OutSnapshot,
+		bool& bOutUsedCompatibilityFallback) const;
 
 	float SnapshottedAttackRate = 1.0f;
 	bool bUsedCompatibilityFallback = false;

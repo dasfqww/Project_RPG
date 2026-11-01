@@ -2,12 +2,18 @@
 
 #include "Character/RPGBaseCharacter.h"
 #include "Component/RPGAbilitySystemComponent.h"
+#include "Attribute/RPGAttributeSet.h"
+#include "GameplayEffect/RPGEquipmentProgressionEffect.h"
+#include "Item/Equipment/RPGEquipmentProgressionRules.h"
 #include "Engine/AssetManager.h"
 #include "Engine/StreamableManager.h"
 #include "GameFramework/Character.h"
 #include "Item/Definition/RPGItemDefinition.h"
 #include "Item/Definition/RPGItemDefinitionFragments.h"
 #include "Manager/DataManager.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "Net/UnrealNetwork.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RPGAuthoritativeEquipmentComponent)
 
@@ -26,7 +32,121 @@ URPGAuthoritativeEquipmentComponent::
 	URPGAuthoritativeEquipmentComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
-	SetIsReplicatedByDefault(false);
+	SetIsReplicatedByDefault(true);
+}
+
+void URPGAuthoritativeEquipmentComponent::GetLifetimeReplicatedProps(
+	TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME_CONDITION(ThisClass, EquipmentSnapshots, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(ThisClass, ActiveEquipState, COND_OwnerOnly);
+}
+
+bool URPGAuthoritativeEquipmentComponent::FindSnapshotInSlot(
+	const EEquipmentSlotType Slot, FRPGEquipmentSnapshot& OutSnapshot) const
+{
+	OutSnapshot = {};
+	for (const FRPGEquipmentSnapshot& Snapshot : EquipmentSnapshots)
+	{
+		if (Snapshot.SlotType == Slot)
+		{
+			OutSnapshot = Snapshot;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool URPGAuthoritativeEquipmentComponent::HasWeaponSnapshots() const
+{
+	return EquipmentSnapshots.ContainsByPredicate([](const FRPGEquipmentSnapshot& Snapshot)
+	{
+		return FRPGEquipmentSnapshot::IsWeaponSlot(Snapshot.SlotType);
+	});
+}
+
+bool URPGAuthoritativeEquipmentComponent::FindWeaponSnapshot(
+	const EWeaponHandType Hand, FRPGEquipmentSnapshot& OutSnapshot) const
+{
+	OutSnapshot = {};
+	if (static_cast<uint8>(Hand) > static_cast<uint8>(EWeaponHandType::Count)
+		|| (ActiveEquipState != EEquipState::WeaponSet_Primary
+			&& ActiveEquipState != EEquipState::WeaponSet_Secondary)) return false;
+	const bool bSecondary = ActiveEquipState == EEquipState::WeaponSet_Secondary;
+	const EEquipmentSlotType Slots[] = {
+		bSecondary ? EEquipmentSlotType::Weapon_Secondary_L : EEquipmentSlotType::Weapon_Primary_L,
+		bSecondary ? EEquipmentSlotType::Weapon_Secondary_R : EEquipmentSlotType::Weapon_Primary_R
+	};
+	for (const EEquipmentSlotType Slot : Slots)
+	{
+		if ((Hand == EWeaponHandType::LeftHand && Slot == Slots[1])
+			|| (Hand == EWeaponHandType::RightHand && Slot == Slots[0])) continue;
+		FRPGEquipmentSnapshot Candidate;
+		if (!FindSnapshotInSlot(Slot, Candidate)) continue;
+		// TwoHand must not accidentally select a known one-handed item in the first slot.
+		if (Hand != EWeaponHandType::Count && Candidate.WeaponHandType != EWeaponHandType::Count
+			&& Candidate.WeaponHandType != Hand) continue;
+		OutSnapshot = MoveTemp(Candidate);
+		return true; // Presence matters even while its actor is loading.
+	}
+	return false;
+}
+
+void URPGAuthoritativeEquipmentComponent::SetActiveEquipState(const EEquipState State)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority()
+		|| static_cast<uint8>(State) >= static_cast<uint8>(EEquipState::Count)
+		|| ActiveEquipState == State) return;
+	const EEquipState PreviousState = ActiveEquipState;
+	FRPGEquipmentProgressionContribution Contribution;
+	if (!RPGEquipmentProgression::TrySum(EquipmentSnapshots, State, Contribution)
+		|| !ApplyProgressionStats(Contribution.Attack, Contribution.MaximumHealth)) return;
+	ActiveEquipState = State;
+	UpdateActorVisibility();
+	GetOwner()->ForceNetUpdate();
+	OnActiveEquipStateChanged.Broadcast(PreviousState, ActiveEquipState);
+}
+
+void URPGAuthoritativeEquipmentComponent::OnRep_ActiveEquipState(const EEquipState PreviousState)
+{
+	// Actor visibility is replicated from the server. This only notifies read consumers.
+	if (PreviousState != ActiveEquipState)
+	{
+		OnActiveEquipStateChanged.Broadcast(PreviousState, ActiveEquipState);
+	}
+}
+
+void URPGAuthoritativeEquipmentComponent::OnRep_EquipmentSnapshots()
+{
+	OnEquipmentSnapshotsChanged.Broadcast();
+}
+
+void URPGAuthoritativeEquipmentComponent::UpdateActorVisibility()
+{
+	const bool bSecondary = ActiveEquipState == EEquipState::WeaponSet_Secondary;
+	for (const auto& Pair : AppliedBySlot)
+	{
+		if (!IsValid(Pair.Value.SpawnedActor) || !FRPGEquipmentSnapshot::IsWeaponSlot(Pair.Key)) continue;
+		const bool bSecondarySlot = Pair.Key == EEquipmentSlotType::Weapon_Secondary_L
+			|| Pair.Key == EEquipmentSlotType::Weapon_Secondary_R;
+		Pair.Value.SpawnedActor->SetActorHiddenInGame(
+			(ActiveEquipState != EEquipState::WeaponSet_Primary
+				&& ActiveEquipState != EEquipState::WeaponSet_Secondary) || bSecondarySlot != bSecondary);
+	}
+}
+
+void URPGAuthoritativeEquipmentComponent::RefreshSnapshotActors()
+{
+	for (FRPGEquipmentSnapshot& Snapshot : EquipmentSnapshots)
+	{
+		const FRPGAppliedEquipmentRuntime* Applied = AppliedBySlot.Find(Snapshot.SlotType);
+		Snapshot.EquippedActor = Applied && Applied->ItemId == Snapshot.ItemId
+			? Applied->SpawnedActor : nullptr;
+	}
+	UpdateActorVisibility();
+	if (GetOwner()) GetOwner()->ForceNetUpdate();
+	OnEquipmentSnapshotsChanged.Broadcast();
 }
 
 void URPGAuthoritativeEquipmentComponent::EndPlay(
@@ -55,6 +175,11 @@ bool URPGAuthoritativeEquipmentComponent::Reconcile(
 	}
 
 	TMap<EEquipmentSlotType, const FRPGItemRecord*> DesiredBySlot;
+	TArray<FRPGEquipmentSnapshot> DesiredSnapshots;
+	if (AppliedOwner.IsValid() && AppliedOwner != ExpectedOwner)
+	{
+		ResetApplied(); // Do not expose the previous character's equipment after an owner switch.
+	}
 	TSet<FGuid> DesiredItemIds;
 	for (const FRPGItemRecord& Record : Records)
 	{
@@ -123,10 +248,36 @@ bool URPGAuthoritativeEquipmentComponent::Reconcile(
 			}
 		}
 
+		FRPGEquipmentSnapshot Snapshot;
+		if (!FRPGEquipmentSnapshot::TryBuild(Record, *Definition, Snapshot))
+		{
+			RPGAuthoritativeEquipment::SetError(OutError,
+				TEXT("Equipment snapshot metadata is invalid or incompatible with the slot."));
+			return false;
+		}
+		DesiredSnapshots.Add(MoveTemp(Snapshot));
+
 		DesiredBySlot.Add(SlotType, &Record);
 		DesiredItemIds.Add(Record.GetItemId());
 	}
 
+	FRPGEquipmentProgressionContribution Contribution;
+	if (!RPGEquipmentProgression::TrySum(DesiredSnapshots, ActiveEquipState, Contribution))
+	{
+		RPGAuthoritativeEquipment::SetError(OutError, TEXT("Unsupported explicit equipment progression."));
+		return false;
+	}
+	if (Contribution.Attack != 0.f || Contribution.MaximumHealth != 0.f)
+	{
+		const auto* ASC = OwnerActor->FindComponentByClass<URPGAbilitySystemComponent>();
+		if (!ASC || !ASC->IsOwnerActorAuthoritative()
+			|| !ASC->HasAttributeSetForAttribute(URPGAttributeSet::GetAttackAttribute())
+			|| !ASC->HasAttributeSetForAttribute(URPGAttributeSet::GetMaxHealthAttribute()))
+		{
+			RPGAuthoritativeEquipment::SetError(OutError, TEXT("Equipment progression requires initialized authoritative attributes."));
+			return false;
+		}
+	}
 	TArray<EEquipmentSlotType> SlotsToRemove;
 	for (const TPair<
 		EEquipmentSlotType,
@@ -164,9 +315,35 @@ bool URPGAuthoritativeEquipmentComponent::Reconcile(
 			DataManager,
 			OutError))
 		{
+			ResetApplied(); // Fail closed, including any partially applied resources.
+			OwnerActor->ForceNetUpdate();
+			OnEquipmentSnapshotsChanged.Broadcast();
 			return false;
 		}
 	}
+	if (!ApplyProgressionStats(Contribution.Attack, Contribution.MaximumHealth))
+	{
+		ResetApplied();
+		RPGAuthoritativeEquipment::SetError(OutError, TEXT("Equipment progression effect could not be applied."));
+		return false;
+	}
+	DesiredSnapshots.Sort([](const FRPGEquipmentSnapshot& A, const FRPGEquipmentSnapshot& B)
+	{
+		return static_cast<uint8>(A.SlotType) < static_cast<uint8>(B.SlotType);
+	});
+	EquipmentSnapshots = MoveTemp(DesiredSnapshots);
+	AppliedOwner = ExpectedOwner;
+	RefreshSnapshotActors();
+#if !UE_BUILD_SHIPPING
+	if (FParse::Param(FCommandLine::Get(), TEXT("RPGInventoryEquipmentRecoveryServerE2E")))
+	{
+		FRPGEquipmentSnapshot Head;
+		const bool bHead = FindSnapshotInSlot(EEquipmentSlotType::Head, Head);
+		UE_LOG(LogTemp, Display, TEXT("RPG_EQUIPMENT_RECOVERY_STATE Head=%d Item=%s Revision=%lld Applied=%d Total=%d"),
+			bHead ? 1 : 0, *Head.ItemId.ToString(EGuidFormats::DigitsWithHyphensLower), Head.Revision,
+			bHead && IsItemApplied(EEquipmentSlotType::Head, Head.ItemId) ? 1 : 0, NumAppliedItems());
+	}
+#endif
 	return true;
 }
 
@@ -227,6 +404,11 @@ bool URPGAuthoritativeEquipmentComponent::ApplyRecord(
 	}
 
 	RequestOrSpawnActor(SlotType, Applied.ItemId, DataManager);
+#if !UE_BUILD_SHIPPING
+	if (SlotType == EEquipmentSlotType::Head && FParse::Param(FCommandLine::Get(), TEXT("RPGInventoryEquipmentRecoveryServerE2E")))
+		UE_LOG(LogTemp, Display, TEXT("RPG_EQUIPMENT_RECOVERY_RESOURCE APPLY Item=%s Revision=%lld"),
+			*Record.GetItemId().ToString(EGuidFormats::DigitsWithHyphensLower), Record.GetRevision());
+#endif
 	return true;
 }
 
@@ -238,6 +420,10 @@ void URPGAuthoritativeEquipmentComponent::RemoveApplied(
 	{
 		return;
 	}
+#if !UE_BUILD_SHIPPING
+	if (SlotType == EEquipmentSlotType::Head && FParse::Param(FCommandLine::Get(), TEXT("RPGInventoryEquipmentRecoveryServerE2E")))
+		UE_LOG(LogTemp, Display, TEXT("RPG_EQUIPMENT_RECOVERY_RESOURCE REMOVE Item=%s"), *Applied->ItemId.ToString(EGuidFormats::DigitsWithHyphensLower));
+#endif
 	if (Applied->PendingActorLoad.IsValid())
 	{
 		Applied->PendingActorLoad->CancelHandle();
@@ -267,6 +453,50 @@ void URPGAuthoritativeEquipmentComponent::ResetApplied()
 	{
 		RemoveApplied(SlotType);
 	}
+	EquipmentSnapshots.Reset();
+	AppliedOwner = {};
+	ApplyProgressionStats(0.f, 0.f);
+	if (GetOwner() && GetOwner()->HasAuthority()) GetOwner()->ForceNetUpdate();
+	OnEquipmentSnapshotsChanged.Broadcast();
+}
+
+bool URPGAuthoritativeEquipmentComponent::ApplyProgressionStats(const float Attack, const float MaximumHealth)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority()) return Attack == 0.f && MaximumHealth == 0.f;
+	auto* ASC = GetOwner() ? GetOwner()->FindComponentByClass<URPGAbilitySystemComponent>() : nullptr;
+	const bool bHasContribution = Attack != 0.f || MaximumHealth != 0.f;
+	if (bHasContribution && (!ASC || !ASC->IsOwnerActorAuthoritative()
+		|| !ASC->HasAttributeSetForAttribute(URPGAttributeSet::GetAttackAttribute())
+		|| !ASC->HasAttributeSetForAttribute(URPGAttributeSet::GetMaxHealthAttribute()))) return false;
+	if (ProgressionAbilitySystem == ASC && Attack == AppliedProgressionAttack && MaximumHealth == AppliedProgressionHealth
+		&& (!bHasContribution || (ProgressionEffect.IsValid() && ASC->GetActiveGameplayEffect(ProgressionEffect)))) return true;
+	FActiveGameplayEffectHandle Next;
+	if (bHasContribution)
+	{
+		FGameplayEffectContextHandle Context = ASC->MakeEffectContext();
+		Context.AddSourceObject(this);
+		FGameplayEffectSpecHandle Spec = ASC->MakeOutgoingSpec(URPGEquipmentProgressionEffect::StaticClass(), 1.f, Context);
+		if (!Spec.IsValid()) return false;
+		Spec.Data->SetSetByCallerMagnitude(URPGEquipmentProgressionEffect::AttackMagnitude(), Attack);
+		Spec.Data->SetSetByCallerMagnitude(URPGEquipmentProgressionEffect::HealthMagnitude(), MaximumHealth);
+		Next = ASC->ApplyGameplayEffectSpecToSelf(*Spec.Data);
+		if (!Next.IsValid() || !ASC->GetActiveGameplayEffect(Next)) return false;
+	}
+	if (auto* PreviousASC = ProgressionAbilitySystem.Get(); PreviousASC && ProgressionEffect.IsValid())
+		PreviousASC->RemoveActiveGameplayEffect(ProgressionEffect);
+	ProgressionEffect = Next;
+	ProgressionAbilitySystem = ASC;
+	AppliedProgressionAttack = Attack;
+	AppliedProgressionHealth = MaximumHealth;
+	// Replace the complete aggregate before clamping, so swapping two chests
+	// does not transiently clamp health against an unequipped base maximum.
+	if (ASC && ASC->HasAttributeSetForAttribute(URPGAttributeSet::GetCurrentHealthAttribute()))
+	{
+		const float Health = ASC->GetNumericAttribute(URPGAttributeSet::GetCurrentHealthAttribute());
+		const float Max = ASC->GetNumericAttribute(URPGAttributeSet::GetMaxHealthAttribute());
+		if (Health > Max) ASC->SetNumericAttributeBase(URPGAttributeSet::GetCurrentHealthAttribute(), FMath::Max(0.f, Max));
+	}
+	return true;
 }
 
 void URPGAuthoritativeEquipmentComponent::RequestOrSpawnActor(
@@ -367,4 +597,5 @@ void URPGAuthoritativeEquipmentComponent::HandleActorClassLoaded(
 			Fragment->EquippedActorRelativeTransform);
 	}
 	Applied->SpawnedActor = SpawnedActor;
+	RefreshSnapshotActors();
 }

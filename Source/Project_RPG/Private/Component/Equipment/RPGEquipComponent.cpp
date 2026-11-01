@@ -1,180 +1,191 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "Component/Equipment/RPGEquipComponent.h"
-#include "Item/RPGItemBase.h"
-#include "Item/Fragment/RPGItemFragment.h"
-#include "Character/RPGPlayer.h"
-#include "Controller/RPGPlayerController.h"
-#include "Net/UnrealNetwork.h"
-#include "Engine/ActorChannel.h"
+
 #include "AbilitySystemComponent.h"
-#include "RPGDebugHelper.h"
+#include "Character/RPGPlayer.h"
+#include "Component/Equipment/RPGAuthoritativeEquipmentComponent.h"
+#include "Component/RPGInventoryProjectionComponent.h"
+#include "Component/RPGItemCommandComponent.h"
+#include "Controller/RPGPlayerController.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
+#include "Item/Policy/RPGItemInventoryPolicy.h"
+#include "Item/RPGItemBase.h"
 
-// --- FRPGEquipList Implementation ---
-
-void FRPGEquipList::PostReplicatedAdd(const TArrayView<int32> AddedIndices, int32 FinalSize)
+namespace
 {
-	for (int32 Index : AddedIndices)
-	{
-		if (EquipComponent)
-		{
-			EquipComponent->OnItemEquipped(Entries[Index]);
-		}
-	}
+bool ResolveCommandContext(const URPGEquipComponent& Facade,
+	URPGItemCommandComponent*& OutCommands, const IRPGItemRecordSource*& OutRecords)
+{
+	OutCommands = nullptr;
+	OutRecords = nullptr;
+	const APawn* Pawn = Cast<APawn>(Facade.GetOwner());
+	APlayerController* Controller = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
+	if (!Pawn || !Pawn->HasAuthority() || !Controller || Controller->GetPawn() != Pawn) return false;
+	const auto* Projection = Controller->FindComponentByClass<URPGInventoryProjectionComponent>();
+	OutCommands = Controller->FindComponentByClass<URPGItemCommandComponent>();
+	OutRecords = Projection ? Projection->GetAuthoritativeRecordSource() : nullptr;
+	return OutCommands && OutRecords;
 }
 
-void FRPGEquipList::PostReplicatedChange(const TArrayView<int32> ChangedIndices, int32 FinalSize)
+void RejectLegacyEquip(const URPGEquipComponent& Facade)
 {
-	for (int32 Index : ChangedIndices)
-	{
-		// 아이템이 바뀌었을 경우의 처리 (보통 해제 후 재장착으로 처리되지만 안전을 위해)
-	}
+	UE_LOG(LogTemp, Warning, TEXT("Legacy equipment request rejected for %s: no canonical item command is available."),
+		*GetNameSafe(Facade.GetOwner()));
+}
 }
 
-void FRPGEquipList::PostReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize)
-{
-	// 삭제는 사전에 UnequipItem_Internal 등에서 로컬/서버 처리가 완료되었다고 가정
-}
-
-// --- URPGEquipComponent Implementation ---
+// Retain serialized struct types, but never let their callbacks apply legacy effects.
+void FRPGEquipList::PostReplicatedAdd(const TArrayView<int32>, int32) {}
+void FRPGEquipList::PostReplicatedChange(const TArrayView<int32>, int32) {}
+void FRPGEquipList::PostReplicatedRemove(const TArrayView<int32>, int32) {}
 
 URPGEquipComponent::URPGEquipComponent(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer), EquipList(this)
+	: Super(ObjectInitializer)
 {
-	SetIsReplicatedByDefault(true);
+	PrimaryComponentTick.bCanEverTick = false;
+	SetIsReplicatedByDefault(false);
 }
 
-void URPGEquipComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+void URPGEquipComponent::OnRegister()
 {
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-
-	DOREPLIFETIME(URPGEquipComponent, EquipList);
-	DOREPLIFETIME(URPGEquipComponent, CurrentEquipState);
+	Super::OnRegister();
+	BindNativeEquipment();
 }
 
-bool URPGEquipComponent::ReplicateSubobjects(UActorChannel* Channel, FOutBunch* Bunch, FReplicationFlags* RepFlags)
+void URPGEquipComponent::BeginPlay()
 {
-	bool WroteSomething = Super::ReplicateSubobjects(Channel, Bunch, RepFlags);
+	Super::BeginPlay();
+	BindNativeEquipment(); // Also handles a native component registered after this facade.
+}
 
-	for (FRPGEquipEntry& Entry : EquipList.Entries)
+void URPGEquipComponent::OnUnregister()
+{
+	UnbindNativeEquipment();
+	Super::OnUnregister();
+}
+
+void URPGEquipComponent::BindNativeEquipment()
+{
+	UnbindNativeEquipment();
+	URPGAuthoritativeEquipmentComponent* Native = GetOwner()
+		? GetOwner()->FindComponentByClass<URPGAuthoritativeEquipmentComponent>() : nullptr;
+	if (Native)
 	{
-		if (IsValid(Entry.ItemInstance))
-		{
-			WroteSomething |= Channel->ReplicateSubobject(Entry.ItemInstance, *Bunch, *RepFlags);
-		}
-	}
-
-	return WroteSomething;
-}
-
-void URPGEquipComponent::EquipItem(EEquipmentSlotType SlotType, URPGItemBase* Item)
-{
-	if (!GetOwner() || !GetOwner()->HasAuthority() || !Item) return;
-
-	// 이미 해당 슬롯에 아이템이 있다면 해제
-	UnequipItem(SlotType);
-
-	FRPGEquipEntry& NewEntry = EquipList.Entries.Add_GetRef(FRPGEquipEntry(SlotType, Item));
-	EquipList.MarkItemDirty(NewEntry);
-
-	// 서버에서 즉시 로직 실행
-	OnItemEquipped(NewEntry);
-}
-
-void URPGEquipComponent::UnequipItem(EEquipmentSlotType SlotType)
-{
-	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
-
-	for (int32 i = 0; i < EquipList.Entries.Num(); ++i)
-	{
-		if (EquipList.Entries[i].EquipmentSlotType == SlotType)
-		{
-			OnItemUnequipped(EquipList.Entries[i]);
-			EquipList.Entries.RemoveAt(i);
-			EquipList.MarkArrayDirty();
-			break;
-		}
+		BoundEquipment = Native;
+		ActiveStateChangedHandle = Native->OnActiveEquipStateChanged.AddUObject(
+			this, &ThisClass::HandleNativeStateChanged);
 	}
 }
 
-void URPGEquipComponent::ChangeEquipState(EEquipState NewState)
+void URPGEquipComponent::UnbindNativeEquipment()
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority() || CurrentEquipState == NewState) return;
+	if (URPGAuthoritativeEquipmentComponent* Native = BoundEquipment.Get())
+	{
+		Native->OnActiveEquipStateChanged.Remove(ActiveStateChangedHandle);
+	}
+	ActiveStateChangedHandle.Reset();
+	BoundEquipment.Reset();
+}
 
-	EEquipState OldState = CurrentEquipState;
-	CurrentEquipState = NewState;
-
-	// 상태 변경에 따른 장비 갱신 (시각적 효과 등)
-	UpdateEquippedItems();
-
+void URPGEquipComponent::HandleNativeStateChanged(const EEquipState OldState, const EEquipState NewState)
+{
 	OnEquipStateChanged.Broadcast(OldState, NewState);
+}
+
+void URPGEquipComponent::EquipItem(const EEquipmentSlotType SlotType, URPGItemBase* Item)
+{
+	URPGItemCommandComponent* Commands;
+	const IRPGItemRecordSource* Records;
+	FRPGItemRecord Record;
+	if (static_cast<uint8>(SlotType) >= static_cast<uint8>(EEquipmentSlotType::Count)
+		|| !IsValid(Item) || !ResolveCommandContext(*this, Commands, Records)
+		|| !Records->Find(Item->GetInstanceId(), Record)
+		|| Record.GetLifecycleState() != ERPGItemLifecycleState::Active
+		|| Record.GetLocation().ContainerType != ERPGItemContainerType::Inventory)
+	{
+		RejectLegacyEquip(*this);
+		return;
+	}
+	// The object carries only an ID. Native planning validates owner, policy and occupancy;
+	// an occupied slot is NOT silently unequipped as it was in the retired implementation.
+	Commands->ServerEquipItem(FGuid::NewGuid(), Record.GetItemId(), Record.GetRevision(), SlotType);
+}
+
+void URPGEquipComponent::UnequipItem(const EEquipmentSlotType SlotType)
+{
+	URPGItemCommandComponent* Commands;
+	const IRPGItemRecordSource* Records;
+	FRPGEquipmentSnapshot Snapshot;
+	FRPGItemRecord Record;
+	const auto* Native = GetOwner()
+		? GetOwner()->FindComponentByClass<URPGAuthoritativeEquipmentComponent>() : nullptr;
+	if (!Native || !ResolveCommandContext(*this, Commands, Records)
+		|| !Native->FindSnapshotInSlot(SlotType, Snapshot)
+		|| !Records->Find(Snapshot.ItemId, Record)
+		|| Record.GetLifecycleState() != ERPGItemLifecycleState::Active
+		|| Record.GetLocation().ContainerType != ERPGItemContainerType::Equipment
+		|| Record.GetLocation().SlotIndex != static_cast<int32>(SlotType))
+	{
+		RejectLegacyEquip(*this);
+		return;
+	}
+	FRPGItemLocation Destination;
+	Destination.ContainerType = ERPGItemContainerType::Inventory;
+	Destination.ContainerId = Record.GetOwner().OwnerId;
+	for (int32 Index = 0; Index < RPGItemInventoryPolicy::SlotCapacity; ++Index)
+	{
+		Destination.SlotIndex = Index;
+		FRPGItemRecord Occupant;
+		if (!Records->FindAtLocation(Record.GetOwner(), Destination, Occupant))
+		{
+			Commands->ServerUnequipItem(FGuid::NewGuid(), Record.GetItemId(), Record.GetRevision(), Index);
+			return; // Backend CAS/slot validation resolves any concurrent change.
+		}
+	}
+	RejectLegacyEquip(*this); // Full bag: no state change, actor destruction or grant removal.
+}
+
+void URPGEquipComponent::ChangeEquipState(const EEquipState NewState)
+{
+	if (URPGAuthoritativeEquipmentComponent* Native = GetOwner()
+		? GetOwner()->FindComponentByClass<URPGAuthoritativeEquipmentComponent>() : nullptr)
+	{
+		Native->SetActiveEquipState(NewState); // This remains authority-only; no new RPC.
+	}
 }
 
 void URPGEquipComponent::UpdateEquippedItems()
 {
-	// 현재 상태에 맞게 모든 장착 액터의 가시성이나 기능을 업데이트
-	// 예: Primary 상태면 Secondary 무기 액터를 숨김
-	for (FRPGEquipEntry& Entry : EquipList.Entries)
-	{
-		if (Entry.SpawnedActor)
-		{
-			bool bShouldBeVisible = true;
-			
-			// 무기 슬롯인 경우 현재 상태와 비교
-			if (Entry.EquipmentSlotType >= EEquipmentSlotType::Weapon_Primary_L && Entry.EquipmentSlotType <= EEquipmentSlotType::Weapon_Secondary_R)
-			{
-				const TArray<EEquipmentSlotType>& ActiveSlots = GetSlotsForState(CurrentEquipState);
-				bShouldBeVisible = ActiveSlots.Contains(Entry.EquipmentSlotType);
-			}
-
-			Entry.SpawnedActor->SetActorHiddenInGame(!bShouldBeVisible);
-		}
-	}
+	// Retired: visibility and applied resources are owned by native equipment only.
 }
 
 ARPGPlayer* URPGEquipComponent::GetRPGPlayer() const
 {
-	return GetOwningPawn<ARPGPlayer>();
+	return Cast<ARPGPlayer>(GetOwner());
 }
 
 ARPGPlayerController* URPGEquipComponent::GetRPGPlayerController() const
 {
-	return GetOwningController<ARPGPlayerController>();
+	const APawn* Pawn = Cast<APawn>(GetOwner());
+	return Pawn ? Cast<ARPGPlayerController>(Pawn->GetController()) : nullptr;
 }
 
 UAbilitySystemComponent* URPGEquipComponent::GetAbilitySystemComponent() const
 {
-	if (ARPGPlayer* Player = GetRPGPlayer())
-	{
-		return Player->GetAbilitySystemComponent();
-	}
-	return nullptr;
+	return GetOwner() ? GetOwner()->FindComponentByClass<UAbilitySystemComponent>() : nullptr;
 }
 
-URPGItemBase* URPGEquipComponent::GetItemInSlot(EEquipmentSlotType SlotType) const
+URPGItemBase* URPGEquipComponent::GetItemInSlot(EEquipmentSlotType) const
 {
-	for (const auto& Entry : EquipList.Entries)
-	{
-		if (Entry.EquipmentSlotType == SlotType)
-		{
-			return Entry.ItemInstance;
-		}
-	}
-	return nullptr;
+	return nullptr; // Never synthesize a second mutable item object.
 }
 
 AActor* URPGEquipComponent::GetSpawnedActorInSlot(const EEquipmentSlotType SlotType) const
 {
-	for (const FRPGEquipEntry& Entry : EquipList.Entries)
-	{
-		if (Entry.EquipmentSlotType == SlotType)
-		{
-			return Entry.SpawnedActor;
-		}
-	}
-
-	return nullptr;
+	const auto* Native = GetOwner()
+		? GetOwner()->FindComponentByClass<URPGAuthoritativeEquipmentComponent>() : nullptr;
+	FRPGEquipmentSnapshot Snapshot;
+	return Native && Native->FindSnapshotInSlot(SlotType, Snapshot) ? Snapshot.EquippedActor.Get() : nullptr;
 }
 
 bool URPGEquipComponent::FindEquippedWeapon(const EWeaponHandType HandType,
@@ -183,132 +194,33 @@ bool URPGEquipComponent::FindEquippedWeapon(const EWeaponHandType HandType,
 	OutItem = nullptr;
 	OutSpawnedActor = nullptr;
 	OutSlotType = EEquipmentSlotType::None;
-
-	TArray<EEquipmentSlotType, TInlineAllocator<4>> CandidateSlots;
-	const auto AddWeaponSet = [&CandidateSlots](const bool bPrimary)
-	{
-		CandidateSlots.Add(bPrimary
-			? EEquipmentSlotType::Weapon_Primary_L
-			: EEquipmentSlotType::Weapon_Secondary_L);
-		CandidateSlots.Add(bPrimary
-			? EEquipmentSlotType::Weapon_Primary_R
-			: EEquipmentSlotType::Weapon_Secondary_R);
-	};
-
-	if (CurrentEquipState == EEquipState::WeaponSet_Secondary)
-	{
-		AddWeaponSet(false);
-		AddWeaponSet(true);
-	}
-	else
-	{
-		AddWeaponSet(true);
-		AddWeaponSet(false);
-	}
-
-	for (const EEquipmentSlotType CandidateSlot : CandidateSlots)
-	{
-		const bool bIsLeftSlot = CandidateSlot == EEquipmentSlotType::Weapon_Primary_L ||
-			CandidateSlot == EEquipmentSlotType::Weapon_Secondary_L;
-		if ((HandType == EWeaponHandType::LeftHand && !bIsLeftSlot) ||
-			(HandType == EWeaponHandType::RightHand && bIsLeftSlot))
-		{
-			continue;
-		}
-
-		for (const FRPGEquipEntry& Entry : EquipList.Entries)
-		{
-			if (Entry.EquipmentSlotType != CandidateSlot || !Entry.ItemInstance)
-			{
-				continue;
-			}
-
-			OutItem = Entry.ItemInstance;
-			OutSpawnedActor = Entry.SpawnedActor;
-			OutSlotType = Entry.EquipmentSlotType;
-			return true;
-		}
-	}
-
-	return false;
+	const auto* Native = GetOwner()
+		? GetOwner()->FindComponentByClass<URPGAuthoritativeEquipmentComponent>() : nullptr;
+	FRPGEquipmentSnapshot Snapshot;
+	if (!Native || !Native->FindWeaponSnapshot(HandType, Snapshot)) return false;
+	OutSpawnedActor = Snapshot.EquippedActor;
+	OutSlotType = Snapshot.SlotType;
+	return true; // Presence is retained while the native actor is loading; OutItem is null.
 }
 
-const TArray<EEquipmentSlotType>& URPGEquipComponent::GetSlotsForState(EEquipState State)
+EEquipState URPGEquipComponent::GetCurrentEquipState() const
 {
-	static TMap<EEquipState, TArray<EEquipmentSlotType>> StateToSlots;
-	static const TArray<EEquipmentSlotType> EmptySlots;
-
-	if (StateToSlots.IsEmpty())
-	{
-		StateToSlots.Add(EEquipState::WeaponSet_Primary, { EEquipmentSlotType::Weapon_Primary_L, EEquipmentSlotType::Weapon_Primary_R });
-		StateToSlots.Add(EEquipState::WeaponSet_Secondary, { EEquipmentSlotType::Weapon_Secondary_L, EEquipmentSlotType::Weapon_Secondary_R });
-		StateToSlots.Add(EEquipState::Utility, { EEquipmentSlotType::Utility_1, EEquipmentSlotType::Utility_2 });
-	}
-
-	const TArray<EEquipmentSlotType>* FoundSlots = StateToSlots.Find(State);
-	return FoundSlots ? *FoundSlots : EmptySlots;
+	const auto* Native = GetOwner()
+		? GetOwner()->FindComponentByClass<URPGAuthoritativeEquipmentComponent>() : nullptr;
+	return Native ? Native->GetActiveEquipState() : EEquipState::None;
 }
 
-void URPGEquipComponent::OnRep_CurrentEquipState(EEquipState OldState)
+const TArray<EEquipmentSlotType>& URPGEquipComponent::GetSlotsForState(const EEquipState State)
 {
-	UpdateEquippedItems();
-	OnEquipStateChanged.Broadcast(OldState, CurrentEquipState);
-}
-
-void URPGEquipComponent::OnItemEquipped(FRPGEquipEntry& Entry)
-{
-	if (!Entry.ItemInstance) return;
-
-	// 1. Fragment를 통한 기본 효과 적용 (Stats 등)
-	if (FEquipmentFragment* EquipFragment = Entry.ItemInstance->GetItemManifestMutable().GetFragmentOfTypeMutable<FEquipmentFragment>())
+	static const TArray<EEquipmentSlotType> Primary = { EEquipmentSlotType::Weapon_Primary_L, EEquipmentSlotType::Weapon_Primary_R };
+	static const TArray<EEquipmentSlotType> Secondary = { EEquipmentSlotType::Weapon_Secondary_L, EEquipmentSlotType::Weapon_Secondary_R };
+	static const TArray<EEquipmentSlotType> Utility = { EEquipmentSlotType::Utility_1, EEquipmentSlotType::Utility_2 };
+	static const TArray<EEquipmentSlotType> Empty;
+	switch (State)
 	{
-		EquipFragment->OnEquip(GetRPGPlayerController());
+	case EEquipState::WeaponSet_Primary: return Primary;
+	case EEquipState::WeaponSet_Secondary: return Secondary;
+	case EEquipState::Utility: return Utility;
+	default: return Empty;
 	}
-
-	// 2. 무기 액터 스폰 (예시 로직 - 실제로는 DataAsset 등을 참조해야 함)
-	// TODO: ItemManifest에서 스폰할 액터 클래스와 소켓 정보를 가져와야 함
-	
-	// 3. GAS 연동 (Ability 부여 등)
-	// TODO: 아이템에 포함된 Ability들을 ASC에 부여하고 핸들을 Entry.GrantedAbilityHandles에 저장
-
-	UpdateEquippedItems();
-	
-	OnEquipItemChanged.Broadcast(Entry.EquipmentSlotType, Entry.ItemInstance, 1);
-}
-
-void URPGEquipComponent::OnItemUnequipped(FRPGEquipEntry& Entry)
-{
-	// 1. Fragment 효과 제거
-	if (Entry.ItemInstance)
-	{
-		if (FEquipmentFragment* EquipFragment = Entry.ItemInstance->GetItemManifestMutable().GetFragmentOfTypeMutable<FEquipmentFragment>())
-		{
-			EquipFragment->OnUnequip(GetRPGPlayerController());
-		}
-	}
-
-	// 2. 스폰된 액터 제거
-	if (Entry.SpawnedActor)
-	{
-		Entry.SpawnedActor->Destroy();
-		Entry.SpawnedActor = nullptr;
-	}
-
-	// 3. 부여된 GAS 효과/어빌리티 제거
-	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent())
-	{
-		for (const FGameplayAbilitySpecHandle& Handle : Entry.GrantedAbilityHandles)
-		{
-			ASC->ClearAbility(Handle);
-		}
-		Entry.GrantedAbilityHandles.Empty();
-
-		if (Entry.GrantedEffectHandle.IsValid())
-		{
-			ASC->RemoveActiveGameplayEffect(Entry.GrantedEffectHandle);
-			Entry.GrantedEffectHandle = FActiveGameplayEffectHandle();
-		}
-	}
-
-	OnEquipItemChanged.Broadcast(Entry.EquipmentSlotType, nullptr, 0);
 }

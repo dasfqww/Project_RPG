@@ -2,10 +2,7 @@
 
 #include "Attribute/RPGAttributeSet.h"
 #include "Component/Combat/PawnCombatComponent.h"
-#include "Component/Equipment/RPGEquipComponent.h"
-#include "Component/Equipment/RPGEquipmentComponent.h"
-#include "Item/Fragment/RPGItemFragment.h"
-#include "Item/RPGItemBase.h"
+#include "Component/Equipment/RPGAuthoritativeEquipmentComponent.h"
 #include "Item/Weapon/RPGWeaponBase.h"
 #include "NativeGameplayTags.h"
 
@@ -18,35 +15,19 @@ UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_Ability_ActivateFail_WrongEquipment,
 
 namespace RPGEquipmentAbility
 {
-	ERPGGladiatorEquipmentType GetEffectiveEquipmentType(
-		const FRPGGladiatorEquipmentInfo& EquipmentInfo)
+	ERPGGladiatorEquipmentType GetEffectiveEquipmentType(const FRPGGladiatorEquipmentInfo& Info)
 	{
-		if (EquipmentInfo.EquipmentType != ERPGGladiatorEquipmentType::Count)
-		{
-			return EquipmentInfo.EquipmentType;
-		}
-
-		// Some original D1 native skill constructors populated only the subtype fields.
-		if (EquipmentInfo.RequiredArmorType != ERPGGladiatorArmorType::Count)
-		{
-			return ERPGGladiatorEquipmentType::Armor;
-		}
-		if (EquipmentInfo.WeaponHandType != EWeaponHandType::Count ||
-			EquipmentInfo.RequiredWeaponType != ERPGGladiatorWeaponType::Count)
-		{
-			return ERPGGladiatorEquipmentType::Weapon;
-		}
-		if (EquipmentInfo.RequiredUtilityType != ERPGGladiatorUtilityType::Count)
-		{
-			return ERPGGladiatorEquipmentType::Utility;
-		}
-
+		if (Info.EquipmentType != ERPGGladiatorEquipmentType::Count) return Info.EquipmentType;
+		if (Info.RequiredArmorType != ERPGGladiatorArmorType::Count) return ERPGGladiatorEquipmentType::Armor;
+		if (Info.WeaponHandType != EWeaponHandType::Count ||
+			Info.RequiredWeaponType != ERPGGladiatorWeaponType::Count) return ERPGGladiatorEquipmentType::Weapon;
+		if (Info.RequiredUtilityType != ERPGGladiatorUtilityType::Count) return ERPGGladiatorEquipmentType::Utility;
 		return ERPGGladiatorEquipmentType::Count;
 	}
 
-	EEquipmentSlotType GetArmorSlot(const ERPGGladiatorArmorType ArmorType)
+	EEquipmentSlotType GetArmorSlot(const ERPGGladiatorArmorType Type)
 	{
-		switch (ArmorType)
+		switch (Type)
 		{
 		case ERPGGladiatorArmorType::Helmet: return EEquipmentSlotType::Head;
 		case ERPGGladiatorArmorType::Chest: return EEquipmentSlotType::Chest;
@@ -57,71 +38,14 @@ namespace RPGEquipmentAbility
 		}
 	}
 
-	void BuildWeaponSlotCandidates(const EWeaponHandType HandType, const EEquipState EquipState,
-		TArray<EEquipmentSlotType, TInlineAllocator<4>>& OutSlots)
+	bool HasKnownMismatch(const ERPGGladiatorWeaponType Actual, const ERPGGladiatorWeaponType Required)
 	{
-		const auto AddSet = [&OutSlots, HandType](const bool bPrimary)
-		{
-			const EEquipmentSlotType LeftSlot = bPrimary
-				? EEquipmentSlotType::Weapon_Primary_L
-				: EEquipmentSlotType::Weapon_Secondary_L;
-			const EEquipmentSlotType RightSlot = bPrimary
-				? EEquipmentSlotType::Weapon_Primary_R
-				: EEquipmentSlotType::Weapon_Secondary_R;
-
-			if (HandType != EWeaponHandType::RightHand)
-			{
-				OutSlots.Add(LeftSlot);
-			}
-			if (HandType != EWeaponHandType::LeftHand)
-			{
-				OutSlots.Add(RightSlot);
-			}
-		};
-
-		if (EquipState == EEquipState::WeaponSet_Secondary)
-		{
-			AddSet(false);
-			AddSet(true);
-		}
-		else
-		{
-			AddSet(true);
-			AddSet(false);
-		}
-	}
-
-	URPGItemBase* GetItemInSlot(const AActor* AvatarActor, const EEquipmentSlotType SlotType,
-		AActor*& OutEquipmentActor)
-	{
-		OutEquipmentActor = nullptr;
-		if (!AvatarActor || SlotType == EEquipmentSlotType::None)
-		{
-			return nullptr;
-		}
-
-		if (const URPGEquipComponent* EquipComponent =
-			AvatarActor->FindComponentByClass<URPGEquipComponent>())
-		{
-			if (URPGItemBase* Item = EquipComponent->GetItemInSlot(SlotType))
-			{
-				OutEquipmentActor = EquipComponent->GetSpawnedActorInSlot(SlotType);
-				return Item;
-			}
-		}
-
-		if (const URPGEquipmentComponent* EquipmentComponent =
-			AvatarActor->FindComponentByClass<URPGEquipmentComponent>())
-		{
-			return EquipmentComponent->GetItemInSlot(SlotType);
-		}
-
-		return nullptr;
+		return Actual != ERPGGladiatorWeaponType::Count && Required != ERPGGladiatorWeaponType::Count
+			&& Actual != Required;
 	}
 }
 
-URPGGameplayAbility_Equipment::URPGGameplayAbility_Equipment(
-	const FObjectInitializer& ObjectInitializer)
+URPGGameplayAbility_Equipment::URPGGameplayAbility_Equipment(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
@@ -133,342 +57,185 @@ void URPGGameplayAbility_Equipment::ActivateAbility(const FGameplayAbilitySpecHa
 	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo,
 	const FGameplayEventData* TriggerEventData)
 {
-	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
-
 	bUsedCompatibilityFallback = false;
-	for (FRPGGladiatorEquipmentInfo& EquipmentInfo : EquipmentInfos)
+	for (FRPGGladiatorEquipmentInfo& Info : EquipmentInfos)
 	{
-		EquipmentInfo.EquipmentActor.Reset();
-		EquipmentInfo.ItemInstance.Reset();
-
-		URPGItemBase* ItemInstance = nullptr;
-		AActor* EquipmentActor = nullptr;
-		bool bUsedFallback = false;
+		Info.EquipmentActor.Reset();
+		Info.ItemInstance.Reset();
+		Info.Snapshot = {};
+	}
+	for (FRPGGladiatorEquipmentInfo& Info : EquipmentInfos)
+	{
+		bool bFallback = false;
 		const ERequirementResult Result = ResolveEquipmentRequirement(
-			ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr,
-			EquipmentInfo, ItemInstance, EquipmentActor, bUsedFallback);
+			ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr, Info, Info.Snapshot, bFallback);
 		if (Result != ERequirementResult::Satisfied)
 		{
+			for (FRPGGladiatorEquipmentInfo& Previous : EquipmentInfos)
+			{
+				Previous.Snapshot = {};
+				Previous.EquipmentActor.Reset();
+			}
+			bUsedCompatibilityFallback = false;
 			CancelAbility(Handle, ActorInfo, ActivationInfo, true);
 			return;
 		}
-
-		EquipmentInfo.ItemInstance = ItemInstance;
-		EquipmentInfo.EquipmentActor = EquipmentActor;
-		bUsedCompatibilityFallback |= bUsedFallback;
+		Info.EquipmentActor = Info.Snapshot.EquippedActor;
+		bUsedCompatibilityFallback |= bFallback;
 	}
-
 	SnapshottedAttackRate = DefaultAttackRate;
 	if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
 	{
-		if (const URPGAttributeSet* AttributeSet =
-			ActorInfo->AbilitySystemComponent->GetSet<URPGAttributeSet>())
+		if (const URPGAttributeSet* Attributes = ActorInfo->AbilitySystemComponent->GetSet<URPGAttributeSet>())
 		{
-			const float AttackSpeedMultiplier =
-				1.0f + AttributeSet->GetAttackSpeedPercent() / 100.0f;
-			SnapshottedAttackRate = FMath::Max(0.0f,
-				DefaultAttackRate * AttackSpeedMultiplier);
+			SnapshottedAttackRate = FMath::Max(0.f, DefaultAttackRate *
+				(1.f + Attributes->GetAttackSpeedPercent() / 100.f));
 		}
 	}
+	// Blueprint activation sees the current invocation's snapshots, never the previous invocation.
+	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 }
 
 bool URPGGameplayAbility_Equipment::CanActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags,
 	const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
 {
-	if (!Super::CanActivateAbility(
-		Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
+	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags)) return false;
+	const AActor* Avatar = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
+	if (!Avatar)
 	{
+		if (OptionalRelevantTags) OptionalRelevantTags->AddTag(TAG_Ability_ActivateFail_MissingEquipment);
 		return false;
 	}
-
-	const AActor* AvatarActor = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
-	if (!AvatarActor)
+	for (const FRPGGladiatorEquipmentInfo& Info : EquipmentInfos)
 	{
-		if (OptionalRelevantTags)
-		{
-			OptionalRelevantTags->AddTag(TAG_Ability_ActivateFail_MissingEquipment);
-		}
+		FRPGEquipmentSnapshot Snapshot;
+		bool bFallback = false;
+		const ERequirementResult Result = ResolveEquipmentRequirement(Avatar, Info, Snapshot, bFallback);
+		if (Result == ERequirementResult::Satisfied) continue;
+		if (OptionalRelevantTags) OptionalRelevantTags->AddTag(Result == ERequirementResult::WrongType
+			? TAG_Ability_ActivateFail_WrongEquipment : TAG_Ability_ActivateFail_MissingEquipment);
 		return false;
 	}
-
-	for (const FRPGGladiatorEquipmentInfo& EquipmentInfo : EquipmentInfos)
-	{
-		URPGItemBase* ItemInstance = nullptr;
-		AActor* EquipmentActor = nullptr;
-		bool bUsedFallback = false;
-		const ERequirementResult Result = ResolveEquipmentRequirement(
-			AvatarActor, EquipmentInfo, ItemInstance, EquipmentActor, bUsedFallback);
-		if (Result == ERequirementResult::Satisfied)
-		{
-			continue;
-		}
-
-		if (OptionalRelevantTags)
-		{
-			OptionalRelevantTags->AddTag(Result == ERequirementResult::WrongType
-				? TAG_Ability_ActivateFail_WrongEquipment
-				: TAG_Ability_ActivateFail_MissingEquipment);
-		}
-		return false;
-	}
-
 	return true;
 }
 
 URPGGameplayAbility_Equipment::ERequirementResult
-URPGGameplayAbility_Equipment::ResolveEquipmentRequirement(const AActor* AvatarActor,
-	const FRPGGladiatorEquipmentInfo& EquipmentInfo, URPGItemBase*& OutItem,
-	AActor*& OutEquipmentActor, bool& bOutUsedCompatibilityFallback) const
+URPGGameplayAbility_Equipment::ResolveEquipmentRequirement(const AActor* Avatar,
+	const FRPGGladiatorEquipmentInfo& Info, FRPGEquipmentSnapshot& OutSnapshot,
+	bool& bOutUsedCompatibilityFallback) const
 {
-	OutItem = nullptr;
-	OutEquipmentActor = nullptr;
+	OutSnapshot = {};
 	bOutUsedCompatibilityFallback = false;
-
-	if (!AvatarActor)
+	if (!Avatar) return ERequirementResult::Missing;
+	const URPGAuthoritativeEquipmentComponent* Equipment =
+		Avatar->FindComponentByClass<URPGAuthoritativeEquipmentComponent>();
+	const ERPGGladiatorEquipmentType Type = RPGEquipmentAbility::GetEffectiveEquipmentType(Info);
+	if (Type == ERPGGladiatorEquipmentType::Armor)
 	{
+		return Equipment && Equipment->FindSnapshotInSlot(
+			RPGEquipmentAbility::GetArmorSlot(Info.RequiredArmorType), OutSnapshot)
+			? ERequirementResult::Satisfied : ERequirementResult::Missing;
+	}
+	if (Type == ERPGGladiatorEquipmentType::Utility)
+	{
+		if (!Equipment) return ERequirementResult::Missing;
+		for (const EEquipmentSlotType Slot : { EEquipmentSlotType::Utility_1, EEquipmentSlotType::Utility_2 })
+		{
+			FRPGEquipmentSnapshot Candidate;
+			if (!Equipment->FindSnapshotInSlot(Slot, Candidate)) continue;
+			if (Info.RequiredUtilityType != ERPGGladiatorUtilityType::Count
+				&& Candidate.UtilityType != ERPGGladiatorUtilityType::Count
+				&& Candidate.UtilityType != Info.RequiredUtilityType) continue;
+			const bool bFallback = Candidate.UtilityType == ERPGGladiatorUtilityType::Count
+				&& Info.RequiredUtilityType != ERPGGladiatorUtilityType::Count;
+			if (bFallback && !bAllowIncompleteEquipmentCompatibility) continue;
+			OutSnapshot = MoveTemp(Candidate);
+			bOutUsedCompatibilityFallback = bFallback;
+			return ERequirementResult::Satisfied;
+		}
 		return ERequirementResult::Missing;
 	}
+	if (Type != ERPGGladiatorEquipmentType::Weapon) return ERequirementResult::WrongType;
 
-	const ERPGGladiatorEquipmentType EquipmentType =
-		RPGEquipmentAbility::GetEffectiveEquipmentType(EquipmentInfo);
-	if (EquipmentType == ERPGGladiatorEquipmentType::Count)
+	if (Equipment && Equipment->FindWeaponSnapshot(Info.WeaponHandType, OutSnapshot))
 	{
+		if (RPGEquipmentAbility::HasKnownMismatch(OutSnapshot.WeaponType, Info.RequiredWeaponType))
+			return ERequirementResult::WrongType;
+		const bool bFallback =
+			(OutSnapshot.WeaponType == ERPGGladiatorWeaponType::Count &&
+				Info.RequiredWeaponType != ERPGGladiatorWeaponType::Count) ||
+			(OutSnapshot.WeaponHandType == EWeaponHandType::Count && Info.WeaponHandType != EWeaponHandType::Count);
+		// A confirmed native item with a pending/missing actor must never borrow a startup weapon actor.
+		if (!IsValid(OutSnapshot.EquippedActor) || (bFallback && !bAllowIncompleteEquipmentCompatibility))
+			return ERequirementResult::Missing;
+		// The item is authoritative, but explicit contradictory actor authoring is still rejected.
+		if (const ARPGWeaponBase* Weapon = Cast<ARPGWeaponBase>(OutSnapshot.EquippedActor))
+		{
+			if (RPGEquipmentAbility::HasKnownMismatch(Weapon->GetWeaponType(), Info.RequiredWeaponType)
+				|| (Weapon->GetWeaponHandType() != EWeaponHandType::Count
+					&& Info.WeaponHandType != EWeaponHandType::Count
+					&& Weapon->GetWeaponHandType() != Info.WeaponHandType))
+				return ERequirementResult::WrongType;
+		}
+		bOutUsedCompatibilityFallback = bFallback;
+		return ERequirementResult::Satisfied;
+	}
+	if (Equipment && Equipment->HasWeaponSnapshots()) return ERequirementResult::Missing;
+
+	// Narrow actor-only compatibility for existing class startup loadouts, not legacy item lists.
+	const UPawnCombatComponent* Combat = Avatar->FindComponentByClass<UPawnCombatComponent>();
+	ARPGWeaponBase* Weapon = Combat ? Combat->GetCharacterCurrentEquippedWeapon() : nullptr;
+	if (!Weapon) return ERequirementResult::Missing;
+	if (RPGEquipmentAbility::HasKnownMismatch(Weapon->GetWeaponType(), Info.RequiredWeaponType)
+		|| (Weapon->GetWeaponHandType() != EWeaponHandType::Count && Info.WeaponHandType != EWeaponHandType::Count
+			&& Weapon->GetWeaponHandType() != Info.WeaponHandType))
 		return ERequirementResult::WrongType;
-	}
-
-	if (EquipmentType == ERPGGladiatorEquipmentType::Armor)
-	{
-		OutItem = RPGEquipmentAbility::GetItemInSlot(
-			AvatarActor,
-			RPGEquipmentAbility::GetArmorSlot(EquipmentInfo.RequiredArmorType),
-			OutEquipmentActor);
-		if (!OutItem)
-		{
-			return ERequirementResult::Missing;
-		}
-
-		if (const FEquipmentFragment* Fragment =
-			OutItem->GetItemManifest().GetFragmentOfType<FEquipmentFragment>())
-		{
-			if (Fragment->GetEquipmentType() != ERPGGladiatorEquipmentType::Count &&
-				Fragment->GetEquipmentType() != ERPGGladiatorEquipmentType::Armor)
-			{
-				return ERequirementResult::WrongType;
-			}
-		}
-		return ERequirementResult::Satisfied;
-	}
-
-	if (EquipmentType == ERPGGladiatorEquipmentType::Weapon)
-	{
-		EEquipmentSlotType ResolvedSlot = EEquipmentSlotType::None;
-		if (const URPGEquipComponent* EquipComponent =
-			AvatarActor->FindComponentByClass<URPGEquipComponent>())
-		{
-			EquipComponent->FindEquippedWeapon(
-				EquipmentInfo.WeaponHandType, OutItem, OutEquipmentActor, ResolvedSlot);
-		}
-
-		if (!OutItem)
-		{
-			const URPGEquipmentComponent* EquipmentComponent =
-				AvatarActor->FindComponentByClass<URPGEquipmentComponent>();
-			const URPGEquipComponent* EquipComponent =
-				AvatarActor->FindComponentByClass<URPGEquipComponent>();
-			TArray<EEquipmentSlotType, TInlineAllocator<4>> CandidateSlots;
-			RPGEquipmentAbility::BuildWeaponSlotCandidates(
-				EquipmentInfo.WeaponHandType,
-				EquipComponent ? EquipComponent->GetCurrentEquipState() : EEquipState::None,
-				CandidateSlots);
-
-			for (const EEquipmentSlotType CandidateSlot : CandidateSlots)
-			{
-				URPGItemBase* CandidateItem = EquipmentComponent
-					? EquipmentComponent->GetItemInSlot(CandidateSlot)
-					: nullptr;
-				if (!CandidateItem)
-				{
-					continue;
-				}
-
-				OutItem = CandidateItem;
-				ResolvedSlot = CandidateSlot;
-				break;
-			}
-		}
-
-		if (OutItem)
-		{
-			const FEquipmentFragment* Fragment =
-				OutItem->GetItemManifest().GetFragmentOfType<FEquipmentFragment>();
-			if (Fragment)
-			{
-				if (Fragment->GetEquipmentType() != ERPGGladiatorEquipmentType::Count &&
-					Fragment->GetEquipmentType() != ERPGGladiatorEquipmentType::Weapon)
-				{
-					return ERequirementResult::WrongType;
-				}
-				if (Fragment->GetWeaponHandType() != EWeaponHandType::Count &&
-					Fragment->GetWeaponHandType() != EquipmentInfo.WeaponHandType)
-				{
-					return ERequirementResult::WrongType;
-				}
-				if (Fragment->GetWeaponType() != ERPGGladiatorWeaponType::Count &&
-					Fragment->GetWeaponType() != EquipmentInfo.RequiredWeaponType)
-				{
-					return ERequirementResult::WrongType;
-				}
-
-				bOutUsedCompatibilityFallback =
-					Fragment->GetEquipmentType() == ERPGGladiatorEquipmentType::Count ||
-					Fragment->GetWeaponType() == ERPGGladiatorWeaponType::Count;
-			}
-			else
-			{
-				bOutUsedCompatibilityFallback = true;
-			}
-		}
-
-		ARPGWeaponBase* CombatWeapon = nullptr;
-		if (const UPawnCombatComponent* CombatComponent =
-			AvatarActor->FindComponentByClass<UPawnCombatComponent>())
-		{
-			CombatWeapon = CombatComponent->GetCharacterCurrentEquippedWeapon();
-		}
-
-		if (!OutEquipmentActor && CombatWeapon)
-		{
-			if (CombatWeapon->GetWeaponType() != ERPGGladiatorWeaponType::Count &&
-				CombatWeapon->GetWeaponType() != EquipmentInfo.RequiredWeaponType)
-			{
-				return ERequirementResult::WrongType;
-			}
-			if (CombatWeapon->GetWeaponHandType() != EWeaponHandType::Count &&
-				CombatWeapon->GetWeaponHandType() != EquipmentInfo.WeaponHandType)
-			{
-				return ERequirementResult::WrongType;
-			}
-
-			OutEquipmentActor = CombatWeapon;
-			bOutUsedCompatibilityFallback = true;
-		}
-
-		if (!OutItem && !OutEquipmentActor)
-		{
-			return ERequirementResult::Missing;
-		}
-		if (bOutUsedCompatibilityFallback && !bAllowIncompleteEquipmentCompatibility)
-		{
-			return ERequirementResult::Missing;
-		}
-
-		return ERequirementResult::Satisfied;
-	}
-
-	if (EquipmentType == ERPGGladiatorEquipmentType::Utility)
-	{
-		const EEquipmentSlotType UtilitySlots[] = {
-			EEquipmentSlotType::Utility_1,
-			EEquipmentSlotType::Utility_2
-		};
-		for (const EEquipmentSlotType Slot : UtilitySlots)
-		{
-			OutItem = RPGEquipmentAbility::GetItemInSlot(
-				AvatarActor, Slot, OutEquipmentActor);
-			if (OutItem)
-			{
-				break;
-			}
-		}
-
-		if (!OutItem)
-		{
-			return ERequirementResult::Missing;
-		}
-
-		const FEquipmentFragment* Fragment =
-			OutItem->GetItemManifest().GetFragmentOfType<FEquipmentFragment>();
-		if (Fragment)
-		{
-			if (Fragment->GetEquipmentType() != ERPGGladiatorEquipmentType::Count &&
-				Fragment->GetEquipmentType() != ERPGGladiatorEquipmentType::Utility)
-			{
-				return ERequirementResult::WrongType;
-			}
-			if (Fragment->GetUtilityType() != ERPGGladiatorUtilityType::Count &&
-				Fragment->GetUtilityType() != EquipmentInfo.RequiredUtilityType)
-			{
-				return ERequirementResult::WrongType;
-			}
-
-			bOutUsedCompatibilityFallback =
-				Fragment->GetEquipmentType() == ERPGGladiatorEquipmentType::Count ||
-				Fragment->GetUtilityType() == ERPGGladiatorUtilityType::Count ||
-				!OutEquipmentActor;
-		}
-		else
-		{
-			bOutUsedCompatibilityFallback = true;
-		}
-
-		if (bOutUsedCompatibilityFallback && !bAllowIncompleteEquipmentCompatibility)
-		{
-			return ERequirementResult::Missing;
-		}
-
-		return ERequirementResult::Satisfied;
-	}
-
-	return ERequirementResult::WrongType;
+	if (!bAllowIncompleteEquipmentCompatibility) return ERequirementResult::Missing;
+	OutSnapshot.EquippedActor = Weapon;
+	bOutUsedCompatibilityFallback = true;
+	return ERequirementResult::Satisfied;
 }
 
 AActor* URPGGameplayAbility_Equipment::GetFirstEquipmentActor() const
 {
-	for (const FRPGGladiatorEquipmentInfo& EquipmentInfo : EquipmentInfos)
+	for (const FRPGGladiatorEquipmentInfo& Info : EquipmentInfos)
 	{
-		if (EquipmentInfo.EquipmentActor.IsValid())
-		{
-			return EquipmentInfo.EquipmentActor.Get();
-		}
+		if (Info.EquipmentActor.IsValid()) return Info.EquipmentActor.Get();
 	}
 	return nullptr;
 }
 
-URPGItemBase* URPGGameplayAbility_Equipment::GetEquipmentItemInstance(
-	const AActor* InEquipmentActor) const
+URPGItemBase* URPGGameplayAbility_Equipment::GetEquipmentItemInstance(const AActor*) const
 {
-	if (!InEquipmentActor)
-	{
-		return nullptr;
-	}
-
-	for (const FRPGGladiatorEquipmentInfo& EquipmentInfo : EquipmentInfos)
-	{
-		if (EquipmentInfo.EquipmentActor.Get() == InEquipmentActor)
-		{
-			return EquipmentInfo.ItemInstance.Get();
-		}
-	}
-	return nullptr;
+	return nullptr; // Serialized Blueprint signature only; do not create a mutable legacy mirror.
 }
 
-int32 URPGGameplayAbility_Equipment::GetEquipmentStatValue(const FGameplayTag InStatTag,
-	const AActor* InEquipmentActor) const
+FGuid URPGGameplayAbility_Equipment::GetEquipmentItemId(const AActor* Actor) const
 {
-	if (!InStatTag.IsValid())
+	if (!Actor) return {};
+	for (const FRPGGladiatorEquipmentInfo& Info : EquipmentInfos)
 	{
-		return 0;
+		if (Info.EquipmentActor.Get() == Actor) return Info.Snapshot.ItemId;
 	}
+	return {};
+}
 
-	if (const URPGItemBase* ItemInstance = GetEquipmentItemInstance(InEquipmentActor))
+float URPGGameplayAbility_Equipment::GetEquipmentStatValueByItemId(const FGameplayTag Tag,
+	const FGuid ItemId) const
+{
+	if (!ItemId.IsValid()) return 0.f;
+	for (const FRPGGladiatorEquipmentInfo& Info : EquipmentInfos)
 	{
-		if (const FLabeledNumberFragment* StatFragment =
-			ItemInstance->GetItemManifest().GetFragmentOfTypeByTag<FLabeledNumberFragment>(InStatTag))
-		{
-			return FMath::RoundToInt(StatFragment->GetValue());
-		}
+		if (Info.Snapshot.ItemId == ItemId) return Info.Snapshot.GetStatValue(Tag);
 	}
+	return 0.f;
+}
 
-	return 0;
+int32 URPGGameplayAbility_Equipment::GetEquipmentStatValue(const FGameplayTag Tag, const AActor* Actor) const
+{
+	const float Value = GetEquipmentStatValueByItemId(Tag, GetEquipmentItemId(Actor));
+	if (static_cast<double>(Value) >= static_cast<double>(MAX_int32)) return MAX_int32;
+	if (static_cast<double>(Value) <= static_cast<double>(MIN_int32)) return MIN_int32;
+	return FMath::RoundToInt(Value);
 }

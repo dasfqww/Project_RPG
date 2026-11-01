@@ -16,6 +16,7 @@ class ARPGPlayer;
 class ARPGPlayerController;
 class AActor;
 class UAbilitySystemComponent;
+class URPGAuthoritativeEquipmentComponent;
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnRPGEquipStateChanged, EEquipState /*Old*/, EEquipState /*New*/);
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnRPGEquipItemChanged, EEquipmentSlotType, URPGItemBase*, int32/*Count*/);
@@ -93,7 +94,8 @@ struct TStructOpsTypeTraits<FRPGEquipList> : public TStructOpsTypeTraitsBase2<FR
 };
 
 /**
- * D1/Lyra 스타일의 고도화된 장비 관리 컴포넌트
+ * Serialized Blueprint compatibility facade. Live equipment belongs to the
+ * authoritative component; this facade owns no item list or applied effects.
  */
 UCLASS(BlueprintType, meta=(BlueprintSpawnableComponent))
 class PROJECT_RPG_API URPGEquipComponent : public UPawnExtensionComponentBase
@@ -104,15 +106,16 @@ public:
 	URPGEquipComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 protected:
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-	virtual bool ReplicateSubobjects(UActorChannel* Channel, FOutBunch* Bunch, FReplicationFlags* RepFlags) override;
+	virtual void OnRegister() override;
+	virtual void OnUnregister() override;
+	virtual void BeginPlay() override;
 	
 public:
-	/** 서버에서 아이템 장착 실행 */
+	/** Forward an existing canonical inventory ID to the native server command. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "RPG|Equip")
 	void EquipItem(EEquipmentSlotType SlotType, URPGItemBase* Item);
 
-	/** 서버에서 아이템 해제 실행 */
+	/** Request native unequip into the first free bag slot; never change state locally. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "RPG|Equip")
 	void UnequipItem(EEquipmentSlotType SlotType);
 
@@ -120,7 +123,7 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "RPG|Equip")
 	void ChangeEquipState(EEquipState NewState);
 
-	/** 현재 상태에서 활성화되어야 할 장비들을 갱신 (시각적/기능적) */
+	/** Retired callback; native equipment updates its own actor visibility. */
 	void UpdateEquippedItems();
 
 public:
@@ -129,18 +132,19 @@ public:
 	ARPGPlayerController* GetRPGPlayerController() const;
 	UAbilitySystemComponent* GetAbilitySystemComponent() const;
 	
-	UFUNCTION(BlueprintPure, Category = "RPG|Equip")
+	UFUNCTION(BlueprintPure, Category = "RPG|Equip", meta = (DeprecatedFunction,
+		DeprecationMessage = "Use AuthoritativeEquipment.FindSnapshotInSlot; legacy item objects are retired."))
 	URPGItemBase* GetItemInSlot(EEquipmentSlotType SlotType) const;
 
 	UFUNCTION(BlueprintPure, Category = "RPG|Equip")
 	AActor* GetSpawnedActorInSlot(EEquipmentSlotType SlotType) const;
 
-	/** Resolve the active weapon entry that best matches a D1 hand requirement. */
+	/** Native read-through; OutItem stays null rather than creating a mutable mirror. */
 	bool FindEquippedWeapon(EWeaponHandType HandType, URPGItemBase*& OutItem,
 		AActor*& OutSpawnedActor, EEquipmentSlotType& OutSlotType) const;
 
 	UFUNCTION(BlueprintPure, Category = "RPG|Equip")
-	EEquipState GetCurrentEquipState() const { return CurrentEquipState; }
+	EEquipState GetCurrentEquipState() const;
 
 	static const TArray<EEquipmentSlotType>& GetSlotsForState(EEquipState State);
 
@@ -149,20 +153,9 @@ public:
 	FOnRPGEquipItemChanged OnEquipItemChanged;
 	
 private:
-	UFUNCTION()
-	void OnRep_CurrentEquipState(EEquipState OldState);
-
-	/** 실제 장착 로직 (GAS 부여, 액터 스폰 등) */
-	void OnItemEquipped(FRPGEquipEntry& Entry);
-	/** 실제 해제 로직 (GAS 제거, 액터 파괴 등) */
-	void OnItemUnequipped(FRPGEquipEntry& Entry);
-
-private:
-	UPROPERTY(Replicated)
-	FRPGEquipList EquipList;
-
-	UPROPERTY(ReplicatedUsing = OnRep_CurrentEquipState)
-	EEquipState CurrentEquipState = EEquipState::None;
-
-	friend struct FRPGEquipList;
+	void BindNativeEquipment();
+	void UnbindNativeEquipment();
+	void HandleNativeStateChanged(EEquipState OldState, EEquipState NewState);
+	TWeakObjectPtr<URPGAuthoritativeEquipmentComponent> BoundEquipment;
+	FDelegateHandle ActiveStateChangedHandle;
 };
