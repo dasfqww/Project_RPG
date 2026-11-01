@@ -1,10 +1,37 @@
 # D1 PvE 시스템 이식 현황 및 전체 작업 로드맵
 
-> 마지막 갱신: 2026-07-20
+> 마지막 갱신: 2026-10-25
 > 대상 프로젝트: `C:\UE5\Project_RPG`
 > 참고 소스: `D1_SourceCode/`
 > 현재 프로젝트 소스: `Source/Project_RPG/`
 > 목표: 로스트아크 스타일의 PvE 액션 RPG 제작
+
+## 2026-10-25 방향 정리 — 구형 직업 선택 폐기
+
+현재 플레이어블 직업은 기존 스킬·장비 시스템을 기준으로 설계한다. 아래 D1 이식 로드맵은 과거 구현 기록이며, 5직업 선택 기능을 복원하는 작업 지시가 아니다.
+
+- `ARPGPlayerState`의 직업 선택 RPC, 선택값/델리게이트/복제, Pawn 변경 시 직업 AbilitySet 재부여를 제거했다.
+- `ARPGHUD`의 직업 선택창 생성·표시·입력 전환 API와 `RPGClassSelectionWidget`의 위젯 3종을 제거했다.
+- 5직업 enum, `URPGClassData`, 직업별 기본 아이템/스킬 묶음 구조 및 `/GladiatorCore/Data/ClassData_GladiatorGame` 고정 로더를 제거했다. 삭제된 타입의 Core Redirect 7개와 직업 선택용 GameplayTag 2개도 제거했다.
+- 현재 장비가 사용하는 `URPGAbilitySet`, 장비 스냅샷, 스킬·트라이포드 및 공용 전투 코드는 유지한다. D1 개별 스킬의 스턴/피해 대체 처리는 아래 후속 정리에서 제거했다.
+- 삭제 전 심볼의 ANSI/UTF-16 바이트 참조 검색에서 `Content` 9,009개 에셋은 일치 0건, GameFeature 622개 중 Gladiator 원본 5개만 일치했다. 이는 디스크 참조 검색이며 에셋 로드·BP 컴파일·실행 검증을 뜻하지 않는다.
+- 비활성 `GladiatorCore`의 원본 에셋은 참고용으로 보관한다. 삭제된 UI·직업 데이터 부모 타입에 의존하는 원본은 현재 모듈로 실행할 수 없으며 플러그인을 다시 켜는 것만으로 복원되지 않는다.
+- 기존 `VerifyGladiatorIsolationPIE.py`는 제거된 네이티브 위젯 클래스를 로드하지 않고 실제 생성된 위젯의 `/GladiatorCore/` 소속 여부를 검사하도록 갱신했다.
+- 변경 전 소스 백업: `Saved/Backups/LegacyClassSelection-20261025-155112/`.
+- 검증: 소스·설정·스크립트의 제거 대상 심볼 참조 0건, Python 구문 및 변경 파일 공백 검사 통과. Editor `-NoLink -NoHotReloadFromIDE` 빌드에서 UHT 생성 파일 12개 갱신과 C++ 컴파일 51개가 성공했다(종료 코드 0, 약 90초). 로그는 위 백업 경로의 `Compile.log`다. DLL 링크·실행 중 에디터 반영·BP 컴파일·PIE는 아직 수행하지 않았다.
+
+## 2026-10-25 후속 정리 — D1 전용 전투 구현 폐기
+
+현재 피격·상태이상은 별도로 새 구현을 진행한다. 이번 작업은 사용하지 않는 D1 전용 전투 구현과 연결을 제거하는 작업이다. 아래 과거 이식 기록보다 이 절의 현재 상태를 우선한다.
+
+- `RPGPlayerSkillAbilities.h/.cpp`의 구형 Buff, Shield Bash, Ground Breaker, Whirlwind Slash, Piercing Shot, Targeting, AOE 스킬 7종을 제거했다.
+- `RPGGameplayAbility_Weapon_Melee.h/.cpp`의 D1 근접 피해·블록·피격 이벤트 경로를 제거했다.
+- `RPGCombatEffectActors.h/.cpp`의 D1 투사체·장판·장판 요소, 충돌 enum 2종 및 피해 보조 함수를 제거했다. 이에 포함된 고정 GameData 로드·직접 HP 차감·추가 효과 적용과 스킬의 임시 스턴·넉백 처리도 함께 폐기했다.
+- 삭제한 클래스 11종과 enum 2종의 Core Redirect 13개를 제거했다. D1용 대체 구현이나 새 공통 시스템 연결은 추가하지 않는다.
+- 현재 장비·AbilitySet·신규 스킬·트라이포드와 새 피격/상태이상 코드는 유지한다. 현행 대검 WhirlWind와 삭제한 D1 Whirlwind Slash는 별개다. `D1_SourceCode`와 비활성 `GladiatorCore` 원본 에셋은 참고용으로 남긴다.
+- 삭제 전 ANSI/UTF-16 참조 검색: `Content` 9,015개와 `Plugins` 626개 에셋 중 관련 타입 참조는 비활성 `GladiatorCore`의 36개 에셋에만 있었다. 검색 결과는 백업 폴더의 `RetirementReferenceScan.json`이다. 이들 원본 에셋은 플러그인 활성화만으로 다시 실행할 수 없다. 디스크 검색은 BP 로드·실행 검증을 대신하지 않는다.
+- 변경 전 백업: `Saved/Backups/LegacyCombatFallback-20261025-160123/`.
+- 검증: 삭제 타입의 `Source`·`Config`·`Scripts` 참조 0건과 공백 검사를 확인했다. Editor 타깃의 UHT 재생성과 남은 장비 Ability·기존 피해 보안 테스트 파일의 선택 컴파일 2개가 성공했다(종료 코드 0, 약 12초). UHT manifest에서도 삭제 헤더가 제외됐다. 로그는 위 백업 폴더의 `Compile-Retirement.log`다. 전체 타깃 빌드·DLL 링크·실행 중 에디터 반영·BP 컴파일·PIE는 수행하지 않았다.
 
 ## 1. 문서 목적
 
@@ -211,7 +238,9 @@
 
 ### 4.5 직업 선택 및 스킬 부여
 
-상태: **부분 완료 / PIE 검증 필요**
+상태: **폐기 — 2026-10-25 구형 직업 선택 코드 제거**
+
+아래 목록은 제거 전 구현 기록이다. 현재 플레이어블 직업 설계나 남은 복원 작업으로 사용하지 않는다.
 
 구현된 직업:
 
@@ -255,7 +284,7 @@
 
 ### 4.6 직업 스킬 입력 연결
 
-상태: **완료**
+상태: **과거 이식 기록 — 현재 직업 선택/부여 경로 폐기**
 
 검증 결과:
 
@@ -315,7 +344,11 @@
 
 ### 4.8 Health Component 호환
 
-상태: **부분 완료**
+상태: **폐기 — 2026-10-25 AttributeSet 직접 사용으로 정리**
+
+`URPGHealthComponent`의 체력 조회 facade와 기본 서브오브젝트, D1 클래스 리다이렉트를 제거했다. 체력/최대 체력과 사망 판정의 원본은 기존 `URPGAttributeSet`/ASC다. 보스전 재도전의 캡슐·애니메이션 복구와 복구 revision 복제는 `ARPGPlayer::RestoreEncounterPresentation`으로 옮겼다. 활성 Content에서 이 클래스를 참조하던 NPC BP 6개를 재저장하고 클래스 삭제 후 재로드·컴파일을 확인했다. 비활성 GladiatorCore 참조 콘텐츠의 D1/Lyra 의존성 이식은 별도 과제다.
+
+아래는 과거 호환 계층의 구현 기록이다. 삭제된 파일과 컴포넌트 확장 계획을 현재 작업 대상으로 해석하지 않는다. 현재 구조와 검증 범위는 [공통 피격·상태이상 계획 §12](COMBAT_REACTION_AND_STATUS_EFFECT_PLAN.md#12-구현-진행--2026-10-25)에 기록한다.
 
 구현한 기능:
 
@@ -333,7 +366,7 @@
 - `Source/Project_RPG/Public/Character/RPGBaseCharacter.h`
 - `Source/Project_RPG/Private/Character/RPGBaseCharacter.cpp`
 
-남은 작업:
+당시 남은 작업(컴포넌트 확장 계획은 폐기):
 
 - 사망 상태 전환과 부활 상태를 컴포넌트가 직접 관리하도록 정리
 - 체력 변경 델리게이트와 UI 업데이트 중복 제거
