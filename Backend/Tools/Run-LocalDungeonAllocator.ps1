@@ -3,6 +3,15 @@ param(
     [Parameter(Mandatory)]
     [string] $ServerExecutable,
 
+    [string] $EditorProject,
+
+    [switch] $DevelopmentIdentityTesting,
+
+    [switch] $WaitForReady,
+
+    [ValidateRange(1, 600)]
+    [int] $StartupTimeoutSeconds = 240,
+
     [string] $BackendUrl = 'http://127.0.0.1:3000',
 
     [string] $AdminToken =
@@ -19,7 +28,7 @@ param(
     [ValidateRange(1, 60)]
     [int] $PollIntervalSeconds = 5,
 
-    [string] $Map = '/Game/Maps/testmap',
+    [string] $Map,
 
     [string] $LogDirectory =
         (Join-Path $PSScriptRoot 'logs'),
@@ -41,6 +50,9 @@ $resolvedExecutable =
 if ([IO.Path]::GetExtension($resolvedExecutable) -ne '.exe') {
     throw 'ServerExecutable must point to a Windows executable.'
 }
+$resolvedProject = if ($EditorProject) {
+    (Resolve-Path -LiteralPath $EditorProject).Path
+} else { $null }
 
 $startServerScript = Join-Path `
     $PSScriptRoot `
@@ -53,6 +65,8 @@ $null = New-Item -ItemType Directory -Force -Path $LogDirectory
 $resolvedLogDirectory =
     (Resolve-Path -LiteralPath $LogDirectory).Path
 $normalizedBackendUrl = $BackendUrl.TrimEnd('/')
+. (Join-Path $PSScriptRoot 'LocalDungeonServerReadiness.ps1')
+$backendIdentity = Get-RPGLocalDungeonBackendIdentity -BackendUrl $normalizedBackendUrl
 $adminHeaders = @{
     Authorization = "Bearer $AdminToken"
 }
@@ -89,6 +103,7 @@ function Get-PortProcessState {
     if (-not (Test-Path -LiteralPath $statePath)) {
         return [pscustomobject]@{
             IsRunning = $false
+            ScopeVerified = $true # No pre-existing assignment to reconcile.
             StatePath = $statePath
             StateKey = 'none'
             ProcessId = $null
@@ -98,9 +113,15 @@ function Get-PortProcessState {
     }
 
     $state = $null
+    $scopeVerified = $false
     try {
         $state = Get-Content -LiteralPath $statePath -Raw |
             ConvertFrom-Json
+        Assert-RPGLocalDungeonBackendScope -State $state -BackendIdentity $backendIdentity
+        $expectedAddress = Get-RPGLocalDungeonServerEndpoint -PublicHost $PublicHost -Port $Port
+        Assert-RPGLocalDungeonLaunchScope -State $state -ServerAddress $expectedAddress `
+            -EditorProject $resolvedProject -DevelopmentIdentityTesting ([bool]$DevelopmentIdentityTesting) -Map $Map
+        $scopeVerified = $true
         $process = Get-Process -Id $state.processId -ErrorAction Stop
         $expectedTicks = [long]$state.processStartTimeUtcTicks
         $actualTicks = $process.StartTime.ToUniversalTime().Ticks
@@ -110,6 +131,7 @@ function Get-PortProcessState {
             $expectedTicks -eq $actualTicks
         return [pscustomobject]@{
             IsRunning = $isRunning
+            ScopeVerified = $true
             StatePath = $statePath
             StateKey = $stateKey
             ProcessId = [int]$state.processId
@@ -128,6 +150,7 @@ function Get-PortProcessState {
         }
         return [pscustomobject]@{
             IsRunning = $false
+            ScopeVerified = $scopeVerified
             StatePath = $statePath
             StateKey = $fallbackKey
             ProcessId = if ($null -ne $state) {
@@ -216,6 +239,15 @@ do {
         $port = $StartPort + $offset
         $portState = Get-PortProcessState -Port $port
 
+        if (-not $portState.ScopeVerified) {
+            # Includes stopped foreign servers, conflicting profiles and corrupt metadata.
+            # Do not GET/finish them against this backend or replace their state.
+            New-AllocatorEvent -Event 'Error' -Port $port -ProcessId $portState.ProcessId `
+                -DungeonSessionId $portState.DungeonSessionId `
+                -Message 'Allocator backend or launch scope is unknown or different; port/state preserved without reconciliation or allocation.'
+            continue
+        }
+
         if ($portState.IsRunning) {
             if ($knownProcessKeys[$port] -ne $portState.StateKey) {
                 $knownProcessKeys[$port] = $portState.StateKey
@@ -224,7 +256,7 @@ do {
                     -Port $port `
                     -ProcessId $portState.ProcessId `
                     -DungeonSessionId $portState.DungeonSessionId `
-                    -Message 'Existing dungeon server is healthy.'
+                    -Message 'Recorded dungeon server process is running; this observation alone is not readiness.'
             }
             continue
         }
@@ -255,6 +287,10 @@ do {
         try {
             $allocation = & $startServerScript `
                 -ServerExecutable $resolvedExecutable `
+                -EditorProject $EditorProject `
+                -DevelopmentIdentityTesting:$DevelopmentIdentityTesting `
+                -WaitForReady:$WaitForReady `
+                -StartupTimeoutSeconds $StartupTimeoutSeconds `
                 -BackendUrl $BackendUrl `
                 -AdminToken $AdminToken `
                 -PublicHost $PublicHost `
@@ -288,7 +324,8 @@ do {
                 -Port $port `
                 -ProcessId $allocation.ProcessId `
                 -DungeonSessionId $allocation.DungeonSessionId `
-                -Message 'Dungeon server assignment is active.'
+                -Message ("Dungeon server assignment launched (Ready=$($allocation.Ready)): " +
+                    "$($allocation.DungeonId) / $($allocation.Difficulty) / $($allocation.MapPackage).")
         }
         catch {
             New-AllocatorEvent `
