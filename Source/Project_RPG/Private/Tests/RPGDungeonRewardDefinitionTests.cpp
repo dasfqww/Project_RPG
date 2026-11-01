@@ -4,6 +4,8 @@
 #include "Item/Definition/RPGItemDefinition.h"
 #include "Misc/AutomationTest.h"
 #include "RPGItemTags.h"
+#include "Online/RPGDungeonServerDefinition.h"
+#include "Engine/World.h"
 
 #if WITH_EDITOR
 #include "Engine/Blueprint.h"
@@ -81,7 +83,15 @@ bool FRPGDungeonRewardDefinitionBuildTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Definition version comes from the item asset"),
 			ItemRewards[0].DefinitionVersion,
 			3);
+		TestEqual(TEXT("Inventory delivery stack limit comes from the item asset"),
+			ItemRewards[0].MaxStackSize,
+			10);
 	}
+#if WITH_EDITOR
+	FDataValidationContext Validation;
+	TestEqual(TEXT("A successfully checked ordinary reward is explicitly Valid"),
+		Definition->IsDataValid(Validation), EDataValidationResult::Valid);
+#endif
 	return true;
 }
 
@@ -136,6 +146,76 @@ bool FRPGDungeonRewardDefinitionRejectsInvalidContentTest::RunTest(
 }
 
 #if WITH_EDITOR
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGProgressionOnlyRewardDefinitionTest,
+	"ProjectRPG.Online.DungeonReward.ExplicitProgressionOnlyPayload",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRPGProgressionOnlyRewardDefinitionTest::RunTest(const FString&)
+{
+	auto* Reward = NewObject<URPGDungeonRewardDefinition>();
+	Reward->RewardVersion = TEXT("FirstSlice.v1");
+	FString Version = TEXT("old-version"), Error = TEXT("old-error");
+	TArray<FRPGCurrencyChange> Currency;
+	TArray<FRPGDungeonItemReward> Items;
+	Currency.AddDefaulted(); Items.AddDefaulted();
+	TestTrue(TEXT("The authored progression version explicitly permits XP-only completion"),
+		Reward->BuildSettlement(Version, Currency, Items, Error));
+	TestEqual(TEXT("Progression version reaches settlement unchanged"), Version, FString(TEXT("FirstSlice.v1")));
+	TestTrue(TEXT("No fake gold or item is introduced"), Currency.IsEmpty() && Items.IsEmpty() && Error.IsEmpty());
+	TestTrue(TEXT("Building a transport payload leaves the authored bundle empty"), Reward->CurrencyChanges.IsEmpty() && Reward->ItemRewards.IsEmpty());
+	FDataValidationContext Validation;
+	TestEqual(TEXT("XP-only content is explicitly Valid after the native checks run"),
+		Reward->IsDataValid(Validation), EDataValidationResult::Valid);
+	for (const FName Invalid : { FName(NAME_None), FName(TEXT("pve_training_v1")), FName(TEXT("FirstSlice.v2")),
+		FName(TEXT("no_reward")), FName(TEXT("firstslice.v1")) })
+	{
+		Reward->RewardVersion = Invalid;
+		Version = TEXT("old-version"); Currency.AddDefaulted(); Items.AddDefaulted();
+		TestFalse(TEXT("Other empty rewards do not silently become progression/no-reward clears"),
+			Reward->BuildSettlement(Version, Currency, Items, Error));
+		TestTrue(TEXT("Rejection clears stale payloads and explains the content error"),
+			Version.IsEmpty() && Currency.IsEmpty() && Items.IsEmpty() && !Error.IsEmpty());
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGProgressionOnlyServerSelectionTest,
+	"ProjectRPG.Online.DungeonReward.ProgressionOnlyAssignedSelection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRPGProgressionOnlyServerSelectionTest::RunTest(const FString&)
+{
+	auto* Reward = NewObject<URPGDungeonRewardDefinition>();
+	Reward->RewardVersion = TEXT("FirstSlice.v1");
+	auto* Definition = NewObject<URPGDungeonServerDefinition>();
+	Definition->DungeonId = TEXT("Progression.Training");
+	Definition->DungeonMap = TSoftObjectPtr<UWorld>(FSoftObjectPath(TEXT("/Game/Maps/testmap.testmap")));
+	Definition->ClearRewardsByDifficulty.Add(ERPGGameDifficulty::Normal, Reward);
+	TArray<TObjectPtr<URPGDungeonServerDefinition>> Definitions = { Definition };
+	FRPGDungeonServerSelection Selection;
+	FString Error;
+	TestTrue(TEXT("XP-only rewards can pass server startup validation"), Definition->ValidateDefinition(Error));
+	if (!TestTrue(TEXT("Assigned training/Normal builds through the existing server selection"),
+		URPGDungeonServerDefinition::BuildAssignedSelection(Definitions, TEXT("Progression.Training"),
+			TEXT("/Game/Maps/testmap"), ERPGGameDifficulty::Normal, Selection, Error))) return false;
+	TestEqual(TEXT("Startup snapshot retains the exact progression version"), Selection.RewardVersion, FString(TEXT("FirstSlice.v1")));
+	TestTrue(TEXT("Startup snapshot has no currency/item transport entries"), Selection.CurrencyChanges.IsEmpty() && Selection.ItemRewards.IsEmpty());
+	Reward->RewardVersion = TEXT("another_version");
+	TestEqual(TEXT("A confirmed transport copy is not recalculated by later author edits"), Selection.RewardVersion, FString(TEXT("FirstSlice.v1")));
+	TestFalse(TEXT("A later invalid empty definition cannot become a new assignment"),
+		URPGDungeonServerDefinition::BuildAssignedSelection(Definitions, TEXT("Progression.Training"),
+			TEXT("/Game/Maps/testmap"), ERPGGameDifficulty::Normal, Selection, Error));
+	TestTrue(TEXT("Failed startup clears the previous candidate payload"), Selection.RewardVersion.IsEmpty());
+	Reward->RewardVersion = TEXT("FirstSlice.v1");
+	TestFalse(TEXT("Progression-only support does not relax the authored map"),
+		URPGDungeonServerDefinition::BuildAssignedSelection(Definitions, TEXT("Progression.Training"),
+			TEXT("/Game/Maps/bossmap"), ERPGGameDifficulty::Normal, Selection, Error));
+	TestFalse(TEXT("Progression-only support does not invent an unsupported difficulty"),
+		URPGDungeonServerDefinition::BuildAssignedSelection(Definitions, TEXT("Progression.Training"),
+			TEXT("/Game/Maps/testmap"), ERPGGameDifficulty::Hard, Selection, Error));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRPGDungeonRewardConfiguredAssetsTest,
 	"ProjectRPG.Online.DungeonReward.ConfiguredAssetsAreValid",

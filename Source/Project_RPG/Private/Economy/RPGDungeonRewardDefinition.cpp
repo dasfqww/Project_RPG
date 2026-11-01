@@ -12,6 +12,9 @@ namespace RPGDungeonRewardDefinition
 	constexpr int32 MaximumItemRewardCount = 16;
 	constexpr int32 MaximumInstanceTagCount = 64;
 	constexpr int32 MaximumStatValueCount = 128;
+	// Reserved by the backend progression contract. The authored version is the
+	// explicit opt-in; an ordinary empty loot bundle remains a content error.
+	constexpr const TCHAR* ProgressionOnlyRewardVersion = TEXT("FirstSlice.v1");
 
 	bool IsSimpleIdentifier(const FString& Value)
 	{
@@ -71,9 +74,10 @@ bool URPGDungeonRewardDefinition::BuildSettlement(
 		OutError = TEXT("RewardVersion must be a simple ASCII identifier of at most 64 characters.");
 		return false;
 	}
-	if (CurrencyChanges.IsEmpty() && ItemRewards.IsEmpty())
+	if (CurrencyChanges.IsEmpty() && ItemRewards.IsEmpty()
+		&& !Version.Equals(RPGDungeonRewardDefinition::ProgressionOnlyRewardVersion, ESearchCase::CaseSensitive))
 	{
-		OutError = TEXT("A configured reward definition cannot be empty; use the explicit no-reward clear path instead.");
+		OutError = TEXT("An empty reward definition requires the explicit FirstSlice.v1 progression version; use the no-reward clear path for clears without progression.");
 		return false;
 	}
 	if (CurrencyChanges.Num() >
@@ -204,10 +208,30 @@ bool URPGDungeonRewardDefinition::BuildSettlement(
 		Reward.DefinitionName = DefinitionId.PrimaryAssetName;
 		Reward.DefinitionVersion = Definition->DefinitionVersion;
 		Reward.Quantity = Entry.Quantity;
+		Reward.MaxStackSize = Definition->MaxStackSize;
+		Reward.PersonalLootWeight = Entry.PersonalLootWeight;
 		Reward.BindState = Entry.BindState;
 		Reward.Durability = Entry.Durability;
 		Reward.InstanceTags = Entry.InstanceTags;
 		Reward.StatValues = Entry.StatValues;
+		if (Entry.bIncludeEquipmentProgression)
+		{
+			Reward.EquipmentProgression.GrowthBandId = TEXT("FirstSlice");
+			Reward.EquipmentProgression.RuleVersion = 1;
+			Reward.EquipmentProgression.Level = Entry.EquipmentProgressionLevel;
+		}
+		if (!Reward.HasValidEquipmentProgression())
+		{
+			OutError = FString::Printf(
+				TEXT("Item reward %d requires supported equipment/version, FirstSlice level 0..3, quantity/stack 1 and CharacterBound."), Index);
+			return false;
+		}
+	}
+
+	if (!FRPGDungeonItemReward::HasValidPersonalLootPool(BuiltItemRewards))
+	{
+		OutError = TEXT("Personal loot weights must be 0..10000, sum to at most 10000, and use inventory-first stack limits.");
+		return false;
 	}
 
 	OutRewardVersion = Version;
@@ -233,6 +257,10 @@ EDataValidationResult URPGDungeonRewardDefinition::IsDataValid(
 	{
 		Context.AddError(FText::FromString(Error));
 		Result = EDataValidationResult::Invalid;
+	}
+	else if (Result != EDataValidationResult::Invalid)
+	{
+		Result = EDataValidationResult::Valid;
 	}
 	return Result;
 }

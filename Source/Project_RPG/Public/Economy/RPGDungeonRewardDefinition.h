@@ -25,6 +25,11 @@ struct PROJECT_RPG_API FRPGDungeonItemRewardEntry
 		meta = (ClampMin = "1"))
 	int32 Quantity = 1;
 
+	/** Zero = guaranteed; 1..10000 basis points in one exclusive personal pool (total <=10000). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Reward|PersonalLoot",
+		meta = (ClampMin = "0", ClampMax = "10000"))
+	int32 PersonalLootWeight = 0;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Reward")
 	ERPGItemBindState BindState = ERPGItemBindState::Unbound;
 
@@ -36,6 +41,15 @@ struct PROJECT_RPG_API FRPGDungeonItemRewardEntry
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Reward")
 	TArray<FRPGDungeonItemRewardStat> StatValues;
+
+	/** Explicit opt-in. Existing rewards remain growth-unset, not implicit +0. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Reward|Equipment")
+	bool bIncludeEquipmentProgression = false;
+
+	/** FirstSlice/rule 1; supported equipment only, quantity/stack 1, CharacterBound. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Reward|Equipment",
+		meta = (ClampMin = "0", ClampMax = "3", EditCondition = "bIncludeEquipmentProgression"))
+	int32 EquipmentProgressionLevel = 0;
 };
 
 /**
@@ -57,7 +71,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Reward")
 	TArray<FRPGCurrencyChange> CurrencyChanges;
 
-	/** Every item is delivered to every character's dungeon reward mail. */
+	/** Guaranteed entries plus at most one personal choice; inventory first, overflow to mail. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RPG|Reward",
 		meta = (TitleProperty = "ItemDefinition"))
 	TArray<FRPGDungeonItemRewardEntry> ItemRewards;
