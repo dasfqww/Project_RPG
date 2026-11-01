@@ -58,7 +58,7 @@ namespace
 bool FRPGEquipmentGrowthPreview::HasSameIntent(const FRPGEquipmentGrowthPreview& Other) const
 {
 	if (!bValid || !Other.bValid || Operation!=Other.Operation || !Equal(Source,Other.Source) || !Equal(Target,Other.Target)
-		|| OreCost!=Other.OreCost || Costs.Num()!=Other.Costs.Num()) return false;
+		|| OreCost!=Other.OreCost || TokenCost!=Other.TokenCost || TargetDefinitionName!=Other.TargetDefinitionName || Costs.Num()!=Other.Costs.Num()) return false;
 	for (int32 I=0;I<Costs.Num();++I) if (Costs[I].ItemId!=Other.Costs[I].ItemId || Costs[I].ExpectedRevision!=Other.Costs[I].ExpectedRevision) return false;
 	return true;
 }
@@ -127,6 +127,55 @@ FRPGEquipmentGrowthPreview RPGEquipmentGrowthUI::Transfer(const FRPGEquipmentMut
 	Result.Source=Expect(*A); Result.Target=Expect(*B);
 	Result.Text=FText::Format(LOCTEXT("Transfer","원본 {0}: +{1} → +0\n대상 {2}: +0 → +{1}\n비용 없음 · 두 장비와 각각의 고유 효과는 유지됩니다. 장착 상태는 바뀌지 않습니다.\n원본 {3}\n대상 {4}"),
 		FText::FromString(RA->Label),FText::AsNumber(Result.Source.ExpectedLevel),FText::FromString(RB->Label),Stats(*A,*RA,0),Stats(*B,*RB,Result.Source.ExpectedLevel));
+	return Result;
+}
+
+TArray<TPair<FString,FText>> RPGEquipmentGrowthUI::CraftTargets()
+{
+	TArray<TPair<FString,FText>> Result;
+	for (const auto& Row : Recipes)
+		if (FString(Row.Name).StartsWith(TEXT("Target."),ESearchCase::CaseSensitive))
+			Result.Emplace(FString(TEXT("GameItem.Equipment.Progression."))+Row.Name,FText::FromString(Row.Label));
+	return Result;
+}
+
+FRPGEquipmentGrowthPreview RPGEquipmentGrowthUI::Craft(const FRPGEquipmentMutationView& View, const FString& TargetDefinitionName, FDateTime Now)
+{
+	if (!CanStartNew(View) || !Unique(View)) return Invalid(LOCTEXT("ReadFirst","최신 장비를 읽고 이전 작업의 결과를 확인하세요."));
+	const auto Targets=CraftTargets();
+	const auto* Target=Targets.FindByPredicate([&](const auto& Entry) { return Entry.Key.Equals(TargetDefinitionName,ESearchCase::CaseSensitive); });
+	if (!Target) return Invalid(LOCTEXT("CraftTarget","제작할 목표 장비를 선택하세요."));
+	FRPGEquipmentGrowthPreview Result; Result.Operation=ERPGEquipmentMutationOperation::Craft; Result.TargetDefinitionName=TargetDefinitionName; Result.TokenCost=8;
+	TArray<const FRPGInventoryProjectionEntry*> Tokens;
+	for (const auto& Item : View.Items)
+		if (Active(Item,Now) && Item.GetContainerType()==ERPGItemContainerType::Inventory && Item.GetDefinitionVersion()==1
+			&& Item.GetQuantity()<=999 && !Item.GetEquipmentProgression().IsSet()
+			&& Item.GetDefinitionId()==FPrimaryAssetId(TEXT("RPGItemDefinition"),TEXT("GameItem.Material.Progression.Token"))) Tokens.Add(&Item);
+	Tokens.Sort([](const auto& A,const auto& B) { return A.GetItemId().ToString()<B.GetItemId().ToString(); });
+	int32 Remaining=Result.TokenCost;
+	for (const auto* Stack : Tokens)
+	{
+		if (Remaining<=0 || Result.Costs.Num()==15) break;
+		FRPGEquipmentCostExpectation Cost; Cost.ItemId=Stack->GetItemId(); Cost.ExpectedRevision=Stack->GetRevision(); Result.Costs.Add(Cost);
+		Remaining-=FMath::Min(Remaining,Stack->GetQuantity());
+	}
+	if (Remaining>0) return Invalid(LOCTEXT("TokensMissing","사용할 수 있는 증표 8개가 필요합니다. 가방의 잠금·만료 상태를 확인하세요."));
+	Result.bValid=true;
+	Result.Text=FText::Format(LOCTEXT("CraftPreview","증표 8개 소모 → {0} +0 장비 1개 제작\n캐릭터 귀속 · 가방 우선 지급, 가방이 가득 차면 우편 지급\n제작 후 장비 창에서 장착할 수 있습니다."),Target->Value);
+	return Result;
+}
+
+FRPGEquipmentGrowthPreview RPGEquipmentGrowthUI::Dismantle(const FRPGEquipmentMutationView& View, FGuid Id, FDateTime Now)
+{
+	if (!CanStartNew(View) || !Unique(View)) return Invalid(LOCTEXT("ReadFirst","최신 장비를 읽고 이전 작업의 결과를 확인하세요."));
+	const auto* Item=Find(View,Id); const auto* Row=Item ? Recipe(*Item,Now) : nullptr;
+	if (!Row || !FString(Row->Name).StartsWith(TEXT("Target."),ESearchCase::CaseSensitive) || Item->GetEquipmentProgression().Level!=0)
+		return Invalid(LOCTEXT("DismantleTarget","분해할 +0 목표 장비를 선택하세요. 시작 장비와 강화된 장비는 분해할 수 없습니다."));
+	FRPGEquipmentGrowthPreview Result; Result.bValid=true; Result.Operation=ERPGEquipmentMutationOperation::Dismantle; Result.Source=Expect(*Item);
+	Result.Text=FText::Format(LOCTEXT("DismantlePreview","{0} +0 장비 1개 소모 → 증표 1개 획득\n분해한 장비와 고유 효과는 사라지며 되돌릴 수 없습니다.\n{1}\n증표는 가방 우선 지급, 가방이 가득 차면 우편 지급합니다."),
+		FText::FromString(Row->Label),Item->GetContainerType()==ERPGItemContainerType::Equipment
+			? LOCTEXT("DismantleEquipped","현재 장착 중인 장비입니다. 분해하면 해당 장착 칸도 비워집니다.")
+			: LOCTEXT("DismantleInventory","가방에 있는 장비입니다."));
 	return Result;
 }
 

@@ -49,6 +49,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> OperationBox;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> SourceBox;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> TargetBox;
+	UPROPERTY(Transient) TObjectPtr<UComboBoxString> CraftBox;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> StatusText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> PreviewText;
 	UPROPERTY(Transient) TObjectPtr<UButton> ReloadButton;

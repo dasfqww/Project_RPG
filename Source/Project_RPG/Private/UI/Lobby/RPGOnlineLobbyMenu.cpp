@@ -41,7 +41,7 @@ void URPGOnlineLobbyWidget::BuildMenuContent(UVerticalBox& Parent, bool bServerP
 	Add(TEXT("ReloadTutorialProgressButton"), NSLOCTEXT("RPGFrontend", "ReloadProgress", "진행 정보 다시 확인"));
 	Add(TEXT("OpenDungeonMenuButton"), NSLOCTEXT("RPGFrontend", "Dungeons", "던전 · 파티"));
 	Add(TEXT("OpenSkillMenuButton"), NSLOCTEXT("RPGFrontend", "Skills", "스킬 구성"));
-	Add(TEXT("OpenEquipmentMenuButton"), NSLOCTEXT("RPGFrontend", "Equipment", "장비 강화 · 이전"));
+	Add(TEXT("OpenEquipmentMenuButton"), NSLOCTEXT("RPGFrontend", "Equipment", "장비 성장 · 제작"));
 	Add(TEXT("CloseLobbyDetailsButton"), NSLOCTEXT("RPGFrontend", "MenuHome", "로비 메뉴로 돌아가기"));
 	TutorialStatusText = RPGOnlineLobbyLayout::Text(*WidgetTree, *Rows, TEXT("TutorialEntryStatus"), FText::GetEmpty());
 }

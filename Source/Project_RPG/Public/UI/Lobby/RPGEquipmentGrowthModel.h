@@ -19,6 +19,8 @@ struct PROJECT_RPG_API FRPGEquipmentGrowthPreview
 	FRPGEquipmentItemExpectation Source, Target;
 	TArray<FRPGEquipmentCostExpectation> Costs;
 	int32 OreCost = 0;
+	int32 TokenCost = 0;
+	FString TargetDefinitionName;
 	FText Text;
 	/** Confirmation must still refer to these exact IDs, revisions and levels. */
 	bool HasSameIntent(const FRPGEquipmentGrowthPreview& Other) const;
@@ -26,10 +28,14 @@ struct PROJECT_RPG_API FRPGEquipmentGrowthPreview
 
 namespace RPGEquipmentGrowthUI
 {
+	/** Stable exact target IDs; indices are presentation only. */
+	PROJECT_RPG_API TArray<TPair<FString,FText>> CraftTargets();
 	PROJECT_RPG_API bool CanStartNew(const FRPGEquipmentMutationView& View);
 	PROJECT_RPG_API bool CanRetry(const FRPGEquipmentMutationView& View);
 	PROJECT_RPG_API TArray<FRPGEquipmentGrowthChoice> Choices(const FRPGEquipmentMutationView& View, FDateTime Now);
 	PROJECT_RPG_API FRPGEquipmentGrowthPreview Upgrade(const FRPGEquipmentMutationView& View, FGuid Item, FDateTime Now);
 	PROJECT_RPG_API FRPGEquipmentGrowthPreview Transfer(const FRPGEquipmentMutationView& View, FGuid Source, FGuid Target, FDateTime Now);
+	PROJECT_RPG_API FRPGEquipmentGrowthPreview Craft(const FRPGEquipmentMutationView& View, const FString& TargetDefinitionName, FDateTime Now);
+	PROJECT_RPG_API FRPGEquipmentGrowthPreview Dismantle(const FRPGEquipmentMutationView& View, FGuid Item, FDateTime Now);
 	PROJECT_RPG_API FText Status(const FRPGEquipmentMutationView& View);
 }

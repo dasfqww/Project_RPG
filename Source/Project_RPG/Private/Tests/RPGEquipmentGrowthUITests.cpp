@@ -119,8 +119,85 @@ bool FRPGEquipmentGrowthWidgetTest::RunTest(const FString&)
 	TestEqual(TEXT("Transfer target role is hidden in upgrade mode"),Panel->WidgetTree->FindWidget(TEXT("EquipmentTargetLabel"))->GetVisibility(),ESlateVisibility::Collapsed);
 	Panel->OperationBox->SetSelectedIndex(1);
 	TestEqual(TEXT("Transfer target role is visible in transfer mode"),Panel->WidgetTree->FindWidget(TEXT("EquipmentTargetLabel"))->GetVisibility(),ESlateVisibility::Visible);
+	Panel->OperationBox->SetSelectedIndex(2);
+	TestEqual(TEXT("Craft mode exposes exactly four server-supported choices"),Panel->CraftBox->GetOptionCount(),4);
+	TestEqual(TEXT("Craft mode shows output selector"),Panel->CraftBox->GetVisibility(),ESlateVisibility::Visible);
+	TestEqual(TEXT("Craft mode hides source input"),Panel->SourceBox->GetVisibility(),ESlateVisibility::Collapsed);
+	Panel->CraftBox->SetSelectedIndex(0); Panel->Prepare(); Panel->Confirm();
+	TestFalse(TEXT("Craft handlers still require authenticated fresh inventory"),Panel->bConfirming);
+	Panel->OperationBox->SetSelectedIndex(3);
+	TestEqual(TEXT("Dismantle mode shows its exact source"),Panel->SourceBox->GetVisibility(),ESlateVisibility::Visible);
+	TestEqual(TEXT("Dismantle mode hides the craft selector"),Panel->CraftBox->GetVisibility(),ESlateVisibility::Collapsed);
 	Panel->SetScreenOpen(false); TestFalse(TEXT("Closing clears local confirmation"),Panel->bConfirming);
 	Widget->NativeDestruct(); Panel->NativeDestruct();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGEquipmentCraftPreviewTest,"ProjectRPG.UI.EquipmentGrowth.CraftPreviewAndCosts",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FRPGEquipmentCraftPreviewTest::RunTest(const FString&)
+{
+	using namespace RPGEquipmentGrowthTests;
+	const FGuid TokenA(4,0,0,1),TokenB(4,0,0,2);
+	auto MakeView=[&](int64 Revision=9007199254740995LL,bool Locked=false,int32 Quantity=3,FDateTime Expires=FDateTime())
+	{
+		auto V=View(); TArray<FRPGInventoryProjectionEntry> Tokens;
+		FRPGInventoryProjectionMapper::BuildInventorySnapshot(Owner(),{
+			Record(TEXT("GameItem.Material.Progression.Token"),TokenB,5,5,0,2,false),
+			Record(TEXT("GameItem.Material.Progression.Token"),TokenA,4,Quantity,0,Revision,false,Locked,Expires)},Tokens);
+		V.Items.Append(Tokens); return V;
+	};
+	const auto Targets=RPGEquipmentGrowthUI::CraftTargets(); TestEqual(TEXT("Four exact target definitions"),Targets.Num(),4);
+	const auto V=MakeView();
+	for (const auto& Choice : Targets)
+	{
+		const auto P=RPGEquipmentGrowthUI::Craft(V,Choice.Key,Now);
+		TestTrue(TEXT("Every supported target has a valid fixed-price preview"),P.bValid);
+		TestEqual(TEXT("Craft cost is eight tokens"),P.TokenCost,8); TestEqual(TEXT("No ore charged"),P.OreCost,0);
+		TestEqual(TEXT("Selected definition is preserved exactly"),P.TargetDefinitionName,Choice.Key);
+		TestEqual(TEXT("Split token stacks fill the cost"),P.Costs.Num(),2);
+		if (P.Costs.Num()==2) { TestEqual(TEXT("Stable candidate order"),P.Costs[0].ItemId,TokenA); TestEqual(TEXT("Int64 token revision is exact"),P.Costs[0].ExpectedRevision,9007199254740995LL); }
+		TestTrue(TEXT("Same craft preview may be confirmed"),P.HasSameIntent(RPGEquipmentGrowthUI::Craft(V,Choice.Key,Now)));
+		TestFalse(TEXT("A changed token revision cancels payment confirmation"),P.HasSameIntent(RPGEquipmentGrowthUI::Craft(MakeView(9007199254740996LL),Choice.Key,Now)));
+	}
+	if (Targets.Num()!=4) return false;
+	const auto P=RPGEquipmentGrowthUI::Craft(V,Targets[0].Key,Now);
+	TestFalse(TEXT("Changing the output is a different intent"),P.HasSameIntent(RPGEquipmentGrowthUI::Craft(V,Targets[1].Key,Now)));
+	TestFalse(TEXT("Starting gear is not a craft target"),RPGEquipmentGrowthUI::Craft(V,TEXT("GameItem.Equipment.Progression.Starter.GreatSword"),Now).bValid);
+	TestFalse(TEXT("Seven tokens cannot prepare a craft"),RPGEquipmentGrowthUI::Craft(MakeView(1,false,2),Targets[0].Key,Now).bValid);
+	TestFalse(TEXT("Locked tokens are not usable"),RPGEquipmentGrowthUI::Craft(MakeView(1,true),Targets[0].Key,Now).bValid);
+	TestFalse(TEXT("Expired tokens are not usable"),RPGEquipmentGrowthUI::Craft(MakeView(1,false,3,Now-FTimespan::FromSeconds(1)),Targets[0].Key,Now).bValid);
+	TestFalse(TEXT("Invalid overfull token stacks are excluded"),RPGEquipmentGrowthUI::Craft(MakeView(1,false,1000),Targets[0].Key,Now).bValid);
+	TestFalse(TEXT("Ore cannot pay for crafting"),RPGEquipmentGrowthUI::Craft(View(),Targets[0].Key,Now).bValid);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGEquipmentDismantlePreviewTest,"ProjectRPG.UI.EquipmentGrowth.DismantleAndRecovery",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FRPGEquipmentDismantlePreviewTest::RunTest(const FString&)
+{
+	using namespace RPGEquipmentGrowthTests;
+	const auto V=View(); const auto P=RPGEquipmentGrowthUI::Dismantle(V,Target,Now);
+	TestTrue(TEXT("An initialized +0 target may be dismantled"),P.bValid);
+	TestEqual(TEXT("Dismantle names the exact source"),P.Source.ItemId,Target);
+	TestEqual(TEXT("Dismantle has no payment candidates"),P.Costs.Num(),0);
+	TestFalse(TEXT("Starting or enhanced gear cannot be dismantled"),RPGEquipmentGrowthUI::Dismantle(V,Sword,Now).bValid);
+	for (const auto& R : {
+		Record(TEXT("GameItem.Equipment.Progression.Target.CirculationGreatSword"),Target,1,1,1),
+		Record(TEXT("GameItem.Equipment.Progression.Target.CirculationGreatSword"),Target,1,1,0,1,true,true),
+		Record(TEXT("GameItem.Equipment.Progression.Target.CirculationGreatSword"),Target,1,1,0,1,false),
+		Record(TEXT("GameItem.Equipment.Progression.Starter.GreatSword"),Target,1)})
+	{
+		auto Changed=V; Changed.Items.RemoveAll([](const auto& I){return I.GetItemId()==Target;});
+		TArray<FRPGInventoryProjectionEntry> One; FRPGInventoryProjectionMapper::BuildInventorySnapshot(Owner(),{R},One); Changed.Items.Append(One);
+		TestFalse(TEXT("Enhanced, locked, legacy and starter records are protected"),RPGEquipmentGrowthUI::Dismantle(Changed,Target,Now).bValid);
+	}
+	for (auto State : {ERPGEquipmentMutationState::AwaitingServer,ERPGEquipmentMutationState::RecoveryRequired,ERPGEquipmentMutationState::StorageBlocked})
+	{
+		auto Pending=V; Pending.State=State; Pending.RequestId=FGuid::NewGuid();
+		TestFalse(TEXT("Pending intent blocks another dismantle"),RPGEquipmentGrowthUI::Dismantle(Pending,Target,Now).bValid);
+		TestFalse(TEXT("Pending intent blocks crafting"),RPGEquipmentGrowthUI::Craft(Pending,RPGEquipmentGrowthUI::CraftTargets()[0].Key,Now).bValid);
+	}
+	auto Refresh=V; Refresh.bNeedsInventoryRefresh=true;
+	TestFalse(TEXT("A historical receipt cannot authorize dismantling"),RPGEquipmentGrowthUI::Dismantle(Refresh,Target,Now).bValid);
 	return true;
 }
 #endif

@@ -255,7 +255,7 @@ TSharedRef<SWidget> URPGOnlineLobbyWidget::RebuildWidget()
 		ConfigurationPanel->SetOwningPlayer(GetOwningPlayer());
 		ConfigurationPanel->SetLobby(this);
 		Rows->AddChildToVerticalBox(ConfigurationPanel);
-		Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *Sections, TEXT("OnlineLobbyEquipmentSection"), NSLOCTEXT("RPGOnlineLobby", "EquipmentSection", "장비 강화 · 이전"));
+		Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *Sections, TEXT("OnlineLobbyEquipmentSection"), NSLOCTEXT("RPGOnlineLobby", "EquipmentSection", "장비 성장 · 제작"));
 		EquipmentSection = Rows->GetParent();
 		EquipmentPanel = WidgetTree->ConstructWidget<URPGEquipmentGrowthWidget>(URPGEquipmentGrowthWidget::StaticClass(), TEXT("EquipmentGrowth"));
 		EquipmentPanel->SetOwningPlayer(GetOwningPlayer());
@@ -678,7 +678,7 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 	else if (ConfigurationPanel && ConfigurationPanel->HasUnresolvedSave())
 		Status = NSLOCTEXT("RPGOnlineLobby", "ConfigurationUnconfirmed", "스킬 구성의 저장 결과를 먼저 확인하세요. 같은 저장 요청을 재확인할 수 있습니다.");
 	else if (EquipmentPanel && EquipmentPanel->HasUnresolvedCommand())
-		Status = NSLOCTEXT("RPGOnlineLobby", "EquipmentUnconfirmed", "장비 강화 · 이전에서 이전 작업의 결과를 먼저 확인하세요. 원래 요청으로 재확인할 수 있습니다.");
+		Status = NSLOCTEXT("RPGOnlineLobby", "EquipmentUnconfirmed", "장비 성장 · 제작에서 이전 작업의 결과를 먼저 확인하세요. 원래 요청으로 재확인할 수 있습니다.");
 	else if (Flow->HasQueuedDungeonAbandonment())
 		Status = NSLOCTEXT("RPGOnlineLobby", "AbandonmentQueued", "던전 포기를 확인했습니다. 아직 포기 요청을 보내지 못했습니다. 같은 계정으로 로그인하고 포기 확인 버튼으로 요청하세요. 서버 영수증 전에는 보상 제외가 확정되지 않습니다.");
 	else if (Flow->HasUnresolvedDungeonAbandonment())

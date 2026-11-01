@@ -28,6 +28,7 @@ TSharedRef<SWidget> URPGEquipmentGrowthWidget::RebuildWidget()
 		ReloadButton=RPGOnlineLobbyLayout::Action(*WidgetTree,*Root,TEXT("ReloadEquipmentButton"),LOCTEXT("Read","장비 새로고침"));
 		OperationBox=WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(),TEXT("EquipmentGrowthOperation"));
 		OperationBox->AddOption(LOCTEXT("UpgradeMode","한 단계 강화").ToString()); OperationBox->AddOption(LOCTEXT("TransferMode","강화 무료 이전").ToString());
+		OperationBox->AddOption(LOCTEXT("CraftMode","목표 장비 선택 제작").ToString()); OperationBox->AddOption(LOCTEXT("DismantleMode","남는 +0 목표 장비 분해").ToString());
 		OperationBox->SetSelectedIndex(0); RPGOnlineLobbyLayout::Control(*WidgetTree,*Root,*OperationBox);
 		RPGOnlineLobbyLayout::Text(*WidgetTree,*Root,TEXT("EquipmentSourceLabel"),LOCTEXT("SourceLabel","강화할 장비 · 이전할 원본"));
 		SourceBox=WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(),TEXT("EquipmentGrowthSource"));
@@ -35,6 +36,10 @@ TSharedRef<SWidget> URPGEquipmentGrowthWidget::RebuildWidget()
 		RPGOnlineLobbyLayout::Text(*WidgetTree,*Root,TEXT("EquipmentTargetLabel"),LOCTEXT("TargetLabel","강화를 받을 장비 · 같은 부위의 +0 장비"));
 		TargetBox=WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(),TEXT("EquipmentGrowthTarget"));
 		RPGOnlineLobbyLayout::Control(*WidgetTree,*Root,*TargetBox);
+		RPGOnlineLobbyLayout::Text(*WidgetTree,*Root,TEXT("EquipmentCraftLabel"),LOCTEXT("CraftLabel","제작할 목표 장비 · 증표 8개"));
+		CraftBox=WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(),TEXT("EquipmentGrowthCraftTarget"));
+		for (const auto& Target : RPGEquipmentGrowthUI::CraftTargets()) CraftBox->AddOption(Target.Value.ToString());
+		RPGOnlineLobbyLayout::Control(*WidgetTree,*Root,*CraftBox);
 		PreviewText=RPGOnlineLobbyLayout::Text(*WidgetTree,*Root,TEXT("EquipmentGrowthPreview"),FText::GetEmpty());
 		PrepareButton=RPGOnlineLobbyLayout::Action(*WidgetTree,*Root,TEXT("PrepareEquipmentButton"),LOCTEXT("Prepare","비용과 변경 내용 확인"));
 		ConfirmButton=RPGOnlineLobbyLayout::Action(*WidgetTree,*Root,TEXT("ConfirmEquipmentButton"),LOCTEXT("Confirm","확인한 내용으로 실행"));
@@ -55,6 +60,7 @@ void URPGEquipmentGrowthWidget::NativeConstruct()
 	if (OperationBox) OperationBox->OnSelectionChanged.AddUniqueDynamic(this,&ThisClass::SelectedOperation);
 	if (SourceBox) SourceBox->OnSelectionChanged.AddUniqueDynamic(this,&ThisClass::SelectedSource);
 	if (TargetBox) TargetBox->OnSelectionChanged.AddUniqueDynamic(this,&ThisClass::SelectedTarget);
+	if (CraftBox) CraftBox->OnSelectionChanged.AddUniqueDynamic(this,&ThisClass::SelectedOperation);
 	RefreshContext();
 	if (Mutations.IsValid()) Mutations->OnEquipmentMutationsChanged.AddUniqueDynamic(this,&ThisClass::HandleChanged);
 }
@@ -71,6 +77,7 @@ void URPGEquipmentGrowthWidget::NativeDestruct()
 	if (OperationBox) OperationBox->OnSelectionChanged.RemoveAll(this);
 	if (SourceBox) SourceBox->OnSelectionChanged.RemoveAll(this);
 	if (TargetBox) TargetBox->OnSelectionChanged.RemoveAll(this);
+	if (CraftBox) CraftBox->OnSelectionChanged.RemoveAll(this);
 	Mutations.Reset(); Scope={}; Options.Reset(); Confirmation={};
 	Super::NativeDestruct();
 }
@@ -128,6 +135,7 @@ void URPGEquipmentGrowthWidget::RefreshContext()
 	{
 		Scope=Valid ? Current : FRPGEquipmentMutationScope(); ContextWorld=GetWorld(); ContextController=GetOwningPlayer();
 		SourceId=TargetId=LastRefreshRequest=FGuid(); bOpened=bConfirming=false; Confirmation={}; LocalMessage=FText::GetEmpty();
+		if (CraftBox) { TGuardValue<bool> Updating(bUpdating,true); CraftBox->ClearSelection(); }
 	}
 	// Restore the local intent on character entry, even while this panel is hidden.
 	// This is a journal read only: entering the lobby never sends a payment/retry.
@@ -160,9 +168,17 @@ void URPGEquipmentGrowthWidget::RebuildChoices(const FRPGEquipmentMutationView& 
 FRPGEquipmentGrowthPreview URPGEquipmentGrowthWidget::Preview() const
 {
 	const auto Current=View();
-	return OperationBox && OperationBox->GetSelectedIndex()==1
-		? RPGEquipmentGrowthUI::Transfer(Current,SourceId,TargetId,FDateTime::UtcNow())
-		: RPGEquipmentGrowthUI::Upgrade(Current,SourceId,FDateTime::UtcNow());
+	const FDateTime Now=FDateTime::UtcNow();
+	const int32 Mode=OperationBox ? OperationBox->GetSelectedIndex() : INDEX_NONE;
+	if (Mode==0) return RPGEquipmentGrowthUI::Upgrade(Current,SourceId,Now);
+	if (Mode==1) return RPGEquipmentGrowthUI::Transfer(Current,SourceId,TargetId,Now);
+	if (Mode==3) return RPGEquipmentGrowthUI::Dismantle(Current,SourceId,Now);
+	if (Mode==2)
+	{
+		const auto Targets=RPGEquipmentGrowthUI::CraftTargets(); const int32 I=CraftBox ? CraftBox->GetSelectedIndex() : INDEX_NONE;
+		return RPGEquipmentGrowthUI::Craft(Current,Targets.IsValidIndex(I) ? Targets[I].Key : FString(),Now);
+	}
+	return {};
 }
 void URPGEquipmentGrowthWidget::Draw()
 {
@@ -171,6 +187,19 @@ void URPGEquipmentGrowthWidget::Draw()
 	if (PreviewText) PreviewText->SetText(bConfirming ? FText::Format(LOCTEXT("ConfirmPreview","{0}\n아래 확인을 누르면 이 내용으로 실행합니다."),Confirmation.Text) : Next.Text);
 	if (OperationBox) OperationBox->SetIsEnabled(Editable && !bConfirming);
 	if (SourceBox) SourceBox->SetIsEnabled(Editable && !bConfirming);
+	const int32 Mode=OperationBox ? OperationBox->GetSelectedIndex() : INDEX_NONE;
+	if (SourceBox) RPGOnlineLobbyLayout::SetControlVisibility(*SourceBox,Mode==2 ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	if (auto* Label=WidgetTree ? Cast<UTextBlock>(WidgetTree->FindWidget(TEXT("EquipmentSourceLabel"))) : nullptr)
+	{
+		Label->SetVisibility(Mode==2 ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+		Label->SetText(Mode==3 ? LOCTEXT("DismantleLabel","분해할 +0 목표 장비 · 장비가 소모됩니다.") : LOCTEXT("SourceLabel","강화할 장비 · 이전할 원본"));
+	}
+	if (CraftBox)
+	{
+		CraftBox->SetIsEnabled(Editable && !bConfirming);
+		RPGOnlineLobbyLayout::SetControlVisibility(*CraftBox,Mode==2 ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+		if (auto* Label=WidgetTree->FindWidget(TEXT("EquipmentCraftLabel"))) Label->SetVisibility(CraftBox->GetVisibility());
+	}
 	if (TargetBox)
 	{
 		TargetBox->SetIsEnabled(Editable && !bConfirming);
@@ -232,6 +261,8 @@ void URPGEquipmentGrowthWidget::Confirm()
 	const auto Intent=Confirmation; bConfirming=false; Confirmation={}; LocalMessage=FText::GetEmpty();
 	if (Intent.Operation==ERPGEquipmentMutationOperation::Upgrade) Mutations->UpgradeEquipment(Scope.CharacterId,Intent.Source,Intent.Costs);
 	else if (Intent.Operation==ERPGEquipmentMutationOperation::Transfer) Mutations->TransferEquipment(Scope.CharacterId,Intent.Source,Intent.Target);
+	else if (Intent.Operation==ERPGEquipmentMutationOperation::Craft) Mutations->CraftEquipment(Scope.CharacterId,Intent.TargetDefinitionName,Intent.Costs);
+	else if (Intent.Operation==ERPGEquipmentMutationOperation::Dismantle) Mutations->DismantleEquipment(Scope.CharacterId,Intent.Source);
 	RefreshContext(); if (Lobby.IsValid()) Lobby->RefreshPresentation();
 }
 void URPGEquipmentGrowthWidget::Cancel() { bConfirming=false; Confirmation={}; LocalMessage=FText::GetEmpty(); Draw(); }
