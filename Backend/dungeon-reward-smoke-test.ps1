@@ -1,10 +1,13 @@
 param(
     [string]$BaseUrl = 'http://127.0.0.1:3000',
     [string]$AdminToken = $env:PROJECT_RPG_BACKEND_ADMIN_TOKEN,
-    [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12)
+    [string]$RunId = [Guid]::NewGuid().ToString('N').Substring(0, 12),
+    [switch]$InventoryFirst,
+    [string]$DungeonId = 'Dungeon.RaidSwordMan'
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Tools/Request-DungeonDeparture.ps1')
 
 if ([string]::IsNullOrWhiteSpace($AdminToken)) {
     throw 'PROJECT_RPG_BACKEND_ADMIN_TOKEN or -AdminToken is required.'
@@ -26,7 +29,7 @@ function Invoke-JsonRequest {
         [string]$Uri,
         [hashtable]$Headers = @{},
         [object]$Body,
-        [int]$ExpectedStatus
+        [int[]]$ExpectedStatus
     )
 
     $parameters = @{
@@ -64,7 +67,7 @@ function Invoke-JsonRequest {
         }
     }
 
-    if ($statusCode -ne $ExpectedStatus) {
+    if ($statusCode -notin $ExpectedStatus) {
         throw "Expected $Method $Uri to return $ExpectedStatus, got ${statusCode}: $content"
     }
     if ([string]::IsNullOrWhiteSpace($content)) {
@@ -79,7 +82,7 @@ function New-RewardItem {
         [int]$Quantity
     )
 
-    return @{
+    $reward = @{
         definitionType = 'RPGItemDefinition'
         definitionName = $DefinitionName
         definitionVersion = 1
@@ -90,6 +93,10 @@ function New-RewardItem {
         instanceTags = @()
         statValues = @()
     }
+    if ($InventoryFirst) {
+        $reward.maxStackSize = if ($DefinitionName -eq 'GameItem.Consume.Potion.Red.Large') { 10 } else { 1 }
+    }
+    return $reward
 }
 
 $rewardSpecs = @(
@@ -168,10 +175,11 @@ for ($index = 0; $index -lt $rewardSpecs.Count; $index++) {
         -Headers $playerHeaders `
         -Body @{
             characterId = $characterId
-            dungeonId = 'Dungeon.PvE.ContentValidation'
+            dungeonId = $DungeonId
             difficulty = $spec.Difficulty
         } `
         -ExpectedStatus 201
+    $null = Request-RPGDungeonDeparture $BaseUrl $session.dungeonSessionId $characterId $playerHeaders
     $session = Invoke-JsonRequest `
         -Method Post `
         -Uri "$BaseUrl/api/dungeon-sessions/$($session.dungeonSessionId)/activate" `
@@ -226,6 +234,14 @@ for ($index = 0; $index -lt $rewardSpecs.Count; $index++) {
         throw "Unexpected settlement receipt for '$($spec.Difficulty)'."
     }
 
+    $snapshotUri = "$BaseUrl/api/dungeon-sessions/$($session.dungeonSessionId)/reward-snapshot/$characterId"
+    $earlySnapshot = Invoke-JsonRequest -Method Get -Uri $snapshotUri -Headers $serverHeaders -ExpectedStatus @(200, 202)
+    if ($earlySnapshot.state -notin @('Pending', 'Ready') -or
+        [Guid]$earlySnapshot.characterId -ne $characterId -or
+        [Guid]$earlySnapshot.dungeonSessionId -ne [Guid]$session.dungeonSessionId) {
+        throw 'Reward snapshot did not return the bound session and member.'
+    }
+
     $finished = $null
     foreach ($attempt in 1..50) {
         $finished = Invoke-JsonRequest `
@@ -242,6 +258,21 @@ for ($index = 0; $index -lt $rewardSpecs.Count; $index++) {
     if ($finished.state -ne 'Cleared') {
         throw "Configured '$($spec.Difficulty)' settlement ended in '$($finished.state)'."
     }
+
+    $snapshot = Invoke-JsonRequest -Method Get -Uri $snapshotUri -Headers $serverHeaders -ExpectedStatus 200
+    $snapshotGold = @($snapshot.wallet.balances | Where-Object { $_.currencyCode -eq 'RosterGold' })
+    if ($snapshot.state -ne 'Ready' -or [Guid]$snapshot.wallet.characterId -ne $characterId -or
+        $snapshotGold.Count -ne 1 -or $snapshotGold[0].balance -ne $spec.Gold -or
+        @($snapshot.items).Count -ne $itemRewards.Count) {
+        throw 'Completed reward snapshot did not contain the settled wallet and items.'
+    }
+    # Completion does not restore broad read/write rights to the game server.
+    Invoke-JsonRequest -Method Get -Uri "$BaseUrl/api/economy/wallets/$characterId" -Headers $serverHeaders -ExpectedStatus 403 | Out-Null
+    Invoke-JsonRequest -Method Get -Uri "$BaseUrl/api/dungeon-sessions/$($session.dungeonSessionId)" -Headers $serverHeaders -ExpectedStatus 403 | Out-Null
+    Invoke-JsonRequest -Method Post -Uri $snapshotUri -Headers $serverHeaders -Body @{} -ExpectedStatus 403 | Out-Null
+    Invoke-JsonRequest -Method Get -Uri $snapshotUri -Headers $playerHeaders -ExpectedStatus 403 | Out-Null
+    Invoke-JsonRequest -Method Get -Uri "$BaseUrl/api/dungeon-sessions/$($session.dungeonSessionId)/reward-snapshot/$([Guid]::NewGuid())" -Headers $serverHeaders -ExpectedStatus 403 | Out-Null
+    Invoke-JsonRequest -Method Get -Uri "$BaseUrl/api/dungeon-sessions/$([Guid]::NewGuid())/reward-snapshot/$characterId" -Headers $serverHeaders -ExpectedStatus 403 | Out-Null
 
     $wallet = Invoke-JsonRequest `
         -Method Get `
@@ -263,12 +294,14 @@ for ($index = 0; $index -lt $rewardSpecs.Count; $index++) {
         -Headers $playerHeaders `
         -Body $null `
         -ExpectedStatus 200
+    $expectedDeliveryType = if ($InventoryFirst) { 'Inventory' } else { 'Mail' }
     $potions = @($items.items | Where-Object {
         $_.definitionName -eq 'GameItem.Consume.Potion.Red.Large'
     })
     if ($potions.Count -ne 1 -or
         $potions[0].state.quantity -ne $spec.PotionQuantity -or
-        $potions[0].location.containerType -ne 'Mail') {
+        $potions[0].location.containerType -ne $expectedDeliveryType -or
+        $potions[0].revision -ne 1) {
         throw "Potion reward was not delivered correctly for '$($spec.Difficulty)'."
     }
     $helms = @($items.items | Where-Object {
@@ -278,7 +311,8 @@ for ($index = 0; $index -lt $rewardSpecs.Count; $index++) {
     if ($helms.Count -ne $expectedHelmCount -or
         ($expectedHelmCount -eq 1 -and
             ($helms[0].state.quantity -ne 1 -or
-             $helms[0].location.containerType -ne 'Mail'))) {
+             $helms[0].location.containerType -ne $expectedDeliveryType -or
+             $helms[0].revision -ne 1))) {
         throw "Helm reward was not delivered correctly for '$($spec.Difficulty)'."
     }
 
@@ -298,6 +332,9 @@ for ($index = 0; $index -lt $rewardSpecs.Count; $index++) {
             0
         }
         DungeonState = $finished.state
+        DeliveryType = $expectedDeliveryType
+        LiveSnapshotVerified = $true
+        EarlySnapshotState = $earlySnapshot.state
     }
 }
 

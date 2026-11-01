@@ -48,8 +48,9 @@ public sealed class InMemoryDungeonRewardCommitRepository(
 
                 foreach (ItemRepositoryCommitRequest request in batch.ItemRequests)
                 {
-                    ItemRepositoryCommitResult result = itemRepository.CommitAsync(
+                    ItemRepositoryCommitResult result = itemRepository.CommitRewardGrantAsync(
                             request,
+                            batch.StackSizesFor(request),
                             committedAt,
                             cancellationToken)
                         .GetAwaiter()

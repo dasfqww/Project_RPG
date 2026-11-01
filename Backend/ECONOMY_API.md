@@ -118,6 +118,32 @@ worker then transitions the session to `Cleared`; permanent failures transition
 it to `Failed`. Direct
 `finish(Cleared)` calls are rejected.
 
+## Personal exclusive loot (2026-11-01)
+
+`itemRewards[].personalLootWeight` optionally assigns an entry to one personal,
+exclusive pool. Omitted/null entries remain guaranteed. Positive integer weights
+sum to at most10000; the unused buckets mean no optional item. Four entries of500
+give20% total/5% each, independently per eligible character. Weighted entries must
+have a positive `maxStackSize`; existing definition/bind/growth checks still apply.
+
+The backend captures a private seed atomically with a new settlement in existing
+JSON storage. Workers select deterministically from that seed per session,
+character and reward version; retry/requeue does not redraw. Only selected entries
+enter the existing atomic inventory-first/overflow-mail delivery with per-request
+stack limits. Old unweighted JSON/fingerprints are unchanged. The seed is not an
+HTTP input or snapshot field. Do not mix old and new workers once weighted content
+is enabled: old binaries do not understand the new selection fields.
+
+The read-only reward snapshot accepts optional `?rewardVersion=<frozen version>`.
+Ready responses then include `delivery: { rewardVersion, itemQuantity }`, using
+the existing deterministic item commit receipt's actual affected quantity, not
+all loot candidates. With no item command (currency-only or all-miss), it is0.
+No query preserves `delivery=null`; no new storage or grant authority is added.
+
+Implementation, bucket/HTTP/Memory/PostgreSQL evidence and UE/content integration:
+[Personal loot contract](../Docs/DUNGEON_PERSONAL_LOOT.md). Service deployment and
+old/new worker mixing remain separate from the local development checks.
+
 ## Verification
 
 Start the backend in Development with

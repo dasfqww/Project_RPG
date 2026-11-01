@@ -21,6 +21,11 @@ public sealed class PostgresDungeonRewardCommitRepository(
             await connection.BeginTransactionAsync(cancellationToken);
         try
         {
+            await PostgresItemRepository.AcquireOwnerLocksAsync(
+                connection, transaction,
+                batch.ItemRequests.SelectMany(request =>
+                    request.Mutations.Select(mutation => mutation.NewRecord.Owner).Append(request.Actor)),
+                cancellationToken);
             IReadOnlyList<CurrencyTransactionResult> currencyResults =
                 await economyRepository.CommitBatchInTransactionAsync(
                     connection,
@@ -50,10 +55,11 @@ public sealed class PostgresDungeonRewardCommitRepository(
                 .OrderBy(value => value.RequestId))
             {
                 ItemRepositoryCommitResult result =
-                    await itemRepository.CommitInTransactionAsync(
+                    await itemRepository.CommitRewardInTransactionAsync(
                         connection,
                         transaction,
                         request,
+                        batch.StackSizesFor(request),
                         committedAt,
                         cancellationToken);
                 if (result.Status is ItemRepositoryCommitStatus.Committed
