@@ -107,6 +107,28 @@ CREATE TABLE IF NOT EXISTS dungeon_sessions (
 ALTER TABLE dungeon_sessions
     ADD COLUMN IF NOT EXISTS server_address VARCHAR(255);
 
+-- Old sessions retain their identity/state. Never fabricate a leader or queue
+-- an old Waiting row during migration; its members can still read/leave it.
+ALTER TABLE dungeon_sessions
+    ADD COLUMN IF NOT EXISTS leader_character_id UUID NULL,
+    ADD COLUMN IF NOT EXISTS lobby_revision BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS departure_request_id UUID NULL,
+    ADD COLUMN IF NOT EXISTS departure_request_revision BIGINT NULL,
+    ADD COLUMN IF NOT EXISTS departure_requested_at TIMESTAMPTZ NULL;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'dungeon_sessions'::regclass AND conname = 'dungeon_sessions_departure_shape_check') THEN
+        ALTER TABLE dungeon_sessions ADD CONSTRAINT dungeon_sessions_departure_shape_check CHECK (
+            lobby_revision BETWEEN 0 AND 9007199254740991
+            AND ((departure_request_id IS NULL AND departure_request_revision IS NULL AND departure_requested_at IS NULL)
+                OR (departure_request_id IS NOT NULL AND departure_request_id <> '00000000-0000-0000-0000-000000000000'::uuid
+                    AND departure_request_revision IS NOT NULL
+                    AND departure_request_revision BETWEEN 1 AND 9007199254740991 AND departure_request_revision < lobby_revision))
+            AND (departure_requested_at IS NULL OR leader_character_id IS NOT NULL));
+    END IF;
+END $$;
+
 ALTER TABLE dungeon_sessions
     ALTER COLUMN state TYPE VARCHAR(32);
 
@@ -138,11 +160,59 @@ CREATE TABLE IF NOT EXISTS dungeon_session_members (
                        REFERENCES accounts(steam_id) ON DELETE CASCADE,
     joined_at          TIMESTAMPTZ NOT NULL,
     lease_expires_at   TIMESTAMPTZ NOT NULL,
+    disconnected_at    TIMESTAMPTZ NULL,
+    connection_generation BIGINT NOT NULL DEFAULT 0,
+    confirmed_connection_generation BIGINT NOT NULL DEFAULT 0,
+    disconnected_generation BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (dungeon_session_id, character_id)
 );
 
+-- Existing databases retain their members; no disconnect is inferred from
+-- an old row or from the lease expiry.
+ALTER TABLE dungeon_session_members
+    ADD COLUMN IF NOT EXISTS disconnected_at TIMESTAMPTZ NULL;
+
+ALTER TABLE dungeon_session_members
+    ADD COLUMN IF NOT EXISTS connection_generation BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE dungeon_session_members
+    ADD COLUMN IF NOT EXISTS confirmed_connection_generation BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE dungeon_session_members
+    ADD COLUMN IF NOT EXISTS disconnected_generation BIGINT NOT NULL DEFAULT 0;
+
 CREATE INDEX IF NOT EXISTS ix_dungeon_session_members_character_id
     ON dungeon_session_members(character_id);
+
+-- Explicit opt-out receipts survive member removal and settlement. A local
+-- disconnect never creates one. Existing membership rows are not backfilled.
+CREATE TABLE IF NOT EXISTS dungeon_session_abandonments (
+    dungeon_session_id UUID NOT NULL
+                       REFERENCES dungeon_sessions(dungeon_session_id) ON DELETE CASCADE,
+    character_id       UUID NOT NULL
+                       REFERENCES characters(character_id) ON DELETE CASCADE,
+    steam_id           VARCHAR(20) NOT NULL
+                       REFERENCES accounts(steam_id) ON DELETE CASCADE,
+    abandoned_at       TIMESTAMPTZ NOT NULL,
+    session_state_at_abandonment VARCHAR(32) NOT NULL
+                       CHECK (session_state_at_abandonment IN ('Loading', 'InProgress', 'Closed')),
+    PRIMARY KEY (dungeon_session_id, character_id)
+);
+
+-- Unexpected-disconnect expiry is server-observed and is not a player
+-- abandonment. The receipt remains after membership and tickets are removed.
+CREATE TABLE IF NOT EXISTS dungeon_session_disconnection_expulsions (
+    dungeon_session_id UUID NOT NULL
+                       REFERENCES dungeon_sessions(dungeon_session_id) ON DELETE CASCADE,
+    character_id       UUID NOT NULL
+                       REFERENCES characters(character_id) ON DELETE CASCADE,
+    steam_id           VARCHAR(20) NOT NULL
+                       REFERENCES accounts(steam_id) ON DELETE CASCADE,
+    disconnected_at    TIMESTAMPTZ NOT NULL,
+    expired_at         TIMESTAMPTZ NOT NULL,
+    processed_at       TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (dungeon_session_id, character_id)
+);
 
 CREATE TABLE IF NOT EXISTS dungeon_reward_settlements (
     dungeon_session_id     UUID PRIMARY KEY
@@ -195,6 +265,30 @@ CREATE INDEX IF NOT EXISTS ix_dungeon_reward_settlements_due
     ON dungeon_reward_settlements(
         state, next_attempt_at, processing_expires_at);
 
+-- First-slice progression is initialized only alongside new character creation.
+-- Never replace a missing/failed legacy save with a fresh zero-XP state.
+CREATE TABLE IF NOT EXISTS character_progression (
+    character_id UUID PRIMARY KEY REFERENCES characters(character_id) ON DELETE CASCADE,
+    state JSONB NOT NULL CHECK (jsonb_typeof(state) = 'object'),
+    updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS character_progression_awards (
+    character_id UUID NOT NULL REFERENCES character_progression(character_id) ON DELETE CASCADE,
+    dungeon_session_id UUID NOT NULL REFERENCES dungeon_reward_settlements(dungeon_session_id),
+    credited_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (character_id, dungeon_session_id)
+);
+
+CREATE TABLE IF NOT EXISTS character_progression_commands (
+    character_id UUID NOT NULL REFERENCES character_progression(character_id) ON DELETE CASCADE,
+    request_id UUID NOT NULL,
+    fingerprint CHAR(64) NOT NULL,
+    result JSONB NOT NULL CHECK (jsonb_typeof(result) = 'object'),
+    created_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (character_id, request_id)
+);
+
 CREATE TABLE IF NOT EXISTS character_session_leases (
     character_id       UUID PRIMARY KEY
                        REFERENCES characters(character_id) ON DELETE CASCADE,
@@ -206,6 +300,24 @@ CREATE TABLE IF NOT EXISTS character_session_leases (
 
 CREATE INDEX IF NOT EXISTS ix_character_session_leases_expires_at
     ON character_session_leases(expires_at);
+
+-- Immutable pickup origin/reservation only. Preparing it does not grant an item.
+-- No FK to current membership: an opt-out must preserve the historical command.
+CREATE TABLE IF NOT EXISTS dungeon_pickup_intents (
+    dungeon_session_id UUID NOT NULL REFERENCES dungeon_sessions(dungeon_session_id),
+    server_id VARCHAR(128) NOT NULL,
+    drop_id UUID NOT NULL CHECK (drop_id <> '00000000-0000-0000-0000-000000000000'),
+    request_id UUID NOT NULL UNIQUE CHECK (request_id <> '00000000-0000-0000-0000-000000000000'),
+    character_id UUID NOT NULL REFERENCES characters(character_id),
+    steam_id VARCHAR(20) NOT NULL REFERENCES accounts(steam_id),
+    item_id UUID NOT NULL UNIQUE CHECK (item_id <> '00000000-0000-0000-0000-000000000000'),
+    command_payload JSONB NOT NULL CHECK (jsonb_typeof(command_payload) = 'object'),
+    prepared_at TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ NULL,
+    PRIMARY KEY (dungeon_session_id, drop_id)
+);
+
+ALTER TABLE dungeon_pickup_intents ADD COLUMN IF NOT EXISTS consumed_at TIMESTAMPTZ NULL;
 
 CREATE TABLE IF NOT EXISTS game_join_tickets (
     token_hash         CHAR(64) PRIMARY KEY,
@@ -228,6 +340,38 @@ ALTER TABLE game_join_tickets
 
 CREATE INDEX IF NOT EXISTS ix_game_join_tickets_expires_at
     ON game_join_tickets(expires_at);
+
+-- Only hashes, never bearer tokens. The receipt and generation increment are
+-- committed together under the parent dungeon session lock.
+CREATE TABLE IF NOT EXISTS game_join_ticket_consumptions (
+    token_hash              CHAR(64) PRIMARY KEY,
+    consumption_request_id  UUID NOT NULL CHECK (consumption_request_id <> '00000000-0000-0000-0000-000000000000'),
+    server_id               VARCHAR(128) NOT NULL,
+    dungeon_session_id      UUID NOT NULL REFERENCES dungeon_sessions(dungeon_session_id) ON DELETE CASCADE,
+    character_id            UUID NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
+    steam_id                VARCHAR(20) NOT NULL REFERENCES accounts(steam_id) ON DELETE CASCADE,
+    connection_generation   BIGINT NOT NULL CHECK (connection_generation > 0),
+    consumed_at             TIMESTAMPTZ NOT NULL,
+    recovery_expires_at     TIMESTAMPTZ NOT NULL CHECK (recovery_expires_at > consumed_at),
+    UNIQUE (dungeon_session_id, server_id, consumption_request_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_game_join_ticket_consumptions_expires
+    ON game_join_ticket_consumptions(recovery_expires_at);
+-- recovery_expires_at limits ordinary admission replay, not evidence lifetime.
+-- Keep historical rows for late reconciliation; existing entity FKs govern deletion.
+
+-- Cancellation proof is written only while the original unconsumed ticket
+-- exists. Keep both the hash and intent reserved for the session lifetime.
+CREATE TABLE IF NOT EXISTS game_join_ticket_consumption_cancellations (
+    token_hash              CHAR(64) PRIMARY KEY,
+    consumption_request_id  UUID NOT NULL CHECK (consumption_request_id <> '00000000-0000-0000-0000-000000000000'),
+    server_id               VARCHAR(128) NOT NULL,
+    dungeon_session_id      UUID NOT NULL REFERENCES dungeon_sessions(dungeon_session_id) ON DELETE CASCADE,
+    expected_steam_id       VARCHAR(20) NOT NULL REFERENCES accounts(steam_id) ON DELETE CASCADE,
+    cancelled_at           TIMESTAMPTZ NOT NULL,
+    UNIQUE (dungeon_session_id, server_id, consumption_request_id)
+);
 
 CREATE TABLE IF NOT EXISTS inventory_items (
     character_id       UUID NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,

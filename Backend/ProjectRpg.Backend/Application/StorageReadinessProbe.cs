@@ -36,18 +36,54 @@ public sealed class PostgresStorageReadinessProbe(
     ILogger<PostgresStorageReadinessProbe> logger)
     : IStorageReadinessProbe
 {
+    private readonly object _gate = new();
+    private Task<StorageReadinessResult>? _activeCheck;
+
     public async Task<StorageReadinessResult> CheckAsync(
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         long startedAt = Stopwatch.GetTimestamp();
         int timeoutSeconds = Math.Clamp(
             options.Value.ReadinessTimeoutSeconds,
             1,
             10);
-        using CancellationTokenSource timeout =
-            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+        Task<StorageReadinessResult> check;
+        lock (_gate)
+        {
+            // The driver may block while sending a PostgreSQL cancel request.
+            // Keep at most one query/cleanup in flight across all HTTP probes.
+            // A caller cancelling its request must not cancel other callers.
+            if (_activeCheck is null || _activeCheck.IsCompleted)
+            {
+                _activeCheck = Task.Run(() => QueryAsync(timeoutSeconds));
+            }
+            check = _activeCheck;
+        }
 
+        try
+        {
+            return await check.WaitAsync(
+                TimeSpan.FromSeconds(timeoutSeconds),
+                cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            // QueryAsync owns disposal even when this HTTP response has ended.
+            // Later probes reuse the pending task until its cleanup completes.
+            return new StorageReadinessResult(
+                false,
+                "Postgres",
+                GetElapsedMilliseconds(startedAt),
+                "storage_timeout");
+        }
+    }
+
+    private async Task<StorageReadinessResult> QueryAsync(int timeoutSeconds)
+    {
+        long startedAt = Stopwatch.GetTimestamp();
+        using CancellationTokenSource timeout = new(
+            TimeSpan.FromSeconds(timeoutSeconds));
         try
         {
             await using NpgsqlConnection connection =
@@ -57,6 +93,7 @@ public sealed class PostgresStorageReadinessProbe(
                 CommandTimeout = timeoutSeconds
             };
             object? result = await command.ExecuteScalarAsync(timeout.Token);
+            timeout.Token.ThrowIfCancellationRequested();
             bool isReady = result is int value && value == 1;
             if (!isReady)
             {
@@ -70,8 +107,9 @@ public sealed class PostgresStorageReadinessProbe(
                 GetElapsedMilliseconds(startedAt),
                 isReady ? null : "storage_unexpected_response");
         }
-        catch (OperationCanceledException)
-            when (!cancellationToken.IsCancellationRequested)
+        catch (Exception exception) when (timeout.IsCancellationRequested
+            || exception is TimeoutException
+            || exception.InnerException is TimeoutException)
         {
             logger.LogWarning(
                 "PostgreSQL readiness query timed out after {TimeoutSeconds} seconds.",
