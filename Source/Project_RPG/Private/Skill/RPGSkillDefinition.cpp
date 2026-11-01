@@ -1,4 +1,5 @@
 #include "Skill/RPGSkillDefinition.h"
+#include "Combat/RPGCombatControlTypes.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
@@ -17,6 +18,14 @@
 
 const FPrimaryAssetType URPGSkillDefinition::PrimaryAssetType(
 	TEXT("RPGSkillDefinition"));
+
+namespace
+{
+UTexture2D* ResolveBaseSkillIcon(UTexture2D* DefaultIcon, const FRPGSkillDataTable* Row)
+{
+	return Row && Row->SkillIcon ? Row->SkillIcon.Get() : DefaultIcon;
+}
+}
 
 URPGSkillDefinition::URPGSkillDefinition(
 	const FObjectInitializer& ObjectInitializer)
@@ -264,6 +273,28 @@ EDataValidationResult URPGSkillDefinition::IsDataValid(
 	}
 
 	FString SecurityReason;
+	if (!RPGHitReaction::IsValidPolicy(HitReactionPolicy))
+	{
+		Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidHitReaction", "Invalid attack hit reaction policy."));
+	}
+	if (!RPGCombatControl::IsValidStunDuration(StunDuration))
+		Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidStunDuration", "Stun duration must be zero or between 0.05 and 10 seconds."));
+	if (!Knockback.IsValid())
+		Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidKnockback", "Displacement requires 0-1000 cm distance; horizontal duration 0.1-2 s and speed <=2500 cm/s. Airborne height is 0 (off) or 50-600 cm; down duration 0.1-4 s and get-up duration 0.1-3 s."));
+	if (!Contributions.IsValid())
+		Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidContributions", "Combat contribution amounts must be finite and between zero and 1000."));
+	if (!Stagger.IsValid())
+		Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidStagger", "Stagger duration must be zero or 0.05-2 seconds."));
+	if (!DamageTakenIncrease.IsValid())
+		Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidDamageTakenIncrease", "Damage taken increase must be zero or 1-100 percent; duration must be 0.05-30 seconds."));
+	if (!DefenseReduction.IsValid())
+		Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidDefenseReduction", "Defense reduction must be zero or 1-80 percent; duration must be 0.05-30 seconds."));
+	if (!Burn.IsValid())
+		Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidBurn", "Burn needs integer damage 0-10000, interval 0.5-5 seconds and duration greater than interval up to 30 seconds."));
+	if (!Slow.IsValid())
+		Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidSlow", "Slow percent must be zero or 5-90; duration must be 0.05-30 seconds."));
+	if (!ActivationImmunities.IsValid())
+		Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidImmunities", "Activation immunity flags contain an unsupported value."));
 	if (!SecurityProfile.IsValid(&SecurityReason))
 	{
 		Fail(FText::Format(
@@ -293,10 +324,21 @@ EDataValidationResult URPGSkillDefinition::IsDataValid(
 				FText::AsNumber(TierIndex + 1)));
 		}
 
+		TSet<FName> PersistenceIds;
 		for (int32 OptionIndex = 0;
 			OptionIndex < Tier.Options.Num(); ++OptionIndex)
 		{
 			const FRPGSkillTripodOption& Option = Tier.Options[OptionIndex];
+			if (!FMath::IsFinite(Option.CooldownReductionSeconds) || Option.CooldownReductionSeconds < 0.0f)
+				Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidTripodCooldownReduction",
+					"Tripod cooldown reduction must be finite, nonnegative seconds."));
+			if (!Option.PersistenceId.IsNone())
+			{
+				if (PersistenceIds.Contains(Option.PersistenceId))
+					Fail(NSLOCTEXT("RPGSkillDefinition", "DuplicateTripodPersistenceId",
+						"Tripod persistence IDs must be unique within a tier."));
+				PersistenceIds.Add(Option.PersistenceId);
+			}
 			const FText OptionLabel = FText::Format(
 				NSLOCTEXT("RPGSkillDefinition", "TripodOptionLabel",
 					"Tripod tier {0}, option {1}"),
@@ -323,7 +365,12 @@ EDataValidationResult URPGSkillDefinition::IsDataValid(
 			for (const FRPGSkillModifier& Modifier : Option.StatModifiers)
 			{
 				if (!Modifier.StatTag.IsValid() ||
-					!FMath::IsFinite(Modifier.ScalarValue))
+					!FMath::IsFinite(Modifier.ScalarValue) ||
+					((Modifier.StatTag == FGameplayTag::RequestGameplayTag(TEXT("Shared.Stat.Radius"), false)
+						|| Modifier.StatTag == FGameplayTag::RequestGameplayTag(TEXT("Shared.Stat.MovementDistance"), false)
+						|| Modifier.StatTag == FGameplayTag::RequestGameplayTag(TEXT("Shared.Stat.StaggerContribution"), false)
+						|| Modifier.StatTag == FGameplayTag::RequestGameplayTag(TEXT("Shared.Stat.PartBreakContribution"), false))
+						&& Modifier.ScalarValue <= 0.f))
 				{
 					Fail(FText::Format(
 						NSLOCTEXT("RPGSkillDefinition", "InvalidTripodModifier",
@@ -331,6 +378,16 @@ EDataValidationResult URPGSkillDefinition::IsDataValid(
 							"stat modifier."),
 						FText::AsNumber(TierIndex + 1),
 						FText::AsNumber(OptionIndex + 1)));
+				}
+				if (Modifier.StatTag == FGameplayTag::RequestGameplayTag(TEXT("Shared.Stat.MovementDistance"), false))
+				{
+					FRPGSkillRuntimeSpec MovementProbe;
+					MovementProbe.SecurityProfile = SecurityProfile;
+					MovementProbe.StatScalars.Add(Modifier.StatTag, Modifier.ScalarValue);
+					float MovementScale = 1.f;
+					if (!MovementProbe.TryGetMontageMovementScale(MovementScale))
+						Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidMovementScalarProfile",
+							"Movement-distance choices require a positive scalar and bounded movement authorization."));
 				}
 			}
 		}
@@ -395,6 +452,32 @@ EDataValidationResult URPGSkillDefinition::IsDataValid(
 }
 #endif
 
+bool URPGSkillDefinition::ResolveSavedTripod(const int32 RequiredSkillLevel, const FName PersistenceId,
+	int32& OutTierIndex, int32& OutOptionIndex) const
+{
+	OutTierIndex = OutOptionIndex = INDEX_NONE;
+	if (PersistenceId.IsNone()) return false;
+	int32 MatchingTier = INDEX_NONE;
+	for (int32 Tier = 0; Tier < TripodTiers.Num(); ++Tier)
+	{
+		if (TripodTiers[Tier].RequiredSkillLevel != RequiredSkillLevel) continue;
+		if (MatchingTier != INDEX_NONE) return false;
+		MatchingTier = Tier;
+	}
+	if (MatchingTier == INDEX_NONE) return false;
+	int32 MatchingOption = INDEX_NONE;
+	for (int32 Option = 0; Option < TripodTiers[MatchingTier].Options.Num(); ++Option)
+	{
+		if (TripodTiers[MatchingTier].Options[Option].PersistenceId != PersistenceId) continue;
+		if (MatchingOption != INDEX_NONE) return false;
+		MatchingOption = Option;
+	}
+	if (MatchingOption == INDEX_NONE) return false;
+	OutTierIndex = MatchingTier;
+	OutOptionIndex = MatchingOption;
+	return true;
+}
+
 int32 URPGSkillDefinition::ClampSkillLevel(
 	const int32 RequestedLevel) const
 {
@@ -446,6 +529,13 @@ void URPGSkillDefinition::NormalizeSaveData(
 	}
 }
 
+UTexture2D* URPGSkillDefinition::GetBaseIcon() const
+{
+	const FRPGSkillDataTable* Row = SkillDataHandle.IsNull() ? nullptr
+		: SkillDataHandle.GetRow<FRPGSkillDataTable>(TEXT("GetBaseIcon"));
+	return ResolveBaseSkillIcon(SkillIcon, Row);
+}
+
 void URPGSkillDefinition::BuildRuntimeSpec(
 	AActor* InActor,
 	const FRPGSkillSaveData& SaveData,
@@ -456,6 +546,7 @@ void URPGSkillDefinition::BuildRuntimeSpec(
 
 	OutSpec.Reset();
 	OutSpec.SkillTag = SkillTag;
+	OutSpec.DisplayName = SkillName;
 	OutSpec.SkillLevel = NormalizedSaveData.SkillLevel;
 	OutSpec.Icon = SkillIcon;
 	OutSpec.Montage = SkillMontage;
@@ -466,8 +557,19 @@ void URPGSkillDefinition::BuildRuntimeSpec(
 	OutSpec.TargetingPolicyClass = DefaultTargetingPolicyClass;
 	OutSpec.TargetingConfig = DefaultTargetingConfig;
 	OutSpec.BaseCooldown = BaseCooldown;
+	OutSpec.Contributions = Contributions;
+	OutSpec.ContributionHitSection = ContributionHitSection;
 	OutSpec.TargetingProfile = TargetingProfile;
 	OutSpec.SecurityProfile = SecurityProfile;
+	OutSpec.HitReactionPolicy = HitReactionPolicy;
+	OutSpec.StunDuration = StunDuration;
+	OutSpec.Knockback = Knockback;
+	OutSpec.Slow = Slow;
+	OutSpec.Burn = Burn;
+	OutSpec.DefenseReduction = DefenseReduction;
+	OutSpec.DamageTakenIncrease = DamageTakenIncrease;
+	OutSpec.Stagger = Stagger;
+	OutSpec.ActivationImmunities = ActivationImmunities;
 	ApplyDefinitionExecutionDefaults(OutSpec);
 
 	if (!SkillDataHandle.IsNull())
@@ -475,10 +577,11 @@ void URPGSkillDefinition::BuildRuntimeSpec(
 		if (const FRPGSkillDataTable* Row =
 			SkillDataHandle.GetRow<FRPGSkillDataTable>(TEXT("BuildRuntimeSpec")))
 		{
-			if (Row->SkillIcon)
-			{
-				OutSpec.Icon = Row->SkillIcon;
-			}
+			// A missing or invalid table damage value remains fail-closed at application.
+			OutSpec.BaseDamage = Row->AttackPower;
+			OutSpec.Icon = ResolveBaseSkillIcon(SkillIcon, Row);
+			if (OutSpec.DisplayName.IsEmpty() && !Row->SkillName.IsNone())
+				OutSpec.DisplayName = FText::FromName(Row->SkillName);
 		}
 	}
 
@@ -501,6 +604,10 @@ void URPGSkillDefinition::BuildRuntimeSpec(
 
 		OutSpec.SelectedTripodIndices[TierIndex] = OptionIndex;
 		const FRPGSkillTripodOption& Option = Tier.Options[OptionIndex];
+		const float Reduction = Option.CooldownReductionSeconds;
+		const float CombinedReduction = OutSpec.CooldownReductionSeconds + Reduction;
+		if (FMath::IsFinite(Reduction) && Reduction >= 0.0f && FMath::IsFinite(CombinedReduction))
+			OutSpec.CooldownReductionSeconds = CombinedReduction;
 		if (Option.TripodTag.IsValid())
 		{
 			OutSpec.TripodTags.AddTag(Option.TripodTag);

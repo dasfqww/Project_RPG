@@ -1,26 +1,47 @@
 #include "Skill/RPGGameplayAbility_SkillContainer.h"
+#include "Ability/Skill/RPGGreatSwordResolveAbility.h"
+#if !UE_BUILD_SHIPPING
+#include "Tests/RPGSkillNetworkE2EProbeComponent.h"
+#include "Tests/RPGSkillDamageNetworkProbe.h"
+#include "Tests/RPGSkillEndNetworkObservation.h"
+#endif
 
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
+#include "Ability/AbilityTask/RPGAbilityTask_PlayScaledSkillMontageAndWait.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
 #include "Abilities/Tasks/AbilityTask_WaitInputPress.h"
 #include "Abilities/Tasks/AbilityTask_WaitInputRelease.h"
 #include "GameplayPrediction.h"
+#include "Engine/World.h"
+#include "AbilitySystemBlueprintLibrary.h"
+#include "AI/RPGBossAIComponent.h"
+#include "AI/RPGBossThreatComponent.h"
+#include "EngineUtils.h"
+#include "GameFramework/Controller.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Combat/HitQuery/RPGHitQuerySubsystem.h"
 #include "Component/RPGAbilitySystemComponent.h"
 #include "Component/RPGSecurityValidationComponent.h"
 #include "Component/Skill/RPGPlayerSkillComponent.h"
+#include "Component/UI/PlayerUIComponent.h"
 #include "Controller/RPGPlayerController.h"
 #include "FunctionLibrary/RPGSecurityBlueprintLibrary.h"
 #include "GameFramework/PlayerController.h"
+#include "Interface/PawnUIInterface.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "RPGGameplayTags.h"
 #include "Skill/RPGSkillAction.h"
+#include "Skill/RPGClassSkillEligibility.h"
 #include "Skill/RPGSkillDefinition.h"
 #include "Skill/RPGSkillExecutionPolicy.h"
 #include "Skill/RPGSkillTargetingPolicy.h"
 #include "TimerManager.h"
+#include "Component/Combat/RPGCombatContributionComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RPGGameplayAbility_SkillContainer)
 
@@ -29,6 +50,13 @@ URPGGameplayAbility_SkillContainer::URPGGameplayAbility_SkillContainer()
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 	bUseLegacyManualManaCost = false;
+}
+
+UGameplayEffect* URPGGameplayAbility_SkillContainer::GetCooldownGameplayEffect() const
+{
+	// The player base still applies/checks the per-definition GAS cooldown.
+	// Returning no legacy effect also excludes its tags from readiness/UI queries.
+	return nullptr;
 }
 
 float URPGGameplayAbility_SkillContainer::GetRPGCooldownDuration(
@@ -44,15 +72,38 @@ URPGGameplayAbility_SkillContainer::GetRPGCooldownSourceObject() const
 	return SkillDefinition ? SkillDefinition.Get() : Super::GetRPGCooldownSourceObject();
 }
 
+bool URPGGameplayAbility_SkillContainer::CanActivateAbility(const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags,
+	const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
+{
+	return SkillDefinition && SkillDefinition->ActivationImmunities.IsValid() && RPGClassSkillEligibility::CanActivate(
+		ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr, SkillDefinition->SkillTag, SkillDefinition, GetClass(), Handle)
+		&& Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
+}
+
 void URPGGameplayAbility_SkillContainer::ActivateAbility(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo,
 	const FGameplayEventData* TriggerEventData)
 {
+	// Recheck before Blueprint/parent callbacks or spending resources, including direct/event starts.
+	if (!SkillDefinition || !SkillDefinition->ActivationImmunities.IsValid() || !RPGClassSkillEligibility::CanActivate(
+		ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr, SkillDefinition->SkillTag, SkillDefinition, GetClass(), Handle))
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+	const uint64 ActivationSerial = ++SkillDamageActivationSerial;
 	ServerAppliedHitCount = 0;
+	CommittedResolveDamageMultiplier = 1.f;
+	bResolveHitAwarded = false;
+	bFinisherHitAttempted = false;
+	SkillMontageAnimInstance.Reset();
+	SkillMontageInstanceId = INDEX_NONE;
+	CaptureSkillBossEncounters(ActorInfo ? Cast<APawn>(ActorInfo->AvatarActor.Get()) : nullptr);
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
-	if (!IsActive())
+	if (!IsActive() || SkillDamageActivationSerial != ActivationSerial)
 	{
 		return;
 	}
@@ -66,11 +117,13 @@ void URPGGameplayAbility_SkillContainer::ActivateAbility(
 
 	FRPGSkillSaveData SaveData;
 	AActor* AvatarActor = GetAvatarActorFromActorInfo();
-	if (URPGPlayerSkillComponent* SkillComponent = AvatarActor
+	URPGPlayerSkillComponent* SkillComponent = AvatarActor
 		? AvatarActor->FindComponentByClass<URPGPlayerSkillComponent>()
-		: nullptr)
+		: nullptr;
+	if (!SkillComponent || !SkillComponent->TryGetSkillSaveData(SkillDefinition->SkillTag, SaveData))
 	{
-		SaveData = SkillComponent->GetSkillSaveData(SkillDefinition->SkillTag);
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
 	}
 
 	SkillDefinition->BuildRuntimeSpec(AvatarActor, SaveData, ActiveSkillSpec);
@@ -145,14 +198,14 @@ void URPGGameplayAbility_SkillContainer::ActivateAbility(
 	{
 		if (!WaitForInitialReplicatedTargetData())
 		{
-			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+			if (IsActive() && SkillDamageActivationSerial == ActivationSerial) EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		}
 		return;
 	}
 
 	if (!RefreshSkillTarget() || !StartSkillAfterTargetReady())
 	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		if (IsActive() && SkillDamageActivationSerial == ActivationSerial) EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 	}
 	return;
 }
@@ -170,28 +223,21 @@ bool URPGGameplayAbility_SkillContainer::StartSkillAfterTargetReady()
 		{
 			return false;
 		}
-		// Execution-window events and gameplay-effect events are independent.
-		// Keep legacy hit/AOE delivery alive until migrated content supplies a
-		// dedicated effect processor.
+		// Execution-window and damage events are independent. Existing BP notifies
+		// use virtual damage handlers below, with this activation's frozen query.
 		if (EventTag.IsValid())
 		{
 			ExecWaitGameplayEvent();
 		}
 		StartExecutionInputTasks();
-		if (!CommitAbility(
-			CurrentSpecHandle,
-			CurrentActorInfo,
-			CurrentActivationInfo))
+		if (!CommitSkillAndNotifyCooldown())
 		{
 			return false;
 		}
-		return ActiveExecutionPolicy->StartExecution();
+		return ActiveExecutionPolicy && ActiveExecutionPolicy->StartExecution();
 	}
 
-	if (!CommitAbility(
-		CurrentSpecHandle,
-		CurrentActorInfo,
-		CurrentActivationInfo))
+	if (!CommitSkillAndNotifyCooldown())
 	{
 		return false;
 	}
@@ -213,6 +259,52 @@ bool URPGGameplayAbility_SkillContainer::StartSkillAfterTargetReady()
 	return true;
 }
 
+bool URPGGameplayAbility_SkillContainer::CommitSkillAndNotifyCooldown()
+{
+	const uint64 ActivationSerial = SkillDamageActivationSerial;
+	// Do not call the legacy CoolDown(): it commits again before broadcasting.
+	if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
+	{
+		return false;
+	}
+	if (!IsActive() || SkillDamageActivationSerial != ActivationSerial) return false;
+	// The server consumes the opportunity once at commit, before any montage hit.
+	if (!StartActivationImmunity(ActiveSkillSpec.ActivationImmunities)
+		|| !IsActive() || SkillDamageActivationSerial != ActivationSerial) return false;
+	// Cancellation/misses never refund it; all hits of this cast use the same value.
+	bMontageImmunityReady = true;
+	URPGGreatSwordResolveAbility::ConsumeForCommittedSkill(*this, CommittedResolveDamageMultiplier);
+	if (!IsActive() || SkillDamageActivationSerial != ActivationSerial) return false;
+	if (!CurrentActorInfo || !CurrentActorInfo->IsLocallyControlled()) return true;
+	IPawnUIInterface* PawnUI = Cast<IPawnUIInterface>(CurrentActorInfo->AvatarActor.Get());
+	UPlayerUIComponent* UI = PawnUI ? PawnUI->GetPlayerUIComponent() : nullptr;
+	if (!UI) return true;
+
+	// Prefer this grant's slot mapping over a possibly stale Blueprint default.
+	FGameplayTag CooldownInputTag = InputTag;
+	if (const FGameplayAbilitySpec* Spec = GetCurrentAbilitySpec())
+	{
+		const FGameplayTag InputRoot = FGameplayTag::RequestGameplayTag(TEXT("InputTag"), false);
+		FGameplayTagContainer SlotTags;
+		for (const FGameplayTag& Tag : Spec->GetDynamicSpecSourceTags())
+		{
+			if (InputRoot.IsValid() && Tag.MatchesTag(InputRoot)) SlotTags.AddTag(Tag);
+		}
+		if (SlotTags.Num() == 1) CooldownInputTag = SlotTags.First();
+		else if (SlotTags.Num() > 1 && !SlotTags.HasTagExact(CooldownInputTag)) return true;
+	}
+	float Remaining = 0.0f, Duration = 0.0f;
+	GetCooldownTimeRemainingAndDuration(CurrentSpecHandle, CurrentActorInfo, Remaining, Duration);
+	if (CooldownInputTag.IsValid() && FMath::IsFinite(Duration) && Duration > 0.0f &&
+		FMath::IsFinite(Remaining) && Remaining > 0.0f)
+	{
+		// Presentation only: no extra effect, timer, cost, RPC or D1 mutation.
+		UI->OnAbilityCooldownBegin.Broadcast(CooldownInputTag, Duration, Remaining);
+	}
+	// UI callbacks may cancel the ability. Never start a disposed policy/action.
+	return IsActive();
+}
+
 void URPGGameplayAbility_SkillContainer::EndAbility(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
@@ -220,6 +312,23 @@ void URPGGameplayAbility_SkillContainer::EndAbility(
 	const bool bReplicateEndAbility,
 	const bool bWasCancelled)
 {
+	// Ignore late/reentrant ends before touching activation-local policy state.
+	if (!IsEndAbilityValid(Handle, ActorInfo)) return;
+	bMontageImmunityReady = false;
+	// Invalidate before policy/action cancellation callbacks can dispatch damage.
+	CaptureSkillBossEncounters(nullptr);
+#if !UE_BUILD_SHIPPING
+	if (FParse::Param(FCommandLine::Get(), TEXT("RPGSkillNetE2E")))
+	{
+		FRPGSkillEndNetworkObservation::ObserveEnd(*this,
+			ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr, Handle, ActivationInfo,
+			bReplicateEndAbility, bWasCancelled);
+		UE_LOG(LogTemp, Display, TEXT("%sRPG_SKILL_END_TRACE Avatar=%s Ability=%s Original=%d Cancelled=%d Replicate=%d Active=%d Ending=%d NetSecurity=%d"),
+			*FRPGSkillDamageNetworkProbe::LogContext(GetAvatarActorFromActorInfo()),
+			*GetNameSafe(GetAvatarActorFromActorInfo()), *GetName(), ActivationInfo.GetActivationPredictionKey().Current,
+			bWasCancelled, bReplicateEndAbility, IsActive(), bIsAbilityEnding, static_cast<int32>(NetSecurityPolicy));
+	}
+#endif
 	RemoveReplicatedTargetDataDelegate();
 	if (UWorld* World = GetWorld())
 	{
@@ -228,6 +337,7 @@ void URPGGameplayAbility_SkillContainer::EndAbility(
 	}
 	bWaitingForInitialTargetData = false;
 	bPreparedTargetForInputReplication = false;
+	bReleaseTargetRefreshFailed = false;
 	ResetRemotePolicyEventSync();
 
 	if (ActivePolicyEventTask)
@@ -277,6 +387,8 @@ void URPGGameplayAbility_SkillContainer::EndAbility(
 	ActiveTargetResult.Reset();
 	ActiveSkillSpec.Reset();
 	ServerAppliedHitCount = 0;
+	CommittedResolveDamageMultiplier = 1.f;
+	bResolveHitAwarded = false;
 	bSkillInputPressed = false;
 
 	Super::EndAbility(
@@ -314,6 +426,9 @@ void URPGGameplayAbility_SkillContainer::InputReleased(
 
 bool URPGGameplayAbility_SkillContainer::PreReplicateAbilityInputPressed()
 {
+	// Instant execution ignores subsequent input. Replicate the input state,
+	// but do not send a redundant aim sample that can outlive a killed target.
+	if (ActiveExecutionPolicy && !ActiveExecutionPolicy->RequiresInputTargetRefresh()) { return true; }
 	if (IsActive() && !ShouldWaitForRemoteTargetData())
 	{
 		bPreparedTargetForInputReplication = RefreshSkillTarget();
@@ -324,9 +439,16 @@ bool URPGGameplayAbility_SkillContainer::PreReplicateAbilityInputPressed()
 
 bool URPGGameplayAbility_SkillContainer::PreReplicateAbilityInputReleased()
 {
+	if (ActiveExecutionPolicy && !ActiveExecutionPolicy->RequiresInputTargetRefresh()) { return true; }
 	if (IsActive() && !ShouldWaitForRemoteTargetData())
 	{
 		bPreparedTargetForInputReplication = RefreshSkillTarget();
+		bReleaseTargetRefreshFailed = !bPreparedTargetForInputReplication;
+		if (bReleaseTargetRefreshFailed)
+		{
+			// Never retain the previous aim when a release cannot resolve a target.
+			ActiveTargetResult.Reset();
+		}
 		return bPreparedTargetForInputReplication;
 	}
 	return true;
@@ -348,6 +470,15 @@ void URPGGameplayAbility_SkillContainer::DispatchExecutionInputPressed()
 void URPGGameplayAbility_SkillContainer::DispatchExecutionInputReleased()
 {
 	bSkillInputPressed = false;
+	if (bReleaseTargetRefreshFailed)
+	{
+		bReleaseTargetRefreshFailed = false;
+		// Natural client ends are intentionally ignored by the server for policy
+		// skills. Use GAS's explicit cancellation path instead of swallowing release
+		// and leaving the remote execution waiting on input that can no longer arrive.
+		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
+		return;
+	}
 	if (ActiveExecutionPolicy)
 	{
 		ActiveExecutionPolicy->OnInputReleased();
@@ -436,13 +567,17 @@ bool URPGGameplayAbility_SkillContainer::PlaySkillMontage(
 		return false;
 	}
 
-	ActiveMontageTask =
-		UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
+	float MovementScale = 1.f;
+	if (!ActiveSkillSpec.TryGetMontageMovementScale(MovementScale)) return false;
+	ActiveMontageTask = MovementScale == 1.f
+		? UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
 			this,
 			TEXT("SkillExecutionMontage"),
 			ActiveSkillSpec.Montage,
 			FMath::Max(AttackSpeed, 0.01f),
-			StartSection);
+			StartSection, true, 1.f, 0.f, !ActiveSkillSpec.ContributionHitSection.IsNone())
+		: URPGAbilityTask_PlayScaledSkillMontageAndWait::PlayScaledSkillMontage(
+			this, ActiveSkillSpec.Montage, FMath::Max(AttackSpeed, 0.01f), StartSection);
 	if (!ActiveMontageTask)
 	{
 		return false;
@@ -454,7 +589,18 @@ bool URPGGameplayAbility_SkillContainer::PlaySkillMontage(
 		this, &ThisClass::HandlePolicyMontageInterrupted);
 	ActiveMontageTask->OnCancelled.AddDynamic(
 		this, &ThisClass::HandlePolicyMontageInterrupted);
+	const uint64 MontageActivation = SkillDamageActivationSerial;
 	ActiveMontageTask->ReadyForActivation();
+	if (!ActiveSkillSpec.ContributionHitSection.IsNone())
+	{
+		if (!IsActive() || bIsAbilityEnding || SkillDamageActivationSerial != MontageActivation) return false;
+		const auto* Info = GetCurrentActorInfo();
+		UAnimInstance* Anim = Info ? Info->GetAnimInstance() : nullptr;
+		const FAnimMontageInstance* Instance = Anim ? Anim->GetActiveInstanceForMontage(ActiveSkillSpec.Montage) : nullptr;
+		if (!Instance) return false;
+		SkillMontageAnimInstance = Anim;
+		SkillMontageInstanceId = Instance->GetInstanceID();
+	}
 	return true;
 }
 
@@ -707,6 +853,11 @@ bool URPGGameplayAbility_SkillContainer::SendActiveTargetDataToServer(
 	}
 
 	FScopedPredictionWindow ScopedPrediction(ASC, true);
+#if !UE_BUILD_SHIPPING
+	if (auto* RPGASC = Cast<URPGAbilitySystemComponent>(ASC))
+		URPGSkillNetworkE2EProbeComponent::ObserveTargetData(*RPGASC, CurrentSpecHandle,
+			CurrentActivationInfo.GetActivationPredictionKey(), TargetData, ApplicationTag, ASC->ScopedPredictionKey, true, false);
+#endif
 	ASC->CallServerSetReplicatedTargetData(
 		CurrentSpecHandle,
 		CurrentActivationInfo.GetActivationPredictionKey(),
@@ -754,6 +905,16 @@ void URPGGameplayAbility_SkillContainer::HandleReplicatedTargetData(
 				SubmittedResult,
 				ValidatedResult,
 				ValidationError));
+
+#if !UE_BUILD_SHIPPING
+	if (FParse::Param(FCommandLine::Get(), TEXT("RPGSkillTargetDataAbuseE2E")))
+	{
+		UE_LOG(LogTemp, Display, TEXT("%sRPG_SKILL_ABUSE_CONSUMER Handle=%s Original=%d KnownTag=%d Decoded=%d Validated=%d Waiting=%d"),
+			*FRPGSkillDamageNetworkProbe::LogContext(GetAvatarActorFromActorInfo()),
+			*CurrentSpecHandle.ToString(), CurrentActivationInfo.GetActivationPredictionKey().Current,
+			bKnownApplicationTag ? 1 : 0, bDecoded ? 1 : 0, bValidated ? 1 : 0, bWaitingForInitialTargetData ? 1 : 0);
+	}
+#endif
 
 	ASC->ConsumeClientReplicatedTargetData(
 		CurrentSpecHandle,
@@ -963,6 +1124,13 @@ void URPGGameplayAbility_SkillContainer::ApplyResolvedAimRotation()
 	}
 }
 
+bool URPGGameplayAbility_SkillContainer::GetActiveSkillHitQueryProfile(FRPGHitQueryProfile& OutProfile) const
+{
+	OutProfile = {};
+	return IsActive() && !bIsAbilityEnding && ActiveSkillSpec.SkillTag.IsValid()
+		&& ActiveSkillSpec.TryGetHitQueryProfile(OutProfile);
+}
+
 bool URPGGameplayAbility_SkillContainer::ExecuteActiveSkillHitQuery(
 	TArray<FRPGHitQueryResult>& OutResults) const
 {
@@ -970,7 +1138,7 @@ bool URPGGameplayAbility_SkillContainer::ExecuteActiveSkillHitQuery(
 	UWorld* World = GetWorld();
 	AActor* SourceActor = GetSkillSourceActor();
 	FString ProfileError;
-	if (!World || !IsValid(SourceActor) || !ActiveTargetResult.bIsValid ||
+	if (!IsActive() || bIsAbilityEnding || !World || !IsValid(SourceActor) || !ActiveTargetResult.bIsValid ||
 		!ActiveSkillSpec.SecurityProfile.IsValid(&ProfileError) ||
 		(ActiveSkillSpec.SecurityProfile.bRequireAuthorityHitQuery &&
 		 !SourceActor->HasAuthority()))
@@ -988,7 +1156,8 @@ bool URPGGameplayAbility_SkillContainer::ExecuteActiveSkillHitQuery(
 	FRPGHitQueryContext Context;
 	Context.SourceActor = SourceActor;
 	Context.QueryTransform = ActiveTargetResult.HitQueryTransform;
-	Context.Profile = ActiveSkillSpec.TargetingProfile;
+	if (ActiveTargetingPolicy && !ActiveTargetingPolicy->ResolveHitQueryTransform(ActiveTargetResult, Context.QueryTransform)) return false;
+	if (!GetActiveSkillHitQueryProfile(Context.Profile)) return false;
 	const int32 SecurityMaximum = FMath::Max(
 		1,
 		ActiveSkillSpec.SecurityProfile.MaximumTargetsPerQuery);
@@ -1000,6 +1169,77 @@ bool URPGGameplayAbility_SkillContainer::ExecuteActiveSkillHitQuery(
 	return HitQuerySubsystem->ExecuteHitQuery(Context, OutResults);
 }
 
+void URPGGameplayAbility_SkillContainer::CaptureSkillBossEncounters(APawn* Source)
+{
+	SkillBossAttackEncounters.Reset();
+	SkillBossAttackSource.Reset();
+	SkillBossAttackController.Reset();
+	if (!IsValid(Source) || !Source->HasAuthority() || !IsValid(Source->GetController()) || !Source->GetWorld()) return;
+	SkillBossAttackSource = Source;
+	SkillBossAttackController = Source->GetController();
+	for (TActorIterator<APawn> It(Source->GetWorld()); It; ++It)
+	{
+		const auto* Boss = It->FindComponentByClass<URPGBossAIComponent>();
+		auto* Threat = It->FindComponentByClass<URPGBossThreatComponent>();
+		if (Boss && Threat && Boss->GetBossState().EncounterState == ERPGBossEncounterState::InCombat)
+		{
+			SkillBossAttackEncounters.Add(Threat, Boss->GetBossState().EncounterId);
+		}
+	}
+}
+
+bool URPGGameplayAbility_SkillContainer::ApplySkillDamageToServerHit(AActor* Source,
+	const FHitResult& ServerHit, TSubclassOf<UGameplayEffect> EffectClass, float Damage,
+	FGameplayTag DamageTag, const FRPGSkillSecurityProfile& Profile, FText& OutError)
+{
+	AActor* Target = ServerHit.GetActor();
+	auto* Threat = IsValid(Target) ? Target->FindComponentByClass<URPGBossThreatComponent>() : nullptr;
+	const auto* Boss = IsValid(Target) ? Target->FindComponentByClass<URPGBossAIComponent>() : nullptr;
+	if (!Threat && !Boss)
+	{
+		// Preserve the existing authorized route for ordinary NPCs.
+		FActiveGameplayEffectHandle AppliedHandle;
+		return URPGSecurityBlueprintLibrary::ApplyAuthorizedServerDamage(Source, ServerHit,
+			EffectClass, Damage, DamageTag, Profile, AppliedHandle, OutError);
+	}
+	const APawn* SourcePawn = Cast<APawn>(Source);
+	const int32* Encounter = Threat ? SkillBossAttackEncounters.Find(Threat) : nullptr;
+	if (!Threat || !IsValid(SourcePawn) || !SourcePawn->HasAuthority() ||
+		SourcePawn != SkillBossAttackSource.Get() || !SkillBossAttackController.IsValid() ||
+		SourcePawn->GetController() != SkillBossAttackController.Get() ||
+		!Encounter || *Encounter <= 0)
+	{
+		OutError = FText::FromString(TEXT("Boss damage requires the encounter and source captured at skill activation."));
+		return false; // Never fall back to generic damage for a boss.
+	}
+	UAbilitySystemComponent* SourceASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Source);
+	if (!SourceASC || !CurrentActorInfo || SourceASC != CurrentActorInfo->AbilitySystemComponent.Get())
+	{
+		OutError = FText::FromString(TEXT("Boss skill source Ability System is unavailable or changed."));
+		return false;
+	}
+	if (!DamageTag.IsValid()) DamageTag = RPGGameplayTags::Shared_SetByCaller_BaseDamage;
+	FGameplayEffectContextHandle Context = MakeEffectContext(CurrentSpecHandle, CurrentActorInfo);
+	Context.AddHitResult(ServerHit);
+	// Match the ordinary NPC route's level; keep authored damage/scalars unchanged.
+	FGameplayEffectSpecHandle Spec = SourceASC->MakeOutgoingSpec(EffectClass, 1.0f, Context);
+	if (!Spec.IsValid())
+	{
+		OutError = FText::FromString(TEXT("Unable to build the boss skill damage effect."));
+		return false;
+	}
+	Spec.Data->SetSetByCallerMagnitude(DamageTag, Damage);
+	float HealthDamage = 0.f;
+	bool bThreatAdded = false;
+	if (!Threat->ApplyDamageFromServerHit(Cast<APawn>(Source), ServerHit, Spec, *Encounter,
+		Profile, HealthDamage, bThreatAdded))
+	{
+		OutError = FText::FromString(TEXT("Boss skill damage was rejected by the encounter or server damage guard."));
+		return false;
+	}
+	return true;
+}
+
 bool URPGGameplayAbility_SkillContainer::ExecuteAuthorizedSkillDamage(
 	const TSubclassOf<UGameplayEffect> AuthorizedDamageEffectClass,
 	const float BaseDamage,
@@ -1008,9 +1248,25 @@ bool URPGGameplayAbility_SkillContainer::ExecuteAuthorizedSkillDamage(
 	int32& OutAppliedTargetCount,
 	FText& OutError)
 {
+	return ExecuteAuthorizedSkillDamageInternal(AuthorizedDamageEffectClass, BaseDamage, SetByCallerDamageTag,
+		OutAppliedHits, OutAppliedTargetCount, OutError, nullptr);
+}
+
+bool URPGGameplayAbility_SkillContainer::ExecuteAuthorizedSkillDamageInternal(
+	const TSubclassOf<UGameplayEffect> AuthorizedDamageEffectClass, const float BaseDamage,
+	const FGameplayTag SetByCallerDamageTag, TArray<FRPGHitQueryResult>& OutAppliedHits,
+	int32& OutAppliedTargetCount, FText& OutError, TArray<FRPGApprovedHitContext>* OutReactionContexts,
+	const bool bAuthoredFinisher)
+{
+	if (OutReactionContexts) OutReactionContexts->Reset();
 	OutAppliedHits.Reset();
 	OutAppliedTargetCount = 0;
 	OutError = FText::GetEmpty();
+	if (!IsActive() || bIsAbilityEnding || bApplyingAuthorizedSkillDamage)
+	{
+		OutError = FText::FromString(TEXT("Skill damage requires an active, non-reentrant activation."));
+		return false;
+	}
 	AActor* SourceActor = GetSkillSourceActor();
 	FString ProfileError;
 	if (!IsValid(SourceActor) || !SourceActor->HasAuthority())
@@ -1050,17 +1306,18 @@ bool URPGGameplayAbility_SkillContainer::ExecuteAuthorizedSkillDamage(
 			TEXT("The authoritative skill HitQuery found no eligible target."));
 		return false;
 	}
-	if (ServerHits.Num() > RemainingHitBudget)
-	{
-		ServerHits.SetNum(RemainingHitBudget, EAllowShrinking::No);
-	}
-
 	const FGameplayTag DamageScalarTag =
 		FGameplayTag::RequestGameplayTag(TEXT("Shared.Stat.Damage"), false);
 	const float DamageScalar = DamageScalarTag.IsValid()
 		? ActiveSkillSpec.GetStatScalar(DamageScalarTag)
 		: 1.0f;
-	const float FinalDamage = BaseDamage * DamageScalar;
+	float ResolveMultiplier = CommittedResolveDamageMultiplier;
+	if (ResolveMultiplier > 1.f && ActiveSkillSpec.SkillTag == RPGGameplayTags::Player_Ability_Skill_Charge)
+	{
+		const auto* Charge = Cast<URPGSkillExecutionPolicy_Charge>(ActiveExecutionPolicy);
+		if (!Charge || !Charge->WasReleasedAtMaximumCharge()) ResolveMultiplier = 1.f;
+	}
+	const float FinalDamage = BaseDamage * DamageScalar * ResolveMultiplier;
 	if (!FMath::IsFinite(FinalDamage) || FinalDamage <= 0.0f ||
 		FinalDamage > ActiveSkillSpec.SecurityProfile.MaximumDamagePerHit)
 	{
@@ -1069,23 +1326,61 @@ bool URPGGameplayAbility_SkillContainer::ExecuteAuthorizedSkillDamage(
 		return false;
 	}
 
+	// GameplayEffect delegates may reenter damage, end the ability or activate
+	// it again. Reserve before calling them and never continue into a new snapshot.
+	TGuardValue<bool> ApplyingDamageGuard(bApplyingAuthorizedSkillDamage, true);
+	const uint64 ActivationSerial = SkillDamageActivationSerial;
+	const FRPGSkillSecurityProfile FrozenSecurityProfile = ActiveSkillSpec.SecurityProfile;
+	FRPGCombatContributionAmounts Contributions;
+	if (!ActiveSkillSpec.TryGetCombatContributions(Contributions))
+	{
+		OutError = FText::FromString(TEXT("Invalid frozen skill contribution amounts."));
+		return false;
+	}
+	const bool bDeliverContributions = (ActiveSkillSpec.ContributionHitSection.IsNone() || bAuthoredFinisher)
+		&& (Contributions.Stagger > 0.f || Contributions.PartBreak > 0.f);
 	FText LastError;
 	for (const FRPGHitQueryResult& ServerHit : ServerHits)
 	{
-		FActiveGameplayEffectHandle AppliedHandle;
-		if (URPGSecurityBlueprintLibrary::ApplyAuthorizedServerDamage(
+		if (!IsActive() || bIsAbilityEnding || SkillDamageActivationSerial != ActivationSerial ||
+			ServerAppliedHitCount >= FrozenSecurityProfile.MaximumHitsPerActivation)
+		{
+			break;
+		}
+		if (!IsValid(ServerHit.TargetActor) || ServerHit.TargetActor->IsActorBeingDestroyed()) continue;
+		const UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ServerHit.TargetActor);
+		if (TargetASC && TargetASC->HasMatchingGameplayTag(RPGGameplayTags::Shared_Status_Invincible))
+		{
+			continue;
+		}
+		++ServerAppliedHitCount;
+		const FRPGApprovedHitContext ReactionContext(SourceActor, ServerHit.TargetActor);
+		const TWeakObjectPtr<URPGCombatContributionComponent> ContributionReceiver =
+			ServerHit.TargetActor->FindComponentByClass<URPGCombatContributionComponent>();
+		const uint32 ReceiverGeneration = ContributionReceiver.IsValid() ? ContributionReceiver->GetContributionState().Generation : 0;
+		if (ApplySkillDamageToServerHit(
 			SourceActor,
 			ServerHit.HitResult,
 			AuthorizedDamageEffectClass,
 			FinalDamage,
 			SetByCallerDamageTag,
-			ActiveSkillSpec.SecurityProfile,
-			AppliedHandle,
+			FrozenSecurityProfile,
 			LastError))
 		{
 			OutAppliedHits.Add(ServerHit);
+			if (OutReactionContexts) OutReactionContexts->Add(ReactionContext);
 			++OutAppliedTargetCount;
-			++ServerAppliedHitCount;
+			if (bDeliverContributions && ContributionReceiver.IsValid() && IsActive() && !bIsAbilityEnding && SkillDamageActivationSerial == ActivationSerial)
+				ContributionReceiver->AcceptApprovedSkillHit(*this, ActivationSerial, ReceiverGeneration, SourceActor, ReactionContext, Contributions);
+			if (!bResolveHitAwarded && IsActive() && SkillDamageActivationSerial == ActivationSerial)
+			{
+				bResolveHitAwarded = true; // Reserve before gauge/UI callbacks; never award per target/tick.
+				URPGGreatSwordResolveAbility::AwardConfirmedSkillHit(*this);
+			}
+		}
+		else if (IsActive() && SkillDamageActivationSerial == ActivationSerial)
+		{
+			--ServerAppliedHitCount;
 		}
 	}
 
@@ -1096,7 +1391,100 @@ bool URPGGameplayAbility_SkillContainer::ExecuteAuthorizedSkillDamage(
 			: LastError;
 		return false;
 	}
+#if !UE_BUILD_SHIPPING
+	URPGSkillNetworkE2EProbeComponent::ObserveFinalCapApplication(*this, OutAppliedHits, OutAppliedTargetCount, ServerAppliedHitCount);
+#endif
 	return true;
+}
+
+void URPGGameplayAbility_SkillContainer::HandleApplyDamage(const FGameplayEventData& Payload)
+{
+	if (!IsActive() || bIsAbilityEnding) return;
+	if (!ActiveSkillSpec.ExecutionPolicyClass)
+	{
+		Super::HandleApplyDamage(Payload);
+		return;
+	}
+	ApplyPolicySkillDamageEvent();
+}
+
+void URPGGameplayAbility_SkillContainer::HandleApplyAOEDamage(const FGameplayEventData& Payload)
+{
+	if (!IsActive() || bIsAbilityEnding) return;
+	if (!ActiveSkillSpec.ExecutionPolicyClass)
+	{
+		Super::HandleApplyAOEDamage(Payload);
+		return;
+	}
+	ApplyPolicySkillDamageEvent();
+}
+
+void URPGGameplayAbility_SkillContainer::ApplyAuthoredSkillFinisher(
+	USkeletalMeshComponent* Mesh, UAnimSequenceBase* Animation, const int32 MontageInstanceId)
+{
+	AActor* Source = GetSkillSourceActor();
+	const auto* ActorInfo = GetCurrentActorInfo();
+	UAbilitySystemComponent* ASC = ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+	UAnimInstance* Anim = ActorInfo ? ActorInfo->GetAnimInstance() : nullptr;
+	const FAnimMontageInstance* Instance = Anim ? Anim->GetMontageInstanceForID(MontageInstanceId) : nullptr;
+	if (!IsActive() || bIsAbilityEnding || bFinisherHitAttempted || !IsValid(Source) || !Source->HasAuthority()
+		|| !ActorInfo || !IsValid(Mesh) || ActorInfo->SkeletalMeshComponent.Get() != Mesh || Mesh->GetOwner() != Source
+		|| !Anim || Mesh->GetAnimInstance() != Anim || !ASC || ASC->GetAnimatingAbility() != this
+		|| !ActiveMontageTask || !ActiveSkillSpec.Montage || Animation != ActiveSkillSpec.Montage
+		|| Anim != SkillMontageAnimInstance.Get() || MontageInstanceId == INDEX_NONE || MontageInstanceId != SkillMontageInstanceId
+		|| !Instance || Instance->Montage != ActiveSkillSpec.Montage || !Instance->IsPlaying()
+		|| ActiveSkillSpec.ContributionHitSection.IsNone()
+		|| Instance->Montage->GetSectionName(Instance->Montage->GetSectionIndexFromPosition(Instance->GetPosition()))
+			!= ActiveSkillSpec.ContributionHitSection
+		|| !ActiveExecutionPolicy || !ActiveExecutionPolicy->IsContributionFinisherReady()) return;
+	// Reserve before hit queries, damage and delegate callbacks. A miss is not retried.
+	bFinisherHitAttempted = true;
+	ApplyPolicySkillDamageEvent(true);
+}
+
+void URPGGameplayAbility_SkillContainer::ApplyPolicySkillDamageEvent(const bool bAuthoredFinisher)
+{
+	AActor* Source = GetSkillSourceActor();
+	if (!IsValid(Source) || !Source->HasAuthority()) return;
+	TArray<FRPGHitQueryResult> AppliedHits;
+	int32 AppliedCount = 0;
+	FText Error;
+	const uint64 ActivationSerial = SkillDamageActivationSerial;
+	const ERPGAttackHitReactionPolicy ReactionPolicy = ActiveSkillSpec.HitReactionPolicy;
+	const float StunDuration = ActiveSkillSpec.StunDuration;
+	const FRPGSlowSettings Slow = ActiveSkillSpec.Slow;
+	const FRPGBurnSettings Burn = ActiveSkillSpec.Burn;
+	const FRPGDefenseReductionSettings DefenseReduction = ActiveSkillSpec.DefenseReduction;
+	const FRPGDamageTakenIncreaseSettings DamageTakenIncrease = ActiveSkillSpec.DamageTakenIncrease;
+	const FRPGStaggerSettings Stagger = ActiveSkillSpec.Stagger;
+	const FRPGKnockbackSettings Knockback = ActiveSkillSpec.Knockback;
+	TArray<FRPGApprovedHitContext> ReactionContexts;
+	if (!ExecuteAuthorizedSkillDamageInternal(DamageEffectClass, ActiveSkillSpec.BaseDamage,
+		FGameplayTag(), AppliedHits, AppliedCount, Error, &ReactionContexts, bAuthoredFinisher)) return;
+	if (!IsActive() || bIsAbilityEnding || SkillDamageActivationSerial != ActivationSerial) return;
+
+	// Presentation and identity gain are based only on approved server hits.
+	FGameplayEffectContextHandle CueContext;
+	K2_ExecuteGameplayCue(WeaponHitSoundCueTag, CueContext);
+	for (int32 Index = 0; Index < AppliedHits.Num(); ++Index)
+	{
+		const FRPGHitQueryResult& Hit = AppliedHits[Index];
+		if (!IsActive() || bIsAbilityEnding || SkillDamageActivationSerial != ActivationSerial) break;
+		if (!IsValid(Hit.TargetActor)) continue;
+		if (!TryRouteApprovedHitReaction(Hit.HitResult, ReactionPolicy, StunDuration, Knockback, Slow, ReactionContexts[Index], Burn, Stagger, DefenseReduction, DamageTakenIncrease)
+			&& EventTag == RPGGameplayTags::Shared_Event_Hit && HitReactTag.IsValid())
+		{
+			FGameplayEventData Reaction;
+			Reaction.Instigator = CurrentActorInfo ? CurrentActorInfo->OwnerActor.Get() : Source;
+			Reaction.Target = Hit.TargetActor;
+			UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Hit.TargetActor, HitReactTag, Reaction);
+		}
+		if (HitEffect && Source->GetNetMode() != NM_DedicatedServer)
+		{
+			UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), HitEffect, Hit.TargetActor->GetActorLocation());
+		}
+	}
+	if (IsActive() && !bIsAbilityEnding && SkillDamageActivationSerial == ActivationSerial) GainIdentity();
 }
 
 void URPGGameplayAbility_SkillContainer::HandlePolicyMontageCompleted()
@@ -1110,6 +1498,13 @@ void URPGGameplayAbility_SkillContainer::HandlePolicyMontageCompleted()
 
 void URPGGameplayAbility_SkillContainer::HandlePolicyMontageInterrupted()
 {
+#if !UE_BUILD_SHIPPING
+	if (FParse::Param(FCommandLine::Get(), TEXT("RPGSkillNetE2E")))
+	{
+		UE_LOG(LogTemp, Display, TEXT("RPG_SKILL_MONTAGE_INTERRUPTED Avatar=%s Ability=%s Active=%d Ending=%d"),
+			*GetNameSafe(GetAvatarActorFromActorInfo()), *GetName(), IsActive(), bIsAbilityEnding);
+	}
+#endif
 	ActiveMontageTask = nullptr;
 	if (ActiveExecutionPolicy)
 	{

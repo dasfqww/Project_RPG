@@ -90,6 +90,15 @@ bool FRPGSkillTargetDataCodec::Decode(
 	const FGameplayAbilityTargetData_LocationInfo* LocationData =
 		static_cast<const FGameplayAbilityTargetData_LocationInfo*>(
 			RawLocationData);
+	// The encoder sends literal transforms. Do not resolve client-selected
+	// actors/sockets on the server in place of the submitted aim sample.
+	if (LocationData->SourceLocation.LocationType != EGameplayAbilityTargetingLocationType::LiteralTransform ||
+		LocationData->TargetLocation.LocationType != EGameplayAbilityTargetingLocationType::LiteralTransform ||
+		LocationData->SourceLocation.LiteralTransform.ContainsNaN() ||
+		LocationData->TargetLocation.LiteralTransform.ContainsNaN())
+	{
+		return false;
+	}
 	const FTransform SourceTransform =
 		LocationData->SourceLocation.GetTargetingTransform();
 	const FTransform TargetTransform =
@@ -112,8 +121,8 @@ bool FRPGSkillTargetDataCodec::Decode(
 			return false;
 		}
 
-		const TArray<TWeakObjectPtr<AActor>> TargetActors =
-			RawActorData->GetActors();
+		const auto* ActorData = static_cast<const FGameplayAbilityTargetData_ActorArray*>(RawActorData);
+		const TArray<TWeakObjectPtr<AActor>>& TargetActors = ActorData->TargetActorArray;
 		if (TargetActors.Num() != 1 || !TargetActors[0].IsValid())
 		{
 			return false;

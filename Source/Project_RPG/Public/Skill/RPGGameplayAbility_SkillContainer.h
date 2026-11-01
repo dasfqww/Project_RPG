@@ -18,8 +18,12 @@ class UAbilityTask_WaitInputPress;
 class UAbilityTask_WaitInputRelease;
 class UGameplayEffect;
 class UNiagaraComponent;
+class URPGBossThreatComponent;
+class URPGAnimNotify_SkillFinisher;
+class USkeletalMeshComponent;
+class UAnimSequenceBase;
+class UAnimInstance;
 struct FRPGHitQueryResult;
-
 /**
  * URPGGameplayAbility_SkillContainer
  * 
@@ -36,8 +40,14 @@ class PROJECT_RPG_API URPGGameplayAbility_SkillContainer
 
 public:
 	URPGGameplayAbility_SkillContainer();
+	virtual bool AutomaticallyApplyActivationImmunity() const override { return false; }
 
 	//~ Begin UGameplayAbility Interface
+	virtual bool CanActivateAbility(FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr,
+		FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
+	/** RuntimeSpec owns cooldown duration; inherited asset effects must not add a second cooldown. */
+	virtual UGameplayEffect* GetCooldownGameplayEffect() const override;
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 	virtual void CancelAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateCancel) override;
@@ -63,6 +73,11 @@ public:
 	void ProgressCompleted_Internal() { ProgessCompleted(); }
 	void ExecuteWaitEvent_Internal() { ExecWaitGameplayEvent(); }
 	const FRPGSkillRuntimeSpec& GetActiveSkillSpec() const { return ActiveSkillSpec; }
+	/** Native task ownership survives spec reset, but changes before a later activation. */
+	uint64 GetSkillActivationSerial() const { return SkillDamageActivationSerial; }
+	const URPGSkillDefinition* GetSkillDefinition() const { return SkillDefinition; }
+	/** Activation-owned strategy; observers must retain activation identity and their own weak reference. */
+	const URPGSkillExecutionPolicy* GetActiveExecutionPolicy() const { return ActiveExecutionPolicy.Get(); }
 
 	UFUNCTION(BlueprintPure, Category = "RPG|Skill|Targeting")
 	FRPGSkillTargetResult GetActiveSkillTargetResult() const
@@ -70,7 +85,11 @@ public:
 		return ActiveTargetResult;
 	}
 
-	/** Runs the authored hit profile at the target policy's resolved transform. */
+	/** Final scaled profile for an active cast. Use the output only when this returns true. */
+	UFUNCTION(BlueprintPure, Category = "RPG|Skill|Targeting")
+	bool GetActiveSkillHitQueryProfile(FRPGHitQueryProfile& OutProfile) const;
+
+	/** Runs the resolved hit profile at the target policy's current query transform. */
 	UFUNCTION(BlueprintCallable, Category = "RPG|Skill|Targeting")
 	bool ExecuteActiveSkillHitQuery(
 		TArray<FRPGHitQueryResult>& OutResults) const;
@@ -125,6 +144,17 @@ public:
 	//~ End IRPGSkillTargetingHost
 
 protected:
+	// Existing BP montage/weapon events dispatch virtually into the frozen skill
+	// query, never the legacy fixed-radius trace or the event's target list.
+	virtual void HandleApplyDamage(const FGameplayEventData& Payload) override;
+	virtual void HandleApplyAOEDamage(const FGameplayEventData& Payload) override;
+	void ApplyPolicySkillDamageEvent(bool bAuthoredFinisher = false);
+	/** Freeze server encounter/source identity before activation callbacks can hit. */
+	void CaptureSkillBossEncounters(APawn* Source);
+	bool ApplySkillDamageToServerHit(AActor* Source, const FHitResult& ServerHit,
+		TSubclassOf<UGameplayEffect> EffectClass, float Damage, FGameplayTag DamageTag,
+		const FRPGSkillSecurityProfile& Profile, FText& OutError);
+
 	virtual float GetRPGCooldownDuration(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo) const override;
@@ -158,6 +188,8 @@ protected:
 	void DispatchExecutionInputReleased();
 	bool InitializeTargetingPolicy();
 	bool StartSkillAfterTargetReady();
+	/** Commit once, then forward the actual GAS cooldown to the local HUD. */
+	bool CommitSkillAndNotifyCooldown();
 	bool WaitForInitialReplicatedTargetData();
 	bool ShouldWaitForRemoteTargetData() const;
 	bool RefreshSkillTargetWithApplicationTag(FGameplayTag ApplicationTag);
@@ -219,13 +251,35 @@ protected:
 	float RemotePolicyEventSyncTolerance = 0.35f;
 
 	bool bSkillInputPressed = false;
+	float CommittedResolveDamageMultiplier = 1.f;
+	bool bResolveHitAwarded = false;
+	bool bFinisherHitAttempted = false;
+	TWeakObjectPtr<UAnimInstance> SkillMontageAnimInstance;
+	int32 SkillMontageInstanceId = INDEX_NONE;
 	bool bWaitingForInitialTargetData = false;
 	bool bPreparedTargetForInputReplication = false;
+	/** Defer cancellation until the local input callback, after input preparation. */
+	bool bReleaseTargetRefreshFailed = false;
 	bool bRemotePolicyEventWindowOpen = false;
 	bool bRemotePolicyEventDataReady = false;
 	int32 ServerAppliedHitCount = 0;
+	bool bApplyingAuthorizedSkillDamage = false;
+	uint64 SkillDamageActivationSerial = 0;
 	double RemotePolicyEventWindowTime = 0.0;
 	double RemotePolicyEventDataTime = 0.0;
 	FDelegateHandle ReplicatedTargetDataDelegateHandle;
 	FTimerHandle InitialTargetDataTimeoutHandle;
+
+private:
+	friend class URPGAnimNotify_SkillFinisher;
+	/** Native server montage notify only; never exposed as an event, Blueprint call or RPC. */
+	void ApplyAuthoredSkillFinisher(USkeletalMeshComponent* Mesh, UAnimSequenceBase* Animation, int32 MontageInstanceId);
+	bool ExecuteAuthorizedSkillDamageInternal(TSubclassOf<UGameplayEffect> AuthorizedDamageEffectClass,
+		float BaseDamage, FGameplayTag SetByCallerDamageTag, TArray<FRPGHitQueryResult>& OutAppliedHits,
+		int32& OutAppliedTargetCount, FText& OutError, TArray<FRPGApprovedHitContext>* OutReactionContexts,
+		bool bAuthoredFinisher = false);
+	// Server-local, activation-scoped. Never accept an encounter ID from target data.
+	TWeakObjectPtr<APawn> SkillBossAttackSource;
+	TWeakObjectPtr<AController> SkillBossAttackController;
+	TMap<TWeakObjectPtr<URPGBossThreatComponent>, int32> SkillBossAttackEncounters;
 };

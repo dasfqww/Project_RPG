@@ -5,10 +5,12 @@
 #include "CoreMinimal.h"
 #include "Skill/RPGSkillAction.h"
 #include "Type/RPGStructTypes.h"
+#include "UI/Progress/RPGActionProgressTypes.h"
 #include "RPGSkillAction_Charge.generated.h"
 
 class UNiagaraComponent;
 class UAbilityTask_PlayMontageAndWait;
+class UPlayerUIComponent;
 
 /**
  * URPGSkillAction_Charge
@@ -48,4 +50,13 @@ private:
 	int32 CurrentChargeLevel = 0;
 	float StartTime;
 	float ChargeTime;
+
+	void BeginProgress();
+	void PublishProgress(bool bReady = false);
+	void EndProgress(ERPGActionProgressEndReason Reason);
+	TWeakObjectPtr<UPlayerUIComponent> ProgressUI;
+	FRPGActionProgressHandle ProgressHandle;
+	FRPGActionProgressData ProgressData;
+	uint64 ProgressRevision = 0;
+	bool bReleased = false;
 };

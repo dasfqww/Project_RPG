@@ -350,6 +350,24 @@ bool URPGSkillTargetingPolicy::ResolveTarget(
 	return false;
 }
 
+bool URPGSkillTargetingPolicy::ResolveHitQueryTransform(
+	const FRPGSkillTargetResult& FrozenTarget, FTransform& OutTransform) const
+{
+	OutTransform = FTransform::Identity;
+	if (!FrozenTarget.bIsValid || FrozenTarget.HitQueryTransform.ContainsNaN()) return false;
+	FTransform Resolved = FrozenTarget.HitQueryTransform;
+	const auto* Config = GetConfig().GetPtr<FRPGSkillTargetingConfig>();
+	if (Config && Config->bFollowSourceForHitQuery)
+	{
+		const AActor* Source = GetHost() ? GetHost()->GetSkillSourceActor() : nullptr;
+		if (!IsValid(Source) || Source->GetWorld() != GetWorld() || FrozenTarget.SourceLocation.ContainsNaN()) return false;
+		Resolved.AddToTranslation(Source->GetActorLocation() - FrozenTarget.SourceLocation);
+	}
+	if (Resolved.ContainsNaN()) return false;
+	OutTransform = Resolved;
+	return true;
+}
+
 bool URPGSkillTargetingPolicy::ValidateReplicatedTarget(
 	const FRPGSkillTargetResult& SubmittedResult,
 	FRPGSkillTargetResult& OutValidatedResult,
@@ -1058,6 +1076,13 @@ bool URPGSkillTargetingPolicy_GroundPoint::ValidateReplicatedTarget(
 	OutValidatedResult.AimDirection =
 		(OutValidatedResult.TargetLocation -
 			OutValidatedResult.SourceLocation).GetSafeNormal2D();
+	if (OutValidatedResult.AimDirection.IsNearlyZero())
+	{
+		// Match ResolveTarget for a ground point directly under the caster.
+		// Common validation has already checked the submitted aim and range.
+		OutValidatedResult.AimDirection =
+			SourceActor->GetActorForwardVector().GetSafeNormal2D();
+	}
 	if (OutValidatedResult.AimDirection.IsNearlyZero())
 	{
 		return RPGSkillTargeting::FailValidation(

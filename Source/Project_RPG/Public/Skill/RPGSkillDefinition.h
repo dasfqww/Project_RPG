@@ -101,8 +101,13 @@ public:
 	void BuildRuntimeSpec(AActor* InActor, const FRPGSkillSaveData& SaveData,
 		FRPGSkillRuntimeSpec& OutSpec) const;
 
+	/** Base UI icon, with the same data-table precedence as the runtime spec. */
+	UTexture2D* GetBaseIcon() const;
+
 	/** Progression rules authored by this definition, shared by UI and server. */
 	int32 ClampSkillLevel(int32 RequestedLevel) const;
+	bool ResolveSavedTripod(int32 RequiredSkillLevel, FName PersistenceId,
+		int32& OutTierIndex, int32& OutOptionIndex) const;
 	bool IsTripodSelectionAllowed(
 		int32 SkillLevel,
 		int32 TierIndex,
@@ -160,6 +165,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooldown")
 	float BaseCooldown = 1.0f;
 
+	/** Once per approved target/activation, independent from damage and hit count. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Contribution")
+	FRPGCombatContributionAmounts Contributions;
+
+	/** None uses ordinary approved hits. Otherwise only a native finisher notify in this section contributes. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Contribution")
+	FName ContributionHitSection = NAME_None;
+
 	/** Spatial targeting shared with AI and boss pattern execution. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Targeting")
 	FRPGHitQueryProfile TargetingProfile;
@@ -168,6 +181,26 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Security",
 		meta = (ShowOnlyInnerProperties))
 	FRPGSkillSecurityProfile SecurityProfile;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
+	ERPGAttackHitReactionPolicy HitReactionPolicy = ERPGAttackHitReactionPolicy::Legacy;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat", meta=(ClampMin="0", ClampMax="10", Units="s"))
+	float StunDuration = 0.f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
+	FRPGKnockbackSettings Knockback;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Skill|Combat")
+	FRPGSlowSettings Slow;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combat|Status")
+	FRPGBurnSettings Burn;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combat|Status")
+	FRPGDefenseReductionSettings DefenseReduction;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combat|Status")
+	FRPGDamageTakenIncreaseSettings DamageTakenIncrease;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combat|Control")
+	FRPGStaggerSettings Stagger;
+	/** Begins after a successful skill commit and ends with this execution. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Skill|Combat")
+	FRPGCombatImmunitySettings ActivationImmunities;
 
 	// ---------------------------------------------------
 	// 3. 변이 및 트라이포드

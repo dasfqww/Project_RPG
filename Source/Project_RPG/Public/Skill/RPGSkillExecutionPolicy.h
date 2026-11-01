@@ -1,14 +1,19 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "TimerManager.h"
 #include "GameplayTagContainer.h"
 #include "UObject/Object.h"
+#include "UI/Progress/RPGActionProgressTypes.h"
 #include "RPGSkillExecutionPolicy.generated.h"
 
 struct FGameplayEventData;
 struct FInstancedStruct;
 struct FRPGSkillRuntimeSpec;
 struct FRPGSkillTargetResult;
+class AActor;
+class URPGCharacterMovementComponent;
+class UPlayerUIComponent;
 
 /**
  * Narrow service surface exposed by the owning Gameplay Ability.
@@ -20,6 +25,8 @@ public:
 	virtual ~IRPGSkillExecutionHost() = default;
 
 	virtual UWorld* GetSkillExecutionWorld() const = 0;
+	/** Optional for policies that constrain the casting character. */
+	virtual AActor* GetSkillSourceActor() const { return nullptr; }
 	virtual const FRPGSkillRuntimeSpec& GetSkillRuntimeSpec() const = 0;
 	virtual const FRPGSkillTargetResult& GetSkillTargetResult() const = 0;
 	virtual bool RefreshSkillTarget() = 0;
@@ -46,6 +53,8 @@ class PROJECT_RPG_API URPGSkillExecutionPolicy : public UObject
 
 public:
 	void Initialize(IRPGSkillExecutionHost& InHost);
+	/** Read-only type label; callable on the class default object without a host. */
+	virtual FText GetExecutionDisplayName() const;
 
 	/** Returns false when authored runtime data cannot start this policy. */
 	virtual bool StartExecution();
@@ -60,9 +69,14 @@ public:
 	virtual bool ValidateRuntimeSpec(FText& OutError) const;
 	virtual void OnInputPressed();
 	virtual void OnInputReleased();
+	/** Whether input transitions need a fresh aim sample before input replication. */
+	virtual bool RequiresInputTargetRefresh() const { return true; }
 	/** Optional Gameplay Event observed through an ability-owned GAS task. */
 	virtual FGameplayTag GetExecutionEventTag() const;
 	virtual void OnExecutionEvent(const FGameplayEventData& Payload);
+	/** Opt-in server finisher delivery; ordinary execution policies never authorize it. */
+	virtual bool SupportsContributionFinisher() const { return false; }
+	virtual bool IsContributionFinisherReady() const { return false; }
 	virtual void OnMontageCompleted();
 	virtual void OnMontageInterrupted();
 	virtual void EndExecution();
@@ -72,9 +86,19 @@ protected:
 	const FRPGSkillRuntimeSpec& GetRuntimeSpec() const;
 	IRPGSkillExecutionHost* GetHost() const { return Host; }
 	UWorld* GetWorld() const override;
+	void BeginProgress(ERPGActionProgressKind Kind, float Duration, int32 StageCount = 0);
+	void UpdateProgress(float Elapsed, float Duration, int32 Stage = 0);
+	void ReadyProgress();
+	void EndProgress(ERPGActionProgressEndReason Reason);
+	bool HasEndedExecution() const { return bProgressExecutionEnded; }
 
 private:
 	IRPGSkillExecutionHost* Host = nullptr;
+	TWeakObjectPtr<UPlayerUIComponent> ProgressUI;
+	FRPGActionProgressHandle ProgressHandle;
+	FRPGActionProgressData ProgressData;
+	uint64 ProgressRevision = 0;
+	bool bProgressExecutionEnded = false;
 };
 
 UCLASS()
@@ -84,6 +108,8 @@ class PROJECT_RPG_API URPGSkillExecutionPolicy_Instant
 	GENERATED_BODY()
 
 public:
+	virtual FText GetExecutionDisplayName() const override;
+	virtual bool RequiresInputTargetRefresh() const override { return false; }
 	virtual bool StartExecution() override;
 	virtual bool ValidateExecutionConfig(
 		const FInstancedStruct& Config,
@@ -100,6 +126,7 @@ class PROJECT_RPG_API URPGSkillExecutionPolicy_Charge
 	GENERATED_BODY()
 
 public:
+	virtual FText GetExecutionDisplayName() const override;
 	virtual bool StartExecution() override;
 	virtual bool ValidateExecutionConfig(
 		const FInstancedStruct& Config,
@@ -112,6 +139,8 @@ public:
 	virtual void CancelExecution() override;
 
 	int32 GetCurrentChargeLevel() const { return CurrentChargeLevel; }
+	/** Release fact survives EndExecution and host spec reset; not a normal-end or hit receipt. */
+	bool WasReleasedAtMaximumCharge() const;
 
 private:
 	void UpdateCharge();
@@ -133,6 +162,10 @@ class PROJECT_RPG_API URPGSkillExecutionPolicy_Holding
 	GENERATED_BODY()
 
 public:
+	virtual bool SupportsContributionFinisher() const override { return true; }
+	virtual bool IsContributionFinisherReady() const override;
+	virtual void BeginDestroy() override;
+	virtual FText GetExecutionDisplayName() const override;
 	virtual bool StartExecution() override;
 	virtual bool ValidateExecutionConfig(
 		const FInstancedStruct& Config,
@@ -140,6 +173,7 @@ public:
 	virtual bool ValidateRuntimeSpecData(
 		const FRPGSkillRuntimeSpec& RuntimeSpec,
 		FText& OutError) const override;
+	virtual bool ValidateRuntimeSpec(FText& OutError) const override;
 	virtual void OnInputReleased() override;
 	virtual void OnMontageCompleted() override;
 	virtual void EndExecution() override;
@@ -149,6 +183,7 @@ private:
 	void UpdateHolding();
 	void CompleteHolding(bool bSuccessful);
 	void CleanupHolding();
+	void ReleaseMovementConstraint();
 	float GetScaledTime(float AuthoredTime) const;
 	const struct FRPGSkillHoldingExecutionConfig* GetHoldingConfig() const;
 
@@ -157,6 +192,10 @@ private:
 	bool bPerfectZoneReached = false;
 	bool bResolved = false;
 	bool bFinishAsCancelled = false;
+	TWeakObjectPtr<URPGCharacterMovementComponent> ConstrainedMovement;
+	FGuid MovementConstraintHandle;
+	bool bExecutionEnded = false;
+	bool bSuccessfulFinishEntered = false;
 };
 
 UCLASS()
@@ -166,6 +205,7 @@ class PROJECT_RPG_API URPGSkillExecutionPolicy_Casting
 	GENERATED_BODY()
 
 public:
+	virtual FText GetExecutionDisplayName() const override;
 	virtual bool StartExecution() override;
 	virtual bool ValidateExecutionConfig(
 		const FInstancedStruct& Config,
@@ -200,6 +240,7 @@ class PROJECT_RPG_API URPGSkillExecutionPolicy_Combo
 	GENERATED_BODY()
 
 public:
+	virtual FText GetExecutionDisplayName() const override;
 	virtual bool StartExecution() override;
 	virtual bool ValidateExecutionConfig(
 		const FInstancedStruct& Config,
@@ -227,6 +268,7 @@ class PROJECT_RPG_API URPGSkillExecutionPolicy_Chain
 	GENERATED_BODY()
 
 public:
+	virtual FText GetExecutionDisplayName() const override;
 	virtual bool StartExecution() override;
 	virtual bool ValidateExecutionConfig(
 		const FInstancedStruct& Config,

@@ -38,6 +38,8 @@ public:
 		const FInstancedStruct& Config,
 		FText& OutError) const;
 	virtual bool ResolveTarget(FRPGSkillTargetResult& OutResult) const;
+	/** Server/local actor position may move an opted-in query; client input never supplies this flag. */
+	virtual bool ResolveHitQueryTransform(const FRPGSkillTargetResult& FrozenTarget, FTransform& OutTransform) const;
 	virtual bool ValidateReplicatedTarget(
 		const FRPGSkillTargetResult& SubmittedResult,
 		FRPGSkillTargetResult& OutValidatedResult,

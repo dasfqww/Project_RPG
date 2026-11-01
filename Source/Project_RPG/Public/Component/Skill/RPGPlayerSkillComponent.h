@@ -9,6 +9,7 @@
 #include "RPGPlayerSkillComponent.generated.h"
 
 class URPGSkillDefinition;
+class URPGPlayerClassDefinition;
 class FLifetimeProperty;
 
 USTRUCT()
@@ -21,6 +22,54 @@ struct FRPGReplicatedSkillSaveEntry
 
 	UPROPERTY()
 	FRPGSkillSaveData SaveData;
+
+	/** Links this authoritative acquisition record to the current restore request. */
+	UPROPERTY()
+	uint32 RestoreGeneration = 0;
+};
+
+UENUM(BlueprintType)
+enum class ERPGPlayerSkillLoadState : uint8
+{
+	Uninitialized,
+	Loading,
+	Ready,
+	Failed
+};
+
+/** Growth context only; applying/removing GAS grants belongs to the class application owner. */
+USTRUCT()
+struct FRPGPlayerSkillAccessState
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TObjectPtr<URPGPlayerClassDefinition> ClassDefinition;
+
+	UPROPERTY()
+	FPrimaryAssetId ExpectedClassId;
+
+	UPROPERTY()
+	ERPGPlayerSkillLoadState LoadState = ERPGPlayerSkillLoadState::Uninitialized;
+
+	UPROPERTY()
+	uint32 RestoreGeneration = 0;
+	UPROPERTY()
+	bool bIdentityUnlocked = false;
+	UPROPERTY()
+	bool bConfigurationMutable = true;
+};
+
+/** Server-validated input, not a backend persistence implementation or a client command. */
+struct FRPGPlayerSkillRestoreData
+{
+	static constexpr int32 CurrentVersion = 1;
+	int32 Version = CurrentVersion;
+	FPrimaryAssetId ClassId;
+	int32 TotalSP = 0;
+	bool bIdentityUnlocked = true; // Explicit development suppliers retain their existing recipe.
+	bool bConfigurationMutable = true;
+	TArray<FRPGReplicatedSkillSaveEntry> AcquiredSkills;
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
@@ -43,6 +92,25 @@ public:
 	URPGPlayerSkillComponent();
 	virtual void GetLifetimeReplicatedProps(
 		TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/** Trusted server caller must retain a weak reference to this Pawn's component plus this token.
+	 * A ready Pawn cannot be reinitialized in place; respawn/save restoration policy is separate. */
+	uint32 BeginClassSkillRestore(FPrimaryAssetId ExpectedClassId);
+	bool CompleteClassSkillRestore(uint32 RequestId, URPGPlayerClassDefinition* Definition,
+		const FRPGPlayerSkillRestoreData& Data, FText& OutError);
+	void FailClassSkillRestore(uint32 RequestId);
+	/** Trusted supplier rollback, including a ready record whose grant/slot transaction failed. */
+	void InvalidateClassSkillRestore(uint32 RequestId);
+	bool IsClassIdentityUnlocked() const;
+	bool IsConfigurationMutable() const { return SkillAccessState.bConfigurationMutable; }
+
+	UFUNCTION(BlueprintPure, Category = "RPG|Skill")
+	ERPGPlayerSkillLoadState GetSkillLoadState() const { return SkillAccessState.LoadState; }
+	uint32 GetSkillRestoreGeneration() const { return SkillAccessState.RestoreGeneration; }
+	URPGPlayerClassDefinition* GetPlayerClassDefinition() const;
+	bool IsSkillInCurrentClass(FGameplayTag SkillTag) const;
+	bool IsSkillAcquired(FGameplayTag SkillTag) const;
+	bool TryGetSkillSaveData(FGameplayTag SkillTag, FRPGSkillSaveData& OutData) const;
 
 	// ---------------------------------------------------
 	// 1. 스킬 관리 API
@@ -77,7 +145,7 @@ public:
 	// ---------------------------------------------------
 
 	UFUNCTION(BlueprintPure, Category = "RPG|Skill")
-	int32 GetRemainingSP() const { return TotalSP - UsedSP; }
+	int32 GetRemainingSP() const;
 
 	UFUNCTION(BlueprintPure, Category = "RPG|Skill")
 	int32 GetTotalSP() const { return TotalSP; }
@@ -94,6 +162,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	UFUNCTION(Server, Reliable)
 	void ServerTryLevelUpSkill(FGameplayTag SkillTag);
@@ -117,6 +186,8 @@ protected:
 	void OnRep_ReplicatedSkillData();
 	
 private:
+	bool bEndingPlay = false;
+	bool CanModifySkill(FGameplayTag SkillTag) const;
 	bool ApplyLevelUpSkill(FGameplayTag SkillTag);
 	bool ApplyLevelDownSkill(FGameplayTag SkillTag);
 	void ApplyLevelUpToMax(FGameplayTag SkillTag, int32 TargetGoalLevel);
@@ -127,6 +198,8 @@ private:
 		int32 OptionIndex);
 	void PublishAuthoritativeSkillData(FGameplayTag SkillTag);
 	void TouchAuthoritativeRevision();
+	int32 GetEffectiveUsedSP() const;
+	void SetEffectiveUsedSP(int32 Amount);
 	bool IsAuthorityOwner() const;
 	const URPGSkillDefinition* FindSkillDefinition(
 		FGameplayTag SkillTag) const;
@@ -141,9 +214,16 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_ReplicatedSkillData)
 	uint32 ReplicatedSkillDataRevision = 0;
 
+	UPROPERTY(ReplicatedUsing = OnRep_ReplicatedSkillData)
+	FRPGPlayerSkillAccessState SkillAccessState;
+
 	UPROPERTY(EditDefaultsOnly, Replicated, Category = "RPG|Skill")
 	int32 TotalSP = 50; // 기본 지급 SP
 
 	UPROPERTY(Replicated)
 	int32 UsedSP = 0;
+
+	// Never modify the replicated authority baseline during client prediction.
+	// A revision-only rejection can then restore SP without resending UsedSP.
+	int32 PredictedUsedSP = INDEX_NONE;
 };

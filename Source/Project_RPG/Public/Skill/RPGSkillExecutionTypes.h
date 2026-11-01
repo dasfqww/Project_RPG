@@ -62,6 +62,14 @@ struct PROJECT_RPG_API FRPGSkillHoldingExecutionConfig
 {
 	GENERATED_BODY()
 
+	/** Opt-in cast-owned voluntary movement limit. Zero holds position; 0.8 allows 80% speed. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Holding|Movement")
+	bool bConstrainMovement = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Holding|Movement",
+		meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bConstrainMovement"))
+	float MovementSpeedScalar = 1.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Holding",
 		meta = (ClampMin = "0.01", Units = "s"))
 	float HoldDuration = 1.0f;

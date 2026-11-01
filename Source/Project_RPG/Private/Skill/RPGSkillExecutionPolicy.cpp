@@ -1,7 +1,13 @@
 #include "Skill/RPGSkillExecutionPolicy.h"
+#include "Combat/RPGCombatControlTypes.h"
 
 #include "Abilities/GameplayAbilityTypes.h"
 #include "Animation/AnimMontage.h"
+#include "AnimNotify/RPGAnimNotify_SkillFinisher.h"
+#include "Component/RPGCharacterMovementComponent.h"
+#include "Component/RPGSecurityValidationComponent.h"
+#include "Component/UI/PlayerUIComponent.h"
+#include "GameFramework/Character.h"
 #include "Engine/World.h"
 #include "Skill/RPGSkillExecutionTypes.h"
 #include "Skill/RPGSkillRuntimeTypes.h"
@@ -31,9 +37,71 @@ void URPGSkillExecutionPolicy::Initialize(IRPGSkillExecutionHost& InHost)
 	Host = &InHost;
 }
 
+FText URPGSkillExecutionPolicy::GetExecutionDisplayName() const
+{
+	return NSLOCTEXT("RPGSkillUI", "CustomExecution", "Custom");
+}
+
 bool URPGSkillExecutionPolicy::StartExecution()
 {
+	bProgressExecutionEnded = false;
+	EndProgress(ERPGActionProgressEndReason::Cancelled);
 	return Host != nullptr;
+}
+
+void URPGSkillExecutionPolicy::BeginProgress(ERPGActionProgressKind Kind, float Duration, int32 StageCount)
+{
+	EndProgress(ERPGActionProgressEndReason::Cancelled);
+	if (!Host || HasEndedExecution()) return;
+	APawn* Pawn = Cast<APawn>(Host->GetSkillSourceActor());
+	if (!IsValid(Pawn) || !Pawn->IsLocallyControlled() || Pawn->GetNetMode() == NM_DedicatedServer) return;
+	auto* UI = Pawn->FindComponentByClass<UPlayerUIComponent>();
+	if (!IsValid(UI)) return;
+	ProgressData = {};
+	ProgressData.Kind = Kind;
+	ProgressData.Label = GetRuntimeSpec().DisplayName.IsEmpty() ? GetExecutionDisplayName() : GetRuntimeSpec().DisplayName;
+	ProgressData.Icon = GetRuntimeSpec().Icon;
+	ProgressData.bHasDuration = true;
+	ProgressData.DurationSeconds = Duration;
+	ProgressData.TimeDisplay = ERPGActionProgressTimeDisplay::Elapsed;
+	ProgressData.StageCount = StageCount;
+	ProgressUI = UI;
+	const uint64 Revision = ProgressRevision;
+	const auto Handle = UI->BeginActionProgress(this, ProgressData);
+	// Begin can synchronously cancel this policy before its returned handle is stored.
+	if (Revision != ProgressRevision || HasEndedExecution())
+	{
+		UI->EndActionProgress(Handle, ERPGActionProgressEndReason::Cancelled);
+		return;
+	}
+	ProgressHandle = Handle;
+}
+
+void URPGSkillExecutionPolicy::UpdateProgress(float Elapsed, float Duration, int32 Stage)
+{
+	if (HasEndedExecution()) return;
+	ProgressData.ElapsedSeconds = Elapsed;
+	ProgressData.DurationSeconds = Duration;
+	ProgressData.Stage = Stage;
+	if (auto* UI = ProgressUI.Get()) UI->UpdateActionProgress(ProgressHandle, ProgressData);
+}
+
+void URPGSkillExecutionPolicy::ReadyProgress()
+{
+	if (HasEndedExecution()) return;
+	ProgressData.Phase = ERPGActionProgressPhase::Ready;
+	if (auto* UI = ProgressUI.Get()) UI->UpdateActionProgress(ProgressHandle, ProgressData);
+}
+
+void URPGSkillExecutionPolicy::EndProgress(ERPGActionProgressEndReason Reason)
+{
+	++ProgressRevision;
+	auto* UI = ProgressUI.Get();
+	const auto Handle = ProgressHandle;
+	ProgressUI.Reset();
+	ProgressHandle = {};
+	ProgressData = {};
+	if (IsValid(UI)) UI->EndActionProgress(Handle, Reason);
 }
 
 bool URPGSkillExecutionPolicy::ValidateExecutionConfig(
@@ -52,13 +120,72 @@ bool URPGSkillExecutionPolicy::ValidateRuntimeSpec(FText& OutError) const
 			OutError,
 			TEXT("Execution policy has no initialized host."));
 	}
-	return ValidateRuntimeSpecData(GetRuntimeSpec(), OutError);
+	if (!ValidateRuntimeSpecData(GetRuntimeSpec(), OutError)) return false;
+	float MovementScale = 1.f;
+	if (!GetRuntimeSpec().TryGetMontageMovementScale(MovementScale)) return false;
+	if (MovementScale != 1.f)
+	{
+		const auto* Character = Cast<ACharacter>(Host->GetSkillSourceActor());
+		if (!IsValid(Character) || Character->GetWorld() != GetWorld()
+			|| (!Character->HasAuthority() && !Character->IsLocallyControlled()))
+			return FailRuntimeValidation(OutError, TEXT("Scaled montage movement requires the casting character."));
+		const auto* Security = Character->FindComponentByClass<URPGSecurityValidationComponent>();
+		if (Character->HasAuthority() && (!Security || Security->IsMovementAuthorizationActive()))
+			return FailRuntimeValidation(OutError, TEXT("Scaled montage movement has no free server authorization window."));
+	}
+	return true;
 }
 
 bool URPGSkillExecutionPolicy::ValidateRuntimeSpecData(
 	const FRPGSkillRuntimeSpec& RuntimeSpec,
 	FText& OutError) const
 {
+	FRPGCombatContributionAmounts ContributionAmounts;
+	if (!RuntimeSpec.TryGetCombatContributions(ContributionAmounts))
+		return FailRuntimeValidation(OutError, TEXT("Invalid frozen combat contribution amounts."));
+	if (!RuntimeSpec.ContributionHitSection.IsNone())
+	{
+		const UAnimMontage* Montage = RuntimeSpec.Montage;
+		const int32 Section = Montage ? Montage->GetSectionIndex(RuntimeSpec.ContributionHitSection) : INDEX_NONE;
+		if (!SupportsContributionFinisher() || Section == INDEX_NONE)
+			return FailRuntimeValidation(OutError, TEXT("Finisher contributions require a supported policy and an authored montage section."));
+		int32 NotifyCount = 0;
+		for (const FAnimNotifyEvent& Event : Montage->Notifies)
+		{
+			if (Event.Notify && Event.Notify->IsA<URPGAnimNotify_SkillFinisher>()
+				&& Montage->GetSectionIndexFromPosition(Event.GetTime()) == Section) ++NotifyCount;
+		}
+		if (NotifyCount != 1)
+			return FailRuntimeValidation(OutError, TEXT("The contribution section requires exactly one native finishing-strike notify."));
+	}
+	float MovementScale = 1.f;
+	if (!RuntimeSpec.TryGetMontageMovementScale(MovementScale))
+		return FailRuntimeValidation(OutError, TEXT("Invalid montage movement scalar or bounded authorization profile."));
+	if (!RPGHitReaction::IsValidPolicy(RuntimeSpec.HitReactionPolicy))
+	{
+		OutError = NSLOCTEXT("RPGSkillExecution", "InvalidHitReaction", "Invalid attack hit reaction policy.");
+		return false;
+	}
+	if (!RPGCombatControl::IsValidStunDuration(RuntimeSpec.StunDuration))
+	{
+		OutError = NSLOCTEXT("RPGSkillExecution", "InvalidStunDuration", "Invalid attack stun duration.");
+		return false;
+	}
+	if (!RuntimeSpec.Knockback.IsValid())
+	{
+		OutError = NSLOCTEXT("RPGSkillExecution", "InvalidKnockback", "Invalid attack knockback settings.");
+		return false;
+	}
+	if (!RuntimeSpec.Slow.IsValid())
+	{
+		OutError = NSLOCTEXT("RPGSkillExecution", "InvalidSlow", "Invalid attack slow settings.");
+		return false;
+	}
+	if (!RuntimeSpec.ActivationImmunities.IsValid())
+	{
+		OutError = NSLOCTEXT("RPGSkillExecution", "InvalidImmunities", "Invalid activation immunity settings.");
+		return false;
+	}
 	return ValidateExecutionConfig(RuntimeSpec.ExecutionConfig, OutError);
 }
 
@@ -98,10 +225,14 @@ void URPGSkillExecutionPolicy::OnMontageInterrupted()
 
 void URPGSkillExecutionPolicy::EndExecution()
 {
+	bProgressExecutionEnded = true;
+	EndProgress(ERPGActionProgressEndReason::Completed);
 }
 
 void URPGSkillExecutionPolicy::CancelExecution()
 {
+	bProgressExecutionEnded = true;
+	EndProgress(ERPGActionProgressEndReason::Cancelled);
 }
 
 const FRPGSkillRuntimeSpec& URPGSkillExecutionPolicy::GetRuntimeSpec() const
@@ -113,6 +244,11 @@ const FRPGSkillRuntimeSpec& URPGSkillExecutionPolicy::GetRuntimeSpec() const
 UWorld* URPGSkillExecutionPolicy::GetWorld() const
 {
 	return Host ? Host->GetSkillExecutionWorld() : nullptr;
+}
+
+FText URPGSkillExecutionPolicy_Instant::GetExecutionDisplayName() const
+{
+	return NSLOCTEXT("RPGSkillUI", "Instant", "Instant");
 }
 
 bool URPGSkillExecutionPolicy_Instant::StartExecution()
@@ -173,8 +309,17 @@ bool URPGSkillExecutionPolicy_Instant::ValidateRuntimeSpecData(
 	return true;
 }
 
+FText URPGSkillExecutionPolicy_Charge::GetExecutionDisplayName() const
+{
+	return NSLOCTEXT("RPGSkillUI", "Charge", "Charge");
+}
+
 bool URPGSkillExecutionPolicy_Charge::StartExecution()
 {
+	// A failed/reused attempt must not expose the previous release receipt.
+	CurrentChargeLevel = 0;
+	bReachedMaximumCharge = false;
+	bReleased = false;
 	const FRPGSkillChargeExecutionConfig* Config = GetChargeConfig();
 	UWorld* World = GetWorld();
 	FText ValidationError;
@@ -187,19 +332,20 @@ bool URPGSkillExecutionPolicy_Charge::StartExecution()
 		return false;
 	}
 
-	CurrentChargeLevel = 0;
-	bReachedMaximumCharge = false;
-	bReleased = false;
 	ChargeStartTime = World->GetTimeSeconds();
 
-	GetHost()->ShowSkillProgress();
+	const FName ChargeSection = Config->ChargeSection;
+	BeginProgress(ERPGActionProgressKind::Charge, GetChargeTimePerLevel() * Config->MaxChargeLevel, Config->MaxChargeLevel);
+	if (HasEndedExecution()) return false;
 	GetHost()->StartSkillPersistentVFX();
-	if (!GetHost()->PlaySkillMontage(Config->ChargeSection))
+	if (HasEndedExecution()) return false;
+	if (!GetHost()->PlaySkillMontage(ChargeSection))
 	{
 		GetHost()->StopSkillPersistentVFX();
-		GetHost()->HideSkillProgress();
+		EndProgress(ERPGActionProgressEndReason::Interrupted);
 		return false;
 	}
+	if (HasEndedExecution()) return false;
 
 	World->GetTimerManager().SetTimer(
 		ChargeUpdateTimerHandle,
@@ -283,7 +429,6 @@ void URPGSkillExecutionPolicy_Charge::EndExecution()
 	if (GetHost())
 	{
 		GetHost()->StopSkillPersistentVFX();
-		GetHost()->HideSkillProgress();
 	}
 	Super::EndExecution();
 }
@@ -297,7 +442,6 @@ void URPGSkillExecutionPolicy_Charge::CancelExecution()
 	if (GetHost())
 	{
 		GetHost()->StopSkillPersistentVFX();
-		GetHost()->HideSkillProgress();
 	}
 	Super::CancelExecution();
 }
@@ -306,7 +450,7 @@ void URPGSkillExecutionPolicy_Charge::UpdateCharge()
 {
 	const FRPGSkillChargeExecutionConfig* Config = GetChargeConfig();
 	UWorld* World = GetWorld();
-	if (!Config || !World || bReleased)
+	if (!Config || !World || bReleased || HasEndedExecution())
 	{
 		return;
 	}
@@ -319,19 +463,23 @@ void URPGSkillExecutionPolicy_Charge::UpdateCharge()
 		FMath::FloorToInt(Elapsed / TimePerLevel),
 		0,
 		Config->MaxChargeLevel);
-	GetHost()->UpdateSkillProgress(
+	const int32 MaxLevel = Config->MaxChargeLevel;
+	const float MaxHold = Config->MaxChargeHoldTime;
+	UpdateProgress(
 		FMath::Min(Elapsed, MaximumChargeTime),
-		MaximumChargeTime);
+		MaximumChargeTime, CurrentChargeLevel);
+	if (HasEndedExecution()) return;
 
-	if (CurrentChargeLevel >= Config->MaxChargeLevel)
+	if (CurrentChargeLevel >= MaxLevel)
 	{
 		if (!bReachedMaximumCharge)
 		{
 			bReachedMaximumCharge = true;
-			GetHost()->NotifySkillProgressCompleted();
+			ReadyProgress();
 		}
+		if (HasEndedExecution()) return;
 
-		if (Elapsed >= MaximumChargeTime + Config->MaxChargeHoldTime)
+		if (Elapsed >= MaximumChargeTime + MaxHold)
 		{
 			ReleaseCharge();
 		}
@@ -341,7 +489,7 @@ void URPGSkillExecutionPolicy_Charge::UpdateCharge()
 void URPGSkillExecutionPolicy_Charge::ReleaseCharge()
 {
 	const FRPGSkillChargeExecutionConfig* Config = GetChargeConfig();
-	if (!Config || !GetHost())
+	if (!Config || !GetHost() || HasEndedExecution())
 	{
 		return;
 	}
@@ -359,29 +507,46 @@ void URPGSkillExecutionPolicy_Charge::ReleaseCharge()
 	}
 
 	bReleased = true;
+	// Capture at release, including a release between the final level and timer update.
+	// The owning ability clears its RuntimeSpec before GAS end listeners run.
+	bReachedMaximumCharge = CurrentChargeLevel >= Config->MaxChargeLevel;
+	const int32 MinimumLevel = Config->MinimumReleaseLevel;
+	const FName ReleaseSection = Config->ReleaseSection;
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(ChargeUpdateTimerHandle);
 	}
 	GetHost()->StopSkillPersistentVFX();
-	GetHost()->HideSkillProgress();
+	if (HasEndedExecution()) return;
 
-	if (CurrentChargeLevel < Config->MinimumReleaseLevel)
+	if (CurrentChargeLevel < MinimumLevel)
 	{
+		EndProgress(ERPGActionProgressEndReason::Cancelled);
+		if (HasEndedExecution()) return;
 		GetHost()->FinishSkillExecution(true);
 		return;
 	}
 
 	if (!GetHost()->RefreshSkillTarget())
 	{
+		EndProgress(ERPGActionProgressEndReason::Cancelled);
+		if (HasEndedExecution()) return;
 		GetHost()->FinishSkillExecution(true);
 		return;
 	}
 
-	if (!GetHost()->JumpToSkillMontageSection(Config->ReleaseSection))
+	if (HasEndedExecution()) return;
+	const bool bJumped = GetHost()->JumpToSkillMontageSection(ReleaseSection);
+	EndProgress(bJumped ? ERPGActionProgressEndReason::Completed : ERPGActionProgressEndReason::Interrupted);
+	if (!HasEndedExecution() && !bJumped)
 	{
 		GetHost()->FinishSkillExecution(true);
 	}
+}
+
+bool URPGSkillExecutionPolicy_Charge::WasReleasedAtMaximumCharge() const
+{
+	return bReleased && bReachedMaximumCharge;
 }
 
 float URPGSkillExecutionPolicy_Charge::GetChargeTimePerLevel() const
@@ -412,6 +577,11 @@ URPGSkillExecutionPolicy_Charge::GetChargeConfig() const
 	return GetRuntimeSpec().ExecutionConfig.GetPtr<FRPGSkillChargeExecutionConfig>();
 }
 
+FText URPGSkillExecutionPolicy_Holding::GetExecutionDisplayName() const
+{
+	return NSLOCTEXT("RPGSkillUI", "Holding", "Holding");
+}
+
 bool URPGSkillExecutionPolicy_Holding::StartExecution()
 {
 	const FRPGSkillHoldingExecutionConfig* Config = GetHoldingConfig();
@@ -430,14 +600,30 @@ bool URPGSkillExecutionPolicy_Holding::StartExecution()
 	bPerfectZoneReached = false;
 	bResolved = false;
 	bFinishAsCancelled = false;
+	bExecutionEnded = false;
+	bSuccessfulFinishEntered = false;
+	if (!ValidateRuntimeSpec(ValidationError)) return false;
+	if (Config->bConstrainMovement)
+	{
+		auto* Character = Cast<ACharacter>(GetHost()->GetSkillSourceActor());
+		auto* Movement = Character ? Cast<URPGCharacterMovementComponent>(Character->GetCharacterMovement()) : nullptr;
+		if (!Movement) return false;
+		MovementConstraintHandle = Movement->BeginSkillMovementConstraint(this, Config->MovementSpeedScalar);
+		if (!MovementConstraintHandle.IsValid()) return false;
+		ConstrainedMovement = Movement;
+	}
 
-	GetHost()->ShowSkillProgress();
+	BeginProgress(ERPGActionProgressKind::Holding, GetScaledTime(Config->HoldDuration));
+	if (bResolved) return false;
 	GetHost()->StartSkillPersistentVFX();
+	if (bResolved) return false;
 	if (!GetHost()->PlaySkillMontage(Config->HoldingSection))
 	{
 		CleanupHolding();
+		ReleaseMovementConstraint();
 		return false;
 	}
+	if (bResolved) return false;
 
 	World->GetTimerManager().SetTimer(
 		HoldingUpdateTimerHandle,
@@ -467,6 +653,8 @@ bool URPGSkillExecutionPolicy_Holding::ValidateExecutionConfig(
 			? HoldingConfig->PerfectZoneEndTime
 			: HoldingConfig->HoldDuration;
 	const bool bValid =
+		FMath::IsFinite(HoldingConfig->MovementSpeedScalar) &&
+		HoldingConfig->MovementSpeedScalar >= 0.f && HoldingConfig->MovementSpeedScalar <= 1.f &&
 		FMath::IsFinite(HoldingConfig->HoldDuration) &&
 		HoldingConfig->HoldDuration > 0.0f &&
 		FMath::IsFinite(HoldingConfig->PerfectZoneStartTime) &&
@@ -478,7 +666,7 @@ bool URPGSkillExecutionPolicy_Holding::ValidateExecutionConfig(
 	if (!bValid)
 	{
 		OutError = FText::FromString(
-			TEXT("Holding timing or success section is invalid."));
+			TEXT("Holding timing, movement scalar, or success section is invalid."));
 		return false;
 	}
 
@@ -505,7 +693,26 @@ bool URPGSkillExecutionPolicy_Holding::ValidateRuntimeSpecData(
 			OutError,
 			TEXT("Holding policy references a missing montage or section."));
 	}
+	if (!RuntimeSpec.ContributionHitSection.IsNone()
+		&& (RuntimeSpec.ContributionHitSection != Config->SuccessSection
+			|| RuntimeSpec.ContributionHitSection == Config->HoldingSection))
+		return FailRuntimeValidation(OutError, TEXT("Holding finisher contributions require a distinct success section."));
 	OutError = FText::GetEmpty();
+	return true;
+}
+
+bool URPGSkillExecutionPolicy_Holding::ValidateRuntimeSpec(FText& OutError) const
+{
+	if (!Super::ValidateRuntimeSpec(OutError)) return false;
+	const auto* Config = GetHoldingConfig();
+	if (Config && Config->bConstrainMovement)
+	{
+		const auto* Character = GetHost() ? Cast<ACharacter>(GetHost()->GetSkillSourceActor()) : nullptr;
+		if (!IsValid(Character) || Character->GetWorld() != GetWorld()
+			|| (!Character->HasAuthority() && !Character->IsLocallyControlled())
+			|| !Cast<URPGCharacterMovementComponent>(Character->GetCharacterMovement()))
+			return FailRuntimeValidation(OutError, TEXT("Movement-constrained holding requires the casting RPG character."));
+	}
 	return true;
 }
 
@@ -548,13 +755,21 @@ void URPGSkillExecutionPolicy_Holding::OnMontageCompleted()
 
 void URPGSkillExecutionPolicy_Holding::EndExecution()
 {
+	bSuccessfulFinishEntered = false;
+	bExecutionEnded = true;
+	bResolved = true;
 	CleanupHolding();
+	ReleaseMovementConstraint();
 	Super::EndExecution();
 }
 
 void URPGSkillExecutionPolicy_Holding::CancelExecution()
 {
+	bSuccessfulFinishEntered = false;
+	bExecutionEnded = true;
+	bResolved = true;
 	CleanupHolding();
+	ReleaseMovementConstraint();
 	Super::CancelExecution();
 }
 
@@ -576,15 +791,17 @@ void URPGSkillExecutionPolicy_Holding::UpdateHolding()
 			: Config->HoldDuration);
 	const float Elapsed =
 		FMath::Max(0.0f, World->GetTimeSeconds() - HoldingStartTime);
-	GetHost()->UpdateSkillProgress(
+	UpdateProgress(
 		FMath::Min(Elapsed, HoldDuration),
 		HoldDuration);
+	if (bResolved) return;
 
 	if (!bPerfectZoneReached && Elapsed >= PerfectZoneStart)
 	{
 		bPerfectZoneReached = true;
-		GetHost()->NotifySkillProgressCompleted();
+		ReadyProgress();
 	}
+	if (bResolved) return;
 
 	if (Config->bAutoReleaseAtPerfectZoneEnd &&
 		Elapsed >= PerfectZoneEnd)
@@ -608,15 +825,15 @@ void URPGSkillExecutionPolicy_Holding::CompleteHolding(
 	bResolved = true;
 	bFinishAsCancelled = !bSuccessful;
 	const FRPGSkillHoldingExecutionConfig* Config = GetHoldingConfig();
+	const FName Section = Config
+		? (bSuccessful ? Config->SuccessSection : Config->FailureSection) : NAME_None;
 	CleanupHolding();
+	if (bExecutionEnded) return;
 	if (!Config)
 	{
 		GetHost()->FinishSkillExecution(true);
 		return;
 	}
-
-	const FName Section =
-		bSuccessful ? Config->SuccessSection : Config->FailureSection;
 	if (Section.IsNone())
 	{
 		GetHost()->FinishSkillExecution(!bSuccessful);
@@ -628,11 +845,21 @@ void URPGSkillExecutionPolicy_Holding::CompleteHolding(
 		GetHost()->FinishSkillExecution(true);
 		return;
 	}
+	if (bExecutionEnded) return;
 
 	if (!GetHost()->JumpToSkillMontageSection(Section))
 	{
 		GetHost()->FinishSkillExecution(true);
 	}
+	else if (!bExecutionEnded)
+	{
+		bSuccessfulFinishEntered = bSuccessful;
+	}
+}
+
+bool URPGSkillExecutionPolicy_Holding::IsContributionFinisherReady() const
+{
+	return bSuccessfulFinishEntered && bResolved && !bFinishAsCancelled && !bExecutionEnded;
 }
 
 void URPGSkillExecutionPolicy_Holding::CleanupHolding()
@@ -644,8 +871,23 @@ void URPGSkillExecutionPolicy_Holding::CleanupHolding()
 	if (GetHost())
 	{
 		GetHost()->StopSkillPersistentVFX();
-		GetHost()->HideSkillProgress();
 	}
+	EndProgress(!bResolved ? ERPGActionProgressEndReason::Interrupted
+		: bFinishAsCancelled ? ERPGActionProgressEndReason::Cancelled : ERPGActionProgressEndReason::Completed);
+}
+
+void URPGSkillExecutionPolicy_Holding::ReleaseMovementConstraint()
+{
+	if (auto* Movement = ConstrainedMovement.Get()) Movement->EndSkillMovementConstraint(MovementConstraintHandle);
+	MovementConstraintHandle.Invalidate();
+	ConstrainedMovement.Reset();
+}
+
+void URPGSkillExecutionPolicy_Holding::BeginDestroy()
+{
+	// No host/world access during GC; release only the component we acquired.
+	ReleaseMovementConstraint();
+	Super::BeginDestroy();
 }
 
 float URPGSkillExecutionPolicy_Holding::GetScaledTime(
@@ -674,6 +916,11 @@ URPGSkillExecutionPolicy_Holding::GetHoldingConfig() const
 		.GetPtr<FRPGSkillHoldingExecutionConfig>();
 }
 
+FText URPGSkillExecutionPolicy_Casting::GetExecutionDisplayName() const
+{
+	return NSLOCTEXT("RPGSkillUI", "Casting", "Casting");
+}
+
 bool URPGSkillExecutionPolicy_Casting::StartExecution()
 {
 	const FRPGSkillCastingExecutionConfig* Config = GetCastingConfig();
@@ -692,13 +939,17 @@ bool URPGSkillExecutionPolicy_Casting::StartExecution()
 	bResolved = false;
 	bFinishAsCancelled = false;
 
-	GetHost()->ShowSkillProgress();
+	const FName CastingSection = Config->CastingSection;
+	BeginProgress(ERPGActionProgressKind::Casting, GetScaledCastDuration());
+	if (HasEndedExecution()) return false;
 	GetHost()->StartSkillPersistentVFX();
-	if (!GetHost()->PlaySkillMontage(Config->CastingSection))
+	if (HasEndedExecution()) return false;
+	if (!GetHost()->PlaySkillMontage(CastingSection))
 	{
 		CleanupCasting();
 		return false;
 	}
+	if (HasEndedExecution()) return false;
 
 	World->GetTimerManager().SetTimer(
 		CastingUpdateTimerHandle,
@@ -789,12 +1040,15 @@ void URPGSkillExecutionPolicy_Casting::OnMontageInterrupted()
 
 void URPGSkillExecutionPolicy_Casting::EndExecution()
 {
+	bResolved = true;
 	CleanupCasting();
 	Super::EndExecution();
 }
 
 void URPGSkillExecutionPolicy_Casting::CancelExecution()
 {
+	bResolved = true;
+	bFinishAsCancelled = true;
 	CleanupCasting();
 	Super::CancelExecution();
 }
@@ -810,9 +1064,10 @@ void URPGSkillExecutionPolicy_Casting::UpdateCasting()
 	const float CastDuration = GetScaledCastDuration();
 	const float Elapsed =
 		FMath::Max(0.0f, World->GetTimeSeconds() - CastingStartTime);
-	GetHost()->UpdateSkillProgress(
+	UpdateProgress(
 		FMath::Min(Elapsed, CastDuration),
 		CastDuration);
+	if (HasEndedExecution() || bResolved) return;
 	if (Elapsed >= CastDuration)
 	{
 		CompleteCasting();
@@ -829,10 +1084,12 @@ void URPGSkillExecutionPolicy_Casting::CompleteCasting()
 	bResolved = true;
 	bFinishAsCancelled = false;
 	const FRPGSkillCastingExecutionConfig* Config = GetCastingConfig();
-	GetHost()->NotifySkillProgressCompleted();
+	const FName Section = Config ? Config->CompleteSection : NAME_None;
+	ReadyProgress();
+	if (HasEndedExecution()) return;
 	CleanupCasting();
-	if (!Config ||
-		!GetHost()->JumpToSkillMontageSection(Config->CompleteSection))
+	if (HasEndedExecution()) return;
+	if (Section.IsNone() || !GetHost()->JumpToSkillMontageSection(Section))
 	{
 		GetHost()->FinishSkillExecution(true);
 	}
@@ -848,9 +1105,10 @@ void URPGSkillExecutionPolicy_Casting::CancelCasting()
 	bResolved = true;
 	bFinishAsCancelled = true;
 	const FRPGSkillCastingExecutionConfig* Config = GetCastingConfig();
+	const FName Section = Config ? Config->CancelSection : NAME_None;
 	CleanupCasting();
-	if (!Config || Config->CancelSection.IsNone() ||
-		!GetHost()->JumpToSkillMontageSection(Config->CancelSection))
+	if (HasEndedExecution()) return;
+	if (Section.IsNone() || !GetHost()->JumpToSkillMontageSection(Section))
 	{
 		GetHost()->FinishSkillExecution(true);
 	}
@@ -865,8 +1123,9 @@ void URPGSkillExecutionPolicy_Casting::CleanupCasting()
 	if (GetHost())
 	{
 		GetHost()->StopSkillPersistentVFX();
-		GetHost()->HideSkillProgress();
 	}
+	EndProgress(!bResolved ? ERPGActionProgressEndReason::Interrupted
+		: bFinishAsCancelled ? ERPGActionProgressEndReason::Cancelled : ERPGActionProgressEndReason::Completed);
 }
 
 float URPGSkillExecutionPolicy_Casting::GetScaledCastDuration() const
@@ -898,6 +1157,11 @@ URPGSkillExecutionPolicy_Casting::GetCastingConfig() const
 {
 	return GetRuntimeSpec().ExecutionConfig
 		.GetPtr<FRPGSkillCastingExecutionConfig>();
+}
+
+FText URPGSkillExecutionPolicy_Combo::GetExecutionDisplayName() const
+{
+	return NSLOCTEXT("RPGSkillUI", "Combo", "Combo");
 }
 
 bool URPGSkillExecutionPolicy_Combo::StartExecution()
@@ -1032,6 +1296,11 @@ const FRPGSkillComboExecutionConfig*
 URPGSkillExecutionPolicy_Combo::GetComboConfig() const
 {
 	return GetRuntimeSpec().ExecutionConfig.GetPtr<FRPGSkillComboExecutionConfig>();
+}
+
+FText URPGSkillExecutionPolicy_Chain::GetExecutionDisplayName() const
+{
+	return NSLOCTEXT("RPGSkillUI", "Chain", "Chain");
 }
 
 bool URPGSkillExecutionPolicy_Chain::StartExecution()

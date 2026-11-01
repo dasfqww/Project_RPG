@@ -22,6 +22,10 @@ struct PROJECT_RPG_API FRPGSkillTargetingConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Targeting")
 	bool bOrientSourceToAim = true;
 
+	/** Follow the casting actor's translation while retaining the resolved aim and query offset. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Targeting")
+	bool bFollowSourceForHitQuery = false;
+
 	/** Allowed client/server avatar position drift when validating predicted aim. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Targeting|Network Validation",
 		meta = (ClampMin = "0.0", Units = "cm"))
@@ -165,7 +169,7 @@ struct PROJECT_RPG_API FRPGSkillTargetResult
 	UPROPERTY(BlueprintReadOnly, Transient, Category = "Targeting")
 	FVector AimDirection = FVector::ForwardVector;
 
-	/** Final origin/orientation passed to the authored Hit Query profile. */
+	/** Resolved aim snapshot; an opted-in policy can translate its query with the source actor. */
 	UPROPERTY(BlueprintReadOnly, Transient, Category = "Targeting")
 	FTransform HitQueryTransform = FTransform::Identity;
 
