@@ -12,6 +12,7 @@ void URPGSkillListModule::NativeConstruct()
 	if (SkillListView)
 	{
 		// 리스트 뷰의 선택 변경 이벤트 구독
+		SkillListView->OnItemSelectionChanged().RemoveAll(this);
 		SkillListView->OnItemSelectionChanged().AddUObject(this, &URPGSkillListModule::HandleItemSelectionChanged);
 	}
 }
@@ -21,14 +22,20 @@ void URPGSkillListModule::InitSkillList(const TArray<URPGSkillSlotViewModel*>& S
 	if (SkillListView)
 	{
 		SkillListView->SetListItems(SkillSlots);
+		if (!SkillSlots.IsEmpty())
+		{
+			SkillListView->SetSelectedItem(SkillSlots[0]);
+		}
+		else
+		{
+			// An already-empty list need not emit a selection change itself.
+			OnSkillSelected.Broadcast(nullptr);
+		}
 	}
 }
 
 void URPGSkillListModule::HandleItemSelectionChanged(UObject* Item)
 {
-	URPGSkillSlotViewModel* SelectedVM = Cast<URPGSkillSlotViewModel>(Item);
-	if (SelectedVM)
-	{
-		OnSkillSelected.Broadcast(SelectedVM);
-	}
+	// Clearing selection must also clear the detail panel and its subscriptions.
+	OnSkillSelected.Broadcast(Cast<URPGSkillSlotViewModel>(Item));
 }

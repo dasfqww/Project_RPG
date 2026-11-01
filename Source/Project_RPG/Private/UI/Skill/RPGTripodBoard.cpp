@@ -33,6 +33,7 @@ void URPGTripodBoard::InitializeBoard(URPGSkillSlotViewModel* InSlotVM)
 	if (CurrentSlotVM.IsValid())
 	{
 		CurrentSlotVM->OnTripodIndicesChanged.RemoveAll(this);
+		CurrentSlotVM->RemoveAllFieldValueChangedDelegates(this);
 	}
 
 	CurrentSlotVM = InSlotVM;
@@ -40,9 +41,13 @@ void URPGTripodBoard::InitializeBoard(URPGSkillSlotViewModel* InSlotVM)
 	if (CurrentSlotVM.IsValid())
 	{
 		CurrentSlotVM->OnTripodIndicesChanged.AddUObject(this, &URPGTripodBoard::UpdateTripodSelection);
-		UpdateButtons();
-		RefreshSelection();
+		CurrentSlotVM->AddFieldValueChangedDelegate(
+			URPGSkillSlotViewModel::FFieldNotificationClassDescriptor::SkillLevel,
+			INotifyFieldValueChanged::FFieldValueChangedDelegate::CreateWeakLambda(
+				this, [this](UObject*, UE::FieldNotification::FFieldId) { RefreshSelection(); }));
 	}
+	UpdateButtons();
+	RefreshSelection();
 }
 
 void URPGTripodBoard::NativePreConstruct()
@@ -78,27 +83,26 @@ void URPGTripodBoard::NativeDestruct()
 	if (CurrentSlotVM.IsValid())
 	{
 		CurrentSlotVM->OnTripodIndicesChanged.RemoveAll(this);
+		CurrentSlotVM->RemoveAllFieldValueChangedDelegates(this);
 	}
+	CurrentSlotVM.Reset();
 	Super::NativeDestruct();
 }
 
 void URPGTripodBoard::UpdateButtons()
 {
-	if (!CurrentSlotVM.IsValid()) return;
-
-	URPGSkillDefinition* SkillDef = CurrentSlotVM->GetSkillDefinition();
-	if (!SkillDef) return;
-
-	const TArray<FRPGSkillTripodTier>& DataTiers = SkillDef->TripodTiers;
+	const URPGSkillDefinition* SkillDef = CurrentSlotVM.IsValid()
+		? CurrentSlotVM->GetSkillDefinition() : nullptr;
+	const TArray<FRPGSkillTripodTier>* DataTiers = SkillDef ? &SkillDef->TripodTiers : nullptr;
 
 	for (int32 TierIdx = 0; TierIdx < TripodTiers.Num(); ++TierIdx)
 	{
 		const TArray<URPGTripodButton*>& UIButtons = TripodTiers[TierIdx];
 		
 		// 데이터가 있는 티어인지 확인
-		if (DataTiers.IsValidIndex(TierIdx))
+		if (DataTiers && DataTiers->IsValidIndex(TierIdx))
 		{
-			const FRPGSkillTripodTier& TierData = DataTiers[TierIdx];
+			const FRPGSkillTripodTier& TierData = (*DataTiers)[TierIdx];
 			
 			for (int32 OptIdx = 0; OptIdx < UIButtons.Num(); ++OptIdx)
 			{
@@ -141,6 +145,9 @@ void URPGTripodBoard::RefreshSelection()
 			{
 				bool bSelected = CurrentSlotVM->IsTripodSelected(TierIdx, Btn->GetOptionIndex());
 				Btn->SetIsTripodSelected(bSelected);
+				const URPGSkillDefinition* Definition = CurrentSlotVM->GetSkillDefinition();
+				Btn->SetIsEnabled(Definition && Definition->IsTripodSelectionAllowed(
+					CurrentSlotVM->SkillLevel, TierIdx, Btn->GetOptionIndex()));
 			}
 		}
 	}
@@ -150,7 +157,11 @@ void URPGTripodBoard::OnTripodBtnClicked(int32 Tier, int32 Index)
 {
 	if (CurrentSlotVM.IsValid())
 	{
-		CurrentSlotVM->RequestTripodSelection(Tier, Index);
+		// Resolve the UI toggle here; the model/server still receive an explicit
+		// selection so repeated commands cannot accidentally toggle it again.
+		const int32 RequestedIndex = CurrentSlotVM->IsTripodSelected(Tier, Index)
+			? INDEX_NONE : Index;
+		CurrentSlotVM->RequestTripodSelection(Tier, RequestedIndex);
 	}
 }
 

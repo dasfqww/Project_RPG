@@ -3,10 +3,15 @@
 
 #include "UI/Skill/RPGSkillDetailModule.h"
 #include "UI/ViewModel/RPGSkillSlotViewModel.h"
+#include "UI/Skill/RPGTripodBoard.h"
 
 void URPGSkillDetailModule::SetSelectedSkill(URPGSkillSlotViewModel* InSkillSlotVM)
 {
 	CurrentSkillVM = InSkillSlotVM;
+	if (URPGTripodBoard* Board = Cast<URPGTripodBoard>(GetRootWidget()))
+	{
+		Board->InitializeBoard(CurrentSkillVM);
+	}
 
 	if (CurrentSkillVM)
 	{

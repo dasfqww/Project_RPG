@@ -14,6 +14,11 @@ void URPGSkillLevelAdjuster::InitializeAdjuster(URPGSkillViewModel* InMainVM, UR
 	if (TargetSlotViewModel)
 	{
 		TargetSlotViewModel->OnNextLevelCostChanged.RemoveAll(this);
+		TargetSlotViewModel->RemoveAllFieldValueChangedDelegates(this);
+	}
+	if (MainViewModel)
+	{
+		MainViewModel->RemoveAllFieldValueChangedDelegates(this);
 	}
 
 	MainViewModel = InMainVM;
@@ -23,9 +28,19 @@ void URPGSkillLevelAdjuster::InitializeAdjuster(URPGSkillViewModel* InMainVM, UR
 	{
 		// NextLevelCost 변경 감지 (Native Delegate)
 		TargetSlotViewModel->OnNextLevelCostChanged.AddUObject(this, &ThisClass::OnCostChanged);
-
-		UpdateRequireLevelText();
+		TargetSlotViewModel->AddFieldValueChangedDelegate(
+			URPGSkillSlotViewModel::FFieldNotificationClassDescriptor::SkillLevel,
+			INotifyFieldValueChanged::FFieldValueChangedDelegate::CreateWeakLambda(
+				this, [this](UObject*, UE::FieldNotification::FFieldId) { UpdateRequireLevelText(); }));
 	}
+	if (MainViewModel)
+	{
+		MainViewModel->AddFieldValueChangedDelegate(
+			URPGSkillViewModel::FFieldNotificationClassDescriptor::RemainingSP,
+			INotifyFieldValueChanged::FFieldValueChangedDelegate::CreateWeakLambda(
+				this, [this](UObject*, UE::FieldNotification::FFieldId) { UpdateRequireLevelText(); }));
+	}
+	UpdateRequireLevelText();
 }
 
 void URPGSkillLevelAdjuster::NativeOnInitialized()
@@ -48,7 +63,14 @@ void URPGSkillLevelAdjuster::NativeDestruct()
 	if (TargetSlotViewModel)
 	{
 		TargetSlotViewModel->OnNextLevelCostChanged.RemoveAll(this);
+		TargetSlotViewModel->RemoveAllFieldValueChangedDelegates(this);
 	}
+	if (MainViewModel)
+	{
+		MainViewModel->RemoveAllFieldValueChangedDelegates(this);
+	}
+	TargetSlotViewModel = nullptr;
+	MainViewModel = nullptr;
 	Super::NativeDestruct();
 }
 
@@ -59,9 +81,9 @@ void URPGSkillLevelAdjuster::OnCostChanged(int32 NewCost)
 
 void URPGSkillLevelAdjuster::UpdateRequireLevelText()
 {
-	if (RequireLevelText && TargetSlotViewModel)
+	const int32 Cost = TargetSlotViewModel ? TargetSlotViewModel->NextLevelCost : 0;
+	if (RequireLevelText)
 	{
-		int32 Cost = TargetSlotViewModel->NextLevelCost;
 		if (Cost > 0)
 		{
 			RequireLevelText->SetText(FText::AsNumber(Cost));
@@ -72,6 +94,20 @@ void URPGSkillLevelAdjuster::UpdateRequireLevelText()
 			// 비용이 0이면(만렙 등) 숨김
 			RequireLevelText->SetVisibility(ESlateVisibility::Collapsed);
 		}
+	}
+	if (UCommonTextBlock* Text = Cast<UCommonTextBlock>(GetWidgetFromName(TEXT("CurrentSkillLevelText"))))
+	{
+		Text->SetText(TargetSlotViewModel ? FText::AsNumber(TargetSlotViewModel->SkillLevel) : FText::GetEmpty());
+	}
+	if (Btn_IncreaseLevel)
+	{
+		Btn_IncreaseLevel->SetIsEnabled(MainViewModel && TargetSlotViewModel
+			&& Cost > 0 && MainViewModel->RemainingSP >= Cost);
+	}
+	if (Btn_DecreaseLevel)
+	{
+		Btn_DecreaseLevel->SetIsEnabled(MainViewModel && TargetSlotViewModel
+			&& TargetSlotViewModel->SkillLevel > 1);
 	}
 }
 

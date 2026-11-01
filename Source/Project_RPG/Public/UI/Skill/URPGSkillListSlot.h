@@ -22,8 +22,18 @@ class PROJECT_RPG_API UURPGSkillListSlot : public UCommonButtonBase, public IUse
 
 protected:
 	virtual void NativeOnListItemObjectSet(UObject* ListItemObject) override;
+	virtual void NativeOnEntryReleased() override;
+	virtual void NativeDestruct() override;
+	virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event) override;
+	virtual void NativeOnDragDetected(const FGeometry& Geometry, const FPointerEvent& Event,
+		UDragDropOperation*& OutOperation) override;
 
 public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "RPG|UI")
 	void OnSlotViewModelSet(URPGSkillSlotViewModel* InViewModel);
+
+private:
+	void RefreshSkillPresentation();
+	void UnbindViewModel();
+	TWeakObjectPtr<URPGSkillSlotViewModel> CurrentViewModel;
 };

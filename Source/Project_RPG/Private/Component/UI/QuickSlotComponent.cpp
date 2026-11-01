@@ -5,10 +5,30 @@
 #include "Net/UnrealNetwork.h"
 #include "Item/RPGItemBase.h"
 #include "Character/RPGBaseCharacter.h"
-#include "FunctionLibrary/RPGCoreFunctionLibrary.h"
-#include "Component/RPGInventoryComponent.h"
+#include "Component/RPGInventoryProjectionComponent.h"
+#include "Controller/RPGPlayerController.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
+#include "Manager/DataManager.h"
+#include "Item/Policy/RPGItemActionPolicy.h"
 #include "Component/RPGAbilitySystemComponent.h"
 #include "Ability/RPGGameplayAbility.h"
+#include "AbilitySystemBlueprintLibrary.h"
+#include "Skill/QuickSlot/RPGSkillQuickSlotServices.h"
+#include "Skill/RPGClassSkillEligibility.h"
+#include "PlayerClass/RPGPlayerClassDefinition.h"
+#include "Component/Skill/RPGPlayerSkillComponent.h"
+#include "PlayerClass/RPGPlayerClassComponent.h"
+
+namespace
+{
+URPGAbilitySystemComponent* GetQuickSlotASC(const UQuickSlotComponent& Slots)
+{
+	return Cast<URPGAbilitySystemComponent>(
+		UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Slots.GetOwner()));
+}
+}
 
 UQuickSlotComponent::UQuickSlotComponent()
 {
@@ -24,6 +44,8 @@ void UQuickSlotComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME_CONDITION(UQuickSlotComponent, SkillSlots, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(UQuickSlotComponent, SkillSlotsRevision, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(UQuickSlotComponent, bSkillSlotsInitialized, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(UQuickSlotComponent, ItemSlots, COND_OwnerOnly);
 }
 
@@ -46,43 +68,41 @@ void UQuickSlotComponent::OnRep_ItemSlots()
 void UQuickSlotComponent::SetSkillSlot(int32 Index, FGameplayTag AbilityTag)
 {
 	AActor* Owner = GetOwner();
-	if (!Owner)
+	if (!Owner || !bSkillSlotsInitialized || !SkillSlots.IsValidIndex(Index))
 	{
 		return;
 	}
 
 	if (Owner->HasAuthority())
 	{
-		if (!SkillSlots.IsValidIndex(Index)) return;
-
-		if (AbilityTag.IsValid())
+		if (AbilityTag.IsValid() && !CanAssignSkillSlot(Index, AbilityTag))
 		{
-			const ARPGBaseCharacter* OwnerCharacter = Cast<ARPGBaseCharacter>(Owner);
-			URPGAbilitySystemComponent* ASC =
-				OwnerCharacter ? OwnerCharacter->GetRPGAbilitySystemComponent() : nullptr;
-			TArray<FGameplayAbilitySpec*> MatchingAbilitySpecs;
-			if (ASC)
-			{
-				ASC->GetActivatableGameplayAbilitySpecsByAllMatchingTags(
-					AbilityTag.GetSingleTagContainer(), MatchingAbilitySpecs);
-			}
-
-			if (MatchingAbilitySpecs.IsEmpty())
-			{
-				UE_LOG(LogTemp, Warning,
-					TEXT("QuickSlot: Rejected an ability tag that is not granted to the owner."));
-				return;
-			}
-		}
-
-		if (SkillSlots[Index].AbilityTag.MatchesTagExact(AbilityTag)
-			&& SkillSlots[Index].Item == nullptr)
-		{
+			UE_LOG(LogTemp, Warning, TEXT("QuickSlot: Rejected an unowned or ambiguous skill."));
 			return;
 		}
 
+		if (SkillSlots[Index].AbilityTag.MatchesTagExact(AbilityTag)
+			&& !SkillSlots[Index].ItemId.IsValid())
+		{
+			return;
+		}
+		if (!RPGClassSkillEligibility::CanChangeConfiguration(Owner)) return;
+
+		// One registration per skill. Dropping an already registered skill moves
+		// it atomically; an occupied destination swaps instead of losing a skill.
+		const int32 SourceIndex = AbilityTag.IsValid()
+			? SkillSlots.IndexOfByPredicate([AbilityTag](const FRPGQuickSlotContent& Slot)
+				{ return Slot.AbilityTag == AbilityTag; }) : INDEX_NONE;
+		if (SourceIndex != INDEX_NONE && SourceIndex != Index)
+		{
+			Swap(SkillSlots[SourceIndex], SkillSlots[Index]);
+			BroadcastSlotChanged(true, SourceIndex);
+			BroadcastSlotChanged(true, Index);
+			Owner->ForceNetUpdate();
+			return;
+		}
+		SkillSlots[Index] = FRPGQuickSlotContent();
 		SkillSlots[Index].AbilityTag = AbilityTag;
-		SkillSlots[Index].Item = nullptr;
 		BroadcastSlotChanged(true, Index);
 		Owner->ForceNetUpdate();
 	}
@@ -94,70 +114,72 @@ void UQuickSlotComponent::SetSkillSlot(int32 Index, FGameplayTag AbilityTag)
 
 void UQuickSlotComponent::Server_SetSkillSlot_Implementation(int32 Index, FGameplayTag AbilityTag)
 {
+	// Editor script dispatch can execute an RPC locally on a client. Do not
+	// route that invocation back through the client request path recursively.
+	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
 	SetSkillSlot(Index, AbilityTag);
+	++SkillSlotsRevision;
+	GetOwner()->ForceNetUpdate();
 }
 
 void UQuickSlotComponent::SetItemSlot(int32 Index, URPGItemBase* NewItem)
 {
+	// Compatibility with existing Blueprint pins, not a legacy state/write path.
+	SetItemSlotById(Index, IsValid(NewItem) ? NewItem->GetInstanceId() : FGuid());
+}
+
+void UQuickSlotComponent::SetItemSlotById(int32 Index, FGuid ItemId)
+{
 	AActor* Owner = GetOwner();
-	if (!Owner)
+	if (!Owner || !ItemSlots.IsValidIndex(Index))
 	{
 		return;
 	}
 
 	if (Owner->HasAuthority())
 	{
-		if (!ItemSlots.IsValidIndex(Index)) return;
-
-		// 소모성 아이템만 등록 가능하도록 제한
-		if (NewItem && !NewItem->IsConsumable())
+		EnsureInventoryProjectionBinding();
+		if (ItemId.IsValid())
 		{
-			UE_LOG(LogTemp, Warning, TEXT("QuickSlot: Only consumable items can be registered."));
-			return;
-		}
-
-		if (NewItem)
-		{
-			URPGInventoryComponent* Inventory = BoundInventory.Get();
-			if (!Inventory)
-			{
-				const APawn* OwnerPawn = Cast<APawn>(Owner);
-				APlayerController* PlayerController =
-					OwnerPawn ? Cast<APlayerController>(OwnerPawn->GetController()) : nullptr;
-				Inventory =
-					URPGCoreFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(
-						PlayerController);
-				BindInventory(Inventory);
-			}
-
-			if (!Inventory || !Inventory->GetAllItems().Contains(NewItem))
+			FRPGInventoryProjectionEntry Entry;
+			FRPGItemActionPolicy Policy;
+			const URPGInventoryProjectionComponent* Projection = BoundProjection.Get();
+			if (!Projection || !Projection->GetAuthoritativeRecordSource() ||
+				!Projection->FindProjectedItem(ItemId, Entry) ||
+				Entry.GetContainerType() != ERPGItemContainerType::Inventory ||
+				Entry.GetQuantity() <= 0 || !ActionPolicies ||
+				!ActionPolicies->TryFindActionPolicy(Entry.GetDefinitionId(), Policy) ||
+				!Policy.IsValid() || !Policy.IsConsumable() ||
+				Policy.DefinitionId != Entry.GetDefinitionId() ||
+				Policy.DefinitionVersion != Entry.GetDefinitionVersion())
 			{
 				UE_LOG(LogTemp, Warning,
-					TEXT("QuickSlot: Rejected an item that is not owned by this inventory."));
+					TEXT("QuickSlot: Rejected an ID without an owned consumable inventory record."));
 				return;
 			}
 		}
 
-		if (ItemSlots[Index].Item == NewItem
+		if (ItemSlots[Index].ItemId == ItemId
 			&& !ItemSlots[Index].AbilityTag.IsValid())
 		{
 			return;
 		}
 
-		ItemSlots[Index].Item = NewItem;
-		ItemSlots[Index].AbilityTag = FGameplayTag::EmptyTag;
+		ItemSlots[Index] = FRPGQuickSlotContent();
+		ItemSlots[Index].ItemId = ItemId;
 		BroadcastSlotChanged(false, Index);
 		Owner->ForceNetUpdate();
 	}
 	else
 	{
-		Server_SetItemSlot(Index, NewItem);
+		Server_SetItemSlotById(Index, ItemId);
 	}
 }
 
-void UQuickSlotComponent::Server_SetItemSlot_Implementation(int32 Index, URPGItemBase* NewItem)
+void UQuickSlotComponent::Server_SetItemSlotById_Implementation(int32 Index, FGuid ItemId)
 {
-	SetItemSlot(Index, NewItem);
+	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
+	SetItemSlotById(Index, ItemId);
 }
 
 void UQuickSlotComponent::BeginPlay()
@@ -166,100 +188,108 @@ void UQuickSlotComponent::BeginPlay()
 
 	if (GetOwner() && GetOwner()->HasAuthority())
 	{
-		MaxSkillSlots = FMath::Max(MaxSkillSlots, 1);
+		MaxSkillSlots = FMath::Clamp(MaxSkillSlots, 1, URPGPlayerClassDefinition::MaxCombatSkills);
 		MaxItemSlots = FMath::Max(MaxItemSlots, 1);
 		SkillSlots.SetNum(MaxSkillSlots);
 		ItemSlots.SetNum(MaxItemSlots);
 	}
 
-	if (APawn* OwnerPawn = Cast<APawn>(GetOwner()))
-	{
-		APlayerController* PC = Cast<APlayerController>(OwnerPawn->GetController());
-		BindInventory(
-			URPGCoreFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(PC));
-	}
+	EnsureInventoryProjectionBinding();
 }
 
 void UQuickSlotComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	UnbindInventory();
+	ReleaseAllSkillInputs();
+	UnbindInventoryProjection();
 	Super::EndPlay(EndPlayReason);
 }
 
-void UQuickSlotComponent::BindInventory(URPGInventoryComponent* Inventory)
+void UQuickSlotComponent::BindInventoryProjection(
+	URPGInventoryProjectionComponent* Projection,
+	const IRPGItemActionPolicyCatalog* Policies)
 {
-	if (BoundInventory.Get() == Inventory)
-	{
-		return;
-	}
-
-	UnbindInventory();
-	if (!IsValid(Inventory))
-	{
-		return;
-	}
-
 	const APawn* OwnerPawn = Cast<APawn>(GetOwner());
-	if (!OwnerPawn || Inventory->GetOwner() != OwnerPawn->GetController())
+	if (Projection && (!OwnerPawn || Projection->GetOwner() != OwnerPawn->GetController()))
 	{
 		UE_LOG(LogTemp, Warning,
-			TEXT("QuickSlot: Rejected an inventory that does not belong to the owning pawn."));
+			TEXT("QuickSlot: Rejected a projection belonging to another controller."));
 		return;
 	}
-
-	BoundInventory = Inventory;
-	Inventory->OnItemUpdated.AddUniqueDynamic(
-		this, &UQuickSlotComponent::HandleOnItemQuantityChanged);
-	Inventory->OnItemRemoved.AddUniqueDynamic(
-		this, &UQuickSlotComponent::HandleOnItemRemoved);
-}
-
-void UQuickSlotComponent::UnbindInventory()
-{
-	if (URPGInventoryComponent* Inventory = BoundInventory.Get())
-	{
-		Inventory->OnItemUpdated.RemoveDynamic(
-			this, &UQuickSlotComponent::HandleOnItemQuantityChanged);
-		Inventory->OnItemRemoved.RemoveDynamic(
-			this, &UQuickSlotComponent::HandleOnItemRemoved);
-	}
-
-	BoundInventory.Reset();
-}
-
-void UQuickSlotComponent::HandleOnItemRemoved(URPGItemBase* RemovedItem)
-{
-	if (!IsValid(RemovedItem) || !GetOwner() || !GetOwner()->HasAuthority())
+	if (BoundProjection.Get() == Projection && (!Policies || ActionPolicies == Policies))
 	{
 		return;
 	}
-
-	for (int32 i = 0; i < ItemSlots.Num(); i++)
+	UnbindInventoryProjection();
+	if (!IsValid(Projection))
 	{
-		if (ItemSlots[i].Item == RemovedItem)
+		return;
+	}
+	BoundProjection = Projection;
+	UDataManager* DataManager = GetWorld() && GetWorld()->GetGameInstance()
+		? GetWorld()->GetGameInstance()->GetSubsystem<UDataManager>() : nullptr;
+	ActionPolicies = Policies ? Policies
+		: (DataManager ? &DataManager->GetItemActionPolicyCatalog() : nullptr);
+	Projection->OnProjectionChanged.AddUniqueDynamic(
+		this, &ThisClass::HandleProjectionChanged);
+	Projection->OnLoadStateChanged.AddUniqueDynamic(
+		this, &ThisClass::HandleProjectionLoadStateChanged);
+	HandleProjectionChanged();
+}
+
+void UQuickSlotComponent::UnbindInventoryProjection()
+{
+	if (URPGInventoryProjectionComponent* Projection = BoundProjection.Get())
+	{
+		Projection->OnProjectionChanged.RemoveDynamic(this, &ThisClass::HandleProjectionChanged);
+		Projection->OnLoadStateChanged.RemoveDynamic(this, &ThisClass::HandleProjectionLoadStateChanged);
+	}
+	BoundProjection.Reset();
+	ActionPolicies = nullptr;
+}
+
+void UQuickSlotComponent::EnsureInventoryProjectionBinding()
+{
+	const APawn* OwnerPawn = Cast<APawn>(GetOwner());
+	APlayerController* Controller = OwnerPawn ? Cast<APlayerController>(OwnerPawn->GetController()) : nullptr;
+	BindInventoryProjection(Controller
+		? Controller->FindComponentByClass<URPGInventoryProjectionComponent>() : nullptr);
+}
+
+bool UQuickSlotComponent::FindAssignedItem(int32 Index, FRPGInventoryProjectionEntry& OutEntry) const
+{
+	OutEntry = FRPGInventoryProjectionEntry();
+	const APawn* OwnerPawn = Cast<APawn>(GetOwner());
+	const URPGInventoryProjectionComponent* Projection = BoundProjection.Get();
+	return ItemSlots.IsValidIndex(Index) && ItemSlots[Index].ItemId.IsValid() &&
+		Projection && OwnerPawn && Projection->GetOwner() == OwnerPawn->GetController() &&
+		Projection->FindProjectedItem(ItemSlots[Index].ItemId, OutEntry) &&
+		OutEntry.GetContainerType() == ERPGItemContainerType::Inventory && OutEntry.GetQuantity() > 0;
+}
+
+void UQuickSlotComponent::HandleProjectionChanged()
+{
+	const URPGInventoryProjectionComponent* Projection = BoundProjection.Get();
+	const bool bCanClear = GetOwner() && GetOwner()->HasAuthority() && Projection &&
+		Projection->GetAuthoritativeRecordSource() &&
+		Projection->GetLoadState() != ERPGInventoryProjectionLoadState::Loading;
+	for (int32 Index = 0; Index < ItemSlots.Num(); ++Index)
+	{
+		FRPGInventoryProjectionEntry Entry;
+		if (bCanClear && ItemSlots[Index].ItemId.IsValid() && !FindAssignedItem(Index, Entry))
 		{
-			ClearSlot(false, i);
+			ClearSlot(false, Index);
+		}
+		else
+		{
+			// Also refresh on clients when projection and shortcut replication arrive in either order.
+			BroadcastSlotChanged(false, Index);
 		}
 	}
 }
 
-void UQuickSlotComponent::HandleOnItemQuantityChanged(URPGItemBase* ChangedItem)
+void UQuickSlotComponent::HandleProjectionLoadStateChanged(ERPGInventoryProjectionLoadState LoadState)
 {
-	if (!IsValid(ChangedItem))
-	{
-		return;
-	}
-
-	const bool bIsAssigned = ItemSlots.ContainsByPredicate(
-		[ChangedItem](const FRPGQuickSlotContent& Content)
-	{
-		return Content.Item == ChangedItem;
-	});
-
-	if (bIsAssigned)
-	{
-		OnQuickSlotQuantityChanged.Broadcast(ChangedItem, ChangedItem->GetTotalQuantity());
-	}
+	HandleProjectionChanged();
 }
 
 void UQuickSlotComponent::UseSkillSlot(int32 Index)
@@ -271,78 +301,104 @@ void UQuickSlotComponent::UseSkillSlot(int32 Index)
 void UQuickSlotComponent::BeginUseSkillSlot(const int32 Index)
 {
 	if (!SkillSlots.IsValidIndex(Index) || SkillSlots[Index].AbilityTag.IsValid() == false) return;
-
-	if (ARPGBaseCharacter* OwnerCharacter = Cast<ARPGBaseCharacter>(GetOwner()))
-	{
-		if (URPGAbilitySystemComponent* ASC = OwnerCharacter->GetRPGAbilitySystemComponent())
-		{
-			const FGameplayAbilitySpecHandle SpecHandle =
-				ASC->FindUniqueAbilitySpecHandleByTag(SkillSlots[Index].AbilityTag);
-			if (SpecHandle.IsValid())
-			{
-				PressedSkillSpecHandles.Add(Index, SpecHandle);
-				ASC->OnAbilitySpecInputPressed(SpecHandle);
-			}
-		}
-	}
+	FRPGGASSkillQuickSlotAccess Access(GetQuickSlotASC(*this));
+	FRPGSkillQuickSlotInputRouter::Press(PressedSkillSpecHandles, Index,
+		Access.Resolve(SkillSlots[Index].AbilityTag), Access);
 }
 
 void UQuickSlotComponent::EndUseSkillSlot(const int32 Index)
 {
-	ARPGBaseCharacter* OwnerCharacter = Cast<ARPGBaseCharacter>(GetOwner());
-	URPGAbilitySystemComponent* ASC =
-		OwnerCharacter ? OwnerCharacter->GetRPGAbilitySystemComponent() : nullptr;
-	if (!ASC)
-	{
-		PressedSkillSpecHandles.Remove(Index);
-		return;
-	}
+	FRPGGASSkillQuickSlotAccess Access(GetQuickSlotASC(*this));
+	FRPGSkillQuickSlotInputRouter::Release(PressedSkillSpecHandles, Index, Access);
+}
 
-	FGameplayAbilitySpecHandle SpecHandle;
-	if (const FGameplayAbilitySpecHandle* PressedHandle =
-		PressedSkillSpecHandles.Find(Index))
-	{
-		SpecHandle = *PressedHandle;
-	}
-	else if (SkillSlots.IsValidIndex(Index))
-	{
-		SpecHandle = ASC->FindUniqueAbilitySpecHandleByTag(
-			SkillSlots[Index].AbilityTag);
-	}
+void UQuickSlotComponent::ReleaseAllSkillInputs()
+{
+	FRPGGASSkillQuickSlotAccess Access(GetQuickSlotASC(*this));
+	FRPGSkillQuickSlotInputRouter::ReleaseAll(PressedSkillSpecHandles, Access);
+}
 
-	PressedSkillSpecHandles.Remove(Index);
-	if (SpecHandle.IsValid())
+bool UQuickSlotComponent::CanAssignSkillSlot(const int32 Index, const FGameplayTag SkillTag) const
+{
+	return bSkillSlotsInitialized && SkillSlots.IsValidIndex(Index) && SkillTag.IsValid() &&
+		FRPGGASSkillQuickSlotAccess(GetQuickSlotASC(*this)).Resolve(SkillTag).IsValid();
+}
+
+bool UQuickSlotComponent::IsSkillEquipped(const FGameplayTag SkillTag) const
+{
+	if (!bSkillSlotsInitialized || !SkillTag.IsValid() || SkillSlots.Num() > URPGPlayerClassDefinition::MaxCombatSkills) return false;
+	int32 Count = 0;
+	for (const FRPGQuickSlotContent& Slot : SkillSlots)
+		if (Slot.AbilityTag == SkillTag && !Slot.ItemId.IsValid()) ++Count;
+	return Count == 1;
+}
+
+bool UQuickSlotComponent::InitializeSkillSlotsFromRecord(const uint32 ExpectedSkillRestoreGeneration,
+	const TArray<FGameplayTag>& SlotTags, FText& OutError)
+{
+	OutError = FText::GetEmpty();
+	AActor* Owner = GetOwner();
+	const auto* Progression = Owner ? Owner->FindComponentByClass<URPGPlayerSkillComponent>() : nullptr;
+	const auto* ClassOwner = Owner ? Owner->FindComponentByClass<URPGPlayerClassComponent>() : nullptr;
+	const int32 Capacity = FMath::Clamp(MaxSkillSlots, 1, URPGPlayerClassDefinition::MaxCombatSkills);
+	if (!Owner || !Owner->HasAuthority() || bSkillSlotsInitialized || !Progression
+		|| !ClassOwner || ClassOwner->GetApplyState() != ERPGPlayerClassApplyState::Applied
+		|| !Progression->GetPlayerClassDefinition() || ExpectedSkillRestoreGeneration == 0
+		|| Progression->GetSkillRestoreGeneration() != ExpectedSkillRestoreGeneration || SlotTags.Num() > Capacity
+		|| !RPGClassSkillEligibility::CanRestoreConfiguration(Owner))
 	{
-		ASC->OnAbilitySpecInputReleased(SpecHandle);
+		OutError = FText::FromString(TEXT("Skill slots require one current, ready server restore and a valid capacity."));
+		return false;
 	}
+	TArray<FRPGQuickSlotContent> RestoredSlots;
+	RestoredSlots.SetNum(Capacity);
+	TSet<FGameplayTag> Seen;
+	FRPGGASSkillQuickSlotAccess Access(GetQuickSlotASC(*this));
+	for (int32 Index = 0; Index < SlotTags.Num(); ++Index)
+	{
+		const FGameplayTag Tag = SlotTags[Index];
+		if (!Tag.IsValid()) continue;
+		if (Seen.Contains(Tag) || !Access.Resolve(Tag).IsValid())
+		{
+			OutError = FText::FromString(TEXT("Restored slots must reference unique, acquired, class-owned ability specs."));
+			return false;
+		}
+		Seen.Add(Tag);
+		RestoredSlots[Index].AbilityTag = Tag;
+	}
+	// Commit the entire array before any delegate can reenter; never populate missing slots from defaults.
+	SkillSlots = MoveTemp(RestoredSlots);
+	bSkillSlotsInitialized = true;
+	++SkillSlotsRevision;
+	Owner->ForceNetUpdate();
+	for (int32 Index = 0; Index < SkillSlots.Num(); ++Index) BroadcastSlotChanged(true, Index);
+	return true;
+}
+
+FRPGSkillQuickSlotPresentation UQuickSlotComponent::ReadSkillPresentation(const FGameplayTag SkillTag) const
+{
+	return FRPGGASSkillQuickSlotAccess(GetQuickSlotASC(*this)).Read(SkillTag);
 }
 
 void UQuickSlotComponent::UseItemSlot(int32 Index, const APlayerController* PC)
 {
-	if (!ItemSlots.IsValidIndex(Index) || !IsValid(ItemSlots[Index].Item)) return;
+	if (!ItemSlots.IsValidIndex(Index) || !ItemSlots[Index].ItemId.IsValid()) return;
 
 	const APawn* OwnerPawn = Cast<APawn>(GetOwner());
-	const APlayerController* OwnerController =
-		OwnerPawn ? Cast<APlayerController>(OwnerPawn->GetController()) : nullptr;
+	ARPGPlayerController* OwnerController =
+		OwnerPawn ? Cast<ARPGPlayerController>(OwnerPawn->GetController()) : nullptr;
 	if (!OwnerController || (PC && PC != OwnerController))
 	{
 		return;
 	}
 
-	URPGInventoryComponent* InventoryComponent = BoundInventory.Get();
-	if (!InventoryComponent)
-	{
-		InventoryComponent =
-			URPGCoreFunctionLibrary::GetComponentFromPlayerController<URPGInventoryComponent>(
-				OwnerController);
-		BindInventory(InventoryComponent);
-	}
-
-	if (InventoryComponent
-		&& InventoryComponent->GetAllItems().Contains(ItemSlots[Index].Item))
-	{
-		InventoryComponent->Server_ConsumeItem(ItemSlots[Index].Item);
-	}
+	EnsureInventoryProjectionBinding();
+	FRPGInventoryProjectionEntry Entry;
+	if (!FindAssignedItem(Index, Entry)) return;
+	// Keyboard and widget clicks must reserve the same owner-scoped item as bag actions.
+	// Do not fall back to a direct RPC when the local presentation is unavailable.
+	FGuid RequestId;
+	OwnerController->TryConsumeInventoryItem(Entry.GetItemId(), RequestId);
 }
 
 void UQuickSlotComponent::ClearSlot(bool bIsSkillSlot, int32 Index)
@@ -357,8 +413,10 @@ void UQuickSlotComponent::ClearSlot(bool bIsSkillSlot, int32 Index)
 	{
 		if (bIsSkillSlot)
 		{
+			if (!bSkillSlotsInitialized) return;
 			if (!SkillSlots.IsValidIndex(Index)) return;
 			if (SkillSlots[Index].IsEmpty()) return;
+			if (!RPGClassSkillEligibility::CanChangeConfiguration(Owner)) return;
 			SkillSlots[Index] = FRPGQuickSlotContent();
 			BroadcastSlotChanged(true, Index);
 		}
@@ -380,7 +438,13 @@ void UQuickSlotComponent::ClearSlot(bool bIsSkillSlot, int32 Index)
 
 void UQuickSlotComponent::Server_ClearSlot_Implementation(bool bIsSkillSlot, int32 Index)
 {
+	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
 	ClearSlot(bIsSkillSlot, Index);
+	if (bIsSkillSlot)
+	{
+		++SkillSlotsRevision;
+		GetOwner()->ForceNetUpdate();
+	}
 }
 
 void UQuickSlotComponent::BroadcastSlotChanged(bool bIsSkillSlot, int32 Index)
@@ -417,31 +481,5 @@ const FRPGQuickSlotContent* UQuickSlotComponent::GetItemSlotContent(int32 Index)
 
 UTexture2D* UQuickSlotComponent::GetSkillIcon(FGameplayTag AbilityTag) const
 {
-	if (!AbilityTag.IsValid())
-	{
-		return nullptr;
-	}
-
-	const ARPGBaseCharacter* OwnerCharacter = Cast<ARPGBaseCharacter>(GetOwner());
-	URPGAbilitySystemComponent* ASC =
-		OwnerCharacter ? OwnerCharacter->GetRPGAbilitySystemComponent() : nullptr;
-	if (!ASC)
-	{
-		return nullptr;
-	}
-
-	TArray<FGameplayAbilitySpec*> MatchingAbilitySpecs;
-	ASC->GetActivatableGameplayAbilitySpecsByAllMatchingTags(
-		AbilityTag.GetSingleTagContainer(), MatchingAbilitySpecs);
-	for (const FGameplayAbilitySpec* AbilitySpec : MatchingAbilitySpecs)
-	{
-		const URPGGameplayAbility* Ability =
-			AbilitySpec ? Cast<URPGGameplayAbility>(AbilitySpec->Ability) : nullptr;
-		if (Ability && Ability->GetAbilityIcon())
-		{
-			return Ability->GetAbilityIcon();
-		}
-	}
-
-	return nullptr;
+	return ReadSkillPresentation(AbilityTag).Icon;
 }

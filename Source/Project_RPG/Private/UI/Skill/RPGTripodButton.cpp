@@ -7,6 +7,11 @@ void URPGTripodButton::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
+	// Selection belongs to the slot view-model. CommonUI must not toggle it
+	// again after the click command, or on focus, independently of that model.
+	SetIsSelectable(false);
+	SetShouldSelectUponReceivingFocus(false);
+	SetIsInteractableWhenSelected(true);
 	OnClicked().AddUObject(this, &ThisClass::HandleTripodButtonClicked);
 }
 
@@ -16,15 +21,19 @@ void URPGTripodButton::InitializeTripod(int32 InTier, int32 InIndex, const FRPGS
 	OptionIndex = InIndex;
 	TripodOption = InOption;
 
+	SetIsTripodSelected(false);
 	// 초기화 시 선택 상태는 기본 false로
 	BP_OnTripodInitialized(TripodOption, false);
 }
 
 void URPGTripodButton::SetIsTripodSelected(bool bInSelected)
 {
-	// CommonButtonBase의 SetIsSelected 사용 가능하지만,
-	// 여기서는 명시적인 시각적 처리를 위해 BP 이벤트 호출
-	Super::SetIsSelected(bInSelected);
+	// Apply authoritative/predicted model state even for a non-toggleable
+	// authored button. SetIsSelected(false) otherwise cannot clear selection.
+	if (GetSelected() != bInSelected)
+	{
+		SetSelectedInternal(bInSelected, false);
+	}
 	BP_OnSelectionChanged(bInSelected);
 }
 

@@ -23,6 +23,9 @@ class PROJECT_RPG_API URPGSkillWindow : public URPGWidgetBase
 	GENERATED_BODY()
 
 public:
+	FSimpleMulticastDelegate OnWindowClosed;
+	void SetCloseKeys(const TArray<FKey>& Keys) { CloseKeys = Keys; }
+
 	// 외부(PlayerUIComponent 등)에서 창을 열 때 호출
 	UFUNCTION(BlueprintCallable, Category = "RPG|UI")
 	void InitializeSkillWindow();
@@ -32,7 +35,11 @@ public:
 	void HandleSkillSelection(URPGSkillSlotViewModel* SelectedSlotVM);
 
 protected:
+	virtual void NativeOnInitialized() override;
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
+	virtual void NativeOnDeactivated() override;
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent) override;
 	void HandleSkillDefinitionsReady();
 
 	// ViewModel 인스턴스
@@ -47,4 +54,9 @@ protected:
 	TObjectPtr<URPGSkillDetailModule> SkillDetailModule;
 
 	TWeakObjectPtr<URPGPlayerSkillComponent> PendingSkillComponent;
+	TArray<FKey> CloseKeys;
+
+private:
+	UFUNCTION()
+	void HandleCloseButtonClicked();
 };

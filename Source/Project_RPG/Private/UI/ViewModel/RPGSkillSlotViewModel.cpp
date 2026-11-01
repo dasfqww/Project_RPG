@@ -15,7 +15,7 @@ void URPGSkillSlotViewModel::SetSkillDefinition(URPGSkillDefinition* InDefinitio
 		
 		// Icon의 경우 Context(캐릭터 상태)에 따라 다를 수 있지만, 
 		// 스킬창에서는 보통 기본 아이콘을 보여줍니다.
-		SkillIcon = SkillDefinition->SkillIcon;
+		SkillIcon = SkillDefinition->GetBaseIcon();
 
 		// 데이터 변경 알림 (MVVM 핵심)
 		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(SkillName);
@@ -30,6 +30,13 @@ void URPGSkillSlotViewModel::SetOwnerComponent(URPGPlayerSkillComponent* InComp)
 
 void URPGSkillSlotViewModel::RefreshFromSaveData(const FRPGSkillSaveData& Data)
 {
+	const bool bLocked = !OwnerSkillComponent.IsValid() || !SkillDefinition
+		|| !OwnerSkillComponent->IsSkillAcquired(SkillDefinition->SkillTag);
+	if (bIsLocked != bLocked)
+	{
+		bIsLocked = bLocked;
+		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(bIsLocked);
+	}
 	bool bLevelChanged = (SkillLevel != Data.SkillLevel);
 
 	if (bLevelChanged)
@@ -51,7 +58,7 @@ void URPGSkillSlotViewModel::RefreshFromSaveData(const FRPGSkillSaveData& Data)
 		int32 NewCost = OwnerSkillComponent->GetRequiredSPForLevel(SkillLevel + 1);
 		
 		// 만약 최대 레벨이라면 비용을 0으로 표시하거나 숨김 처리
-		if (SkillDefinition && SkillLevel >= SkillDefinition->MaxSkillLevel)
+		if (bIsLocked || (SkillDefinition && SkillLevel >= SkillDefinition->MaxSkillLevel))
 		{
 			NewCost = 0;
 		}

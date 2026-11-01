@@ -7,7 +7,6 @@
 #include "Type/RPGStructTypes.h" // FRPGQuickSlotContent 사용을 위해 인클루드
 #include "RPGQuickSlotViewModel.generated.h"
 
-class URPGItemBase;
 class UQuickSlotComponent;
 class UTexture2D;
 
@@ -26,15 +25,26 @@ public:
 	void Initialize(int32 InSlotIndex, UQuickSlotComponent* InComponent, bool bIsSkillSlot);
 
 	virtual void BeginDestroy() override;
+	/** Poll actual GAS state so reassignment, expiry and prediction rejection cannot leave a stale countdown. */
+	void RefreshSkillState();
+	UTexture2D* GetIcon() const { return ItemIcon; }
+	const FText& GetQuantityLabel() const { return QuantityText; }
+	const FText& GetKeyLabel() const { return InputKeyText; }
+	bool IsSlotActive() const { return bIsSlotActive; }
+	float GetCooldownFraction() const
+	{
+		if (!FMath::IsFinite(CooldownRemaining) || !FMath::IsFinite(CooldownDuration)
+			|| CooldownDuration <= 0.0f)
+		{
+			return 0.0f;
+		}
+		return FMath::Clamp(CooldownRemaining / CooldownDuration, 0.0f, 1.0f);
+	}
 
 private:
 	/** 슬롯 내용물 변경 처리 */
 	UFUNCTION()
 	void HandleSlotChanged(int32 SlotIndex, const FRPGQuickSlotContent& NewContent);
-
-	/** 아이템 수량 변경 처리 (아이템 슬롯인 경우에만 반응) */
-	UFUNCTION()
-	void HandleQuantityChanged(URPGItemBase* Item, int32 NewQuantity);
 
 	/** 데이터를 UI용 정보로 변환 (통합 처리) */
 	void UpdateFromContent(const FRPGQuickSlotContent& InContent);
@@ -75,6 +85,8 @@ public:
 private:
 	int32 TargetSlotIndex = INDEX_NONE;
 	bool bIsSkillSlotViewModel = false;
+	float CooldownRemaining = 0.0f;
+	float CooldownDuration = 0.0f;
 
 	UPROPERTY()
 	TWeakObjectPtr<UQuickSlotComponent> LinkedComponent;

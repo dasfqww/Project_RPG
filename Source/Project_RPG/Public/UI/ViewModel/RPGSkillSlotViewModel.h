@@ -54,6 +54,7 @@ public:
 	TArray<int32> CurrentTripodIndices;
 
 	void SetOwnerComponent(URPGPlayerSkillComponent* InComp);
+	URPGPlayerSkillComponent* GetOwnerComponent() const { return OwnerSkillComponent.Get(); }
 
 	UFUNCTION(BlueprintCallable, Category = "RPG|Skill")
 	void RequestTripodSelection(int32 Tier, int32 OptionIndex);

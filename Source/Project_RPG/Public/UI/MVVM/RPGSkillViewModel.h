@@ -10,6 +10,7 @@
 class URPGPlayerSkillComponent;
 class URPGSkillSlotViewModel;
 class URPGSkillDefinition;
+class URPGPlayerClassDefinition;
 
 /**
  * URPGSkillViewModel
@@ -71,4 +72,6 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<URPGPlayerSkillComponent> SkillComponent;
+
+	TWeakObjectPtr<URPGPlayerClassDefinition> PresentedClassDefinition;
 };

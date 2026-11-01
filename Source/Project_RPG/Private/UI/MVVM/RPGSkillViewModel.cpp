@@ -5,6 +5,7 @@
 #include "Component/Skill/RPGPlayerSkillComponent.h"
 #include "UI/ViewModel/RPGSkillSlotViewModel.h"
 #include "Skill/RPGSkillDefinition.h"
+#include "PlayerClass/RPGPlayerClassDefinition.h"
 
 URPGSkillViewModel::URPGSkillViewModel()
 {
@@ -16,27 +17,35 @@ void URPGSkillViewModel::BeginDestroy()
 	Super::BeginDestroy();
 }
 
-void URPGSkillViewModel::InitializeSkillData(URPGPlayerSkillComponent* InSkillComponent, const TArray<URPGSkillDefinition*>& InAllSkills)
+void URPGSkillViewModel::InitializeSkillData(URPGPlayerSkillComponent* InSkillComponent, const TArray<URPGSkillDefinition*>& /*InAllSkills*/)
 {
-	if (!InSkillComponent)
-	{
-		return;
-	}
-
 	if (SkillComponent != InSkillComponent)
 	{
 		UnbindSkillComponent();
 		SkillComponent = InSkillComponent;
 	}
-	SkillComponent->OnSkillDataChanged.AddUniqueDynamic(
-		this,
-		&ThisClass::HandleSkillDataChanged);
-	SkillSlots.Empty();
-
-	// 1. 전달받은 모든 스킬 정의(Definition)를 순회하며 슬롯 VM 생성
-	for (URPGSkillDefinition* SkillDef : InAllSkills)
+	if (SkillComponent)
 	{
-		if (!SkillDef) continue;
+		SkillComponent->OnSkillDataChanged.AddUniqueDynamic(
+			this,
+			&ThisClass::HandleSkillDataChanged);
+	}
+	// List/detail widgets may still retain an old slot while entries are being
+	// replaced. It must no longer be able to issue commands to the old owner.
+	for (URPGSkillSlotViewModel* Slot : SkillSlots)
+	{
+		if (Slot) Slot->SetOwnerComponent(nullptr);
+	}
+	SkillSlots.Empty();
+	PresentedClassDefinition = SkillComponent ? SkillComponent->GetPlayerClassDefinition() : nullptr;
+
+	// The catalog discovers assets; only the verified class chooses the exact definitions to present.
+	TArray<URPGSkillDefinition*> ClassSkills;
+	if (const auto* Definition = PresentedClassDefinition.Get())
+		for (const FRPGPlayerClassSkill& Entry : Definition->Skills) ClassSkills.Add(Entry.Definition);
+	for (URPGSkillDefinition* SkillDef : ClassSkills)
+	{
+		if (!SkillComponent || !SkillDef || !SkillComponent->IsSkillInCurrentClass(SkillDef->SkillTag)) continue;
 
 		URPGSkillSlotViewModel* NewSlotVM = NewObject<URPGSkillSlotViewModel>(this);
 		NewSlotVM->SetSkillDefinition(SkillDef);
@@ -96,9 +105,7 @@ void URPGSkillViewModel::RequestSkillLevelMin(FGameplayTag SkillTag)
 
 void URPGSkillViewModel::RefreshSkillData()
 {
-	if (!SkillComponent) return;
-
-	int32 NewTotalSP = SkillComponent->GetTotalSP();
+	int32 NewTotalSP = SkillComponent ? SkillComponent->GetTotalSP() : 0;
 	if (TotalSP != NewTotalSP)
 	{
 		TotalSP = NewTotalSP;
@@ -106,12 +113,13 @@ void URPGSkillViewModel::RefreshSkillData()
 	}
 
 	// SP 정보 갱신
-	int32 NewRemainingSP = SkillComponent->GetRemainingSP();
+	int32 NewRemainingSP = SkillComponent ? SkillComponent->GetRemainingSP() : 0;
 	if (RemainingSP != NewRemainingSP)
 	{
 		RemainingSP = NewRemainingSP;
 		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(RemainingSP);
 	}
+	if (!SkillComponent) return;
 
 	// 각 슬롯의 상태(레벨 등)도 갱신
 	for (URPGSkillSlotViewModel* SlotVM : SkillSlots)
@@ -130,6 +138,15 @@ void URPGSkillViewModel::RefreshSkillData()
 void URPGSkillViewModel::HandleSkillDataChanged(
 	const FGameplayTag SkillTag)
 {
+	URPGPlayerClassDefinition* CurrentClass = SkillComponent ? SkillComponent->GetPlayerClassDefinition() : nullptr;
+	if (PresentedClassDefinition.Get() != CurrentClass)
+	{
+		TArray<URPGSkillDefinition*> ClassSkills;
+		if (CurrentClass)
+			for (const FRPGPlayerClassSkill& Entry : CurrentClass->Skills) ClassSkills.Add(Entry.Definition);
+		InitializeSkillData(SkillComponent, ClassSkills);
+		return;
+	}
 	RefreshSkillData();
 }
 
