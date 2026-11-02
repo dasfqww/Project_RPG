@@ -156,6 +156,8 @@ void URPGGreatSwordIdentityWidget::Present(bool bModeChanged)
             auto Font = Label->GetFont();
             Font.Size = 16; // The authored identity bar is narrower than the HP/MP bars.
             Label->SetFont(Font);
+            // The authored rage icon starts below the bar's centre; keep the label above it.
+            Label->SetRenderTranslation(FVector2D(0.f, -32.f));
         }
         if (auto* Timer = WBP_IdentityGaugeBar->GetWidgetFromName(TEXT("ProgressTimeText"))) Timer->SetVisibility(ESlateVisibility::Collapsed);
     }
