@@ -1,13 +1,15 @@
 # 입문 1: 접근 실습 공간
 
-작성일: 2026-11-02. **독립 맵 원본 설치·저장/반복/새 프로세스 재로드 완료.**
+작성일: 2026-11-02. **맵·목표 Pawn·완료 GameMode·서버/보상 정의 연결과 재로드 완료.**
 [첫 성장 구간](PLAYER_PROGRESSION_FIRST_SLICE_V01.md)의
 `Progression.Intro1`의 독립 맵은 아래 작성/재로드 확인 범위를 따른다.
 후속으로 서버 개인 목표 컴포넌트3파일의 원본 적용·정상 빌드·집중 native3 검증을 완료했다.
-실제 Pawn/맵 연결·파티 완료·성공 정산·입장 공개는 아직 후속이다.
+Pawn/맵/서버 정의의 연결은 아래 콘텐츠 적용 후속을 따른다. 조작 안내·개발 입장 프로필과
+인증된 서버의 실제 목표 완료/정산·입장 목록 공개는 후속이다.
 
 2026-11-02 후속: 입문1 완료 GameMode와 기존 훈련 완료 gate의 콘텐츠 adapter를 원본에
-적용하고 정상 빌드/집중 native3 검증을 완료했다. Pawn/맵 배치·실제 정산 실행은 후속이다.
+적용하고 정상 빌드/집중 native3 검증을 완료했다. 이후 연결 에셋4개도 적용했으며 실제
+목표 달성·파티 완료·정산 성공은 에셋 저장/재로드와 구분한다.
 
 ## 맵과 공간
 
@@ -34,10 +36,10 @@ HUD에서 표시한다. 공격 위치는 공간 표시이며 공격 가능한 �
 기존 맵은 소유 메타데이터 `FirstSlice.Intro1Arena.v1`, 배우/좌표/태그/충돌/시작점/표지를
 대조하고 저장하지 않는다. 미저장 변경·다른 소유/배치·검사 중 나타난 파일은 보존하고 실패한다.
 
-Project_RPG 모듈/플러그인·기존 BP를 로드할 필요가 없다. PythonScriptPlugin과
-EditorScriptingUtilities만 켠 독립 content-only uproject로 생성할 수 있다. 새 맵은
-엔진 `GameModeBase`를 명시해 기존 훈련/레이드의 완료·보상을 잘못 사용하지 않게 한다.
-현재 로비 목록·backend 카탈로그·서버 정의·경험치·입장 권한은 변경하지 않는다.
+미연결 초기 맵은 Project_RPG 모듈 없이 독립 content-only uproject로 생성할 수 있었다.
+연결된 맵의 읽기에는 호환되는 Project_RPG 모듈과 아래 BP가 필요하다. 작성기는 preview
+모드 또는 정확한 소유 Intro1 GameMode·메타데이터·경험 선택자만 인정하고 다른 설정을
+덮어쓰지 않는다. 현재 로비 목록·backend 카탈로그·경험치 규칙·입장 권한은 변경하지 않았다.
 
 ## 후속 서버 연결
 
@@ -51,6 +53,41 @@ Intro1/Normal 배정·현재 캐릭터/Pawn/복원 세대·멤버십과 승인�
 미입장/재접속 대기자·확정 포기자와 파티 집계는 기존 계약을 따르고, 잠긴 도약을
 Intro1의 필수 조건으로 요구하지 않는다. 실제 목표/적 표적·완료 보고·보상 정의·입장 안내를
 연결한 후에만 콘텐츠를 공개한다.
+
+## Pawn·GameMode·서버 정의의 실제 콘텐츠 연결 — 2026-11-02
+
+| 원본 에셋 | 연결 내용 |
+|---|---|
+| `Content/Blueprints/Character/Player/Progression/BP_Intro1Player.uasset` | 기존 BP_Player의 자식, 복제되는 Intro1 목표 컴포넌트1개. 시작 데이터 상속 유지/훈련 목표0 |
+| `Content/Blueprints/GameMode/Progression/BP_Intro1GameMode.uasset` | ARPGIntroApproachGameMode 부모, 새 Pawn과 기존 Controller/PlayerState/GameState/HUD 역할, Normal/보상 활성·티켓/Steam 신원 검사 유지 |
+| `Content/System/Dungeons/Progression/DA_DungeonServer_Intro1.uasset` | 정확한 Progression.Intro1/Normal → L_ProgressionIntro1·기존 DA_DungeonReward_Intro1 매핑 |
+| `Content/Maps/Progression/L_ProgressionIntro1.umap` | 새 완료 GameMode 지정·기존 클라이언트 표현 경험 선택자1 추가, 기존25개 배우/시작점4/구역3·충돌 유지 |
+
+보상은 기존 FirstSlice.v1/성장 광석2/CharacterBound·재화/증표/개인 장비 추첨0 정의를
+검사한 뒤 읽기 참조했다. 새 지급 API나 보상을 만들지 않았다. 경험치100·도약 해금은
+기존 진행 규칙이 실제 완료 정산에서 결정하며 이 참조 연결을 지급 성공으로 표시하지 않는다.
+
+[CreateProgressionIntro1Content.py](../Scripts/Editor/CreateProgressionIntro1Content.py)는
+기본 읽기 전용이다. `-RPGConfigureProgressionIntro1Content`만 누락 에셋3개 생성과 정확한
+소유 preview 맵의 연결을 허용한다. 기존 에셋은 소유/부모/역할/보상/복제·dirty·disk hash를
+대조하고 저장하지 않는다. 설정이 다르면 보존/실패한다. 절대 결과 경로는
+`RPG_INTRO1_CONTENT_REPORT`로 지정한다. Arena 작성기도 연결 완료 맵을 읽기 전용으로
+확인할 수 있게 확장했고 새 모드를 임의로 preview 상태로 되돌리지 않는다.
+
+닫힌 Content overlay에서 생성4/반복0/새 Cmd 재로드0과 Arena 읽기0·파일별 동일 hash,
+두 프로세스 실제 F5B8F0D2…7500BF99 모듈 경로/해시·종료0/각 Error0·Mode CDO/서버/보상
+검증을 확인했다. 최초 시도는 보상 참조를 넣기 전에 모드를 컴파일해 기존 검증에 거절됐고
+원본 설치0이었다. 설정 후 컴파일 순서로 보완한 최종 성공과 이력을 분리한다.
+원본 입력 hash를 재조회한 뒤 새3개는 overwrite=false, 기존 맵은 백업을 둔 원자 교체로
+반영·설치 후 hash도 같았다. 새 맵 hash는 `D2CE1400…0AF05E29`, 소유 배우는26개다.
+
+게임 Source/UBT/UHT·공유 Intermediate/Binaries 쓰기0, 기존 훈련·보상·부모/HUD/설정
+쓰기도0이다. 첫/최종 자기 사본·UserDir/캐시/로그·맵 백업 합계121,948,928 bytes
+(116.30MiB)와 소유 링크128개를 자동 폐기·Temp/정리 예외0이며 정상 출력/공유 DDC는
+유지했다. 최종 에셋4개·작성기2개와 작은 증거만 남겼다. 증거:
+`Saved/BuildChecks/ProgressionIntro1Content-20261102/Verification.proof.json` 및
+`Create.json`/`Repeat.json`/`Reload.json`/`ArenaReload.json`·초기 `Attempt1`.
+이는 에셋 배치의 확인이며 GPU/물리 조작·인증된 입장·목표 승인/복제·파티 정산은 별도다.
 
 ## 서버 개인 목표 — 2026-11-02
 

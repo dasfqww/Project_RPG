@@ -5,8 +5,8 @@ Existing maps are inspected, never overwritten. This is a spatial lesson asset,
 not an admission, objective-completion or reward authority. It deliberately uses
 Engine.GameModeBase until the Intro1 server objective is implemented.
 
-Can run in a closed, content-only editor project with PythonScriptPlugin and
-EditorScriptingUtilities enabled. No project plugin or Blueprint is required.
+Unconfigured arenas can run in a content-only editor project. Once explicitly
+bound by CreateProgressionIntro1Content.py, read with the compatible game module.
 """
 
 import hashlib
@@ -19,6 +19,9 @@ MAP = "/Game/Maps/Progression/L_ProgressionIntro1"
 MARKER = "FirstSlice.Intro1Arena.v1"
 METADATA = "RPGIntro1Arena"
 PREFIX = "Intro1_"
+BOUND_MODE = "/Game/Blueprints/GameMode/Progression/BP_Intro1GameMode.BP_Intro1GameMode_C"
+CONTENT_MARKER = "FirstSlice.Intro1Content.v1"
+EXPERIENCE = "/Game/System/Experiences/DA_ClientPresentationAndOptionsHint"
 # Unreal units are centimetres. Cube and cylinder primitives are 100 cm wide.
 GEOMETRY = {
     "Floor": ("Cube", (0, 0, -50), (60, 40, 1)),
@@ -95,6 +98,11 @@ def inspect(unreal, world, meshes, preview_mode):
               if a.get_actor_label().startswith(PREFIX)]
     by_name = {a.get_actor_label()[len(PREFIX):]: a for a in actors}
     expected = set(GEOMETRY) | set(STARTS) | set(ZONES) | set(SIGNS) | {"Sun", "Sky"}
+    bound = preview_mode.get_path_name() == BOUND_MODE
+    if bound:
+        require(unreal.EditorAssetLibrary.get_metadata_tag(world, "RPGIntro1Content") == CONTENT_MARKER,
+                "Preserving a map with an unowned content binding")
+        expected.add("Experience")
     require(len(actors) == len(by_name) and set(by_name) == expected, "Arena layout differs or has duplicate labels")
     for name, actor in by_name.items():
         require(MARKER in actor_tags(actor), "Arena actor ownership differs: " + name)
@@ -131,6 +139,13 @@ def inspect(unreal, world, meshes, preview_mode):
         require((tint.r, tint.g, tint.b) == tuple(round(c * 255) for c in color), "Sign color differs: " + name)
     require(isinstance(by_name["Sun"], unreal.DirectionalLight) and isinstance(by_name["Sky"], unreal.SkyLight),
             "Arena light classes differ")
+    if bound:
+        selector = by_name["Experience"]
+        require(selector.get_class().get_path_name() == "/Script/Project_RPG.RPGExperienceSelectionActor"
+                and selector.get_editor_property("enabled")
+                and str(selector.get_editor_property("selection_mode")) == str(unreal.RPGExperienceSelectionMode.LOAD_EXPERIENCE)
+                and selector.get_editor_property("experience").get_path_name() == EXPERIENCE + "." + EXPERIENCE.rsplit("/", 1)[1],
+                "Intro1 client presentation binding differs")
     # A duplicate unowned gameplay actor must not hide outside the label filter.
     all_starts = unreal.GameplayStatics.get_all_actors_of_class(world, unreal.PlayerStart)
     all_zones = unreal.GameplayStatics.get_all_actors_of_class(world, unreal.TriggerBox)
@@ -138,8 +153,8 @@ def inspect(unreal, world, meshes, preview_mode):
     return {"owned_actors": len(actors), "geometry": len(GEOMETRY), "player_starts": 4,
             "spatial_zones": {tag: {"centre": location, "half_extent": extent}
                               for tag, location, extent in ZONES.values()},
-            "preview_mode": preview_mode.get_path_name(), "blocking_floor_cover_and_bounds": True,
-            "two_routes_configured": True, "objective_logic_connected": False}
+            "game_mode": preview_mode.get_path_name(), "blocking_floor_cover_and_bounds": True,
+            "two_routes_configured": True, "content_bound": bound, "gameplay_verified": False}
 
 
 def create(unreal, meshes, preview_mode):
@@ -218,6 +233,11 @@ def main():
             require(unreal.EditorLoadingAndSavingUtils.save_map(world, MAP), "Could not save arena")
             report["saved_count"] = 1
         if world:
+            actual_mode = world.get_world_settings().get_editor_property("default_game_mode")
+            if actual_mode != preview_mode:
+                require(actual_mode and actual_mode.get_path_name() == BOUND_MODE, "Preserving another map mode")
+                preview_mode = actual_mode
+                report["project_module_required"] = True
             report["properties"] = inspect(unreal, world, meshes, preview_mode)
         after = digest(path)
         require(not before or before == after, "Existing arena was changed")
