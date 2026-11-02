@@ -7,20 +7,36 @@ void URPGPlayerAnimInstance::NativeInitializeAnimation()
 {
 	Super::NativeInitializeAnimation();
 
-	if (OwningCharacter)
-	{
-		OwningPlayerCharacter = Cast<ARPGPlayer>(OwningCharacter);
-	}
+	OwningPlayerCharacter = Cast<ARPGPlayer>(OwningCharacter);
+	ResetRelaxState();
+}
+
+void URPGPlayerAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
+{
+	Super::NativeUpdateAnimation(DeltaSeconds);
+	OwningPlayerCharacter = Cast<ARPGPlayer>(OwningCharacter);
+}
+
+void URPGPlayerAnimInstance::ResetRelaxState()
+{
+	IdleElapsedTime = 0.f;
+	bShouldEnterRelaxState = false;
+}
+
+void URPGPlayerAnimInstance::NativeUninitializeAnimation()
+{
+	OwningPlayerCharacter = nullptr;
+	ResetRelaxState();
+	Super::NativeUninitializeAnimation();
 }
 
 void URPGPlayerAnimInstance::NativeThreadSafeUpdateAnimation(float DeltaSeconds)
 {
 	Super::NativeThreadSafeUpdateAnimation(DeltaSeconds);
 
-	if (bHasAcceleration)
+	if (!LocomotionFrame.bValid || bHasAcceleration)
 	{
-		IdleElapsedTime = 0.f;
-		bShouldEnterRelaxState = false;
+		ResetRelaxState();
 	}
 
 	else

@@ -2,13 +2,36 @@
 
 
 #include "AnimInstance/RPGBaseAnimInstance.h"
-#include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
+#include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemComponent.h"
+#include "GameFramework/Pawn.h"
+
+void URPGBaseAnimInstance::NativeInitializeAnimation()
+{
+	Super::NativeInitializeAnimation();
+	CapturedOwnerTags.Reset();
+}
+
+void URPGBaseAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
+{
+	Super::NativeUpdateAnimation(DeltaSeconds);
+	CapturedOwnerTags.Reset();
+	if (APawn* Pawn = TryGetPawnOwner(); IsValid(Pawn))
+	{
+		if (const UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Pawn))
+		{
+			CapturedOwnerTags = ASC->GetOwnedGameplayTags();
+		}
+	}
+}
+
+void URPGBaseAnimInstance::NativeUninitializeAnimation()
+{
+	CapturedOwnerTags.Reset();
+	Super::NativeUninitializeAnimation();
+}
 
 bool URPGBaseAnimInstance::DoesOwnerHaveTag(FGameplayTag TagToCheck) const
 {
-	if (APawn* OwningPawn = TryGetPawnOwner())
-	{
-		return URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(OwningPawn, TagToCheck);
-	}
-	return false;
+	return CapturedOwnerTags.HasTag(TagToCheck);
 }

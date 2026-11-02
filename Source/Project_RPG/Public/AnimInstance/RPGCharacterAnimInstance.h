@@ -18,8 +18,20 @@ class PROJECT_RPG_API URPGCharacterAnimInstance : public URPGBaseAnimInstance
 	GENERATED_BODY()
 public:
 	virtual void NativeInitializeAnimation() override;
-	virtual void NativeThreadSafeUpdateAnimation(float DeltaSeconds);
+	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
+	virtual void NativeThreadSafeUpdateAnimation(float DeltaSeconds) override;
+	virtual void NativeUninitializeAnimation() override;
 protected:
+	// Captured on the game thread; evaluation only consumes these value types.
+	struct FLocomotionFrame
+	{
+		FVector Velocity = FVector::ZeroVector;
+		FVector Acceleration = FVector::ZeroVector;
+		FRotator Rotation = FRotator::ZeroRotator;
+		bool bValid = false;
+	};
+	FLocomotionFrame LocomotionFrame;
+
 	UPROPERTY()
 		TObjectPtr<ARPGBaseCharacter> OwningCharacter;
 
@@ -27,11 +39,16 @@ protected:
 		TObjectPtr<UCharacterMovementComponent> OwningMovementComponent;
 
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|LocomotionData")
-		float GroundSpeed;
+		float GroundSpeed = 0.f;
 
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|LocomotionData")
-		bool bHasAcceleration;
+		bool bHasAcceleration = false;
 
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|LocomotionData")
-		float LocomotionDirection;
+		float LocomotionDirection = 0.f;
+
+private:
+	friend class FRPGAnimInstanceStateTest;
+	void RefreshOwnerReferences();
+	void ResetLocomotion();
 };

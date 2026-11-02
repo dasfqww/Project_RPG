@@ -16,6 +16,15 @@ class PROJECT_RPG_API URPGPlayerLinkedAnimLayer : public URPGBaseAnimInstance
 {
 	GENERATED_BODY()
 public:
+	virtual void NativeInitializeAnimation() override;
+	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
+	virtual void NativeUninitializeAnimation() override;
+
 	UFUNCTION(BlueprintPure, meta = (BlueprintThreadSafe))
 		URPGPlayerAnimInstance* GetPlayerAnimInstance() const;
+
+private:
+	void RefreshPlayerAnimInstance();
+	UPROPERTY(Transient)
+	TObjectPtr<URPGPlayerAnimInstance> CachedPlayerAnimInstance;
 };

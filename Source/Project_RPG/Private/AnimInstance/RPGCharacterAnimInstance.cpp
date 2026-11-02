@@ -6,29 +6,55 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "KismetAnimationLibrary.h"
 
-#include"RPGDebugHelper.h"
-
 void URPGCharacterAnimInstance::NativeInitializeAnimation()
 {
-	OwningCharacter = Cast<ARPGBaseCharacter>(TryGetPawnOwner());
+	Super::NativeInitializeAnimation();
+	ResetLocomotion();
+	RefreshOwnerReferences();
+}
 
-	if (OwningCharacter)
+void URPGCharacterAnimInstance::RefreshOwnerReferences()
+{
+	APawn* Pawn = TryGetPawnOwner();
+	OwningCharacter = IsValid(Pawn) ? Cast<ARPGBaseCharacter>(Pawn) : nullptr;
+	OwningMovementComponent = IsValid(OwningCharacter) ? OwningCharacter->GetCharacterMovement() : nullptr;
+}
+
+void URPGCharacterAnimInstance::ResetLocomotion()
+{
+	LocomotionFrame = {};
+	GroundSpeed = 0.f;
+	bHasAcceleration = false;
+	LocomotionDirection = 0.f;
+}
+
+void URPGCharacterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
+{
+	Super::NativeUpdateAnimation(DeltaSeconds);
+	RefreshOwnerReferences();
+	LocomotionFrame = {};
+	if (IsValid(OwningCharacter) && IsValid(OwningMovementComponent))
 	{
-		OwningMovementComponent = OwningCharacter->GetCharacterMovement();
+		LocomotionFrame.Velocity = OwningCharacter->GetVelocity();
+		LocomotionFrame.Acceleration = OwningMovementComponent->GetCurrentAcceleration();
+		LocomotionFrame.Rotation = OwningCharacter->GetActorRotation();
+		LocomotionFrame.bValid = true;
 	}
 }
 
 void URPGCharacterAnimInstance::NativeThreadSafeUpdateAnimation(float DeltaSeconds)
 {
-	if (!OwningCharacter||!OwningMovementComponent)
-	{
-		return;
-	}
+	Super::NativeThreadSafeUpdateAnimation(DeltaSeconds);
+	GroundSpeed = LocomotionFrame.Velocity.Size2D();
+	bHasAcceleration = LocomotionFrame.Acceleration.SizeSquared2D() > 0.f;
+	LocomotionDirection = UKismetAnimationLibrary::CalculateDirection(
+		LocomotionFrame.Velocity, LocomotionFrame.Rotation);
+}
 
-	GroundSpeed = OwningCharacter->GetVelocity().Size2D();
-
-	bHasAcceleration = OwningMovementComponent->GetCurrentAcceleration().SizeSquared2D() > 0.f;
-	
-	LocomotionDirection = UKismetAnimationLibrary::CalculateDirection(OwningCharacter->GetVelocity(), 
-		OwningCharacter->GetActorRotation());
+void URPGCharacterAnimInstance::NativeUninitializeAnimation()
+{
+	OwningCharacter = nullptr;
+	OwningMovementComponent = nullptr;
+	ResetLocomotion();
+	Super::NativeUninitializeAnimation();
 }

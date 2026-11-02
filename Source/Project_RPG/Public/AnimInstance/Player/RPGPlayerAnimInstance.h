@@ -17,20 +17,23 @@ class PROJECT_RPG_API URPGPlayerAnimInstance : public URPGCharacterAnimInstance
 	GENERATED_BODY()
 public:
 	virtual void NativeInitializeAnimation() override;
-	virtual void NativeThreadSafeUpdateAnimation(float DeltaSeconds);
+	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
+	virtual void NativeThreadSafeUpdateAnimation(float DeltaSeconds) override;
+	virtual void NativeUninitializeAnimation() override;
 
 protected:
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|References")
 		TObjectPtr<ARPGPlayer> OwningPlayerCharacter;
 
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|LocomotionData")
-		bool bShouldEnterRelaxState;
-
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|LocomotionData")
-	bool bIsRaged;
+		bool bShouldEnterRelaxState = false;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AnimData|LocomotionData")
 		float EnterRelaxStateThreshold = 5.f;
 	
-	float IdleElapsedTime;
+	float IdleElapsedTime = 0.f;
+
+private:
+	friend class FRPGAnimInstanceStateTest;
+	void ResetRelaxState();
 };
