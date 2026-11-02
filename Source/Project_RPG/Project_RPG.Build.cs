@@ -9,6 +9,9 @@ public class Project_RPG : ModuleRules
 	public Project_RPG(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+		// Native automation fixtures use independent translation-unit namespaces.
+		// Keep clean builds deterministic after adaptive working-set exclusions disappear.
+		bUseUnity = false;
 	
         PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreOnline", "NetCore", "StructUtils",
             "CoreUObject", "Engine", "InputCore",
