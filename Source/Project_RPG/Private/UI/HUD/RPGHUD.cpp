@@ -7,6 +7,7 @@
 #include "UI/Option/RPGOptionMenu.h"
 #include "UI/Content/RPGCombatContributionWidget.h"
 #include "UI/Content/RPGTrainingGuideWidget.h"
+#include "UI/Content/RPGIntroApproachGuideWidget.h"
 #include "UI/Progress/RPGActionProgressWidget.h"
 #include "Component/UI/PlayerUIComponent.h"
 #include "Engine/World.h"
@@ -53,6 +54,18 @@ void ARPGHUD::BeginPlay()
 			TrainingGuideWidget->RemoveFromParent();
 			TrainingGuideWidget = nullptr;
 		}
+		if (IsActorBeingDestroyed() || bEndingPlayerHUD) return;
+		TStrongObjectPtr<URPGIntroApproachGuideWidget> IntroGuide(CreateWidget<URPGIntroApproachGuideWidget>(Controller));
+		if (IntroGuide.IsValid())
+		{
+			IntroApproachGuideWidget = IntroGuide.Get();
+			const bool bAdded = IntroGuide->AddToPlayerScreen(5);
+			if (!bAdded || IsActorBeingDestroyed() || bEndingPlayerHUD || IntroApproachGuideWidget != IntroGuide.Get())
+			{
+				IntroGuide->RemoveFromParent();
+				if (IntroApproachGuideWidget == IntroGuide.Get()) IntroApproachGuideWidget = nullptr;
+			}
+		}
 	}
 
 	if (InteractionWidgetClass)
@@ -72,6 +85,11 @@ void ARPGHUD::EndPlay(const EEndPlayReason::Type Reason)
     PlayerHUDController.Reset();
     RemovePlayerHUD();
     RemoveActionProgressWidget();
+    if (IntroApproachGuideWidget)
+    {
+        IntroApproachGuideWidget->RemoveFromParent();
+        IntroApproachGuideWidget = nullptr;
+    }
     if (TrainingGuideWidget)
     {
         TrainingGuideWidget->RemoveFromParent();

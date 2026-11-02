@@ -28,6 +28,7 @@
 #define LOCTEXT_NAMESPACE "RPGTrainingGuideWidget"
 
 APawn* URPGTrainingGuideWidget::GetDisplayedPawn() const { return DisplayedPawn.Get(); }
+const TCHAR* URPGTrainingGuideWidget::GetPracticeContentId() const { return TEXT("Progression.Training"); }
 
 namespace
 {
@@ -58,7 +59,7 @@ namespace
 			|| Web->GetAuthenticatedSteamId().IsEmpty()
 			|| !Web->GetAuthenticatedSteamId().Equals(State->GetAuthenticatedSteamId(), ESearchCase::CaseSensitive)) return false;
 		const auto Session = Flow->GetCurrentDungeonSession();
-		if (!Session.DungeonId.Equals(TEXT("Progression.Training"), ESearchCase::CaseSensitive)
+		if (!Session.DungeonId.Equals(Guide.GetPracticeContentId(), ESearchCase::CaseSensitive)
 			|| !Session.Difficulty.Equals(TEXT("Normal"), ESearchCase::CaseSensitive)
 			|| (!Session.State.Equals(TEXT("InProgress"), ESearchCase::CaseSensitive)
 				&& !Session.State.Equals(TEXT("SettlementPending"), ESearchCase::CaseSensitive)
@@ -99,7 +100,7 @@ TSharedRef<SWidget> URPGTrainingGuideWidget::RebuildWidget()
 		auto Font = Title->GetFont(); Font.Size = 17; Title->SetFont(Font);
 		Title->SetAutoWrapText(true);
 		Content->AddChildToVerticalBox(Title)->SetPadding(FMargin(0.f, 0.f, 0.f, 10.f));
-		for (int32 Index = 0; Index < 4; ++Index)
+		for (int32 Index = 0; Index < GetGoalCount(); ++Index)
 		{
 			auto* Row = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(),
 				FName(*FString::Printf(TEXT("TrainingGoal%d"), Index)));
@@ -139,15 +140,23 @@ void URPGTrainingGuideWidget::RefreshCurrentPawn()
 	{
 		ClearPresentation(); return;
 	}
-	const auto* Objectives = Pawn->FindComponentByClass<URPGTrainingObjectiveComponent>();
-	if (!IsValid(Objectives) || !Objectives->IsRegistered() || Objectives->IsBeingDestroyed())
-	{
-		ClearPresentation(); return;
-	}
-	const auto Progress = Objectives->GetTrainingProgress();
-	if (!Progress.bActive) { ClearPresentation(); return; }
+	if (!HasActiveProgress(Pawn)) { ClearPresentation(); return; }
 	DisplayedPawn = Pawn;
-	ShowProgress(Progress, *Controller);
+	ShowCurrentProgress(*Controller);
+}
+
+bool URPGTrainingGuideWidget::HasActiveProgress(const APawn* Pawn) const
+{
+	const auto* Objectives = IsValid(Pawn) ? Pawn->FindComponentByClass<URPGTrainingObjectiveComponent>() : nullptr;
+	return IsValid(Objectives) && Objectives->IsRegistered() && !Objectives->IsBeingDestroyed()
+		&& Objectives->GetTrainingProgress().bActive;
+}
+
+void URPGTrainingGuideWidget::ShowCurrentProgress(const ARPGPlayerController& Controller)
+{
+	const auto* Objectives = DisplayedPawn.IsValid() ? DisplayedPawn->FindComponentByClass<URPGTrainingObjectiveComponent>() : nullptr;
+	if (IsValid(Objectives)) ShowProgress(Objectives->GetTrainingProgress(), Controller);
+	else ClearPresentation();
 }
 
 FText URPGTrainingGuideWidget::ReadControlHint(int32 Goal, const ARPGPlayerController& Controller) const

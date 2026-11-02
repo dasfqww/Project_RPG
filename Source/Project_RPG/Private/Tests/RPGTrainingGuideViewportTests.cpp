@@ -84,11 +84,12 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			if (HUD) { HUD->PostInitializeComponents(); HUD->DispatchBeginPlay(); }
 			return HUD;
 		}
-		TArray<URPGTrainingGuideWidget*> Guides() const
+		TArray<URPGTrainingGuideWidget*> Guides(const TCHAR* ContentId = TEXT("Progression.Training")) const
 		{
 			TArray<URPGTrainingGuideWidget*> Result;
 			for (TObjectIterator<URPGTrainingGuideWidget> It; It; ++It)
-				if (It->GetWorld() == World && It->GetOwningPlayer() == Controller && It->IsInViewport()) Result.Add(*It);
+				if (It->GetWorld() == World && It->GetOwningPlayer() == Controller && It->IsInViewport()
+					&& FCString::Strcmp(It->GetPracticeContentId(), ContentId) == 0) Result.Add(*It);
 			return Result;
 		}
 		~FViewportFixture()
@@ -112,11 +113,21 @@ bool FRPGTrainingGuideViewportTest::RunTest(const FString&)
 	if (!TestTrue(TEXT("Owned virtual viewport and local player ready"), F.Initialize())) return false;
 	if (!TestTrue(TEXT("Local controller owns a local player"), F.Controller->IsLocalController() && F.Controller->GetLocalPlayer())) return false;
 	TestEqual(TEXT("No guide is injected by this test"), F.Guides().Num(), 0);
+	TestEqual(TEXT("No Intro1 guide is injected by this test"), F.Guides(TEXT("Progression.Intro1")).Num(), 0);
 	if (!TestNotNull(TEXT("Production HUD begins in the local viewport"), F.CreateHUD())) return false;
 	if (!TestEqual(TEXT("HUD owner is the registered controller"), F.HUD->GetOwningPlayerController(), F.Controller)) return false;
 	auto Guides = F.Guides();
 	if (!TestEqual(TEXT("HUD creates exactly one guide"), Guides.Num(), 1)) return false;
 	TStrongObjectPtr<URPGTrainingGuideWidget> First(Guides[0]);
+	auto IntroGuides = F.Guides(TEXT("Progression.Intro1"));
+	if (!TestEqual(TEXT("HUD creates exactly one separate Intro1 guide"), IntroGuides.Num(), 1)) return false;
+	TStrongObjectPtr<URPGTrainingGuideWidget> FirstIntro(IntroGuides[0]);
+	TestTrue(TEXT("Intro1 guide is attached to the actual player Slate layer"), ContainsWidget(F.Window, FirstIntro->GetCachedWidget()));
+	TestFalse(TEXT("Intro1 guide never takes focus"), FirstIntro->IsFocusable());
+	TestEqual(TEXT("Intro1 guide does not intercept gameplay input"), FirstIntro->GetVisibility(), ESlateVisibility::HitTestInvisible);
+	auto* IntroCard = Cast<UBorder>(FirstIntro->WidgetTree->FindWidget(TEXT("TrainingGuideCard")));
+	if (!TestNotNull(TEXT("Intro1 native guide tree is constructed by AddToPlayerScreen"), IntroCard)) return false;
+	TestEqual(TEXT("Ordinary world starts without an Intro1 prompt"), IntroCard->GetVisibility(), ESlateVisibility::Collapsed);
 	TestTrue(TEXT("Guide is attached to the actual player Slate layer"), ContainsWidget(F.Window, First->GetCachedWidget()));
 	TestFalse(TEXT("Guide never takes focus"), First->IsFocusable());
 	TestEqual(TEXT("Guide does not intercept gameplay input"), First->GetVisibility(), ESlateVisibility::HitTestInvisible);
@@ -130,6 +141,9 @@ bool FRPGTrainingGuideViewportTest::RunTest(const FString&)
 	TestFalse(TEXT("HUD EndPlay removes its guide from the viewport"), First->IsInViewport());
 	TestFalse(TEXT("Removed guide is absent from the Slate window"), ContainsWidget(F.Window, First->GetCachedWidget()));
 	TestNull(TEXT("Removed guide releases the displayed Pawn"), First->GetDisplayedPawn());
+	TestFalse(TEXT("HUD EndPlay removes its Intro1 guide from the viewport"), FirstIntro->IsInViewport());
+	TestFalse(TEXT("Removed Intro1 guide is absent from the Slate window"), ContainsWidget(F.Window, FirstIntro->GetCachedWidget()));
+	TestNull(TEXT("Removed Intro1 guide releases the displayed Pawn"), FirstIntro->GetDisplayedPawn());
 	if (!TestNotNull(TEXT("Replacement production HUD"), F.CreateHUD())) return false;
 	Guides = F.Guides();
 	if (!TestEqual(TEXT("Replacement does not accumulate guides"), Guides.Num(), 1)) return false;
@@ -139,12 +153,22 @@ bool FRPGTrainingGuideViewportTest::RunTest(const FString&)
 	auto* ReplacementCard = Cast<UBorder>(Replacement->WidgetTree->FindWidget(TEXT("TrainingGuideCard")));
 	TestTrue(TEXT("Replacement without training context has no stale prompt"), ReplacementCard && ReplacementCard->GetVisibility() == ESlateVisibility::Collapsed);
 	TestNull(TEXT("Generic local controller cannot invent a training target"), Replacement->GetDisplayedPawn());
+	IntroGuides = F.Guides(TEXT("Progression.Intro1"));
+	if (!TestEqual(TEXT("Replacement does not accumulate Intro1 guides"), IntroGuides.Num(), 1)) return false;
+	TStrongObjectPtr<URPGTrainingGuideWidget> IntroReplacement(IntroGuides[0]);
+	TestTrue(TEXT("Replacement Intro1 guide is a fresh widget"), IntroReplacement.Get() != FirstIntro.Get());
+	TestTrue(TEXT("Replacement Intro1 guide is in the player Slate layer"), ContainsWidget(F.Window, IntroReplacement->GetCachedWidget()));
+	auto* IntroReplacementCard = Cast<UBorder>(IntroReplacement->WidgetTree->FindWidget(TEXT("TrainingGuideCard")));
+	TestTrue(TEXT("Replacement without Intro1 context has no stale prompt"), IntroReplacementCard && IntroReplacementCard->GetVisibility() == ESlateVisibility::Collapsed);
+	TestNull(TEXT("Generic local controller cannot invent an Intro1 target"), IntroReplacement->GetDisplayedPawn());
 	for (TObjectIterator<URPGDungeonResultActionsWidget> It; It; ++It)
 		if (It->GetWorld() == F.World && It->GetOwningPlayer() == F.Controller)
 			TestFalse(TEXT("An ordinary HUD never creates an authenticated completion overlay"), It->IsInViewport());
 	F.HUD->Destroy(); F.HUD = nullptr;
 	TestEqual(TEXT("No guide remains in the player viewport after HUD destruction"), F.Guides().Num(), 0);
 	TestNull(TEXT("Replacement also clears the observed Pawn"), Replacement->GetDisplayedPawn());
+	TestEqual(TEXT("No Intro1 guide remains after HUD destruction"), F.Guides(TEXT("Progression.Intro1")).Num(), 0);
+	TestNull(TEXT("Intro1 replacement also clears the observed Pawn"), IntroReplacement->GetDisplayedPawn());
 	return true;
 }
 #endif

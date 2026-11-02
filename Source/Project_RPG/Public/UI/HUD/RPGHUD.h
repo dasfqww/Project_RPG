@@ -12,6 +12,7 @@ class URPGMainMenuWidget;
 class URPGOptionMenu;
 class URPGCombatContributionWidget;
 class URPGTrainingGuideWidget;
+class URPGIntroApproachGuideWidget;
 class URPGActionProgressWidget;
 class UUserWidget;
 
@@ -118,6 +119,7 @@ private:
 
 	UPROPERTY(Transient) TObjectPtr<URPGCombatContributionWidget> CombatContributionWidget;
 	UPROPERTY(Transient) TObjectPtr<URPGTrainingGuideWidget> TrainingGuideWidget;
+	UPROPERTY(Transient) TObjectPtr<URPGIntroApproachGuideWidget> IntroApproachGuideWidget;
 	void CreateDefaultOptionMenuWidget();
 
 	TWeakObjectPtr<UObject> OptionMenuProvider;
