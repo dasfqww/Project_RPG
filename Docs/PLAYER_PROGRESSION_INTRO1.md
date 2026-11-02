@@ -88,10 +88,68 @@ UE 목표/GAS 완료·입장 티켓 소비/소켓 연결·물리 입력·GPU·Po
 작은 근거는 `Saved/BuildChecks/ProgressionIntro1Profile-20261102/CompletionResult.json`에
 연결한다. 폐기한 DLL 해시는 당시 증거다.
 
-현재 UE의 `-RPGDungeonProfile=Training`과 `Start-TrainingDevelopment.ps1`은 여전히 훈련
-전용이다. 이번 backend 프로필을 게임 화면에서 선택하려면 클라이언트의 개발 목록과
-훈련/입문1 두 맵을 순차 할당하는 개발 실행기 연결이 필요하다. 이 연결 후 실제 입문1
-목표 완료·정산·로비 복귀를 확인한다.
+클라이언트 목록/두 맵 실행기 연결은 아래 후속을 따르며 실제 입문1 목표 완료·정산·
+로비 복귀는 HTTP 완료 보고와 구분한다.
+
+## 개발 로비·두 맵 실행기 연결 — 2026-11-03
+
+명시적 `-RPGDungeonProfile=Intro1 -RPGDevelopmentLogin -nosteam`에서만 저장된 훈련/
+입문1 정의2개·Normal을 읽는다. 기존 Training 전용 옵션과 프로필 없는 기본 보스 목록은
+유지한다. 새 기본 INI/CDO/에셋 목록을 저장하지 않으며 잘못된 정의/옵션은 거절한다.
+
+메뉴의 같은 입장 버튼은 새 캐릭터에게 **튜토리얼 입장**, 현재 캐릭터의 확인된 훈련
+완료 기록이 있으면 **입문 1 입장**을 표시한다. 신선한 성장 조회가 없거나 미저장/미확정
+구성이 있으면 기존 입장 가드를 유지한다. 훈련만 끝난 뒤 새 회전 베기는 명시적으로
+편성·저장하도록 안내하고 자동 편성은 하지 않는다. 다른 캐릭터의 이전 완료/조회 캐시는
+입문1 선택 근거가 아니다.
+
+기존 단일 입장 순서(현재 회원 조회→생성→출발→할당/서버 준비 대기→입장권/접속)를
+재사용한다. 시작 시 콘텐츠 ID도 계정/캐릭터와 함께 고정해 기존 Training 세션을 Intro1
+입장 요청으로 출발시키거나 반대로 접속하지 않는다. 회원/티켓/출발 멱등 요청·정산의
+원본은 기존 Flow/backend이며 새 클라이언트 입장 승인 경로를 만들지 않는다.
+
+`Start-TrainingDevelopment.ps1 -DungeonProfile Intro1`은 같은 Intro1 backend/클라이언트
+프로필을 선택한다. 기본은 기존 Training이다. 할당 맵은 기존 관리자 claim 응답을 읽고
+닫힌 두 콘텐츠/정확한 맵·Normal을 대조한다. 실행기가 Training 맵으로 덮어쓰지 않는다.
+기존 훈련 전용 smoke 옵션은 Intro1과 함께 쓰면 기동/복구 전에 거절한다.
+
+연속 서버 회수는 정확한 배정 세션/서버·콘텐츠/맵·Normal/1인·확정 terminal 상태와 배정
+이후 해당 맵→실제 로비 복귀를 함께 요구한다. 이전 로그/다른 맵/서버·진행 중/조회 실패는
+서버를 유지한다. 자기 PID/경로/시작 시각과 소유 journal을 확인하는 기존 정리 수명은 유지한다.
+
+Source10/PS5 원본 구현·집중 PS36+기존28 통과. 다른 담당자의 미완료 공통 장비 소스를
+피한 `HEAD ec3b747 + 본인 Source10` 사본의 독립 Editor 타깃813작업/종료0·입력 불변을
+확인했다. 기존 C4996 경고6/StructUtils 폐기 예정 안내가 있으며 변경한 소스의 컴파일
+오류는 없다. 닫힌 모듈 `B2571974…3A201018`의 실제 로드/UE 종료0·native5 Success·
+검사 오류0이다. 에셋 경고139/최소 PlayerInput 모형 경고1은 별도이며 무경고 검증이 아니다.
+기동 Error15는 검사 탐색 이전, 탐색 이후 Error0이다.
+
+실제 NativeConstruct/UMG 트리에서 저장된 정의2개와 버튼의 입문1 전환, 확인된 현재 성장/
+조회 무효화 가드를 확인했다. 기존 Training 결정과 캡처한 Intro1의 생성/대기/출발/접속·
+다른 콘텐츠/정산 대기/입장 차단의 거절도 통과했다. 첫 사본의 배열 추가/객체 포인터 조회
+컴파일 오류 두 곳은 수정했고, 다음 도구 세션 중단은 성공 검증과 구분해 기록했다.
+
+실패/중단/최종 실행의 자기 사본/obj/PCH/DLL/PDB·캐시와 준비본/PS fixture 최소
+14,620,417,989 bytes(13.617GiB)·Content/Plugin 링크12를 정리해 자기 임시/프로세스·정리 예외0이다.
+작은 근거는 `Saved/BuildChecks/ProgressionIntro1Entry-20261102/CompletionResult.json`이다.
+삭제한 모듈 해시는 당시 증거이며 재실행에는 새 빌드가 필요하다.
+
+**정상 게임 모듈 검사는 실패했으며 실제 로그인→훈련→입문1 과제/정산·복귀는 미검증이다.**
+공유 정상111D 생산자의 전후1399 입력은 같고 본인 Source10 해시도 모두 일치했다. 그 뒤
+정상 DLL이91E로 교체돼111D는 역사 증거다. 현재91E의 닫힌 사본/실제 로드에서 Policy의
+`Malformed, unknown or repeated opt-in` 검사가 실패했고 Widget에서 주소0x8 접근 위반/
+UE 종료3·보고서 미생성이 발생했다. 이 실행은 정상 반영 성공으로 계산하지 않는다.
+
+독립 사본의 같은 Source10/native5 통과와 정상 모듈의 결과가 다르므로 공유 모듈의
+오브젝트/생성 코드 정합성 재확인이 필요하다. 본인 Source10과 `RPGOnlineLobbyWidget.h`
+소비 CPP/생성 코드를 같은 정상 빌드에서 재컴파일하고 닫힌 현재 모듈로 native5를 다시
+통과시키는 것이 인계 조건이다. 공통 장비 소스 작업과 조율하며, 이 확인을 위해 다른
+담당의 소스나 공유 Intermediate를 임의로 삭제/되돌리지 않는다. 원본 DLL을 본인 분리
+DLL로 교체하지 않았다. 아래 명령은 그 정상 모듈 검증 이후에 사용한다.
+
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File Scripts\Start-TrainingDevelopment.ps1 -DungeonProfile Intro1
+```
 
 ## 조작 안내 모듈 — 2026-11-02
 

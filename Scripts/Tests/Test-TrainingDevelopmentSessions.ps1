@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'TrainingDevelopmentSessions.ps1')
-$allocation=@{DungeonSessionId='session-a';ServerId='server-a'}
+$allocation=@{DungeonSessionId='session-a';ServerId='server-a';DungeonId='Progression.Training';Difficulty='Normal';MapPackage='/Game/Maps/Progression/L_ProgressionTraining'}
 $session=@{dungeonSessionId='session-a';serverId='server-a';dungeonId='Progression.Training';difficulty='Normal';state='Cleared';members=@(@{characterId='hero-a'})}
 $training='[time]LogWorld: Bringing World /Game/Maps/Progression/L_ProgressionTraining.L_ProgressionTraining up for play'
 $lobby='[time]LogWorld: Bringing World /Game/Maps/LobbyMap.LobbyMap up for play'

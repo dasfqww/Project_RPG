@@ -250,9 +250,16 @@ bool FRPGDungeonDevelopmentProfilePolicyTest::RunTest(const FString&)
 		&& Resolve(TEXT("-nosteam"), false).Error.IsEmpty());
 	TestTrue(TEXT("Exact training profile accepted behind development gate"), Resolve(TEXT("-RPGDungeonProfile=Training"), true).bTraining);
 	TestTrue(TEXT("Quoted operator value accepted"), Resolve(TEXT("-RPGDungeonProfile=\"Training\""), true).bTraining);
+	const auto Intro = Resolve(TEXT("-RPGDungeonProfile=Intro1"), true);
+	TestTrue(TEXT("Intro1 keeps tutorial available in its two-stage profile"), Intro.bTraining && Intro.bIntro1 && Intro.Error.IsEmpty());
+	TestEqual(TEXT("A fresh character starts with Training"), Intro.EntryDungeonId(0), FString(TEXT("Progression.Training")));
+	TestEqual(TEXT("Only confirmed training progress chooses Intro1"), Intro.EntryDungeonId(1), FString(TEXT("Progression.Intro1")));
+	TestEqual(TEXT("A sibling with no milestone gets its own tutorial"), Intro.EntryDungeonId(0), FString(TEXT("Progression.Training")));
+	TestEqual(TEXT("Training profile never opens Intro1"), Resolve(TEXT("-RPGDungeonProfile=Training"), true).EntryDungeonId(1), FString(TEXT("Progression.Training")));
+	TestTrue(TEXT("Intro1 remains disabled outside the development gate"), !Resolve(TEXT("-RPGDungeonProfile=Intro1"), false).Error.IsEmpty());
 	for (const TCHAR* Command : {TEXT("-RPGDungeonProfile"), TEXT("-RPGDungeonProfile="),
 		TEXT("-RPGDungeonProfile=training"), TEXT("-RPGDungeonProfile=../Training"),
-		TEXT("-RPGDungeonProfile=Intro1"), TEXT("-RPGDungeonProfile=Training -RPGDungeonProfile=Training")})
+		TEXT("-RPGDungeonProfile=intro1"), TEXT("-RPGDungeonProfile=Training -RPGDungeonProfile=Intro1")})
 	{
 		const auto Invalid = Resolve(Command, true);
 		TestTrue(TEXT("Malformed, unknown or repeated opt-in never falls back"), !Invalid.bTraining && !Invalid.Error.IsEmpty());
@@ -315,6 +322,15 @@ bool FRPGDungeonDevelopmentProfileWidgetTest::RunTest(const FString&)
 	auto* Normal = NewObject<URPGOnlineLobbyWidget>();
 	FRPGDungeonSelectionTestAccess::Reload(Normal);
 	TestTrue(TEXT("Unselected profile retains the saved default boss catalog"), Normal->GetDungeonOptions() == TArray<FString>{TEXT("Dungeon.RaidSwordMan")});
+	FCommandLine::Set(TEXT("-RPGDungeonProfile=Intro1 -RPGDevelopmentLogin -nosteam"));
+	auto* IntroWidget = CreateWidget<URPGOnlineLobbyWidget>(World, URPGOnlineLobbyWidget::StaticClass());
+	if (!TestNotNull(TEXT("Intro1 native widget initializes"), IntroWidget)) return false;
+	const auto IntroSlate = IntroWidget->TakeWidget();
+	TestTrue(TEXT("Intro1 list contains exactly the two saved stages"), IntroWidget->GetDungeonOptions()
+		== TArray<FString>{TEXT("Progression.Training"), TEXT("Progression.Intro1")});
+	auto* IntroBox = Cast<UComboBoxString>(IntroWidget->GetWidgetFromName(TEXT("DungeonSelectionOptions")));
+	TestTrue(TEXT("Actual Intro1 selector has two choices"), IntroBox && IntroBox->GetOptionCount() == 2);
+	TestFalse(TEXT("Intro1 profile cannot manufacture player authentication"), IntroWidget->CreateSelectedDungeonSession());
 	TestEqual(TEXT("CDO and serialized config defaults are untouched"),
 		FRPGDungeonSelectionTestAccess::Preferences(GetDefault<URPGOnlineLobbyWidget>()), DefaultBefore);
 	return true;

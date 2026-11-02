@@ -34,6 +34,8 @@ void URPGOnlineLobbyWidget::LoadDungeonDefinitions()
 		// backend-owned unfinished session. The ordinary validators still apply.
 		DungeonDefinitions = {TSoftObjectPtr<URPGDungeonDefinition>(FSoftObjectPath(
 			TEXT("/Game/System/Dungeons/Progression/DA_Dungeon_Training.DA_Dungeon_Training")))};
+		if (Profile.bIntro1) DungeonDefinitions.Add(TSoftObjectPtr<URPGDungeonDefinition>(FSoftObjectPath(
+			TEXT("/Game/System/Dungeons/Progression/DA_Dungeon_Intro1.DA_Dungeon_Intro1"))));
 	}
 	if (DungeonDefinitions.Num() > 64) { DungeonDefinitionsLoadError = TEXT("too_many_dungeon_definitions"); return; }
 	for (const auto& Reference : DungeonDefinitions)
@@ -44,15 +46,23 @@ void URPGOnlineLobbyWidget::LoadDungeonDefinitions()
 	}
 	if (Profile.bTraining && DungeonDefinitionsLoadError.IsEmpty())
 	{
-		const URPGDungeonDefinition* Definition = LoadedDungeonDefinitions.Num() == 1 ? LoadedDungeonDefinitions[0] : nullptr;
-		if (!Definition || !Definition->DungeonId.Equals(TEXT("Progression.Training"), ESearchCase::CaseSensitive)
-			|| Definition->DefaultDifficulty != ERPGGameDifficulty::Normal
-			|| Definition->Difficulties != TArray<ERPGGameDifficulty>{ERPGGameDifficulty::Normal})
+		const TArray<FString> Expected = Profile.bIntro1
+			? TArray<FString>{TEXT("Progression.Training"), TEXT("Progression.Intro1")}
+			: TArray<FString>{TEXT("Progression.Training")};
+		bool bValid = LoadedDungeonDefinitions.Num() == Expected.Num();
+		for (int32 Index = 0; bValid && Index < Expected.Num(); ++Index)
+		{
+			const auto* Definition = LoadedDungeonDefinitions[Index].Get();
+			bValid = Definition && Definition->DungeonId.Equals(Expected[Index], ESearchCase::CaseSensitive)
+				&& Definition->DefaultDifficulty == ERPGGameDifficulty::Normal
+				&& Definition->Difficulties == TArray<ERPGGameDifficulty>{ERPGGameDifficulty::Normal};
+		}
+		if (!bValid)
 		{
 			DungeonDefinitionsLoadError = TEXT("development_dungeon_profile_definition_mismatch");
 			return;
 		}
-		DungeonId = Definition->DungeonId;
+		DungeonId = Expected[0];
 		Difficulty = TEXT("Normal");
 	}
 }

@@ -9,5 +9,6 @@ enum class ERPGTutorialEntryAction : uint8 { Wait, Create, Depart, Connect, Reje
 struct FRPGTutorialEntryPolicy
 {
 	static ERPGTutorialEntryAction Decide(const FRPGDungeonSession& Session,
-		const FString& CharacterId, bool bBusy, bool bUnresolvedDeparture, bool bAdmissionBlocked);
+		const FString& CharacterId, bool bBusy, bool bUnresolvedDeparture, bool bAdmissionBlocked,
+		const FString& DungeonId = TEXT("Progression.Training"));
 };

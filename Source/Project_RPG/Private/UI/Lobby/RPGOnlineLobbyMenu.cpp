@@ -58,11 +58,20 @@ bool URPGOnlineLobbyWidget::HasCompletedTutorial() const
 			{ return Member.CharacterId == Flow->GetSelectedCharacterId(); });
 }
 
+FString URPGOnlineLobbyWidget::GetPracticeEntryDungeonId() const
+{
+	const auto Profile = RPGOnlineLobbyDevelopmentProfile::Resolve(FCommandLine::Get(), IsDevelopmentUIEnabled());
+	const auto* Progress = ConfigurationPanel ? ConfigurationPanel->GetConfirmedProgression() : nullptr;
+	return Profile.EntryDungeonId(Progress ? Progress->Milestones : 0);
+}
+
 bool URPGOnlineLobbyWidget::CanStartTutorial() const
 {
 	const auto Profile = RPGOnlineLobbyDevelopmentProfile::Resolve(FCommandLine::Get(), IsDevelopmentUIEnabled());
 	const auto* Lobby = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr;
-	return Profile.bTraining && Profile.Error.IsEmpty() && !HasCompletedTutorial() && Lobby && Lobby->IsLobbyController(GetOwningPlayer())
+	const auto* Progress = ConfigurationPanel ? ConfigurationPanel->GetConfirmedProgression() : nullptr;
+	const bool bIntro1 = Profile.bIntro1 && Progress && (Progress->Milestones & 1) != 0;
+	return Profile.bTraining && Profile.Error.IsEmpty() && (!HasCompletedTutorial() || bIntro1) && Lobby && Lobby->IsLobbyController(GetOwningPlayer())
 		&& ConfigurationPanel && ConfigurationPanel->GetConfirmedProgression()
 		&& bServerSelected && bPreparationOpen && Web && Web->HasAccessToken() && !Web->GetAuthenticatedSteamId().IsEmpty()
 		&& Flow && HasOwnedSelection() && !Flow->IsRequestInFlight() && !Flow->HasUnresolvedDungeonAbandonment()
@@ -124,6 +133,7 @@ void URPGOnlineLobbyWidget::StartTutorial()
 	UIError.Reset(); TutorialEntryFailure = FText::GetEmpty();
 	bSkillMenuOpen = bDungeonMenuOpen = bEquipmentMenuOpen = false;
 	TutorialAccount = Web->GetAuthenticatedSteamId(); TutorialCharacter = Flow->GetSelectedCharacterId();
+	TutorialDungeonId = GetPracticeEntryDungeonId();
 	bTutorialEntryActive = bTutorialResolvingSession = true;
 	TutorialDeadline = FPlatformTime::Seconds() + 150.0;
 	// Retry only an existing captured command after an explicit user action.
@@ -137,8 +147,8 @@ void URPGOnlineLobbyWidget::StartTutorial()
 void URPGOnlineLobbyWidget::StopTutorialEntry()
 {
 	bTutorialEntryActive = bTutorialResolvingSession = false;
-	TutorialAccount.Reset(); TutorialCharacter.Reset();
-	TutorialEntryFailure = NSLOCTEXT("RPGFrontend", "TutorialFailed", "튜토리얼 입장을 준비하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요. 기존 진행 정보는 유지됩니다.");
+	TutorialAccount.Reset(); TutorialCharacter.Reset(); TutorialDungeonId.Reset();
+	TutorialEntryFailure = NSLOCTEXT("RPGFrontend", "PracticeFailed", "실습 입장을 준비하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요. 기존 진행 정보는 유지됩니다.");
 }
 
 void URPGOnlineLobbyWidget::AdvanceTutorialEntry()
@@ -155,12 +165,12 @@ void URPGOnlineLobbyWidget::AdvanceTutorialEntry()
 	if (State != ERPGDungeonClientFlowState::Idle && State != ERPGDungeonClientFlowState::InSession) return;
 	bTutorialResolvingSession = false;
 	const auto Decision = FRPGTutorialEntryPolicy::Decide(Flow->GetCurrentDungeonSession(), TutorialCharacter,
-		Flow->IsRequestInFlight(), Flow->HasUnresolvedDeparture(), !Flow->GetDungeonAdmissionBlockReason().IsEmpty());
+		Flow->IsRequestInFlight(), Flow->HasUnresolvedDeparture(), !Flow->GetDungeonAdmissionBlockReason().IsEmpty(), TutorialDungeonId);
 	bool bStarted = true;
 	switch (Decision)
 	{
 	case ERPGTutorialEntryAction::Create:
-		bStarted = Flow->CreateDungeonSession(TEXT("Progression.Training"), TEXT("Normal")); break;
+		bStarted = Flow->CreateDungeonSession(TutorialDungeonId, TEXT("Normal")); break;
 	case ERPGTutorialEntryAction::Depart:
 		bStarted = Flow->CanSetDeparture(false) && Flow->SetDeparture(false); break;
 	case ERPGTutorialEntryAction::Connect:
@@ -196,12 +206,14 @@ void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 		&& (!Flow || !Flow->HasUnresolvedDeparture()) && (!Steam || !Steam->IsInPartyLobby()), bAuth && bServerSelected && !bPreparationOpen);
 	Control(TEXT("StartTutorialButton"), CanStartTutorial() && !bTutorialEntryActive, bHome && Profile.bTraining);
 	const auto* Progress = ConfigurationPanel ? ConfigurationPanel->GetConfirmedProgression() : nullptr;
+	const bool bIntro1Entry = Profile.bIntro1 && Progress && (Progress->Milestones & 1) != 0;
 	Control(TEXT("ReloadTutorialProgressButton"), bHome && !bTutorialEntryActive && ConfigurationPanel
 		&& !ConfigurationPanel->IsRequestInFlight() && !ConfigurationPanel->HasUnsavedChanges()
 		&& !ConfigurationPanel->HasUnresolvedSave() && CanUseCharacterConfiguration(false, false), bHome && Profile.bTraining && !Progress);
 	if (auto* Button = Buttons.FindRef(TEXT("StartTutorialButton")).Get())
 		if (auto* Label = Cast<UTextBlock>(Button->GetContent()))
-			Label->SetText(HasCompletedTutorial() ? NSLOCTEXT("RPGFrontend", "TutorialDone", "튜토리얼 완료")
+			Label->SetText(bIntro1Entry ? NSLOCTEXT("RPGFrontend", "Intro1Entry", "입문 1 입장")
+				: HasCompletedTutorial() ? NSLOCTEXT("RPGFrontend", "TutorialDone", "튜토리얼 완료")
 				: NSLOCTEXT("RPGFrontend", "Tutorial", "튜토리얼 입장"));
 	Control(TEXT("OpenSkillMenuButton"), bHome && !bTutorialEntryActive, bHome);
 	Control(TEXT("OpenEquipmentMenuButton"), bHome && CanUseEquipmentGrowth(false, false), bHome);
@@ -217,10 +229,12 @@ void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 		if (StatusText) StatusText->SetText(bTutorialEntryActive
 			? NSLOCTEXT("RPGFrontend", "Preparing", "튜토리얼 입장 준비 중")
 			: !TutorialEntryFailure.IsEmpty() ? TutorialEntryFailure
+			: bIntro1Entry ? NSLOCTEXT("RPGFrontend", "Intro1Ready", "접근 실습에 입장할 수 있습니다. 새 스킬은 스킬 구성에서 편성·저장해 주세요.")
 			: HasCompletedTutorial() ? NSLOCTEXT("RPGFrontend", "TrainingFinished", "튜토리얼을 완료했습니다. 로비에서 캐릭터와 스킬을 확인해 보세요.")
 			: !Progress ? NSLOCTEXT("RPGFrontend", "CheckProgress", "캐릭터의 진행 정보를 확인하고 있습니다. 연결을 확인하거나 진행 정보를 다시 읽어 주세요.")
 			: NSLOCTEXT("RPGFrontend", "LobbyReady", "캐릭터 준비가 끝났습니다. 튜토리얼을 시작해 보세요."));
 		if (NextStepText) NextStepText->SetText(bTutorialEntryActive ? FText::GetEmpty()
+			: bIntro1Entry ? NSLOCTEXT("RPGFrontend", "BeforeIntro1", "다음 단계: 회전 베기를 편성·저장하고 입문 1 입장을 누르세요.")
 			: HasCompletedTutorial() ? NSLOCTEXT("RPGFrontend", "AfterTutorial", "다음 단계: 스킬 구성에서 새로 얻은 SP와 습득한 스킬을 확인하세요.")
 			: !Progress ? NSLOCTEXT("RPGFrontend", "ProgressRequired", "진행 정보가 확인되면 튜토리얼에 입장할 수 있습니다.")
 			: NSLOCTEXT("RPGFrontend", "TutorialNext", "튜토리얼 입장을 누르면 자동으로 이동합니다."));

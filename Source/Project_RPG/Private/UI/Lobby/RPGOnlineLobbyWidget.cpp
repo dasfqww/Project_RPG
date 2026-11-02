@@ -409,7 +409,7 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 void URPGOnlineLobbyWidget::NativeDestruct()
 {
 	bTutorialEntryActive = bTutorialResolvingSession = false;
-	TutorialAccount.Reset(); TutorialCharacter.Reset();
+	TutorialAccount.Reset(); TutorialCharacter.Reset(); TutorialDungeonId.Reset();
 	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(PollTimer);
 	for (const auto& Pair : Buttons) if (Pair.Value) Pair.Value->OnClicked.RemoveAll(this);
 	if (CharactersBox) CharactersBox->OnSelectionChanged.RemoveDynamic(this, &ThisClass::SelectCharacter);

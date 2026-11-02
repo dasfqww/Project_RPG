@@ -115,6 +115,7 @@ private:
 	void BuildMenuContent(UVerticalBox& Parent, bool bServerPage);
 	void RefreshMenuPresentation();
 	bool CanStartTutorial() const;
+	FString GetPracticeEntryDungeonId() const;
 	bool HasCompletedTutorial() const;
 	void AdvanceTutorialEntry();
 	void StopTutorialEntry();
@@ -137,7 +138,7 @@ private:
 	// Presentation and user intent only; selected identity/session stay in Flow.
 	bool bServerSelected = false, bSkillMenuOpen = false, bDungeonMenuOpen = false, bEquipmentMenuOpen = false;
 	bool bTutorialEntryActive = false, bTutorialResolvingSession = false, bAdvancingTutorial = false;
-	FString TutorialAccount, TutorialCharacter;
+	FString TutorialAccount, TutorialCharacter, TutorialDungeonId;
 	FText TutorialEntryFailure;
 	double TutorialDeadline = 0.0;
 	friend class FRPGOnlineLobbyNavigationNativeTest;

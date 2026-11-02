@@ -1,6 +1,7 @@
 ﻿[CmdletBinding()]
 param(
     [string]$EngineRoot='D:\UE_5.8',
+    [ValidateSet('Training','Intro1')][string]$DungeonProfile='Training',
     [ValidateRange(1024,65535)][int]$BackendPort=3076,
     [ValidateRange(1024,65535)][int]$GamePort=18896,
     [ValidateRange(60,600)][int]$StartupTimeoutSeconds=240,
@@ -14,6 +15,9 @@ param(
 # Disposable local training sessions. The normal mode opens an interactive
 # lobby; SmokeTest drives existing client ability input, not lobby button clicks.
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'Tests/TrainingDevelopmentContent.ps1')
+$contentMaps=Get-RPGTrainingDevelopmentContent $DungeonProfile
+if($DungeonProfile -ceq 'Intro1' -and ($SmokeTest -or $SessionLoopSmoke -or $LobbyUISmoke)){throw 'Intro1 requires interactive mode; existing smoke drivers cover Training only'}
 if($SessionLoopSmoke -and ($SmokeTest -or $LobbyUISmoke -or $RecoverOnly)){throw 'SessionLoopSmoke is a separate smoke mode'}
 if($SessionLoopSmoke){$SmokeTest=[switch]$true}
 if($SmokeTest -and $LobbyUISmoke){throw 'Choose gameplay smoke or lobby UI smoke'}
@@ -130,10 +134,12 @@ function Poll-Allocator {
     # Existing allocator scripts support optional JSON properties; scope their
     # original semantics here, without changing the cleanup helper's strictness.
     Set-StrictMode -Off
+    $mapAssertion=@{}
+    if($DungeonProfile -ceq 'Training'){$mapAssertion.Map=$map}
     & (Join-Path $temp 'Tools/Start-LocalDungeonServer.ps1') -ServerExecutable $editor `
         -EditorProject (Join-Path $runtime 'Project_RPG.uproject') -DevelopmentIdentityTesting `
         -RuntimeUserDirectory (Join-Path $users 's') -BackendUrl $url -AdminToken $admin `
-        -PublicHost '127.0.0.1' -Port $GamePort -Map $map -LogDirectory (Join-Path $temp 'Allocator')
+        -PublicHost '127.0.0.1' -Port $GamePort @mapAssertion -LogDirectory (Join-Path $temp 'Allocator')
 }
 function Observe-Module($Process,[string]$Role){
     if(!$Process -or @($loaded | Where-Object role -ceq $Role).Count){return}
@@ -178,7 +184,7 @@ try{
         ASPNETCORE_ENVIRONMENT='Development';DOTNET_ENVIRONMENT='Development';Storage__Provider='Memory'
         POSTGRES_CONNECTION_STRING=$null;ConnectionStrings__Postgres=$null;ASPNETCORE_CONTENTROOT=$null
         PROJECT_RPG_BACKEND_ADMIN_TOKEN=$admin;Steam__AllowDevelopmentAuthentication='true'
-        Kestrel__Endpoints__Http__Url=$url;DungeonContent__DevelopmentProfile='Training'
+        Kestrel__Endpoints__Http__Url=$url;DungeonContent__DevelopmentProfile=$DungeonProfile
         PROJECT_RPG_GAME_SERVER_ID=$null;PROJECT_RPG_DUNGEON_SESSION_ID=$null;PROJECT_RPG_BACKEND_GAME_SERVER_TOKEN=$null
     } (Join-Path $temp 'backend.log')
     $ready=$false;$until=[DateTime]::UtcNow.AddSeconds(45)
@@ -198,7 +204,7 @@ try{
         $null=New-Item -ItemType Directory -Path $smokeGates -Force
     }
     $args=@(('"'+(Join-Path $runtime 'Project_RPG.uproject')+'"'),'/Game/Maps/LobbyMap','-game',
-        '-RPGDungeonProfile=Training','-RPGDevelopmentLogin','-nosteam','-UseIrisReplication=1','-RPGRequireIris',
+        ('-RPGDungeonProfile='+$DungeonProfile),'-RPGDevelopmentLogin','-nosteam','-UseIrisReplication=1','-RPGRequireIris',
         '-nop4','-nosplash','-NoLiveCoding','-NoLoadingScreen','-DisablePython','-DDC=(EnginePak,Local)',
         ('-UserDir="'+(Join-Path $users 'c')+'"'),('-abslog="'+(Join-Path $temp 'client.log')+'"'),'-ExecCmds="t.MaxFPS 60"',
         '-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bAutoStartServer=False',
@@ -242,7 +248,7 @@ try{
                 $snapshot=$null
                 try{$snapshot=Api ('dungeon-sessions/'+$allocation.DungeonSessionId) 'Get' @{Authorization='Bearer '+$admin}}catch{Write-Warning 'Training session status unavailable; existing server was preserved.'}
                 $clientLog=Read-Log $clientLogPath
-                if((Get-RPGTrainingServerDisposition $allocation $snapshot $clientLog $allocationLogStart) -ceq 'Retire'){
+                if((Get-RPGTrainingServerDisposition $allocation $snapshot $clientLog $allocationLogStart $DungeonProfile) -ceq 'Retire'){
                     $retired.Add(@{sessionId=$allocation.DungeonSessionId;serverId=$allocation.ServerId;processId=$server.Id;clientAlive=($client -and !$client.HasExited);backendState=$snapshot.state;returnToLobbyObserved=$true})
                     Stop-Registered $server
                     $server=$null;$allocation=$null
@@ -259,7 +265,7 @@ try{
                 if($candidate.Reused){throw 'Private allocator unexpectedly reused a process'}
                 $allocation=$candidate
                 $server=Register-Owned (Get-Process -Id $candidate.ProcessId -ErrorAction Stop) 'training-server'
-                if($candidate.DungeonId -cne 'Progression.Training' -or $candidate.MapPackage -cne $map -or $candidate.Difficulty -cne 'Normal'){throw 'Allocator content differs from the training profile'}
+                Assert-RPGTrainingDevelopmentAllocation $candidate $DungeonProfile
                 Write-Host 'Training server allocated on the private loopback port.'
             }
         }
@@ -323,7 +329,7 @@ try{
     }
     if($LobbyUISmoke -and $loaded.Count -ne 2){throw 'Lobby UI smoke did not observe both private game modules'}
     foreach($entry in $inputs){if((Get-FileHash -LiteralPath $entry.snapshot).Hash -cne $entry.sha256){throw 'Private snapshot input changed'}}
-    $result.passed=$true;$result.claimedTrainingServer=($retired.Count -gt 0 -or $null -ne $allocation);$result.snapshotInputs=$inputs.Count
+    $result.passed=$true;$result.dungeonProfile=$DungeonProfile;$result.claimedTrainingServer=($retired.Count -gt 0 -or $null -ne $allocation);$result.snapshotInputs=$inputs.Count
 }catch{$result.failure=$_.Exception.Message}
 finally{
     if($LobbyUISmoke){Save-TrainingLobbyUIFailure}

@@ -13,6 +13,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/CommandLine.h"
 #include "HAL/PlatformTime.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UnrealType.h"
@@ -48,6 +49,28 @@ bool FRPGTutorialEntryPolicyTest::RunTest(const FString&)
 	S.Difficulty = TEXT("Hard"); TestEqual(TEXT("An unsupported training difficulty is excluded"), Decide(), Action::Reject); S.Difficulty = TEXT("Normal");
 	S.Members[0].CharacterId = TEXT("other-character"); TestEqual(TEXT("A foreign member is excluded"), Decide(), Action::Reject); S.Members[0] = Member;
 	S.Members.Add(Member); TestEqual(TEXT("Solo training cannot absorb a party"), Decide(), Action::Reject);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGIntro1EntryPolicyTest, "ProjectRPG.Online.Intro1Entry.SessionDecisions",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGIntro1EntryPolicyTest::RunTest(const FString&)
+{
+	using Action = ERPGTutorialEntryAction;
+	FRPGDungeonSession S;
+	auto Decide = [&]() { return FRPGTutorialEntryPolicy::Decide(S, TEXT("hero"), false, false, false, TEXT("Progression.Intro1")); };
+	TestEqual(TEXT("Resolved empty membership can create only the requested practice"), Decide(), Action::Create);
+	TestEqual(TEXT("Unknown target never creates"), FRPGTutorialEntryPolicy::Decide(S, TEXT("hero"), false, false, false, TEXT("Progression.Intro2")), Action::Reject);
+	S.DungeonSessionId = TEXT("session"); S.DungeonId = TEXT("Progression.Intro1"); S.Difficulty = TEXT("Normal");
+	S.State = TEXT("Waiting"); S.LeaderCharacterId = TEXT("hero"); S.Members.AddDefaulted_GetRef().CharacterId = TEXT("hero");
+	TestEqual(TEXT("Intro1 own waiting membership departs"), Decide(), Action::Depart);
+	S.DungeonId = TEXT("Progression.Training"); TestEqual(TEXT("Captured Intro1 action cannot depart a training session"), Decide(), Action::Reject);
+	S.DungeonId = TEXT("Progression.Intro1"); S.State = TEXT("Loading"); TestEqual(TEXT("Assignment waits without another create"), Decide(), Action::Wait);
+	S.State = TEXT("InProgress"); S.ServerId = TEXT("assigned"); S.ServerAddress = TEXT("127.0.0.1:18905");
+	TestEqual(TEXT("Only requested Intro1 membership connects"), Decide(), Action::Connect);
+	TestEqual(TEXT("Default Training action cannot connect to Intro1"), FRPGTutorialEntryPolicy::Decide(S, TEXT("hero"), false, false, false), Action::Reject);
+	TestEqual(TEXT("Admission denial still blocks Intro1"), FRPGTutorialEntryPolicy::Decide(S, TEXT("hero"), false, false, true, TEXT("Progression.Intro1")), Action::Reject);
+	S.State = TEXT("SettlementPending"); TestEqual(TEXT("An unsettled session is never replaced"), Decide(), Action::Reject);
 	return true;
 }
 
@@ -134,6 +157,20 @@ bool FRPGMenuFrontendTest::RunTest(const FString&)
 	Configuration->HandleResult(++Configuration->RequestSerial, false, Confirmed);
 	TestNotNull(TEXT("A confirmed record is available only in its current context"), Configuration->GetConfirmedProgression());
 	TestTrue(TEXT("Saved milestone completes the menu with no retained session"), Widget->HasCompletedTutorial());
+	{
+		const FString PreviousCommand = FCommandLine::Get();
+		struct FRestoreCommand { FString Value; ~FRestoreCommand() { FCommandLine::Set(*Value); } } Restore{PreviousCommand};
+		FCommandLine::Set(TEXT("-RPGDungeonProfile=Intro1 -RPGDevelopmentLogin -nosteam"));
+		Widget->LoadDungeonDefinitions(); Widget->RefreshPresentation();
+		TestEqual(TEXT("Confirmed training selects Intro1 in the menu"), Widget->GetPracticeEntryDungeonId(), FString(TEXT("Progression.Intro1")));
+		auto* Entry = Cast<UButton>(Widget->GetWidgetFromName(TEXT("StartTutorialButton")));
+		auto* Label = Entry ? Cast<UTextBlock>(Entry->GetContent()) : nullptr;
+		TestTrue(TEXT("The same direct action now offers Intro1"), Label && Label->GetText().ToString().Contains(TEXT("입문 1 입장")));
+		TestTrue(TEXT("Confirmed current character can request Intro1 through existing gates"), Widget->CanStartTutorial());
+		Configuration->bNeedsReload = true;
+		TestFalse(TEXT("Stale progression cannot authorize Intro1"), Widget->CanStartTutorial());
+		Configuration->bNeedsReload = false;
+	}
 	TestTrue(TEXT("An acquired but unslotted skill enables explicit draft filling"), Configuration->CanEquipUnslottedSkills());
 	TestEqual(TEXT("Exactly the unassigned acquired skill is added"), Configuration->EquipUnslottedSkills(), 1);
 	TestEqual(TEXT("Existing slot zero is preserved"), Configuration->DraftSlots[0], Completed.SkillSlots[0]);
