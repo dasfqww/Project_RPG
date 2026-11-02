@@ -45,6 +45,7 @@ public:
 private:
 	/** 리플렉션으로 호출될 핸들러 함수들 (모든 입력은 이 범용 핸들러를 거쳐 실제 함수로 전달됨) */
 	void ExecuteReflectionHandler(const FInputActionValue& Value, FName FuncName, UObject* ContextObject);
+	void ExecuteReflectionButtonHandler(FName FuncName, UObject* ContextObject, bool bPressed);
 };
 
 // --- 구현부 ---
@@ -67,7 +68,7 @@ inline void URPGInputComponent::BindNativeInputActions(const UDataAsset_InputCon
 			continue;
 		}
 
-		FString FuncNameStr = TagString.Replace(TEXT("InputTag."), TEXT("Input_"));
+		FString FuncNameStr = TagString.Replace(TEXT("InputTag."), TEXT("Input_")).Replace(TEXT("."), TEXT("_"));
 		FName FuncName = FName(*FuncNameStr);
 
 		// 2. 대상 오브젝트(Controller 등)에 해당 함수가 존재하는지 리플렉션으로 확인
@@ -75,6 +76,15 @@ inline void URPGInputComponent::BindNativeInputActions(const UDataAsset_InputCon
 		
 		if (TargetFunc)
 		{
+			if (TagString == TEXT("InputTag.PickUp.Items"))
+			{
+				// One interaction per press, with a release even when input is cancelled.
+				// Supply explicit button state; Started/Completed values depend on engine input settings.
+				BindAction(Config.InputAction, ETriggerEvent::Started, this, &ThisClass::ExecuteReflectionButtonHandler, FuncName, (UObject*)ContextObject, true);
+				BindAction(Config.InputAction, ETriggerEvent::Completed, this, &ThisClass::ExecuteReflectionButtonHandler, FuncName, (UObject*)ContextObject, false);
+				BindAction(Config.InputAction, ETriggerEvent::Canceled, this, &ThisClass::ExecuteReflectionButtonHandler, FuncName, (UObject*)ContextObject, false);
+				continue;
+			}
 			// 3. 함수가 존재하면 바인딩 (범용 래퍼 함수 이용)
 			const ETriggerEvent TriggerEvent = (TagString == TEXT("InputTag.ShowEquipmentWidget")
 				|| TagString == TEXT("InputTag.ToggleMenu"))

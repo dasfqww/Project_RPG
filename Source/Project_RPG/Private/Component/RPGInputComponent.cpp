@@ -3,6 +3,11 @@
 
 #include "Component/RPGInputComponent.h"
 
+void URPGInputComponent::ExecuteReflectionButtonHandler(FName FuncName, UObject* ContextObject, bool bPressed)
+{
+	ExecuteReflectionHandler(FInputActionValue(bPressed), FuncName, ContextObject);
+}
+
 void URPGInputComponent::ExecuteReflectionHandler(const FInputActionValue& Value, FName FuncName, UObject* ContextObject)
 {
 	if (ContextObject)

@@ -986,3 +986,56 @@ Temp/프로세스 잔여·정리 예외0이며 원본 Binaries/Intermediate·공
 
 결과: `Saved/BuildChecks/HudHoldingPIE-20261102/CompletionResult.json`.
 실제 PIE: `Saved/Tests/TrainingPlaytest/f64903b2c600440bb97ee4d3623383fe/Verification.proof.json`.
+
+## 2026-11-03 — 상호작용 입력의 시작·해제 연결 수정
+
+실제 `DA_InputConfig`의 `InputTag.PickUp.Items`가 기존 자동 바인딩에서
+`Input_PickUp.Items`로 변환돼 native 함수 `Input_PickUp_Items`를 찾지 못했다.
+또한 Triggered만 연결해 버튼 해제/입력 취소가 Controller의 EndInteract에 도달하지 않았다.
+
+자동 함수 이름은 태그의 하위 구분점도 `_`로 변환한다. PickUp 입력은 Started에서 한 번 시작하고
+Completed/Canceled에서 종료하도록 분리했다. 이 경로는 raw action value 대신 명시적 true/false를
+전달해 엔진의 Started/Completed 값 반환 설정에 영향을 받지 않는다. 다른 이동 입력의 연속 Triggered,
+스킬/아이템 슬롯 및 창 입력의 기존 바인딩 정책은 유지했다. 새 Tick/게임플레이 타이머는 추가하지 않았다.
+
+`ReflectionAndReleaseRouting` 회귀는 실제 `ARPGPlayerController`와 자동 생성된 입력 바인딩을 사용한다.
+중첩 태그의 3개 바인딩, 빈 Started 값의 true 전달, 반복 Triggered 없음, Completed/Canceled가
+기존 Controller를 통해 공용 표시를 Cancelled로 종료함을 확인한다. 기존 producer3과 함께
+native4 Success/오류0이다. PC 기본 에셋 로딩 경고139는 기존 경고로 구분한다.
+첫 검사 월드는 초기화되지 않아 Actor::ProcessEvent가 호출을 거절했으며,
+InitializeActorsForPlay를 추가한 뒤 통과했다. 그 첫 실패를 제품 입력 실패나 최종 성공으로 소급하지 않는다.
+
+제품 Source3은 정상 증분/입력1389 불변의 `CE72AF5D…07942C8`에서 확인했다.
+후속 `619D6E9F…95AB8BA` 모듈도 별도의 닫힌 사본에서 native4를 통과했다.
+그 사이 다른 담당자의 새 코드가 포함된 전체 빌드 실패와 실행 중 입력 변경은 별도 기록으로 보존한다.
+이번 작업에서 해당 코드를 수정하거나 전체 프로젝트 빌드가 통과했다고 표시하지 않는다.
+
+직접 필요한 `RPGInteractionInputTestTarget`은 Editor 모듈에만 둔 transient 검사 대상이다.
+명시적 `RPGInteractionInputPIE`에서만 2초 상호작용을 구성하고 충돌을 켜며 시작/취소/완료 호출을 센다.
+게임 배포에는 포함하지 않고, 실제 아이템 지급이나 서버 pickup RPC를 호출하지 않는다.
+Editor 검사 객체의 컴파일은 완료했으며, 공유 import LIB가 없는 상태에서는 닫힌 game DLL의
+export로 검사 전용 import LIB를 만들고 별도 Editor DLL에 링크했다. 원본 DLL은 쓰지 않았다.
+
+최종 PIE `794cea33275e44a1812da9acd4276fe7`는 같은 `619D6E9F…95AB8BA` game DLL과
+별도 Editor 검사 DLL `4F1294E9…4291ED9`를 실제 로드했다. 작성된 IA_PickUp의 EnhancedInput 주입에서
+Controller의 주변 대상 탐색·기존 완료 타이머·interface 호출·공용 UMG까지 연결해 다음을 확인했다.
+
+- 약 0.53초 입력 해제: Cancelled/진행 바 숨김, 대상 호출 누적 시작1·취소1·완료0.
+- 2초 유지 완료: Completed/진행 바 숨김, 누적 시작2·취소1·완료1.
+  완료 뒤 0.5초 더 누르고 있어도 재시작/추가 완료 호출이 없다.
+- 다음 시작 뒤 대상 소멸: Interrupted/진행 바 숨김, 소멸 전 누적 시작3·취소1·완료1.
+
+서버/소유자 종료0/0·예상 밖 및 probe 이후 오류0/0이다. PIE에서는 표시 상태를 직접 주입하지 않았다.
+물리 키보드, 실제 아이템의 서버 pickup RPC/지급, 2~4인, Steam/PostgreSQL은 검증 범위에 포함하지 않는다.
+기동 SDK 조회의 자기 Build.bat 대기 트리만 해제한 검사 환경이므로 패키징 SDK 검증도 아니다.
+
+자기 runtime/OBJ·LIB/DLL·UserDir·캐시 2,479,299,700 bytes(2364.444MiB)를 폐기했고
+자기 Temp/프로세스 잔여0이다. 마지막 임시 export 목록 `CurrentGame.def` 905,227 bytes는
+자동 승인 검토가 삭제를 정책상 차단해 `Saved/BuildChecks/HudInteractionInput-20261102/`에
+정리 예외로 남겼다. 원본 Binaries/Intermediate·공유 DDC·다른 담당 변경은 보존한다.
+스냅샷 폐기 후의 해시는 당시 실행 근거이며 같은 바이너리를 재실행할 수 있다는 뜻이 아니다.
+
+검증 전용 실행기/관찰기/명령/로그/최종 PNG는 Saved의 로컬 근거로만 남긴다.
+직접 필요한 유지용 회귀와 Editor 검사 대상은 이 입력 결함의 기능 커밋에 함께 포함한다.
+결과: `Saved/BuildChecks/HudInteractionInput-20261102/CompletionResult.json`.
+실제 PIE: `Saved/Tests/TrainingPlaytest/794cea33275e44a1812da9acd4276fe7/Verification.proof.json`.
