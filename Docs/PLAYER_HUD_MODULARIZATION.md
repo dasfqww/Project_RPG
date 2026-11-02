@@ -947,3 +947,42 @@ Interaction도 생산자 API 표시 검사이며 물리 입력/완료 타이머�
 
 현재 요청한 잔여 HUD 모듈화/상호작용 연결/표시 검증 범위는 완료했다.
 새 게임플레이 규칙이나 추가 플레이 시나리오는 해당 담당/사용자 범위를 확인한 뒤 진행한다.
+
+## 2026-11-02 — 실제 WhirlWind 홀딩 검증과 외부 취소 사유 수정
+
+실제 저장된 `DA_Skill_WhirlWind`는 Holding 정책을 사용한다. `AM_PlayerToggleSkill`은
+재사용한 몽타주 이름이다. 이전 문서에서 Toggle로 부른 부분을 실제 실행 정책으로 해석하면 안 된다.
+소유 클라이언트의 EnhancedInput 액션 → 기존 퀵슬롯 → 실제 GAS 능력 → 공통 진행 표시를 검사했다.
+
+이 실행에서 몽타주 중단으로 홀딩을 취소해도 표시의 종료 사유가 Completed로 남는 결함을 발견했다.
+`URPGSkillExecutionPolicy_Holding::CancelExecution`이 resolved만 설정하고 취소 플래그를 누락해,
+공통 정리가 정상 완료로 분류했다. 정리 전에 `bFinishAsCancelled=true`를 설정하도록 수정했다.
+이미 종료한 핸들은 다시 쓰지 않으므로 정상 완료 뒤의 늦은 정리와 새 실행은 그대로 보호한다.
+
+직접 회귀 `HoldingCancellationReason`을 추가했다. 외부 취소·늦은 입력 해제·이전 실행의 반복 취소와
+새 표시 보존·정상 해제 완료·이미 완료한 표시의 사유 보존을 확인한다. 정상7작업/종료0,
+Source/Plugins 입력1382 불변, 동일 `8608EBE5…D73AAC7` 모듈의 닫힌 사본에서
+SkillActionProgress native5 모두 Success/오류·경고0이다.
+
+같은 모듈의 최종 실제 HTTP 입장/Iris 소유 클라이언트 PIE 결과는 다음과 같다.
+
+| 실제 입력 경로 | 실제 진행 | 종료 표시 |
+|---|---|---|
+| 약0.7초 뒤 입력 해제 | Holding 문구/바/몽타주가 여러 프레임 진행 | 작성된 성공 구간에 따라 Completed·숨김 |
+| 4초 끝까지 유지 | 약3.95초까지 진행 표본39개·이후 정상 종료 | Completed·숨김 |
+| 약0.7초 뒤 몽타주 중단 | 실제 AnimInstance 중단과 이후 입력 해제 | Cancelled·숨김 |
+
+UI 상태나 진행 API에 값을 직접 넣지 않았다. 입력은 EnhancedInput API로 주입했으며 물리 키보드,
+실제 피격 경직, Casting 스킬 발동, 다인/Steam/PostgreSQL은 이 성공 범위에 포함하지 않는다.
+훈련 해금은 별도 Memory 백엔드 fixture에서 기존 정산 API로 마련한 전제이며 자연 훈련 완료의 증거는 아니다.
+서버/클라이언트 종료0/0·probe 이후 예상 밖 오류0/0, 마지막 Slate 배치와 PNG를 확인했다.
+
+첫 세 실행의 조회429/내부 Python 라이브러리 접근/PC 시간에 따른 부족한 진행 표본은 실패로 보존했다.
+그 다음 입력/숨김 검사는 통과했지만 취소 사유 결함이 남았던 결과와, 위 수정 후 최종 성공을 구분한다.
+검증 전용 실행기/관찰기/결과는 Saved에만 두고 직접 회귀와 제품 수정·계약만 기능 커밋에 포함한다.
+자기 runtime/DLL/UserDir/캐시·중간 PNG **1,048,925,777 bytes(1000.334MiB)**를 자동 폐기했다.
+Temp/프로세스 잔여·정리 예외0이며 원본 Binaries/Intermediate·공유 DDC·타 담당 산출물은 유지했다.
+최종 PNG1과 작은 명령/해시/필요 로그만 보존했고, 폐기한 모듈 해시는 당시 증거로만 취급한다.
+
+결과: `Saved/BuildChecks/HudHoldingPIE-20261102/CompletionResult.json`.
+실제 PIE: `Saved/Tests/TrainingPlaytest/f64903b2c600440bb97ee4d3623383fe/Verification.proof.json`.

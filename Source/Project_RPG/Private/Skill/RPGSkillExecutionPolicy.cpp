@@ -768,6 +768,7 @@ void URPGSkillExecutionPolicy_Holding::CancelExecution()
 	bSuccessfulFinishEntered = false;
 	bExecutionEnded = true;
 	bResolved = true;
+	bFinishAsCancelled = true;
 	CleanupHolding();
 	ReleaseMovementConstraint();
 	Super::CancelExecution();

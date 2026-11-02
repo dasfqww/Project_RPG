@@ -163,6 +163,42 @@ bool FSkillProgressModesTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSkillProgressHoldingCancelTest, "ProjectRPG.UI.SkillActionProgress.HoldingCancellationReason",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSkillProgressHoldingCancelTest::RunTest(const FString&)
+{
+	FFixture F; if (!TestTrue(TEXT("Fixture"), F.Initialize())) return false;
+	FRPGSkillHoldingExecutionConfig C; C.HoldDuration = .5f; C.PerfectZoneStartTime = .2f;
+	C.PerfectZoneEndTime = .4f; C.bAutoReleaseAtPerfectZoneEnd = false;
+	C.HoldingSection = TEXT("Hold"); C.SuccessSection = TEXT("Success");
+	F.Host.Spec.ExecutionConfig.InitializeAs<FRPGSkillHoldingExecutionConfig>(C);
+	auto* Cancelled = F.Make<URPGSkillExecutionPolicy_Holding>();
+	if (!TestTrue(TEXT("Unresolved holding starts"), Cancelled->StartExecution())) return false;
+	F.Step(.1f);
+	Cancelled->CancelExecution();
+	TestFalse(TEXT("External cancellation hides holding"), F.UI->GetActionProgressSnapshot().bActive);
+	TestEqual(TEXT("External cancellation is not successful completion"),
+		F.UI->GetActionProgressSnapshot().EndReason, ERPGActionProgressEndReason::Cancelled);
+	Cancelled->OnInputReleased();
+	TestEqual(TEXT("Late input release preserves cancellation"),
+		F.UI->GetActionProgressSnapshot().EndReason, ERPGActionProgressEndReason::Cancelled);
+
+	auto* Next = F.Make<URPGSkillExecutionPolicy_Holding>();
+	if (!TestTrue(TEXT("Replacement holding starts"), Next->StartExecution())) return false;
+	const auto NextHandle = F.UI->GetActionProgressSnapshot().Handle;
+	Cancelled->CancelExecution();
+	TestTrue(TEXT("Repeated old cancellation preserves replacement"),
+		F.UI->GetActionProgressSnapshot().bActive && F.UI->GetActionProgressSnapshot().Handle == NextHandle);
+	F.Step(.25f);
+	Next->OnInputReleased();
+	TestEqual(TEXT("Successful release still completes normally"),
+		F.UI->GetActionProgressSnapshot().EndReason, ERPGActionProgressEndReason::Completed);
+	Next->CancelExecution();
+	TestEqual(TEXT("Late cleanup cannot rewrite an already completed display"),
+		F.UI->GetActionProgressSnapshot().EndReason, ERPGActionProgressEndReason::Completed);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSkillProgressLifetimeTest, "ProjectRPG.UI.SkillActionProgress.HandoffAndReentrantCancel",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FSkillProgressLifetimeTest::RunTest(const FString&)
