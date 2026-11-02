@@ -4,7 +4,7 @@
 [첫 성장 구간](PLAYER_PROGRESSION_FIRST_SLICE_V01.md)의
 `Progression.Intro1`의 독립 맵은 아래 작성/재로드 확인 범위를 따른다.
 후속으로 서버 개인 목표 컴포넌트3파일의 원본 적용·정상 빌드·집중 native3 검증을 완료했다.
-Pawn/맵/서버 정의의 연결과 조작 안내는 아래 후속을 따른다. 개발 입장 프로필과
+Pawn/맵/서버 정의·조작 안내와 backend 개발 입장 프로필은 아래 후속을 따른다. 클라이언트 입장 연결과
 인증된 서버의 실제 목표 완료/정산·입장 목록 공개는 후속이다.
 
 2026-11-02 후속: 입문1 완료 GameMode와 기존 훈련 완료 gate의 콘텐츠 adapter를 원본에
@@ -54,6 +54,45 @@ Intro1/Normal 배정·현재 캐릭터/Pawn/복원 세대·멤버십과 승인�
 Intro1의 필수 조건으로 요구하지 않는다. 실제 목표/적 표적·완료 보고·보상 정의·입장 안내를
 연결한 후에만 콘텐츠를 공개한다.
 
+## 훈련→입문1 backend 개발 프로필 — 2026-11-02
+
+`DungeonContent:DevelopmentProfile=Intro1`(환경 변수 `DungeonContent__DevelopmentProfile`)을
+명시하면 패키지의 `DevelopmentProfiles/Intro1.json`을 한 번 읽어 아래 두 조합만 허용한다.
+기존 Training 프로필과 같은 Development/Testing 전용·출발 최소1/최대1인 개발 범위다.
+
+| 콘텐츠 | 난이도 | 할당 맵 |
+|---|---|---|
+| `Progression.Training` | `Normal` | `/Game/Maps/Progression/L_ProgressionTraining` |
+| `Progression.Intro1` | `Normal` | `/Game/Maps/Progression/L_ProgressionIntro1` |
+
+프로필을 생략한 기존 목록/파티 설정과 기존 Training 전용 프로필은 유지한다. 인덱스형
+설정 배열과 합치지 않으므로 기존 보스·입문2·Hard가 섞이지 않는다. 닫힌 이름2개만
+해석하고 경로/대소문자 별칭·누락/잘못된 파일·Production/Staging은 거절한다. 실행 중
+파일을 바꿔도 이미 만든 카탈로그는 바뀌지 않는다. 인증·저장소·보상·영속 성장 정책은
+이 프로필이 바꾸지 않는다.
+
+기존 생성/참가 API의 캐릭터별 선행 진행 검사를 그대로 사용한다. 새 캐릭터는 입문1
+생성이 거절되며 훈련의 실제 완료 정산이 성장에 반영된 해당 캐릭터만 입문1을 생성할 수
+있다. 같은 계정의 다른 캐릭터는 여전히 잠긴다. 입문1 Normal 완료의 기존 경험치100·
+성장 광석2개·도약 해금을 재사용하고 새로 습득한 스킬을 자동 편성하지 않는다.
+
+닫힌 backend/검사/schema 입력117개로 사설 Release 빌드·실제 middleware/Memory HTTP를
+실행해 기존 Training7그룹과 Intro1 구성/HTTP7그룹, 총14그룹을 통과했다. 빌드/실행 종료0·
+빌드 경고/오류0·사본 입력 불변이며 관리자 출발/claim 전후의 맵·세션/서버 bearer 격리,
+훈련 이전 거절/이후 허용·다른 캐릭터 격리·정산 후 총XP200/Lv3/도약·광석2·반복 조회
+중복 성장0을 확인했다. 서버 완료 보고는 검사에서 인증된 서버 역할의 HTTP로 수행했으며
+UE 목표/GAS 완료·입장 티켓 소비/소켓 연결·물리 입력·GPU·PostgreSQL 성공의 증거가 아니다.
+
+원본 UE/Config/에셋·공유 빌드/정상 DLL·기존 DB/서비스는 수정하거나 실행하지 않았다.
+자기 사본/obj/DLL/캐시6,977,984 bytes(6.65MiB)를 자동 폐기해 Temp/정리 예외0이며,
+작은 근거는 `Saved/BuildChecks/ProgressionIntro1Profile-20261102/CompletionResult.json`에
+연결한다. 폐기한 DLL 해시는 당시 증거다.
+
+현재 UE의 `-RPGDungeonProfile=Training`과 `Start-TrainingDevelopment.ps1`은 여전히 훈련
+전용이다. 이번 backend 프로필을 게임 화면에서 선택하려면 클라이언트의 개발 목록과
+훈련/입문1 두 맵을 순차 할당하는 개발 실행기 연결이 필요하다. 이 연결 후 실제 입문1
+목표 완료·정산·로비 복귀를 확인한다.
+
 ## 조작 안내 모듈 — 2026-11-02
 
 입문1 전용 `URPGIntroApproachGuideWidget`를 로컬 HUD 수명에 연결했다. 기존 훈련 안내에서
@@ -88,7 +127,7 @@ GPU 배치·입장/정산 성공을 대신하지 않는다. 실제 viewport 검�
 Temp/정리 예외0이다. 원본 Binaries/Intermediate·공유 DDC·타 담당 입력은 보존했다.
 근거는 `Saved/BuildChecks/ProgressionIntro1Guide-20261102/CompletionResult.json`과
 `348fe36855744bea9e891699a80f561c/Result.json`이다. 폐기한 모듈 hash는 당시 증거다.
-다음은 기존 개발 입장 경로에 입문1을 연결하고 인증된 목표 달성/완료·정산을 확인하는 작업이다.
+backend 개발 프로필 연결은 위 절을 따르며 클라이언트 입장·실제 목표 달성/완료·정산은 후속이다.
 
 ## Pawn·GameMode·서버 정의의 실제 콘텐츠 연결 — 2026-11-02
 

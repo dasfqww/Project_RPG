@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "name": "Intro1",
+  "minimumPartySize": 1,
+  "maximumPartySize": 1,
+  "content": {
+    "entries": [
+      {
+        "dungeonId": "Progression.Training",
+        "mapPackage": "/Game/Maps/Progression/L_ProgressionTraining",
+        "difficulties": [ "Normal" ]
+      },
+      {
+        "dungeonId": "Progression.Intro1",
+        "mapPackage": "/Game/Maps/Progression/L_ProgressionIntro1",
+        "difficulties": [ "Normal" ]
+      }
+    ]
+  }
+}

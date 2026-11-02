@@ -11,6 +11,11 @@ using ProjectRpg.Backend.Configuration;
 
 try
 {
+    if (args is ["--intro1-only"])
+    {
+        await Intro1DevelopmentProfileTests.Run();
+        return 0;
+    }
     if (args is ["--personal-loot-http-only"])
     {
         await DungeonPersonalLootTests.Http();
@@ -49,6 +54,7 @@ try
     Require(args.Length == 0, "Unknown content profile test arguments.");
     RunConfigurationChecks();
     await RunHttpChecksAsync();
+    await Intro1DevelopmentProfileTests.Run();
     return 0;
 }
 catch (Exception exception)
@@ -223,7 +229,7 @@ sealed class ProfileHost : IDisposable
     public string AdminToken { get; } = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
     private readonly Process child;
     private readonly Task<string> errors;
-    public ProfileHost(string environment)
+    public ProfileHost(string environment, string profile = "Training")
     {
         ProcessStartInfo start = new("dotnet")
         {
@@ -237,7 +243,7 @@ sealed class ProfileHost : IDisposable
         start.Environment.Remove("ConnectionStrings__Postgres");
         start.Environment["Storage__Provider"] = "Memory";
         start.Environment["Steam__AllowDevelopmentAuthentication"] = "true";
-        start.Environment["DungeonContent__DevelopmentProfile"] = "Training";
+        start.Environment["DungeonContent__DevelopmentProfile"] = profile;
         start.Environment["DungeonContent__Entries__7__DungeonId"] = "MustNotMerge";
         start.Environment["DungeonSessions__MaxPartySize"] = "4";
         start.Environment["PROJECT_RPG_BACKEND_ADMIN_TOKEN"] = AdminToken;

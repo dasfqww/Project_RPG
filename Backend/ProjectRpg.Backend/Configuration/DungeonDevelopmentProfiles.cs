@@ -21,10 +21,14 @@ public static class DungeonDevelopmentProfiles
         if (!environment.IsDevelopment() && !environment.IsEnvironment("Testing"))
             throw new InvalidOperationException("Dungeon development profiles require Development or Testing.");
         // A closed set of packaged profiles. Never interpret a requested name as a file path.
-        if (name != "Training")
-            throw new InvalidOperationException("Unknown dungeon development profile. Supported: Training.");
+        string fileName = name switch
+        {
+            "Training" => "Training.json",
+            "Intro1" => "Intro1.json",
+            _ => throw new InvalidOperationException("Unknown dungeon development profile. Supported: Training, Intro1.")
+        };
 
-        string path = Path.Combine(baseDirectory, "DevelopmentProfiles", "Training.json");
+        string path = Path.Combine(baseDirectory, "DevelopmentProfiles", fileName);
         ProfileDocument profile = JsonSerializer.Deserialize<ProfileDocument>(File.ReadAllText(path),
             new JsonSerializerOptions(JsonSerializerDefaults.Web)
             {
@@ -36,7 +40,7 @@ public static class DungeonDevelopmentProfiles
             throw new InvalidOperationException("Invalid dungeon development profile metadata.");
 
         // Bind the complete document, NOT configuration providers' indexed-array
-        // merge. Otherwise default Raid/Easy/Hard entries could leak into Training.
+        // merge. Otherwise default Raid/Easy/Hard entries could leak into a profile.
         DungeonContentCatalog catalog = new(profile.Content);
         // Validate everything before changing the two known process-local settings.
         // Auth, storage, progression, ticket and reward policies are never overridden.
