@@ -30,6 +30,7 @@ public:
 	bool RevokeDungeonGameplayAuthority(const ARPGPlayerState& RevokedState);
 	bool IsDungeonGameplayAuthorityRevoked() const { return bDungeonGameplayAuthorityRevoked; }
 	virtual bool AreAbilityTagsBlocked(const FGameplayTagContainer& Tags) const override;
+	virtual void NotifyAbilityActivated(FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability) override;
 	virtual void NotifyAbilityEnded(FGameplayAbilitySpecHandle Handle,
 		UGameplayAbility* Ability, bool bWasCancelled) override;
 	void OnAbilityInputPressed(const FGameplayTag& InInputTag);

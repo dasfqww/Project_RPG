@@ -2,6 +2,7 @@
 #include "Ability/RPGGameplayAbility.h"
 #include "Combat/RPGMontageImmunityTypes.h"
 #include "Component/Combat/RPGCombatControlComponent.h"
+#include "Component/Equipment/RPGPlayerWeaponLoadoutComponent.h"
 #include "Animation/AnimMontage.h"
 
 float URPGAbilitySystemComponent::PlayMontage(UGameplayAbility* AnimatingAbility, FGameplayAbilityActivationInfo ActivationInfo,
@@ -11,6 +12,8 @@ float URPGAbilitySystemComponent::PlayMontage(UGameplayAbility* AnimatingAbility
 	auto* Ability = Cast<URPGGameplayAbility>(AnimatingAbility);
 	const FGuid Execution = Ability ? Ability->GetCombatExecutionId() : FGuid();
 	auto* Avatar = GetAvatarActor();
+	if (auto* Loadout = Avatar ? Avatar->FindComponentByClass<URPGPlayerWeaponLoadoutComponent>() : nullptr)
+		Loadout->NotifyAttackStarted(AnimatingAbility);
 	auto* Control = Avatar && Avatar->HasAuthority() ? Avatar->FindComponentByClass<URPGCombatControlComponent>() : nullptr;
 	TArray<FRPGMontageImmunityWindow> Windows;
 	if (Control)

@@ -9,6 +9,7 @@
 #include "Ability/RPGPlayerGameplayAbility.h"
 #include "RPGGameplayTags.h"
 #include "Component/Combat/PawnCombatComponent.h"
+#include "Component/Equipment/RPGPlayerWeaponLoadoutComponent.h"
 #include "Component/RPGPlayerMovementComponent.h"
 #include "Component/RPGSecurityValidationComponent.h"
 #include "GameFramework/Character.h"
@@ -185,9 +186,18 @@ void URPGAbilitySystemComponent::CheckActiveEffectDuration(const FActiveGameplay
 	ActiveGameplayEffects.CheckDuration(Handle);
 }
 
+void URPGAbilitySystemComponent::NotifyAbilityActivated(FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability)
+{
+	if (auto* Avatar = GetAvatarActor())
+		if (auto* Loadout = Avatar->FindComponentByClass<URPGPlayerWeaponLoadoutComponent>())
+			Loadout->NotifyAttackStarted(Ability);
+	Super::NotifyAbilityActivated(Handle, Ability);
+}
+
 void URPGAbilitySystemComponent::OnAbilityInputPressed(const FGameplayTag& InInputTag)
 {
-	if (IsDungeonGameplayRevoked(GetOwner()) || !InInputTag.IsValid())
+	if (IsDungeonGameplayRevoked(GetOwner()) || !InInputTag.IsValid()
+		|| InInputTag == RPGGameplayTags::InputTag_EquipWeapon || InInputTag == RPGGameplayTags::InputTag_UnequipWeapon)
 	{
 		return;
 	}

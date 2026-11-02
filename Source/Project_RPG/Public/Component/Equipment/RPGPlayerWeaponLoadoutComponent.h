@@ -14,6 +14,17 @@ class USkeletalMeshComponent;
 class URPGPlayerLinkedAnimLayer;
 class UAnimInstance;
 class UEnhancedPlayerInput;
+class UGameplayAbility;
+class UAnimMontage;
+struct FGameplayEventData;
+
+UENUM()
+enum class ERPGWeaponCarryState : uint8
+{
+	Stowed,
+	Drawn,
+	Sheathing
+};
 
 /** Public appearance only: no persistent item IDs, stats, or inventory records. */
 USTRUCT()
@@ -24,6 +35,8 @@ struct FRPGPlayerWeaponPresentation
 	bool bNativeManaged = false;
 	UPROPERTY()
 	TObjectPtr<ARPGPlayerWeapon> ActiveWeapon;
+	UPROPERTY()
+	ERPGWeaponCarryState CarryState = ERPGWeaponCarryState::Stowed;
 };
 
 /** Owns the active weapon's runtime loadout, never item ownership or transactions. */
@@ -45,12 +58,22 @@ public:
 	UFUNCTION()
 	void RefreshPresentation();
 	bool IsNativeManaged() const { return Presentation.bNativeManaged; }
+	/** Called only for accepted GAS attacks and each actual attack montage/combination step. */
+	void NotifyAttackStarted(const UGameplayAbility* Ability);
+	static bool IsAttackAbility(const UGameplayAbility* Ability);
 
 private:
 	friend class FRPGWeaponLoadoutLifecycleTest;
 	friend class FRPGWeaponLoadoutAuthorityTest;
 	friend class FRPGWeaponLoadoutInputTest;
 	friend class FRPGWeaponStanceTest;
+	friend class FRPGWeaponAutoStowTest;
+	void ApplyCarryPresentation();
+	void ScheduleAutoStow(float Delay);
+	void TryAutoStow();
+	void HandleStowEvent(const FGameplayEventData* Data);
+	void HandleStowMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	void ReleaseAutoStow();
 	void BindEquipment();
 	void BindAnimation();
 	void UnbindAnimation();
@@ -69,6 +92,13 @@ private:
 
 	UPROPERTY(ReplicatedUsing = OnRep_Presentation)
 	FRPGPlayerWeaponPresentation Presentation;
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon Loadout|Auto Stow")
+	TSoftObjectPtr<UAnimMontage> StowMontage;
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> PlayingStowMontage;
+	FTimerHandle AutoStowTimer;
+	TWeakObjectPtr<URPGAbilitySystemComponent> EventASC;
+	FDelegateHandle StowEventHandle;
 
 	/** Retains the existing equip ability's runtime level instead of inventing a balance level. */
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon Loadout", meta = (Categories = "InputTag"))

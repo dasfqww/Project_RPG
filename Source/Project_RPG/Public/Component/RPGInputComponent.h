@@ -137,6 +137,9 @@ inline void URPGInputComponent::BindAbilityInputAction(const UDataAsset_InputCon
 	for (const FWarriorInputActionConfig& AbilityInputActionConfig : InInputConfig->AbilityInputActions)
 	{
 		if (!AbilityInputActionConfig.IsValid()) continue;
+		// Weapon carry is automatic. Retain authored data for compatibility, without binding commands.
+		if (AbilityInputActionConfig.InputTag.ToString() == TEXT("InputTag.EquipWeapon")
+			|| AbilityInputActionConfig.InputTag.ToString() == TEXT("InputTag.UnequipWeapon")) continue;
 		
 		BindAction(AbilityInputActionConfig.InputAction, ETriggerEvent::Started, ContextObject, InputPressedFunc,
 				AbilityInputActionConfig.InputTag);

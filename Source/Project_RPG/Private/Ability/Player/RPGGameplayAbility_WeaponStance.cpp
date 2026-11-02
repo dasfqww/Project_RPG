@@ -27,23 +27,7 @@ bool URPGGameplayAbility_WeaponStance::CanActivateAbility(const FGameplayAbility
 	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags,
 	const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
 {
-	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags)) return false;
-	const AActor* Avatar = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
-	if (!RPGWeaponStance::IsNative(Avatar)) return true;
-	const auto* Equipment = Avatar->FindComponentByClass<URPGAuthoritativeEquipmentComponent>();
-	if (!Equipment || Equipment->GetActiveEquipState() == DesiredWeaponState) return false;
-	if (DesiredWeaponState == EEquipState::None) return true;
-	if (DesiredWeaponState != EEquipState::WeaponSet_Primary && DesiredWeaponState != EEquipState::WeaponSet_Secondary) return false;
-	const bool bSecondary = DesiredWeaponState == EEquipState::WeaponSet_Secondary;
-	for (const EEquipmentSlotType Slot : {
-		bSecondary ? EEquipmentSlotType::Weapon_Secondary_L : EEquipmentSlotType::Weapon_Primary_L,
-		bSecondary ? EEquipmentSlotType::Weapon_Secondary_R : EEquipmentSlotType::Weapon_Primary_R })
-	{
-		FRPGEquipmentSnapshot Snapshot;
-		// Match the loadout/combat selector: a pending first slot cannot borrow the other hand.
-		if (Equipment->FindSnapshotInSlot(Slot, Snapshot))
-			return IsValid(Cast<ARPGPlayerWeapon>(Snapshot.EquippedActor));
-	}
+	// Retained as the startup grant-level source for existing assets. Carry commands are retired.
 	return false;
 }
 

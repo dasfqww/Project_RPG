@@ -69,7 +69,8 @@ struct FFixture
 			Special.AbilityToGrant = URPGGameplayAbility::StaticClass();
 			Weapon->PlayerWeaponData.SpecialWeaponAbilities = { Special };
 		}
-		Combat->RegisterSpawnedWeapon(RPGGameplayTags::InputTag_EquipWeapon, Startup, true);
+		// Retirement fixture only; automatic startup selection is covered by RPGWeaponAutoStowTests.
+		Combat->RegisterSpawnedWeapon(RPGGameplayTags::InputTag_EquipWeapon, Startup, false);
 		FGameplayAbilitySpec Equip(URPGGameplayAbility_WeaponStance::StaticClass(), 3);
 		Equip.SourceObject = Avatar;
 		Equip.GetDynamicSpecSourceTags().AddTag(RPGGameplayTags::InputTag_EquipWeapon);
@@ -216,7 +217,7 @@ bool FRPGWeaponLoadoutAuthorityTest::RunTest(const FString&)
 	TestTrue(TEXT("Appearance replicates to relevant observers, not owner only"), Lifetime && Lifetime->Condition == COND_None);
 	int32 FieldCount = 0;
 	for (TFieldIterator<FProperty> It(FRPGPlayerWeaponPresentation::StaticStruct()); It; ++It) ++FieldCount;
-	TestEqual(TEXT("Public view only contains native gate and actor reference"), FieldCount, 2);
+	TestEqual(TEXT("Public view only contains native gate, actor and carry state"), FieldCount, 3);
 	TestNull(TEXT("No item GUID in public appearance"), FindFProperty<FProperty>(FRPGPlayerWeaponPresentation::StaticStruct(), TEXT("ItemId")));
 	return true;
 }
@@ -277,12 +278,10 @@ bool FRPGWeaponStanceTest::RunTest(const FString&)
 	auto* Stow = Cast<URPGGameplayAbility_WeaponStance>(F.ASC->FindAbilitySpecFromHandle(StowHandle)->GetPrimaryInstance());
 	if (!TestNotNull(TEXT("Stance ability instance"), Stow)) return false;
 	Stow->DesiredWeaponState = EEquipState::None;
-	TestTrue(TEXT("Server can activate native stow"), F.ASC->TryActivateAbility(StowHandle, false));
-	TestEqual(TEXT("Stow changes only native active state"), F.Equipment->GetActiveEquipState(), EEquipState::None);
-	TestTrue(TEXT("Self-removing stow activation safely releases active grants"), F.Loadout->GrantedHandles.IsEmpty());
-	TestTrue(TEXT("Native equip can activate without legacy Blueprint side effects"), F.ASC->TryActivateAbility(F.EquipHandle, false));
-	TestEqual(TEXT("Equip selects primary native set"), F.Equipment->GetActiveEquipState(), EEquipState::WeaponSet_Primary);
-	TestEqual(TEXT("Equip restores exactly one native loadout"), F.Loadout->GrantedHandles.Num(), 2);
+	TestFalse(TEXT("Manual stow command is retired even through direct GAS activation"), F.ASC->TryActivateAbility(StowHandle, false));
+	TestFalse(TEXT("Manual equip command is retired even through direct GAS activation"), F.ASC->TryActivateAbility(F.EquipHandle, false));
+	TestEqual(TEXT("Retired commands preserve selected native set"), F.Equipment->GetActiveEquipState(), EEquipState::WeaponSet_Primary);
+	TestEqual(TEXT("Retired commands preserve exactly one native loadout"), F.Loadout->GrantedHandles.Num(), 2);
 	F.Equipment->SetActiveEquipState(EEquipState::None);
 	F.Equipment->EquipmentSnapshots[0].EquippedActor = nullptr;
 	F.Equipment->OnRep_EquipmentSnapshots();

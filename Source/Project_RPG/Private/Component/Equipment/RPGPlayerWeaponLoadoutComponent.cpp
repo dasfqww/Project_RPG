@@ -2,7 +2,10 @@
 #include "Combat/RPGCombatControlTypes.h"
 
 #include "Ability/RPGGameplayAbility.h"
+#include "Ability/RPGComboSkillAbility.h"
+#include "Skill/RPGGameplayAbility_SkillContainer.h"
 #include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "AnimInstance/Player/RPGPlayerLinkedAnimLayer.h"
 #include "Component/Combat/PawnCombatComponent.h"
 #include "Component/Equipment/RPGAuthoritativeEquipmentComponent.h"
@@ -18,12 +21,28 @@
 #include "Net/UnrealNetwork.h"
 #include "RPGGameplayTags.h"
 #include "PlayerClass/RPGPlayerClassComponent.h"
+#include "Security/RPGDungeonGameplayAuthority.h"
+#include "TimerManager.h"
+
+namespace RPGAutoStow
+{
+const FName HandSocket(TEXT("WeaponHandSocket"));
+const FName BackSocket(TEXT("WeaponBackSocket"));
+const FName Section(TEXT("Unequip"));
+constexpr float IdleSeconds = 10.f;
+FGameplayTag EventTag()
+{
+	return FGameplayTag::RequestGameplayTag(TEXT("Player.Event.Unequip.GreatSword"));
+}
+}
 
 URPGPlayerWeaponLoadoutComponent::URPGPlayerWeaponLoadoutComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);
 	AbilityLevelSourceInputTag = RPGGameplayTags::InputTag_EquipWeapon;
+	StowMontage = TSoftObjectPtr<UAnimMontage>(FSoftObjectPath(
+		TEXT("/Game/Blueprints/Character/Player/Anim/Montage/AM_GreatSword_Equip.AM_GreatSword_Equip")));
 }
 
 void URPGPlayerWeaponLoadoutComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -48,6 +67,7 @@ void URPGPlayerWeaponLoadoutComponent::BeginPlay()
 
 void URPGPlayerWeaponLoadoutComponent::OnUnregister()
 {
+	ReleaseAutoStow();
 	UnbindAnimation();
 	if (auto* Equipment = ObservedEquipment.Get())
 	{
@@ -65,6 +85,7 @@ void URPGPlayerWeaponLoadoutComponent::OnUnregister()
 
 void URPGPlayerWeaponLoadoutComponent::EndPlay(const EEndPlayReason::Type Reason)
 {
+	ReleaseAutoStow();
 	UnbindAnimation();
 	ReleaseAbilities();
 	ReleasePresentation();
@@ -222,10 +243,30 @@ void URPGPlayerWeaponLoadoutComponent::RefreshLoadout()
 	FRPGEquipmentSnapshot Snapshot;
 	auto* Weapon = bNative && Equipment->FindWeaponSnapshot(EWeaponHandType::Count, Snapshot)
 		? Cast<ARPGPlayerWeapon>(Snapshot.EquippedActor) : nullptr;
+	// The authored startup sword also stays usable while carried on the back.
+	if (!bNative)
+	{
+		if (auto* Combat = GetOwner()->FindComponentByClass<UPawnCombatComponent>())
+		{
+			Weapon = Cast<ARPGPlayerWeapon>(Combat->GetCharacterCurrentEquippedWeapon());
+			if (!Weapon)
+			{
+				Weapon = Cast<ARPGPlayerWeapon>(Combat->GetCharacterHasWeaponByTag(RPGGameplayTags::Player_Weapon_GreatSword));
+				if (Weapon) Combat->CurrentEquippedWeaponTag = RPGGameplayTags::Player_Weapon_GreatSword;
+			}
+		}
+	}
 	if (!IsValid(Weapon)) Weapon = nullptr;
 	if (bNative) RetireStartupResources();
 	else RestoreStartupVisibility();
 	auto* ASC = GetOwner()->FindComponentByClass<URPGAbilitySystemComponent>();
+	if (ASC != EventASC.Get())
+	{
+		ReleaseAutoStow();
+		EventASC = ASC;
+		if (ASC) StowEventHandle = ASC->GenericGameplayEventCallbacks.FindOrAdd(RPGAutoStow::EventTag())
+			.AddUObject(this, &ThisClass::HandleStowEvent);
+	}
 	int32 Level = 0;
 	const bool bReady = Weapon && ASC && ASC->IsOwnerActorAuthoritative()
 		&& ASC->GetAvatarActor() == GetOwner() && ResolveGrantLevel(*ASC, Level);
@@ -239,6 +280,8 @@ void URPGPlayerWeaponLoadoutComponent::RefreshLoadout()
 	ARPGPlayerWeapon* Presented = bReady && GrantedItemId == Snapshot.ItemId ? Weapon : nullptr;
 	if (Presentation.bNativeManaged != bNative || Presentation.ActiveWeapon != Presented)
 	{
+		if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(AutoStowTimer);
+		Presentation.CarryState = ERPGWeaponCarryState::Stowed;
 		Presentation.bNativeManaged = bNative;
 		Presentation.ActiveWeapon = Presented;
 		GetOwner()->ForceNetUpdate();
@@ -329,8 +372,8 @@ void URPGPlayerWeaponLoadoutComponent::RefreshPresentation()
 	if (!GetOwner() || bRefreshingPresentation) return;
 	TGuardValue<bool> Guard(bRefreshingPresentation, true);
 	BindAnimation();
-	if (!Presentation.bNativeManaged) { ReleasePresentation(); return; }
-	RetireStartupPresentation(); // Retry when possession or the animation instance arrives later.
+	if (!Presentation.bNativeManaged && !Presentation.ActiveWeapon) { ReleasePresentation(); return; }
+	if (Presentation.bNativeManaged) RetireStartupPresentation(); // Retry on possession/animation initialization.
 	const auto* Character = Cast<ACharacter>(GetOwner());
 	USkeletalMeshComponent* Mesh = Character ? Character->GetMesh() : nullptr;
 	UAnimInstance* AnimInstance = Mesh ? Mesh->GetAnimInstance() : nullptr;
@@ -349,4 +392,125 @@ void URPGPlayerWeaponLoadoutComponent::RefreshPresentation()
 	ULocalPlayer* Local = Controller && Controller->IsLocalController() ? Controller->GetLocalPlayer() : nullptr;
 	ApplyInputContext(Local ? Local->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr,
 		Weapon ? Weapon->PlayerWeaponData.WeaponInputMappingContext.Get() : nullptr);
+	ApplyCarryPresentation();
+}
+
+bool URPGPlayerWeaponLoadoutComponent::IsAttackAbility(const UGameplayAbility* Ability)
+{
+	return Ability && (Ability->IsA<URPGComboSkillAbility>() || Ability->IsA<URPGGameplayAbility_SkillContainer>()
+		|| Ability->GetAssetTags().HasTag(FGameplayTag::RequestGameplayTag(TEXT("Player.Ability.Attack"))));
+}
+
+void URPGPlayerWeaponLoadoutComponent::NotifyAttackStarted(const UGameplayAbility* Ability)
+{
+	if (!IsAttackAbility(Ability) || !GetOwner() || IsDungeonGameplayRevoked(GetOwner())
+		|| !Presentation.ActiveWeapon) return;
+	const auto* Pawn = Cast<APawn>(GetOwner());
+	if (!GetOwner()->HasAuthority() && (!Pawn || !Pawn->IsLocallyControlled())) return;
+	Presentation.CarryState = ERPGWeaponCarryState::Drawn;
+	ApplyCarryPresentation(); // Before the attack's Blueprint/montage can open weapon collision.
+	if (GetOwner()->HasAuthority())
+	{
+		GetOwner()->ForceNetUpdate();
+		ScheduleAutoStow(RPGAutoStow::IdleSeconds);
+	}
+}
+
+void URPGPlayerWeaponLoadoutComponent::ScheduleAutoStow(const float Delay)
+{
+	if (GetWorld()) GetWorld()->GetTimerManager().SetTimer(AutoStowTimer, this, &ThisClass::TryAutoStow, Delay, false);
+}
+
+void URPGPlayerWeaponLoadoutComponent::TryAutoStow()
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !Presentation.ActiveWeapon
+		|| Presentation.CarryState != ERPGWeaponCarryState::Drawn || IsDungeonGameplayRevoked(GetOwner())) return;
+	const auto* ASC = EventASC.Get();
+	if (!ASC || ASC->GetAvatarActor() != GetOwner() || ASC->HasMatchingGameplayTag(RPGGameplayTags::Shared_Status_Death)) return;
+	bool bBusy = RPGCombatControl::IsActionBlocked(GetOwner());
+	for (const auto& Spec : ASC->GetActivatableAbilities()) bBusy |= Spec.IsActive() && IsAttackAbility(Spec.Ability);
+	const auto* Character = Cast<ACharacter>(GetOwner());
+	auto* Anim = Character && Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr;
+	if (bBusy || (Anim && Anim->IsAnyMontagePlaying()))
+	{
+		ScheduleAutoStow(0.25f); // A long hold/cast/reaction must finish before the idle animation.
+		return;
+	}
+	Presentation.CarryState = ERPGWeaponCarryState::Sheathing;
+	ApplyCarryPresentation();
+	GetOwner()->ForceNetUpdate();
+}
+
+void URPGPlayerWeaponLoadoutComponent::ApplyCarryPresentation()
+{
+	const auto* Character = Cast<ACharacter>(GetOwner());
+	auto* Mesh = Character ? Character->GetMesh() : nullptr;
+	auto* Weapon = Presentation.ActiveWeapon.Get();
+	if (!Mesh || !IsValid(Weapon)) return;
+	auto* Anim = Mesh->GetAnimInstance();
+	if (Presentation.CarryState == ERPGWeaponCarryState::Drawn && PlayingStowMontage)
+	{
+		UAnimMontage* Previous = PlayingStowMontage;
+		PlayingStowMontage = nullptr; // Ignore the interrupted end callback on an immediate re-attack.
+		if (Anim) Anim->Montage_Stop(0.1f, Previous);
+	}
+	if (Presentation.CarryState == ERPGWeaponCarryState::Sheathing)
+	{
+		if (PlayingStowMontage) return;
+		UAnimMontage* Montage = Anim ? StowMontage.LoadSynchronous() : nullptr;
+		if (Anim && Montage && Montage->GetSectionIndex(RPGAutoStow::Section) != INDEX_NONE)
+		{
+			PlayingStowMontage = Montage;
+			if (Anim->Montage_Play(Montage) > 0.f)
+			{
+				Anim->Montage_JumpToSection(RPGAutoStow::Section, Montage);
+				FOnMontageEnded End;
+				End.BindUObject(this, &ThisClass::HandleStowMontageEnded);
+				Anim->Montage_SetEndDelegate(End, Montage);
+				return; // Authored gameplay-event notify moves the sword during the animation.
+			}
+			PlayingStowMontage = nullptr;
+		}
+		if (!GetOwner()->HasAuthority()) return;
+		Presentation.CarryState = ERPGWeaponCarryState::Stowed;
+		GetOwner()->ForceNetUpdate();
+	}
+	const FName Socket = Presentation.CarryState == ERPGWeaponCarryState::Drawn ? RPGAutoStow::HandSocket : RPGAutoStow::BackSocket;
+	if (Mesh->DoesSocketExist(Socket)) Weapon->AttachToComponent(Mesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, Socket);
+}
+
+void URPGPlayerWeaponLoadoutComponent::HandleStowEvent(const FGameplayEventData*)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || Presentation.CarryState != ERPGWeaponCarryState::Sheathing
+		|| !PlayingStowMontage) return;
+	Presentation.CarryState = ERPGWeaponCarryState::Stowed;
+	ApplyCarryPresentation();
+	GetOwner()->ForceNetUpdate();
+}
+
+void URPGPlayerWeaponLoadoutComponent::HandleStowMontageEnded(UAnimMontage* Montage, const bool bInterrupted)
+{
+	if (PlayingStowMontage != Montage) return;
+	PlayingStowMontage = nullptr;
+	if (!GetOwner() || !GetOwner()->HasAuthority() || Presentation.CarryState != ERPGWeaponCarryState::Sheathing) return;
+	Presentation.CarryState = bInterrupted ? ERPGWeaponCarryState::Drawn : ERPGWeaponCarryState::Stowed;
+	ApplyCarryPresentation(); // Completion fallback for a montage with a missing/disabled notify.
+	GetOwner()->ForceNetUpdate();
+	if (bInterrupted) ScheduleAutoStow(0.25f);
+}
+
+void URPGPlayerWeaponLoadoutComponent::ReleaseAutoStow()
+{
+	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(AutoStowTimer);
+	if (auto* ASC = EventASC.Get())
+		if (auto* Event = ASC->GenericGameplayEventCallbacks.Find(RPGAutoStow::EventTag())) Event->Remove(StowEventHandle);
+	EventASC.Reset();
+	StowEventHandle.Reset();
+	if (auto* Character = Cast<ACharacter>(GetOwner()))
+		if (auto* Anim = Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr)
+		{
+			auto* Previous = PlayingStowMontage.Get();
+			PlayingStowMontage = nullptr;
+			if (Previous) Anim->Montage_Stop(0.f, Previous);
+		}
 }
