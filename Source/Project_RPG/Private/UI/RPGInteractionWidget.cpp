@@ -43,7 +43,12 @@ void URPGInteractionWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
-	InteractionProgressBar->PercentDelegate.BindUFunction(this, "UpdateInteractionProgress");
+	// Timed interaction presentation is owned by the common action progress module.
+	if (InteractionProgressBar)
+	{
+		InteractionProgressBar->PercentDelegate.Unbind();
+		InteractionProgressBar->SetVisibility(ESlateVisibility::Collapsed);
+	}
 }
 
 void URPGInteractionWidget::NativeConstruct()

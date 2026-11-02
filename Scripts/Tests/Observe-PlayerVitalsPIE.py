@@ -16,6 +16,7 @@ params = {str(k).lower(): str(v) for k, v in params.items()}
 if not any(str(p).lower() == 'rpgobserveplayervitalspie' for p in switches):
     raise RuntimeError('Explicit owned Vitals PIE flag required')
 output = pathlib.Path(params['rpgvitalspieoutput']).resolve()
+observe_changes = any(str(s).lower() == 'rpghudchangespie' for s in switches)
 if output.name != 'Vitals.json' or output.parent.parent.name != 'TrainingPlaytest':
     raise RuntimeError('Output must belong to this training verification run')
 
@@ -92,8 +93,11 @@ def observe(delta):
             pawn = pc.get_controlled_pawn() if pc else None
             if not isinstance(pawn, unreal.RPGPlayer):
                 continue
+            hud = pc.get_hud()
+            owned_root = hud.get_player_hud_widget() if isinstance(hud, unreal.RPGHUD) and hasattr(hud, 'get_player_hud_widget') else None
             modules = [w for w in unreal.WidgetLibrary.get_all_widgets_of_class(world, unreal.RPGPlayerVitalsWidget, False)
-                       if w.get_owning_player() == pc and w.get_class().get_name() == 'WBP_PlayerVitals_C']
+                       if w.get_owning_player() == pc and w.get_class().get_name() == 'WBP_PlayerVitals_C'
+                       and (owned_root is None or inside(w, owned_root))]
             if not modules:
                 state['last_status'] = 'WaitingForAuthoredVitals'
                 save()
@@ -102,10 +106,9 @@ def observe(delta):
                 raise RuntimeError('Expected exactly one authored Vitals module')
             module = modules[0]
             parents = [w for w in unreal.WidgetLibrary.get_all_widgets_of_class(world, unreal.UserWidget, True)
-                       if w.get_class().get_name() == 'WBP_PlayerHUD_C' and inside(module, w)]
+                       if w.get_class().get_name() == 'WBP_PlayerHUD_C' and w.is_in_viewport() and w.get_owning_player() == pc]
             if len(parents) != 1 or not parents[0].is_in_viewport():
                 raise RuntimeError('Vitals must be inside the displayed original PlayerHUD')
-            hud = pc.get_hud()
             owner = None
             if isinstance(hud, unreal.RPGHUD) and hasattr(hud, 'get_player_hud_widget'):
                 if hud.get_player_hud_widget() != parents[0] or parents[0].get_owning_player() != pc:
@@ -150,6 +153,60 @@ def observe(delta):
                     chain.append(geometry(current_widget))
                     current_widget = current_widget.get_parent()
                 controls[kind]['ancestors'] = chain
+            if observe_changes:
+                notices = [w for w in unreal.WidgetLibrary.get_all_widgets_of_class(world, unreal.RPGPlayerNoticeWidget, False)
+                           if w.get_owning_player() == pc and w.get_class().get_name() == 'WBP_PlayerNotice_C'
+                           and inside(w, parents[0])]
+                if len(notices) != 1 or not inside(notices[0], parents[0]):
+                    raise RuntimeError('Expected a single authored notice module inside the current HUD')
+                if 'initial_values' not in state:
+                    if values['health'] != 200 or values['mana'] != 100:
+                        state['last_status'] = 'WaitingForInitialVitals'
+                        save()
+                        continue
+                    state['initial_values'] = values
+                    state['initial_controls'] = controls
+                    state['initial_parent'] = parents[0].get_path_name()
+                    state['initial_pawn'] = pawn.get_name()
+                    (output.parent / 'hud-changes-initial.ready').write_text('ready', encoding='utf-8')
+                try:
+                    server = json.loads((output.parent / 'HUDChangesServer.json').read_text(encoding='utf-8-sig'))
+                    notice = json.loads((output.parent / 'HUDChangesClient.json').read_text(encoding='utf-8-sig'))
+                except (FileNotFoundError, json.JSONDecodeError, PermissionError):
+                    state['last_status'] = 'WaitingForServerEffectAndNotice'
+                    save()
+                    continue
+                if not server['passed'] or not notice['passed']:
+                    raise RuntimeError('Native server effect or client notice binding failed')
+                if 'changed_values' not in state:
+                    if values['health'] != 175 or values['mana'] != 90:
+                        state['last_status'] = 'WaitingForReplicatedVitalsChange'
+                        save()
+                        continue
+                    state['changed_values'] = values
+                    state['changed_controls'] = controls
+                    (output.parent / 'hud-changes-respawn.ready').write_text('ready', encoding='utf-8')
+                try:
+                    respawn = json.loads((output.parent / 'HUDRespawnServer.json').read_text(encoding='utf-8-sig'))
+                except (FileNotFoundError, json.JSONDecodeError, PermissionError):
+                    state['last_status'] = 'WaitingForServerRespawn'
+                    save()
+                    continue
+                if not respawn['passed']:
+                    raise RuntimeError('Server respawn failed')
+                if (parents[0].get_path_name() == state['initial_parent'] or pawn.get_name() == state['initial_pawn']
+                        or values['health'] != 200 or values['mana'] != 100):
+                    state['last_status'] = 'WaitingForRespawnedHUDAndVitals'
+                    save()
+                    continue
+                old_root = unreal.find_object(None, state['initial_parent'])
+                if old_root is not None and old_root.is_in_viewport():
+                    raise RuntimeError('Old HUD remained in the player screen after respawn')
+                if str(notices[0].get_displayed_notice()):
+                    raise RuntimeError('New Pawn inherited an old notice')
+                state['hud_changes'] = {'server': server, 'notice': notice, 'final_values': values,
+                                       'respawn': respawn, 'old_root_removed': True, 'new_notice_empty': True,
+                                       'notice_module': notices[0].get_path_name()}
             parent_size = unreal.SlateLibrary.get_local_size(parents[0].get_cached_geometry())
             module_size = unreal.SlateLibrary.get_local_size(module.get_cached_geometry())
             viewport_size = unreal.SlateLibrary.get_local_size(unreal.WidgetLayoutLibrary.get_viewport_widget_geometry(world))

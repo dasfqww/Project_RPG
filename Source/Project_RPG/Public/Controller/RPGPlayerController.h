@@ -47,6 +47,7 @@ class URPGDungeonPartyCombatWidget;
 class URPGSkillWindowComponent;
 class FRPGWindowInputState;
 class UUserWidget;
+class URPGInteractionProgressComponent;
 struct FKeyEvent;
 struct FRPGKeyMapping;
 struct FRPGInputBindingRestoreView;
@@ -208,6 +209,7 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void OnPossess(APawn* InPawn) override;
+	virtual void OnUnPossess() override;
 	virtual void OnRep_Pawn() override;
 	virtual void ClientRestart_Implementation(APawn* NewPawn) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -411,4 +413,7 @@ private:
 
 public:
 	FORCEINLINE bool IsInteracting() const { return GetWorldTimerManager().IsTimerActive(TimerHandle_Interaction); };
+private:
+	UPROPERTY(VisibleAnywhere, Category="Interaction")
+	TObjectPtr<URPGInteractionProgressComponent> InteractionProgress;
 };

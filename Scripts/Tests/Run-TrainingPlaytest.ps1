@@ -7,6 +7,7 @@ param(
     [ValidateRange(60,600)][int]$TimeoutSeconds=240,
     [switch]$ObserveActionProgressPIE,
     [switch]$ObservePlayerVitalsPIE,
+    [switch]$ObserveHUDChangesPIE,
     [switch]$ShowVitalsEditor,
     [switch]$CancelChargePIE,
     [switch]$TrainingCompletionUI,
@@ -19,6 +20,7 @@ $ErrorActionPreference='Stop'
 if($CancelChargePIE -and !$ObserveActionProgressPIE){throw 'CancelChargePIE requires ObserveActionProgressPIE'}
 if($ObservePlayerVitalsPIE -and ($ObserveActionProgressPIE -or $CancelChargePIE -or $TrainingCompletionUI)){throw 'Vitals PIE observation requires its own normal four-action run'}
 if($ShowVitalsEditor -and !$ObservePlayerVitalsPIE){throw 'ShowVitalsEditor requires ObservePlayerVitalsPIE'}
+if($ObserveHUDChangesPIE -and !$ObservePlayerVitalsPIE){throw 'ObserveHUDChangesPIE requires ObservePlayerVitalsPIE'}
 if($TrainingCompletionUI -and ($CancelChargePIE -or $ObserveActionProgressPIE)){throw 'TrainingCompletionUI uses the normal four-action game probe'}
 $useEditorPIE=$ObserveActionProgressPIE -or $ObservePlayerVitalsPIE
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -102,6 +104,7 @@ function Start-Peer([string]$Name,[string]$Map,[string[]]$Extra,[hashtable]$Envi
         "-ini:Game:[/Script/Project_RPG.RPGItemBackendSubsystem]:ApiUrl=$url/api",
         "-ini:Game:[/Script/Project_RPG.RPGEconomyBackendSubsystem]:ApiUrl=$url/api")
     if($CancelChargePIE -and $Name -eq 'server'){$args+='-RPGActionProgressCancelPIE'}
+    if($ObserveHUDChangesPIE){$args+='-RPGHUDChangesPIE'}
     if($TrainingCompletionUI -and $Name -eq 'client'){
         # UI completion needs the real Slate viewport tick, not a null renderer.
         $args=@($args|Where-Object {$_ -ne '-nullrhi'})
@@ -357,10 +360,26 @@ finally{
     $proof.moduleSHA256=$moduleHash;$proof.loadedModules=$observedModules.ToArray();$proof.backendInputCount=$backendHashes.Count
     if($ObserveActionProgressPIE){$proof.scope='Development/Memory/HTTP ticket/Iris/authored training map/owned full Editor PIE; input API probe, not physical keyboard';$proof.actionProgressSamples=$script:ActionProgressPIESamples.ToArray()}
     if($ObservePlayerVitalsPIE){$proof.scope='Development/Memory/HTTP ticket/Iris/authored training map/owned full Editor PIE; read-only actual Vitals controls and GAS attributes; existing input API probe, not physical keyboard'}
+    if($ObserveHUDChangesPIE){
+        # Missing/malformed proof on an early failure must never bypass the cleanup below.
+        try{
+            $serverChange=Get-Content -Raw -Encoding UTF8 -ErrorAction Stop -LiteralPath (Join-Path $runRoot 'HUDChangesServer.json') | ConvertFrom-Json
+            $clientNotice=Get-Content -Raw -Encoding UTF8 -ErrorAction Stop -LiteralPath (Join-Path $runRoot 'HUDChangesClient.json') | ConvertFrom-Json
+            $serverRespawn=Get-Content -Raw -Encoding UTF8 -ErrorAction Stop -LiteralPath (Join-Path $runRoot 'HUDRespawnServer.json') | ConvertFrom-Json
+            if(!$serverChange.passed -or !$serverChange.authority -or !$clientNotice.passed -or !$serverRespawn.passed){throw 'HUD changes proof missing or failed'}
+            $proof.hudChanges=@{server=$serverChange;notice=$clientNotice;respawn=$serverRespawn;actualHitOrAbilityCostInput=$false}
+            $proof.scope+='; opt-in server gameplay effect HP/MP deltas and production notice event; no direct UMG state setters'
+        }catch{
+            $proof.passed=$false
+            $proof.failure=([string]$proof.failure+'; HUD changes proof: '+$_.Exception.Message).Trim(';',' ')
+        }
+    }
     if($CancelChargePIE){$proof.scope+='; charge input only; real GAS cancellation/late release, no completion or XP';$proof.cancelCharge=$true}
     $proof.notVerified=@('Steam','PostgreSQL','two to four players','physical input/GPU layout','process restart/reconnect','normal shared module')
     if($ObservePlayerVitalsPIE){$proof.notVerified=@('Steam','PostgreSQL','two to four players','physical input',
         'damage and mana-consumption changes','four-action training completion/rewards','process restart/reconnect','original shared module launch')}
+    if($ObserveHUDChangesPIE){$proof.notVerified=@('Steam','PostgreSQL','two to four players','physical input',
+        'actual hit or ability-cost execution','holding/casting gameplay execution','four-action training completion/rewards','process restart/reconnect','original shared module launch')}
     $cleanupError=$null
     for($cleanupAttempt=1;$cleanupAttempt -le 20;$cleanupAttempt++){
         try{

@@ -70,10 +70,12 @@
 #include "Engine/NetConnection.h"
 #include "Engine/GameInstance.h"
 #include "Engine/OverlapResult.h"
+#include "Component/UI/RPGInteractionProgressComponent.h"
 #include "Widgets/Layout/Anchors.h"
 
 ARPGPlayerController::ARPGPlayerController()
 {
+	InteractionProgress = CreateDefaultSubobject<URPGInteractionProgressComponent>(TEXT("InteractionProgress"));
 	PlayerTeamID = FGenericTeamId(0);
 	BossVictoryWidgetClass = TSoftClassPtr<URPGWidgetBase>(FSoftObjectPath(TEXT(
 		"/Game/Blueprints/UI/GameContents/BossBattle/WBP_VictoryWidget.WBP_VictoryWidget_C")));
@@ -741,6 +743,12 @@ void ARPGPlayerController::OnRep_Pawn()
 	RefreshControlledPawnReferences();
 }
 
+void ARPGPlayerController::OnUnPossess()
+{
+	if (IsInteracting()) EndInteract();
+	Super::OnUnPossess();
+}
+
 void ARPGPlayerController::ClientRestart_Implementation(APawn* NewPawn)
 {
 	Super::ClientRestart_Implementation(NewPawn);
@@ -810,7 +818,7 @@ void ARPGPlayerController::FoundInteractable(AActor* NewInteractable)
 
 void ARPGPlayerController::NoInteractableFound()
 {
-	if (IsInteracting()) GetWorldTimerManager().ClearTimer(TimerHandle_Interaction);
+	if (IsInteracting()) EndInteract();
 
 	if (InteractionData.CurrentInteractable)
 	{
@@ -823,28 +831,42 @@ void ARPGPlayerController::NoInteractableFound()
 
 void ARPGPlayerController::BeginInteract()
 {
+	if (IsInteracting()) return;
 	PerformInteractionCheck_Around();
 	if (InteractionData.CurrentInteractable && IsValid(TargetInteractable.GetObject()))
 	{
+		TWeakObjectPtr<UObject> StartedTarget(TargetInteractable.GetObject());
+		TWeakObjectPtr<APawn> StartedPawn(GetPawn());
 		TargetInteractable->BeginInteract();
+		if (!StartedTarget.IsValid() || StartedTarget.Get() != TargetInteractable.GetObject() || StartedPawn.Get() != GetPawn()) return;
+		const float Duration = TargetInteractable->InteractableData.InteractionDuration;
+		if (!FMath::IsFinite(Duration) || Duration < 0.f) { EndInteract(); return; }
 		if (FMath::IsNearlyZero(TargetInteractable->InteractableData.InteractionDuration, 0.1f)) Interact();
 		else
 		{
 			GetWorldTimerManager().SetTimer(TimerHandle_Interaction, this, &ThisClass::Interact, TargetInteractable->InteractableData.InteractionDuration, false);
+			InteractionProgress->BeginInteraction(GetPawn(), Cast<AActor>(TargetInteractable.GetObject()),
+				TargetInteractable->InteractableData.Action, TargetInteractable->InteractableData.InteractionDuration);
 		}
 	}
 }
 
 void ARPGPlayerController::EndInteract()
 {
+	const auto PreviousTarget = TargetInteractable;
+	TStrongObjectPtr<UObject> KeepTargetAlive(PreviousTarget.GetObject());
 	GetWorldTimerManager().ClearTimer(TimerHandle_Interaction);
-	if (IsValid(TargetInteractable.GetObject())) TargetInteractable->EndInteract();
+	InteractionProgress->EndInteraction(ERPGActionProgressEndReason::Cancelled);
+	if (IsValid(PreviousTarget.GetObject())) PreviousTarget->EndInteract();
 }
 
 void ARPGPlayerController::Interact()
 {
+	const auto CompletedTarget = TargetInteractable;
+	TStrongObjectPtr<UObject> KeepTargetAlive(CompletedTarget.GetObject());
 	GetWorldTimerManager().ClearTimer(TimerHandle_Interaction);
-	if (IsValid(TargetInteractable.GetObject())) TargetInteractable->Interact(this);
+	InteractionProgress->EndInteraction(ERPGActionProgressEndReason::Completed);
+	if (IsValid(CompletedTarget.GetObject())) CompletedTarget->Interact(this);
 }
 
 void ARPGPlayerController::PressSkillSlot(const int32 SlotIndex)
@@ -1045,6 +1067,7 @@ void ARPGPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void ARPGPlayerController::RefreshControlledPawnReferences()
 {
+	if (PlayerCharacter != GetPawn() && IsInteracting()) EndInteract();
 	if (SkillWindowComponent) SkillWindowComponent->CloseWindow();
 	if (QuickSlotComponent) QuickSlotComponent->ReleaseAllSkillInputs();
 	PlayerCharacter = Cast<ARPGPlayer>(GetPawn());
@@ -1064,6 +1087,7 @@ void ARPGPlayerController::RefreshControlledPawnReferences()
 void ARPGPlayerController::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	InteractionProgress->UpdateInteraction(DeltaSeconds);
 	if (IsLocalController())
 	{
 		UpdateBossBattlePresentation();

@@ -259,6 +259,7 @@ struct FProbe
 			return Wait(10 + int32(Progress.bActive) + 2 * int32(Growth->GetSkillLoadState())
 				+ 20 * int32(Restore->GetProgressionView().State), TEXT("TrainingRestore"));
 		if (!World->GetNetDriver() || !World->GetNetDriver()->GetReplicationSystem()) return Fail(TEXT("IrisRequired"));
+		if (FParse::Param(FCommandLine::Get(), TEXT("RPGHUDChangesPIE"))) return true;
 		const int32 Mask = int32(Progress.bBasicAttackCompleted) | (int32(Progress.bEvadeCompleted) << 1)
 			| (int32(Progress.bAssaultCompleted) << 2) | (int32(Progress.bChargeCompleted) << 3);
 		if (Mask != LastMask)

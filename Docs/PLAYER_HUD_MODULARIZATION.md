@@ -867,16 +867,83 @@ None을 반환해 결과 기록에서 두 번째로 실패했다. 빈 목록 처
 저장 비교/재로드: 같은 폴더 `MigrationComparison.json`, `ReloadResult.json`.
 실제 PIE: `Saved/Tests/TrainingPlaytest/69d83302e16b465e980a6f070b0588a3/Verification.proof.json` 및 `Vitals.json`.
 
-## 다음 단계
+## 2026-11-02 — 남은 표시 모듈과 상호작용 생산자 이관 완료
 
-1. Vitals의 실제 피해/마나 소비에 따른 변화를 확인한다. 초기 값·구독 해제·Pawn 교체는 기존 native,
-   저장 모듈의 실제 표시/초기 GAS 값 일치와 불필요한 시간 문구 정리는 위 표시 PIE에서 확인했다.
-   고유 능력 표시의 독립 모듈화는 별도 후속이며 실제 호출·담당 예약부터 재조회한다.
-2. 홀딩/캐스팅 및 원하는 작성 외형/배치를 실제 플레이에서 확인한다. 차지의 PIE 표시·
-   완충·입력 해제 후 숨김과 실제 GAS 취소·늦은 입력 해제는 위 회차에서 통과했다. 현대/레거시 생산자와
-   HUD 연결·고유 이름·배치 설정 및 부모 진행 바/그래프 정리는 정상 모듈 포함을 확인했다.
-   옛 C++ 호환 API는 남아 있으며 상호작용 생산자는 실제 호출 경로 확인 후 연결한다.
-3. 알림의 문구·표시 시간 관리를 분리하고, 옛 스킬 행/미연결 이벤트는 실제 참조와 애니메이션을 확인해 정리한다.
+`WBP_PlayerHUD`는 모듈의 배치를 소유한다. 알림의 상태/수명은 native 위젯으로,
+아이덴티티의 기존 게이지/아이콘/활성 애니메이션은 독립 WBP로 옮겼다.
+부모 EventGraph에는 우편 버튼을 여는 4노드만 남았다.
 
-각 후속 착수 전 [로드맵 12절](Online_RPG_Development_Roadmap.md)의 최신 예약을 다시 확인한다.
-훈련 안내를 생성하는 `RPGHUD`와 이번 `WBP_PlayerHUD`의 스킬바 추출은 별도 작업이다.
+| 책임 | 편집 위치 |
+|---|---|
+| 모듈 배치와 우편 버튼 | `WBP_PlayerHUD` |
+| 알림 외형 | `Modules/WBP_PlayerNotice` |
+| 알림 교체·3초 수명·Pawn/UI 구독 해제 | `URPGPlayerNoticeWidget` |
+| 기존 아이덴티티 게이지·아이콘·InterpUp | `Modules/WBP_PlayerIdentity` |
+| 상호작용 진행 데이터와 실행 핸들 | `URPGInteractionProgressComponent` |
+| 상호작용 완료 타이머·대상 호출 | 기존 `ARPGPlayerController` |
+| Holding/Casting/Charge/Interaction 공통 표시 | 기존 `PlayerUIComponent`와 진행 표시 모듈 |
+
+알림은 `OnNoticeTextChanged`를 구독한다. 새 문구가 이전 문구와 만료 타이머를 대체하며,
+빈 문구·잘못된 수명·소스 종료·빙의 변경·Destruct 때 비운다. 만료 revision으로 이전 타이머가
+새 문구를 지우지 못하게 했다. 외형/배치는 보존하고 초기 `Notice` 문구는 숨겼다.
+부모의 Assign/SetText/Delay/Visibility 체인과 중복 알림 이벤트를 제거했다.
+
+아이덴티티는 기존 Rage 이벤트 채널과 19개 연결 노드, 두 표시 위젯의 속성/배치,
+`InterpUp` 애니메이션의 이름·구간·바인딩을 보존했다. 클래스별 게이지 규칙이나 새 폭주 수치를
+이 추출에서 바꾸지는 않았다. 전체 화면 모듈/루트는 SelfHitTestInvisible로 설정했다.
+부모의 미연결 Construct/Tick/중복 이벤트와 참조 없는 UpdateValue도 제거했다.
+직접 참조자의 함수 호출과 Designer binding을 확인했으며, 계속 참조되는 공용 템플릿은 유지했다.
+
+상호작용은 기존 Controller의 Begin/완료/취소 경로에서 공통 진행 API를 호출한다.
+새 컴포넌트에는 Tick이 없고 기존 Controller Tick에서 활성 실행만 갱신한다.
+PlayerUIComponent에 Tick을 추가하지 않았다. 대상 소멸·Pawn 변경·컴포넌트 해제 때 자기 핸들만
+종료하며, 새 스킬 표시로 대체되면 이전 상호작용의 갱신/종료가 새 표시를 지우지 못한다.
+public End API는 SourceLost를 허용하지 않으므로 생산자는 수명 종료를 Interrupted로 변환한다.
+기존 상호작용 위젯의 항상 0을 반환하는 Percent 바인딩은 해제하고 해당 바를 숨겼다.
+참조가 완전히 조사되지 않은 옛 C++ 호환 getter는 유지했다.
+
+`ExtractPlayerHUDModules.py`와 `ExtractPlayerHUDIdentity.py`는 기본 읽기 전용이며,
+각각 명시적 적용 플래그에서만 저장한다. 소유 예약/dirty package/참조와 관련 없는 위젯 속성까지
+대조한다. Editor 전용 `URPGHUDModuleTools`는 애니메이션 복사본과 바인딩을 검증한 뒤,
+엔진의 애니메이션 삭제 절차처럼 원본 객체와 변수 GUID를 함께 정리한다.
+최종 새 Cmd 재로드·Blueprint 컴파일·추가 저장0을 확인했다.
+
+빌드에서는 추적 상태가 바뀐 기존 테스트들이 Unity 파일 하나로 합쳐져 익명 namespace 이름이
+충돌하는 문제를 발견했다. 게임 모듈의 `bUseUnity=false`로 번역 단위 경계를 고정했다.
+설치 UE5.8의 CLI DisableUnity만으로는 해결되지 않았으며, 다른 테스트를 수정하지 않고
+정상 전체 682작업과 후속 증분 빌드가 통과했다.
+
+검증은 다음 범위에서 끝났다.
+
+- native14: 새 Notice3/Interaction3와 기존 HUD2/ProgressHUD2/Vitals4 모두 Success, 오류0.
+  기존 배치 검사에서 에셋 로딩 경고139는 남는다. 모듈 `445472C5…ABA3CA5`의 닫힌 사본 결과다.
+- 최종 실제 HTTP 입장/Iris 소유 클라이언트 PIE: 서버 GameplayEffect로 HP200→175/MP100→90,
+  실제 GAS/텍스트/바 값 일치와 생산 알림 이벤트를 확인했다. Holding/Casting API 및 Interaction
+  생산자의 데이터가 실제 UMG의 종류/문구/바/종료 숨김에 반영되고 늦은 핸들 종료가 거절됐다.
+- 서버 Pawn 교체/재빙의 뒤 새 HUD와 200/100 초기값, 이전 HUD의 화면 제거, 알림 초기화를 확인했다.
+  마지막 화면의 Slate 배치와 PNG도 확인했다. 서버/클라이언트 종료0/0·예상 밖 오류0/0이다.
+  PIE 모듈 `F84EF1C1…D5A7483B`는 위 native 이후 opt-in 검증 probe만 보완한 빌드다.
+  제품 소스와 에셋을 바꿔 native 성공을 재사용한 것은 아니다.
+- 마지막 러너의 finally 결과 읽기만 보완한 뒤, 결과 누락/깨진 JSON/정상 결과3사례에서 기존 실패를
+  보존하고 정리 단계로 계속 진행함을 확인했다. 게임 검증은 반복하지 않았다.
+
+Holding/Casting은 **source API를 통한 표시 자극**이며 실제 해당 GAS 스킬 발동을 뜻하지 않는다.
+Interaction도 생산자 API 표시 검사이며 물리 입력/완료 타이머의 게임플레이 E2E는 아니다.
+실제 피격/스킬 비용 실행, 제품 사망/부활, 다인/Steam/PostgreSQL은 이 성공 범위에 포함하지 않는다.
+첫 PIE의 이전 Pawn 즉시 Destroy로 발생한 in-flight Iris 오류2는 실패로 보존했다.
+최종 probe는 이전 Pawn을 숨기고 월드 종료까지 유지해 재빙의 표시 수명만 검사했다.
+첫 추출/fixture/빌드 실패도 최종 성공으로 소급하지 않는다.
+
+자기 runtime/DLL/UserDir/캐시·중복 작성본/중간 PNG를 **최소 1,233,838,964 bytes(1.149GiB)**
+폐기했다. 첫 잠금 정리의 부분 삭제량이 측정되지 않아 합계는 하한이다.
+자기 Temp/실행 잔여·정리 예외0, 원본 Binaries/Intermediate·공유 DDC·타 담당 산출물은 유지했다.
+최종 PNG 하나(856,675 bytes)와 작은 명령/해시/필요 로그만 보존했다.
+폐기한 모듈 해시는 당시 증거로만 취급한다.
+
+기능에 필요한 native 회귀 검사와 명시적 opt-in PIE 경로는 기능 변경에 함께 유지한다.
+검증 결과/로그/캡처/Saved의 임시 실행기는 커밋 대상에서 제외한다.
+결과: `Saved/BuildChecks/HudRemaining-20261102/CompletionResult.json`.
+실제 PIE: `Saved/Tests/TrainingPlaytest/e5b74944018b47a5b37aea69f938a0e9/Verification.proof.json`.
+
+현재 요청한 잔여 HUD 모듈화/상호작용 연결/표시 검증 범위는 완료했다.
+새 게임플레이 규칙이나 추가 플레이 시나리오는 해당 담당/사용자 범위를 확인한 뒤 진행한다.
