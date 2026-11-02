@@ -1,4 +1,7 @@
 #include "Skill/RPGGameplayAbility_SkillContainer.h"
+#include "Skill/RPGApprovedSkillHitEvent.h"
+#include "Component/Equipment/RPGAuthoritativeEquipmentComponent.h"
+#include "UObject/StrongObjectPtr.h"
 #include "Ability/Skill/RPGGreatSwordResolveAbility.h"
 #if !UE_BUILD_SHIPPING
 #include "Tests/RPGSkillNetworkE2EProbeComponent.h"
@@ -104,6 +107,18 @@ void URPGGameplayAbility_SkillContainer::ActivateAbility(
 	SkillMontageAnimInstance.Reset();
 	SkillMontageInstanceId = INDEX_NONE;
 	CaptureSkillBossEncounters(ActorInfo ? Cast<APawn>(ActorInfo->AvatarActor.Get()) : nullptr);
+	CastEquipmentEffectContext = {};
+	CastEquipmentEffectLifetime = FRPGApprovedHitContext(ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr,
+		ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr);
+	if (AActor* Avatar = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr)
+	{
+		if (auto* Equipment = Avatar->FindComponentByClass<URPGAuthoritativeEquipmentComponent>())
+		{
+			FRPGEquipmentSnapshot Weapon;
+			if (Equipment->FindWeaponSnapshot(EWeaponHandType::Count, Weapon))
+				Equipment->GetEffectContext(Weapon.SlotType, CastEquipmentEffectContext);
+		}
+	}
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 	if (!IsActive() || SkillDamageActivationSerial != ActivationSerial)
 	{
@@ -1398,6 +1413,30 @@ bool URPGGameplayAbility_SkillContainer::ExecuteAuthorizedSkillDamageInternal(
 #if !UE_BUILD_SHIPPING
 	URPGSkillNetworkE2EProbeComponent::ObserveFinalCapApplication(*this, OutAppliedHits, OutAppliedTargetCount, ServerAppliedHitCount);
 #endif
+	// Publish facts, not item-specific behavior. The payload can only be populated here,
+	// after the authoritative hit path and its reentrant callbacks have succeeded.
+	if (IsActive() && !bIsAbilityEnding && SkillDamageActivationSerial == ActivationSerial
+		&& CastEquipmentEffectContext.IsValid())
+	{
+		if (UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo())
+		{
+			TStrongObjectPtr<URPGApprovedSkillHitEvent> Event(NewObject<URPGApprovedSkillHitEvent>());
+			Event->Skill = this;
+			Event->Avatar = SourceActor;
+			Event->Lifetime = CastEquipmentEffectLifetime;
+			Event->Equipment = CastEquipmentEffectContext;
+			Event->SkillTag = ActiveSkillSpec.SkillTag;
+			Event->ActivationSerial = ActivationSerial;
+			Event->bFinisher = bAuthoredFinisher;
+			const auto* Charge = Cast<URPGSkillExecutionPolicy_Charge>(ActiveExecutionPolicy.Get());
+			Event->bMaximumCharge = Charge && Charge->WasReleasedAtMaximumCharge();
+			FGameplayEventData Payload;
+			Payload.EventTag = URPGApprovedSkillHitEvent::EventTag();
+			Payload.Instigator = SourceActor;
+			Payload.OptionalObject = Event.Get();
+			ASC->HandleGameplayEvent(Payload.EventTag, &Payload);
+		}
+	}
 	return true;
 }
 

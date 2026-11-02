@@ -1,4 +1,5 @@
 #include "Component/Combat/RPGCombatControlComponent.h"
+#include "Component/Combat/RPGShieldComponent.h"
 #include "Ability/Skill/RPGGreatSwordResolveAbility.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
@@ -85,6 +86,7 @@ void URPGCombatControlComponent::InitializeWithAbilitySystem(UAbilitySystemCompo
 	{
 		++LifetimeEpoch;
 	URPGGreatSwordResolveAbility::RevokeFor(GetOwner());
+	if (auto* Shield = GetOwner()->FindComponentByClass<URPGShieldComponent>()) Shield->ClearShields();
 		if (auto* Meter = GetOwner()->FindComponentByClass<URPGCombatContributionComponent>()) Meter->ResetForAvatarReuse();
 		Unbind();
 		EndKnockback(ERPGKnockbackEndReason::LifeChanged);
@@ -203,6 +205,7 @@ void URPGCombatControlComponent::ResetForAvatarReuse()
 {
 	++LifetimeEpoch;
 	URPGGreatSwordResolveAbility::RevokeFor(GetOwner());
+	if (auto* Shield = GetOwner()->FindComponentByClass<URPGShieldComponent>()) Shield->ClearShields();
 	if (auto* Meter = GetOwner()->FindComponentByClass<URPGCombatContributionComponent>()) Meter->ResetForAvatarReuse();
 	EndKnockback(ERPGKnockbackEndReason::LifeChanged);
 	EndAirborne(ERPGAirborneEndReason::LifeChanged);
@@ -239,6 +242,7 @@ void URPGCombatControlComponent::HandleHealthChanged(const FOnAttributeChangeDat
 	{
 		++LifetimeEpoch;
 	URPGGreatSwordResolveAbility::RevokeFor(GetOwner());
+	if (auto* Shield = GetOwner()->FindComponentByClass<URPGShieldComponent>()) Shield->ClearShields();
 		if (auto* Meter = GetOwner()->FindComponentByClass<URPGCombatContributionComponent>()) Meter->ResetForAvatarReuse();
 	}
 	RefreshControl();

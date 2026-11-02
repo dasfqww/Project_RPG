@@ -7,6 +7,40 @@
 class UGameplayEffect;
 class URPGAbilitySet;
 
+/** Shared trigger data; execution belongs to the granted equipment ability. */
+UCLASS(Abstract, BlueprintType, Const, DefaultToInstanced, EditInlineNew)
+class PROJECT_RPG_API URPGItemHitTriggerDefinitionFragment : public URPGItemDefinitionFragment
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trigger")
+	FGameplayTag RequiredSkillTag;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trigger")
+	bool bRequireMaximumCharge = false;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Trigger")
+	bool bRequireFinisher = false;
+};
+
+UCLASS(BlueprintType, Const, DefaultToInstanced, EditInlineNew)
+class PROJECT_RPG_API URPGItemShieldOnHitDefinitionFragment : public URPGItemHitTriggerDefinitionFragment
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shield", meta = (ClampMin = "0.001", ClampMax = "1.0"))
+	float MaximumHealthFraction = 0.05f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shield", meta = (ClampMin = "0.01"))
+	float DurationSeconds = 3.f;
+};
+
+UCLASS(BlueprintType, Const, DefaultToInstanced, EditInlineNew)
+class PROJECT_RPG_API URPGItemResolveOnHitDefinitionFragment : public URPGItemHitTriggerDefinitionFragment
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Resource", meta = (ClampMin = "0.01"))
+	float Amount = 20.f;
+};
+
 USTRUCT(BlueprintType)
 struct PROJECT_RPG_API FRPGItemStatRange
 {

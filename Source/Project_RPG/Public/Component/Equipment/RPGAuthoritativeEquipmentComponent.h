@@ -4,6 +4,7 @@
 #include "Component/PawnExtensionComponentBase.h"
 #include "Item/Persistence/RPGItemRecord.h"
 #include "Item/Equipment/RPGEquipmentSnapshot.h"
+#include "Item/Equipment/RPGEquipmentEffectContext.h"
 #include "Type/RPGEnumTypes.h"
 #include "RPGAuthoritativeEquipmentComponent.generated.h"
 
@@ -21,6 +22,7 @@ struct FRPGAppliedEquipmentRuntime
 	FPrimaryAssetId DefinitionId;
 	int32 DefinitionVersion = 0;
 	int64 Revision = 0;
+	FGuid EffectGrantId;
 	TArray<FRPGAbilitySet_GrantedHandles> GrantedAbilitySetHandles;
 	TObjectPtr<AActor> SpawnedActor;
 	TSharedPtr<FStreamableHandle> PendingActorLoad;
@@ -60,6 +62,9 @@ public:
 
 	bool FindWeaponSnapshot(EWeaponHandType Hand, FRPGEquipmentSnapshot& OutSnapshot) const;
 	bool HasWeaponSnapshots() const;
+	/** Native read-only proof that a cast still uses the same equipment grant and active set. */
+	bool GetEffectContext(EEquipmentSlotType Slot, FRPGEquipmentEffectContext& Out) const;
+	bool IsAbilityFromEffectContext(FGameplayAbilitySpecHandle Handle, const FRPGEquipmentEffectContext& Context) const;
 
 	UFUNCTION(BlueprintPure, Category = "RPG|Equipment")
 	EEquipState GetActiveEquipState() const { return ActiveEquipState; }
@@ -124,4 +129,5 @@ private:
 	TWeakObjectPtr<class URPGAbilitySystemComponent> ProgressionAbilitySystem;
 	float AppliedProgressionAttack = 0.f;
 	float AppliedProgressionHealth = 0.f;
+	uint64 EffectActiveStateGeneration = 0;
 };

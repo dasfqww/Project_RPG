@@ -8,6 +8,7 @@
 #include "Skill/RPGSkillRuntimeTypes.h"
 #include "Skill/RPGSkillTargetingPolicy.h"
 #include "Skill/RPGSkillTargetingTypes.h"
+#include "Item/Equipment/RPGEquipmentEffectContext.h"
 #include "RPGGameplayAbility_SkillContainer.generated.h"
 
 class URPGSkillDefinition;
@@ -38,6 +39,7 @@ class PROJECT_RPG_API URPGGameplayAbility_SkillContainer
 {
 	GENERATED_BODY()
 	friend class FRPGGreatSwordBerserkTest;
+	friend class FRPGEquipmentHitDispatchTest;
 
 public:
 	URPGGameplayAbility_SkillContainer();
@@ -257,6 +259,8 @@ protected:
 	bool bCommittedDuringBerserk = false;
 	bool bSkillCommitted = false;
 	bool bResolveHitAwarded = false;
+	FRPGEquipmentEffectContext CastEquipmentEffectContext;
+	FRPGApprovedHitContext CastEquipmentEffectLifetime;
 	bool bFinisherHitAttempted = false;
 	TWeakObjectPtr<UAnimInstance> SkillMontageAnimInstance;
 	int32 SkillMontageInstanceId = INDEX_NONE;

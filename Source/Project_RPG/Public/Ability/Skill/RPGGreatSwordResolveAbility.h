@@ -41,7 +41,7 @@ public:
 
 	/** Includes locked progression so legacy per-target gains cannot bypass acquisition. */
 	static bool IsConfiguredFor(const AActor* Avatar);
-	static void AwardConfirmedSkillHit(URPGGameplayAbility_SkillContainer& Skill);
+	static void AwardConfirmedSkillHit(URPGGameplayAbility_SkillContainer& Skill, float Amount = 20.f);
 	static void AwardCompletedBasicCombo(URPGComboSkillAbility& Combo);
 	/** Called once AFTER the skill commits. The result is frozen for all hits of that cast. */
 	static bool CanCommitSkill(const URPGGameplayAbility_SkillContainer& Skill);

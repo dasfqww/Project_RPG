@@ -244,7 +244,7 @@ void URPGGreatSwordResolveAbility::OnRemoveAbility(const FGameplayAbilityActorIn
 	Super::OnRemoveAbility(Info, Spec);
 }
 
-void URPGGreatSwordResolveAbility::AwardConfirmedSkillHit(URPGGameplayAbility_SkillContainer& Skill)
+void URPGGreatSwordResolveAbility::AwardConfirmedSkillHit(URPGGameplayAbility_SkillContainer& Skill, const float Amount)
 {
 	AActor* Avatar = Skill.GetAvatarActorFromActorInfo();
 	auto* ASC = FindASC(Avatar);
@@ -252,7 +252,7 @@ void URPGGreatSwordResolveAbility::AwardConfirmedSkillHit(URPGGameplayAbility_Sk
 	const auto* Identity = ASC ? ASC->FindAbilitySpecFromClass(StaticClass()) : nullptr;
 	if (Skill.SuppressesResolveGain() || IsBerserk(Avatar) || !Skill.IsActive() || !Owner || !Identity || !CanUseIdentity(Skill.GetCurrentActorInfo(), Identity->Handle)
 		|| !Owner->CanUseAbilitySpec(Skill.GetCurrentAbilitySpecHandle(), Skill.GetClass())) return;
-	ApplyGaugeDelta(Skill, 20.f);
+	if (FMath::IsFinite(Amount) && Amount > 0.f) ApplyGaugeDelta(Skill, Amount);
 }
 
 void URPGGreatSwordResolveAbility::AwardCompletedBasicCombo(URPGComboSkillAbility& Combo)

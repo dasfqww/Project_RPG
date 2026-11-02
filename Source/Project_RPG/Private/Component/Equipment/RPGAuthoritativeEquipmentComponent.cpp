@@ -93,6 +93,32 @@ bool URPGAuthoritativeEquipmentComponent::FindWeaponSnapshot(
 	return false;
 }
 
+bool URPGAuthoritativeEquipmentComponent::GetEffectContext(const EEquipmentSlotType Slot, FRPGEquipmentEffectContext& Out) const
+{
+	Out = {};
+	const auto* Applied = AppliedBySlot.Find(Slot);
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !Applied) return false;
+	Out.ItemId = Applied->ItemId;
+	Out.DefinitionId = Applied->DefinitionId;
+	Out.DefinitionVersion = Applied->DefinitionVersion;
+	Out.GrantId = Applied->EffectGrantId;
+	Out.ActiveStateGeneration = EffectActiveStateGeneration;
+	return Out.IsValid();
+}
+
+bool URPGAuthoritativeEquipmentComponent::IsAbilityFromEffectContext(const FGameplayAbilitySpecHandle Handle,
+	const FRPGEquipmentEffectContext& Context) const
+{
+	for (const auto& Pair : AppliedBySlot)
+	{
+		FRPGEquipmentEffectContext Current;
+		if (!GetEffectContext(Pair.Key, Current) || !Current.Matches(Context)) continue;
+		for (const auto& Granted : Pair.Value.GrantedAbilitySetHandles)
+			if (Granted.ContainsAbility(Handle)) return true;
+	}
+	return false;
+}
+
 void URPGAuthoritativeEquipmentComponent::SetActiveEquipState(const EEquipState State)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority()
@@ -103,6 +129,7 @@ void URPGAuthoritativeEquipmentComponent::SetActiveEquipState(const EEquipState 
 	if (!RPGEquipmentProgression::TrySum(EquipmentSnapshots, State, Contribution)
 		|| !ApplyProgressionStats(Contribution.Attack, Contribution.MaximumHealth)) return;
 	ActiveEquipState = State;
+	++EffectActiveStateGeneration;
 	UpdateActorVisibility();
 	GetOwner()->ForceNetUpdate();
 	OnActiveEquipStateChanged.Broadcast(PreviousState, ActiveEquipState);
@@ -393,6 +420,7 @@ bool URPGAuthoritativeEquipmentComponent::ApplyRecord(
 	Applied.DefinitionId = Record.GetDefinitionId();
 	Applied.DefinitionVersion = Record.GetDefinitionVersion();
 	Applied.Revision = Record.GetRevision();
+	Applied.EffectGrantId = FGuid::NewGuid();
 	for (const URPGAbilitySet* AbilitySet : Fragment->GrantedAbilitySets)
 	{
 		FRPGAbilitySet_GrantedHandles& Handles =

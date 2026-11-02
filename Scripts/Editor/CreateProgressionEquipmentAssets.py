@@ -121,13 +121,23 @@ def inspect(unreal, asset, model, expected_shape, expected_slot):
     for key in ("icon", "pickup_mesh", "pickup_actor_class"):
         require(path_of(asset.get_editor_property(key)) in ("None", ""), "Preserving customized presentation/world data: " + key)
     fragments = list(asset.get_editor_property("fragments"))
-    require(len(fragments) == 1 and isinstance(fragments[0], unreal.RPGItemEquipmentDefinitionFragment),
-            "Equipment must have exactly one equipment fragment and no rolled-stat fragment")
-    fragment = fragments[0]
+    equipment = [f for f in fragments if isinstance(f, unreal.RPGItemEquipmentDefinitionFragment)]
+    effect_type = {"EnduranceGreatSword": getattr(unreal, "RPGItemShieldOnHitDefinitionFragment", None),
+                   "CirculationGreatSword": getattr(unreal, "RPGItemResolveOnHitDefinitionFragment", None)}.get(model)
+    extra = [f for f in fragments if f not in equipment]
+    require(len(equipment) == 1 and len(extra) <= 1 and
+            (not extra or (effect_type is not None and isinstance(extra[0], effect_type))),
+            "Equipment requires one equipment fragment and only its supported optional hit effect")
+    fragment = equipment[0]
     require(fragment.get_outer() == asset, "Equipment fragment is not owned by its definition")
     require(set(fragment.get_editor_property("compatible_slots")) == {expected_slot}, "Compatible slot differs")
     shape = equipment_shape(fragment)
-    require(shape == expected_shape, "Preserving customized equipment behavior: " + model + ": " + str(shape))
+    expected = dict(expected_shape)
+    if extra:
+        effect = "Shield" if model == "EnduranceGreatSword" else "Resolve"
+        package = ROOT + "/Effects/DA_AbilitySet_" + effect + "OnHit"
+        expected["granted_ability_sets"] = list(expected["granted_ability_sets"]) + [package + "." + package.rsplit("/", 1)[1]]
+    require(shape == expected, "Preserving customized equipment behavior: " + model + ": " + str(shape))
     identity = unreal.SystemLibrary.conv_primary_asset_id_to_string(unreal.SystemLibrary.get_primary_asset_id_from_object(asset))
     expected_id = "RPGItemDefinition:" + item_tag(model)
     require(not identity or identity == expected_id, "Primary identity differs: " + model)
@@ -254,7 +264,12 @@ def main():
               "assets": rows, "registered_primary_asset_ids": identities, "loaded_module": module,
               "source_template": TEMPLATE, "source_template_sha256": base_hash,
               "source_weapon_equipment": expected_shapes["weapon"], "original_installed": False,
-              "gameplay_or_grant_executed": False, "special_weapon_effects_implemented": False}
+              "gameplay_or_grant_executed": False,
+              "special_weapon_effects_implemented": all(
+                  assets[model] and any(isinstance(fragment, getattr(unreal, fragment_type, ()))
+                                        for fragment in assets[model].get_editor_property("fragments"))
+                  for model, fragment_type in (("EnduranceGreatSword", "RPGItemShieldOnHitDefinitionFragment"),
+                                               ("CirculationGreatSword", "RPGItemResolveOnHitDefinitionFragment")))}
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     Path(output).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     unreal.log("RPG_PROGRESSION_EQUIPMENT_ASSETS " + json.dumps(report, ensure_ascii=False))

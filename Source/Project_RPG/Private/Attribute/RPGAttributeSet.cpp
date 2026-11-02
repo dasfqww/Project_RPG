@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Attribute/RPGAttributeSet.h"
+#include "Component/Combat/RPGShieldComponent.h"
 #include "AI/RPGBossAIComponent.h"
 #include "GameplayEffectExtension.h"
 #include "GameplayEffectAggregator.h"
@@ -221,7 +222,10 @@ void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		//	//Debug::Print("NPC take damage..");
 		//}
 
-		const float NewCurrentHealth = FMath::Clamp(prevHealth- takeDamage, 0.f, GetMaxHealth());
+		const auto* ShieldAvatar = Data.Target.GetAvatarActor();
+		auto* Shield = ShieldAvatar ? ShieldAvatar->FindComponentByClass<URPGShieldComponent>() : nullptr;
+		const float HealthDamage = Shield ? Shield->AbsorbDamage(takeDamage) : static_cast<float>(takeDamage);
+		const float NewCurrentHealth = FMath::Clamp(prevHealth - HealthDamage, 0.f, GetMaxHealth());
 
 		SetCurrentHealth(NewCurrentHealth);
 	

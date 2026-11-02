@@ -58,6 +58,7 @@ public:
 	void AddGameplayEffectHandle(const FActiveGameplayEffectHandle& Handle);
 	void AddAttributeSet(UAttributeSet* AttributeSet);
 	void TakeFromAbilitySystem(URPGAbilitySystemComponent* AbilitySystemComponent);
+	bool ContainsAbility(FGameplayAbilitySpecHandle Handle) const { return AbilitySpecHandles.Contains(Handle); }
 
 private:
 	UPROPERTY()
