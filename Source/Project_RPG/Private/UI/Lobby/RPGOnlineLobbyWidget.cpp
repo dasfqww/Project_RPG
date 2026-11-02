@@ -476,14 +476,30 @@ bool URPGOnlineLobbyWidget::CanUseCharacterConfiguration(bool bEdit, bool bRetry
 
 bool URPGOnlineLobbyWidget::CanUseEquipmentGrowth(bool bWrite, bool bRetry) const
 {
-	if (!bServerSelected || !bPreparationOpen || bTutorialEntryActive || !CanUseCharacterConfiguration(false, false)
-		|| Web->IsPlayerProgressionRequestInFlight()
-		|| (ConfigurationPanel && (ConfigurationPanel->IsRequestInFlight() || ConfigurationPanel->HasUnresolvedSave()))) return false;
-	if (!bWrite) return true;
-	if (bRetry) return true; // Original receipt recovery remains possible during a valid dungeon lease.
-	return !HasUnfinishedDungeonSelection() && !Steam->IsInPartyLobby()
-		&& !Flow->HasUnresolvedDungeonAbandonment() && !Flow->HasUnresolvedDeparture() && !Flow->HasDepartureRecoveryError()
-		&& (!ConfigurationPanel || !ConfigurationPanel->HasUnsavedChanges());
+	bool bAllowed = false;
+	GetEquipmentGrowthUnavailableReason(bWrite, bRetry, &bAllowed);
+	return bAllowed;
+}
+
+FText URPGOnlineLobbyWidget::GetEquipmentGrowthUnavailableReason(bool bWrite, bool bRetry, bool* OutAllowed) const
+{
+	FRPGEquipmentGrowthAccess Access;
+	Access.bHome = bServerSelected && bPreparationOpen;
+	Access.bTutorialActive = bTutorialEntryActive;
+	Access.bContextReady = CanUseCharacterConfiguration(false, false);
+	if (Access.bContextReady)
+	{
+		Access.bProgressionBusy = Web->IsPlayerProgressionRequestInFlight();
+		Access.bConfigurationBusy = ConfigurationPanel && ConfigurationPanel->IsRequestInFlight();
+		Access.bConfigurationUnresolved = ConfigurationPanel && ConfigurationPanel->HasUnresolvedSave();
+		Access.bActiveSession = HasUnfinishedDungeonSelection();
+		Access.bSteamParty = Steam->IsInPartyLobby();
+		Access.bTravelUnresolved = Flow->HasUnresolvedDungeonAbandonment() || Flow->HasUnresolvedDeparture() || Flow->HasDepartureRecoveryError();
+		Access.bUnsavedConfiguration = ConfigurationPanel && ConfigurationPanel->HasUnsavedChanges();
+	}
+	const auto Result = RPGEquipmentGrowthUI::EvaluateAccess(Access, bWrite, bRetry);
+	if (OutAllowed) *OutAllowed = Result.bAllowed;
+	return Result.Reason;
 }
 
 FRPGOnlineLobbyPresentation URPGOnlineLobbyWidget::CurrentPresentation() const

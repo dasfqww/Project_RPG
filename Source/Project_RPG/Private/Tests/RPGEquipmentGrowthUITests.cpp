@@ -129,6 +129,7 @@ bool FRPGEquipmentGrowthWidgetTest::RunTest(const FString&)
 	TestEqual(TEXT("Dismantle mode shows its exact source"),Panel->SourceBox->GetVisibility(),ESlateVisibility::Visible);
 	TestEqual(TEXT("Dismantle mode hides the craft selector"),Panel->CraftBox->GetVisibility(),ESlateVisibility::Collapsed);
 	Panel->SetScreenOpen(false); TestFalse(TEXT("Closing clears local confirmation"),Panel->bConfirming);
+	TestFalse(TEXT("Native growth entry guard exposes an actionable denial without a lobby context"),Widget->GetEquipmentGrowthUnavailableReason(true,false).IsEmpty());
 	Widget->NativeDestruct(); Panel->NativeDestruct();
 	return true;
 }
@@ -198,6 +199,50 @@ bool FRPGEquipmentDismantlePreviewTest::RunTest(const FString&)
 	}
 	auto Refresh=V; Refresh.bNeedsInventoryRefresh=true;
 	TestFalse(TEXT("A historical receipt cannot authorize dismantling"),RPGEquipmentGrowthUI::Dismantle(Refresh,Target,Now).bValid);
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGEquipmentAccessReasonTest,"ProjectRPG.UI.EquipmentGrowth.AccessReasonsAndRecovery",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FRPGEquipmentAccessReasonTest::RunTest(const FString&)
+{
+	using Access=FRPGEquipmentGrowthAccess;
+	Access Ready; Ready.bHome=Ready.bContextReady=true;
+	auto Check=[&](const TCHAR* Label,const Access& A,bool Read,bool Write,bool Retry)
+	{
+		TestEqual(FString(Label)+TEXT(" read"),RPGEquipmentGrowthUI::EvaluateAccess(A,false,false).bAllowed,Read);
+		TestEqual(FString(Label)+TEXT(" new command"),RPGEquipmentGrowthUI::EvaluateAccess(A,true,false).bAllowed,Write);
+		TestEqual(FString(Label)+TEXT(" exact recovery"),RPGEquipmentGrowthUI::EvaluateAccess(A,true,true).bAllowed,Retry);
+	};
+	Check(TEXT("Ready"),Ready,true,true,true);
+	for (auto Flag : {&Access::bActiveSession,&Access::bSteamParty,&Access::bTravelUnresolved,&Access::bUnsavedConfiguration})
+	{
+		auto A=Ready; A.*Flag=true;
+		Check(TEXT("New-command restriction keeps read and original recovery"),A,true,false,true);
+	}
+	for (auto Flag : {&Access::bTutorialActive,&Access::bProgressionBusy,&Access::bConfigurationBusy,&Access::bConfigurationUnresolved})
+	{
+		auto A=Ready; A.*Flag=true; Check(TEXT("Common busy or unresolved work"),A,false,false,false);
+	}
+	auto A=Ready; A.bHome=false; Check(TEXT("Not in home"),A,false,false,false);
+	A=Ready; A.bContextReady=false; Check(TEXT("Invalid context"),A,false,false,false);
+	A=Ready; A.bActiveSession=A.bConfigurationUnresolved=true; Check(TEXT("A lease exception never bypasses an unresolved skill save"),A,false,false,false);
+	A=Ready; A.bActiveSession=true;
+	const FText SessionReason=RPGEquipmentGrowthUI::AccessReason(A,true,false);
+	A=Ready; A.bUnsavedConfiguration=true;
+	TestFalse(TEXT("Different causes give different guidance"),SessionReason.EqualTo(RPGEquipmentGrowthUI::AccessReason(A,true,false)));
+	auto V=RPGEquipmentGrowthTests::View();
+	TestTrue(TEXT("A current inventory must not say ready when the action is denied"),RPGEquipmentGrowthUI::Status(V,SessionReason).EqualTo(SessionReason));
+	V.State=ERPGEquipmentMutationState::Committed;
+	TestTrue(TEXT("A confirmed old operation does not hide a new-command restriction"),RPGEquipmentGrowthUI::Status(V,SessionReason).EqualTo(SessionReason));
+	for (auto State : {ERPGEquipmentMutationState::AwaitingServer,ERPGEquipmentMutationState::RecoveryRequired,ERPGEquipmentMutationState::AuthenticationRequired,ERPGEquipmentMutationState::StorageBlocked,ERPGEquipmentMutationState::Unavailable})
+	{
+		V.State=State; TestFalse(TEXT("Mutation recovery and authentication messages retain priority"),RPGEquipmentGrowthUI::Status(V,SessionReason).EqualTo(SessionReason));
+	}
+	V=RPGEquipmentGrowthTests::View(); V.bNeedsInventoryRefresh=true;
+	TestFalse(TEXT("A stale receipt still requires a fresh read first"),RPGEquipmentGrowthUI::Status(V,SessionReason).EqualTo(SessionReason));
+	V.bNeedsInventoryRefresh=false; V.ItemsLoadState=ERPGInventoryProjectionLoadState::Loading;
+	TestFalse(TEXT("An active read still reports loading first"),RPGEquipmentGrowthUI::Status(V,SessionReason).EqualTo(SessionReason));
+	V=RPGEquipmentGrowthTests::View();
+	TestTrue(TEXT("Empty access reason preserves the existing ready status"),RPGEquipmentGrowthUI::Status(V).EqualTo(RPGEquipmentGrowthUI::Status(V,FText::GetEmpty())));
 	return true;
 }
 #endif

@@ -2,7 +2,7 @@
 
 작성일: 2026-11-02
 
-상태: 강화·이전 및 선택 제작·분해의 원본 UI/정상 Editor 반영 완료. 첫 구현 native4와 제작/분해 후속 native6을 구분한다. 물리 입력과 인증된 화면→HTTP 전체 흐름·PG/다인 검증은 별도다.
+상태: 강화·이전 및 선택 제작·분해의 원본 UI/정상 Editor 반영 완료. 첫 구현 native4·제작/분해 후속 native6·비활성 사유 수정 native7을 구분한다. 물리 입력과 인증된 화면→HTTP 전체 흐름·PG/다인 검증은 별도다.
 
 ## 1. 이번 범위와 성장 방향
 
@@ -75,3 +75,21 @@ HUD 전체 컴파일 입력 고정을 피해서 사본에서 작성한 뒤, 공�
 `25ec20cf1e184ba995de0ecdc952e066`에서 실제 같은 DLL의 로드와 native6 Success/오류0·UE 종료0·사본 전후 동일을 확인했다. 새 `ProjectRPG.UI.EquipmentGrowth.CraftPreviewAndCosts`/`DismantleAndRecovery`는 무경고이며 기존 모델2/화면1/메뉴1도 통과했다. 기존 캐시139와 최소 PlayerInput fixture2의 경고141·`strictWarningsPassed=false`·기동 Error15/검사 시작 후 Error0은 유지한다. UI 모드/기대값의 native 검사이며 실제 클릭의 인증 HTTP/PG·다인 또는 렌더 화면 확인으로 확대하지 않는다.
 
 자기 runtime/사본/DLL/UserDir·캐시와 원본 적용을 마친 독립 작성본 **205,081,420 bytes(195.58MiB)**·링크11을 폐기했다. 최종 자기 임시·프로세스·정리 예외0이며 원본 Source/Binaries·Intermediate·공유 DDC/다른 담당의 작업은 유지했다. [ImplementationResult.json](../Saved/BuildChecks/EquipmentCraftUI-20261102/ImplementationResult.json)에 소스7/모듈 해시·6개 결과·정리 수치를 보관한다. 폐기 사본의 해시는 당시 증거다. 유지할 native 검사는 원본 `Private/Tests/RPGEquipmentGrowthUITests.cpp`이며 `Automation RunTests ProjectRPG.UI.EquipmentGrowth`로 선택할 수 있다. 이번 기능의 Source7/이 문서·조율표 본인 행/완료 항목만 커밋·푸시하고 다른 담당의 미커밋 변경은 포함하지 않는다.
+
+## 6. 비활성 작업의 이유 안내 (2026-11-02 결함 수정)
+
+문제: 현재 장비·재료를 정상 조회했어도 던전 참가·Steam 파티·미저장 스킬 구성 등 로비 제약으로 버튼이 비활성일 수 있다. 기존 화면은 이때도 장비를 선택하라는 준비 문구나 과거 작업의 확인 완료만 보여줘, 사용자가 새 작업을 할 수 없는 원인을 알기 어려웠다.
+
+실행 guard와 안내가 `EvaluateAccess`의 동일한 결과를 사용하도록 연결했다. 실행 여부는 `bAllowed`로 판단하고 `Reason`은 표시만 하므로, 번역 문구의 비어 있음으로 실행을 허용하지 않는다. 로비/캐릭터·연결 준비, 튜토리얼 준비, 스킬 저장의 미확정/진행 중 상태, 던전 참가, Steam 파티, 출발/포기 복구, 미저장 스킬 변경을 구분해 먼저 할 일을 표시한다. 비용·리스·저장 정책은 그대로다.
+
+조회와 원래 요청의 정확한 재확인은 기존대로 던전·파티·미저장 draft 제약을 우회하되, 공통 문맥/진행 중 작업·스킬의 미확정 저장까지 우회하지 않는다. 인증/원본 복구/안전한 저장 실패와 최신 읽기 필요·조회 중 상태를 새 작업 제약보다 먼저 표시해, 로비 안내가 복구나 새 조회를 가리지 않게 한다. 현재 다른 장비 작업/조회가 진행 중이면 대기 안내를 표시한다.
+
+제품 변경은 UI/model6파일로 한정한다. 기존 강화·이전·제작·분해의 명령/비용·backend/GAS 및 타 담당의 HUD·대검 소스/에셋은 변경하지 않는다. 직접 필요한 `AccessReasonsAndRecovery` 회귀 검사와 기존 화면/메뉴/재료 검사를 수행하며, 결과만 게시하기 위한 테스트 전용 변경과 구분한다.
+
+중간 정상32작업과 허용 bool/표시 문구 분리를 보완한 최종 정상32작업이 각각 종료0이었다. 두 컴파일 입력1393개의 파일집합/SHA가 전후 동일했고 최종 컴파일 경고0·모듈은 `F5B8F0D2F7854D3CF9BFB736A95B8D11CF57CC04D07F586F645FD5DD7500BF99`다. 닫힌1216 사본을 취득한 즉시 전체 공유 빌드/원본 입력·출력 예약을 해제했다.
+
+`bd99d57f87724c5dba7eaafad24542e7`의 실제 같은 DLL에서 새 접근 사유/복구 예외 검사와 기존6개를 합쳐 **native7 Success·오류0·UE 종료0**을 확인했다. 새 검사는 공통 거절·던전/파티/미저장 구성의 새 명령만 거절하는 경우·원본 재확인 예외·복구/인증/최신 읽기 메시지의 우선순위를 확인한다. 첫 엔진 기동이 느렸으나 제한 시간 내 종료했으며 재실행으로 결과를 대체하지 않았다.
+
+경고142는 기존 에셋 캐시139·최소 PlayerInput fixture2·외부 `generate_204` 연결 확인 요청 타임아웃1로 나누어 기록했다. 새 접근 사유 검사는 무경고이며 `strictWarningsPassed=false`를 유지한다. 기동 Error15/검사 시작 후 Error0·사본1216 전후 동일·현재 Source6 해시 일치도 확인했다. 물리 입력·인증된 화면→HTTP/PG·다인 검증 결과는 아니다.
+
+자기 runtime/사본/DLL/UserDir·캐시 **205,010,736 bytes(195.51MiB)**·소유 링크11을 자동 폐기했다. 자기 임시/프로세스·최종 정리 예외0이며 정상 Binaries/Intermediate·공유 DDC·타 담당 작업은 보존했다. 작은 명령/해시/경고 목록·[ImplementationResult.json](../Saved/BuildChecks/EquipmentAccessReason-20261102/ImplementationResult.json)을 로컬에 유지하고 폐기 사본 해시는 당시 증거로만 취급한다. 게시 대상은 이 제품 결함 수정 Source6·직접 필요한 회귀 검사와 계약/본인 조율 기록이며 검증 전용 로그·러너·proof는 커밋하지 않는다.

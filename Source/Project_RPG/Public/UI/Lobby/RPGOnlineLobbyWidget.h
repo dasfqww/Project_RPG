@@ -107,6 +107,7 @@ private:
 	friend class FRPGEquipmentGrowthWidgetTest;
 	bool CanUseCharacterConfiguration(bool bEdit, bool bRetry) const;
 	bool CanUseEquipmentGrowth(bool bWrite, bool bRetry) const;
+	FText GetEquipmentGrowthUnavailableReason(bool bWrite, bool bRetry, bool* OutAllowed = nullptr) const;
 	friend struct FRPGDungeonAbandonmentTestAccess;
 	friend struct FRPGDungeonSelectionTestAccess;
 	friend class FRPGOnlineLobbyWidgetTest;

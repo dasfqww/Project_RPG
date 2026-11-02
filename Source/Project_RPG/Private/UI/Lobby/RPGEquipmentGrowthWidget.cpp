@@ -183,7 +183,9 @@ FRPGEquipmentGrowthPreview URPGEquipmentGrowthWidget::Preview() const
 void URPGEquipmentGrowthWidget::Draw()
 {
 	const auto Current=View(); const auto Next=Preview(); const bool Editable=CanRequest(true) && RPGEquipmentGrowthUI::CanStartNew(Current);
-	if (StatusText) StatusText->SetText(LocalMessage.IsEmpty() ? RPGEquipmentGrowthUI::Status(Current) : LocalMessage);
+	const FText Blocked = IsBusy() ? LOCTEXT("EquipmentBusy","장비 작업·조회가 끝날 때까지 기다려 주세요.")
+		: Lobby.IsValid() ? Lobby->GetEquipmentGrowthUnavailableReason(true,false) : FText::GetEmpty();
+	if (StatusText) StatusText->SetText(RPGEquipmentGrowthUI::Status(Current,Blocked.IsEmpty() ? LocalMessage : Blocked));
 	if (PreviewText) PreviewText->SetText(bConfirming ? FText::Format(LOCTEXT("ConfirmPreview","{0}\n아래 확인을 누르면 이 내용으로 실행합니다."),Confirmation.Text) : Next.Text);
 	if (OperationBox) OperationBox->SetIsEnabled(Editable && !bConfirming);
 	if (SourceBox) SourceBox->SetIsEnabled(Editable && !bConfirming);

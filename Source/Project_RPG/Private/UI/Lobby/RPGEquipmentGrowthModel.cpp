@@ -179,7 +179,28 @@ FRPGEquipmentGrowthPreview RPGEquipmentGrowthUI::Dismantle(const FRPGEquipmentMu
 	return Result;
 }
 
-FText RPGEquipmentGrowthUI::Status(const FRPGEquipmentMutationView& View)
+FRPGEquipmentGrowthAccessResult RPGEquipmentGrowthUI::EvaluateAccess(const FRPGEquipmentGrowthAccess& Access, bool bWrite, bool bRetry)
+{
+	if (!Access.bHome) return {false,LOCTEXT("AccessHome","로비에서 서버와 플레이할 캐릭터를 선택하세요.")};
+	if (Access.bTutorialActive) return {false,LOCTEXT("AccessTutorial","튜토리얼 입장 준비가 끝난 뒤 장비를 변경할 수 있습니다.")};
+	if (!Access.bContextReady) return {false,LOCTEXT("AccessContext","로그인과 캐릭터 선택을 확인하고, 진행 중인 연결 작업이 끝날 때까지 기다려 주세요.")};
+	if (Access.bConfigurationUnresolved) return {false,LOCTEXT("AccessSkillRecovery","스킬 구성에서 이전 저장 결과를 먼저 재확인하세요.")};
+	if (Access.bProgressionBusy || Access.bConfigurationBusy) return {false,LOCTEXT("AccessSkillBusy","스킬 구성의 조회·저장이 끝난 뒤 다시 시도하세요.")};
+	// Reads and exact original-request recovery retain their existing lease/party exception.
+	if (!bWrite || bRetry) return {true,FText::GetEmpty()};
+	if (Access.bActiveSession) return {false,LOCTEXT("AccessSession","던전 참가 상태를 정리한 뒤 새 장비 작업을 할 수 있습니다. 던전 · 파티에서 세션을 확인하세요.")};
+	if (Access.bSteamParty) return {false,LOCTEXT("AccessParty","Steam 파티에서 나온 뒤 새 장비 작업을 할 수 있습니다.")};
+	if (Access.bTravelUnresolved) return {false,LOCTEXT("AccessTravel","던전 · 파티에서 출발·취소·포기의 이전 결과를 먼저 확인하세요.")};
+	if (Access.bUnsavedConfiguration) return {false,LOCTEXT("AccessDraft","스킬 구성의 변경 내용을 저장하거나 취소한 뒤 장비를 변경하세요.")};
+	return {true,FText::GetEmpty()};
+}
+
+FText RPGEquipmentGrowthUI::AccessReason(const FRPGEquipmentGrowthAccess& Access, bool bWrite, bool bRetry)
+{
+	return EvaluateAccess(Access,bWrite,bRetry).Reason;
+}
+
+FText RPGEquipmentGrowthUI::Status(const FRPGEquipmentMutationView& View, const FText& AccessReason)
 {
 	switch (View.State)
 	{
@@ -192,6 +213,7 @@ FText RPGEquipmentGrowthUI::Status(const FRPGEquipmentMutationView& View)
 	}
 	if (View.ItemsLoadState==ERPGInventoryProjectionLoadState::Loading) return LOCTEXT("Loading","최신 장비를 읽고 있습니다.");
 	if (View.bNeedsInventoryRefresh || View.ItemsLoadState!=ERPGInventoryProjectionLoadState::Ready) return LOCTEXT("Reload","장비 새로고침을 눌러 최신 상태를 확인하세요.");
+	if (!AccessReason.IsEmpty()) return AccessReason;
 	if (View.State==ERPGEquipmentMutationState::Rejected) return LOCTEXT("Rejected","작업이 적용되지 않았습니다. 최신 장비와 이용 조건을 확인하고 다시 선택하세요.");
 	if (View.State==ERPGEquipmentMutationState::Committed) return LOCTEXT("Committed","작업 결과와 최신 장비 상태를 확인했습니다.");
 	return LOCTEXT("Ready","장비를 선택하면 비용과 변경 결과를 확인할 수 있습니다.");
