@@ -2,6 +2,7 @@
 
 #include "Character/RPGPlayer.h"
 #include "Component/Combat/RPGCombatControlComponent.h"
+#include "Component/Combat/RPGShieldComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -68,6 +69,7 @@ ARPGPlayer::ARPGPlayer(const FObjectInitializer& ObjectInitializer):
 	PlayerCombatComponent = CreateDefaultSubobject<UPlayerCombatComponent>(TEXT("PlayerCombatComp"));
 	WeaponLoadoutComponent = CreateDefaultSubobject<URPGPlayerWeaponLoadoutComponent>(TEXT("WeaponLoadoutComponent"));
 	PlayerUIComponent = CreateDefaultSubobject<UPlayerUIComponent>(TEXT("PlayerUIComp"));
+	CreateDefaultSubobject<URPGShieldComponent>(TEXT("ShieldComponent"));
 	PlayerSkillComponent = CreateDefaultSubobject<URPGPlayerSkillComponent>(TEXT("PlayerSkillComponent"));
 	PlayerClassComponent = CreateDefaultSubobject<URPGPlayerClassComponent>(TEXT("PlayerClassComponent"));
 	CharacterProgressionComponent = CreateDefaultSubobject<URPGCharacterProgressionComponent>(TEXT("CharacterProgressionComponent"));

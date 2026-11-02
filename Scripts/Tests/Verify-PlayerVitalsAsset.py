@@ -42,8 +42,25 @@ for bp in (hud, module):
     unreal.BlueprintEditorLibrary.compile_blueprint(bp)
     require(bp.get_editor_property('status') == unreal.BlueprintStatus.BS_UP_TO_DATE, 'Compile failed: '+bp.get_name())
 widgets, skin = snapshot(unreal, hud), snapshot(unreal, module)
-require(len(widgets) == len(before['hud'])-1 and len(skin) == 14, 'Unexpected widget counts')
+has_shield = 'PlayerShield' in skin
+expected_hud = (set(before['hud']) - {'WBP_PlayerHealthBar', 'WBP_PlayerManaBar'}) | {'PlayerVitals'}
+for name, replaced in (('PlayerIdentity', {'WBP_IdentityGaugeBar', 'WBP_AbilityIconSlot_RageSkill'}),
+                       ('PlayerNotice', {'NoticeText'})):
+    if name in widgets:
+        expected_hud = (expected_hud - replaced) | {name}
+        expected_class = '/Game/Blueprints/UI/PlayerHUD/Modules/WBP_' + name + '.WBP_' + name + '_C'
+        require(widgets[name]['class'] == expected_class and not replaced.intersection(widgets), 'Unexpected HUD module: '+name)
+require(set(widgets) == expected_hud, 'Unexpected parent widgets: missing='+str(expected_hud-set(widgets))+' added='+str(set(widgets)-expected_hud))
+require(len(skin) == 14 + int(has_shield), 'Unexpected Vitals widget count: '+str(len(skin)))
 require(skin.get('PlayerDebuffs', {}).get('class') == '/Script/Project_RPG.RPGPlayerDebuffBarWidget', 'Native debuff module missing')
+if has_shield:
+    shield = skin['PlayerShield']
+    require(shield['class'] == '/Script/Project_RPG.RPGPlayerShieldWidget', 'Unexpected shield module')
+    expected_shield = copy.deepcopy(skin['Health_RPGSizeBox_Base']['slot_properties']['layoutData'])
+    expected_shield['offsets']['top'] -= 34
+    expected_shield['offsets'].update(right=390, bottom=28)
+    require(shield['slot_properties']['layoutData'] == expected_shield and shield['slot_properties']['bAutoSize'] is False,
+            'Shield amount/countdown must sit directly above the health bar')
 debuff_slot = skin['PlayerDebuffs']['slot_properties']
 expected_debuff = copy.deepcopy(skin['Mana_RPGSizeBox_Base']['slot_properties']['layoutData'])
 expected_debuff['offsets']['top'] -= 62
