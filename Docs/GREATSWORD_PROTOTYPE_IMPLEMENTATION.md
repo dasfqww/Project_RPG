@@ -47,3 +47,22 @@ powershell -NoProfile -File Scripts/Tests/Run-GreatSwordPrototype.ps1 -PythonScr
 증거는 로컬 `Saved/BuildChecks/GreatSwordPrototype-20261102/`의 `BuildResult.json`, `Verification.proof.json` 및 실행별 작은 결과에 있다. 최종 재생 `0b357f40…`, native `520836c4…`, 재로드 `e08d4451…`를 사용한다. 러너는 자기 프로세스 종료와 파일 사용 해제 뒤 자기 Temp만 제거하며 Content/Plugins junction을 따라 원본을 삭제하지 않는다. 공유 Binaries/Intermediate/DDC와 다른 담당 산출물은 정리 대상이 아니다.
 
 실행 사본/DLL/캐시 5,398,658,880 bytes(약 5.03GiB)를 폐기했으며 실행별 Temp 잔여는 없다. 자동 승인 검토가 `Implementation/` 중복 작성본과 `PrepareIdentity.py`, `PrepareImplementation.py`의 삭제를 일반/명시 경로 방식 모두 `blocked by policy`로 거절했다. 합계 216,413 bytes만 정리 예외로 보관하며 Git에 포함하지 않는다. 상세 차단 사유는 제공되지 않았다. 정책상 삭제가 허용되면 이 담당이 제거할 대상이며 다른 담당의 정리 예외와 구분한다.
+
+## 실제 투지/폭주 HUD 연결 후속
+
+기존 `WBP_PlayerIdentity`는 추출 당시의 `OnCurrentRageChanged`/활성 이벤트 체인을 유지해 현재 `CurrentIdentityGauge`와 폭주 태그를 직접 관찰하지 않았다. `URPGGreatSwordIdentityWidget`을 모듈의 부모로 연결하고 이 19개 레거시 구독 노드만 제거한다. 부모 HUD, 공용 상태 바 템플릿, 기존 바/아이콘의 배치·스킨 및 `InterpUp` 애니메이션 객체는 유지한다.
+
+표시는 현재 Pawn의 ASC attribute delegate와 `Player.Status.Identity.GreatSword.Ready` 태그를 읽는다. 같은 게이지에서도 태그 변경만으로 표시가 갱신된다. 위젯 생성 전에 도착한 값도 즉시 읽고, 직업/스킬 복원 알림에 다시 반영한다. 소스 교체·사망·종료에서는 표시와 이전 구독을 정리한다. UI에 소비/강화 판정이나 별도 자원·자연 감소 타이머를 두지 않는다.
+
+- 일반 상태: `투지 50/100`
+- 만충 상태: `투지 충전 완료 100/100` — 행동 가능 여부와 무관한 충전량 안내
+- 폭주 상태: `폭주 100/100` 또는 `폭주 50/100`, 붉은 바와 기존 진입 애니메이션
+- 미해금 상태: `고유 능력 미해금`
+
+시간 제한이 없는 폭주에 템플릿의 미사용 시간 문구를 표시하지 않는다. `ConfigureGreatSwordIdentityHUD.py`는 기본 읽기 전용이며 `-RPGConfigureGreatSwordIdentityHUD`를 지정했을 때 모듈 한 에셋만 저장한다. 직전 레이아웃·그래프·애니메이션과 부모 HUD/템플릿 해시를 대조하고, 이미 적용된 에셋에는 추가 저장하지 않는다.
+
+최종 정상 빌드 `619D6E9F…395AB8BA`/선택 입력1,389개 불변을 확인했다. `ProjectRPG.UI.GreatSwordIdentity`의 상태/수명과 실제 작성 스킨 2개 사례가 Success(검사 오류0, 기존 에셋 경고108)이며, `a4a55e71…`가 문구 가시성 보완까지 포함한 결과다. 새 Cmd 재로드는 native 부모·기존 레이아웃·애니메이션 일치/추가 저장0이다.
+
+보완 전 `3db17d03…`의 실제 HTTP/Memory 입장·Iris에서는 서버 GE로 0→만충100→폭주100→폭주50→종료0을 자극해 소유자 UMG 값/문구 데이터·바 비율5단계·1920×1080 배치와 UE 종료0/0·오류0을 확인했다. 실제 스킬 소비를 다시 실행한 검사는 아니다. 이때 PNG 검토로 템플릿이 문구를 숨기는 것을 발견해 **문구를 명시적으로 표시하고 좁은 기존 바에 맞게 16pt로 보완**했다. 최종 가시성/시간 문구 숨김은 작성 스킨을 사용하는 native 회귀로 확인했다.
+
+**가시성 보완 후 최종 픽셀/실화면 재검증은 완료하지 못했다.** 다른 작업의 아직 생성되지 않은 공통 OBJ/헤더가 링크 입력에 들어와 추가 private 링크가 중단됐고, 정상 DLL만 쓰는 독립 PIE 미리보기도 시작 데이터/읽기 전용 성장 상태 초기화에 실패했다. 원본 공통 코드/예약을 변경해 우회하지 않았다. 수정 전 PNG는 숨김 원인을 보여 주는 증거이며 최종 화면으로 취급하지 않는다. 제품 소스3·작성기1·아이덴티티 에셋1·이 계약 후속만 기능 커밋 대상이고, 실패/성공 사본·미리보기·관찰기·로그/PNG/proof는 로컬 `Saved/BuildChecks/GreatSwordIdentityHUD-20261102/`에만 기록한다.
