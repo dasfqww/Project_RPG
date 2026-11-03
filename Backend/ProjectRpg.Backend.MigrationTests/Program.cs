@@ -66,10 +66,12 @@ static async Task RunPureAsync()
         await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory, default);
     Check("packaged baseline and equipment delta are present", () =>
     {
-        Require(packaged.Count == 2 && packaged[0].Version == 1 && packaged[0].Name == "baseline"
+        Require(packaged.Count == 3 && packaged[0].Version == 1 && packaged[0].Name == "baseline"
             && packaged[0].Sql.Contains("CREATE TABLE IF NOT EXISTS accounts", StringComparison.Ordinal)
             && packaged[1].Version == 2 && packaged[1].Name == "item_equipment_progression"
-            && packaged[1].Sql.Contains("equipment_progression", StringComparison.Ordinal),
+            && packaged[1].Sql.Contains("equipment_progression", StringComparison.Ordinal)
+            && packaged[2].Version == 3 && packaged[2].Name == "character_narrative"
+            && packaged[2].Sql.Contains("character_narrative_commands", StringComparison.Ordinal),
             "Packaged baseline or equipment delta is missing.");
     });
     foreach (string environment in new[] { "Development", "Production" })

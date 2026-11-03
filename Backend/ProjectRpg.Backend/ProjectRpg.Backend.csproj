@@ -22,6 +22,10 @@
              Link="Database\Migrations\0002_item_equipment_progression.sql"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\Database\Migrations\0003_character_narrative.sql"
+             Link="Database\Migrations\0003_character_narrative.sql"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

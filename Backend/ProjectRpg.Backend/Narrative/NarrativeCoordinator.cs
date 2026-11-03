@@ -1,0 +1,57 @@
+using ProjectRpg.Backend.Data;
+
+namespace ProjectRpg.Backend.Narrative;
+
+/// <summary>Composition root for one narrative operation. Character state belongs to the repository.</summary>
+public sealed class NarrativeCoordinator(INarrativeRepository repository, NarrativeCatalog catalog,
+    QuestManager quests, ScenarioManager scenarios, DialogueManager dialogues, TimeProvider clock)
+{
+    public async Task<NarrativeView> LoadAsync(Guid characterId, string steamId, CancellationToken cancellationToken)
+        => View(await repository.LoadNarrativeAsync(characterId, steamId, cancellationToken));
+
+    public async Task<NarrativeView> ChooseAsync(Guid characterId, string steamId, NarrativeCommand command,
+        CancellationToken cancellationToken)
+    {
+        command.Validate();
+        NarrativeState committed = await repository.CommitNarrativeAsync(characterId, steamId, command, state =>
+        {
+            ValidateState(state);
+            if (command.CatalogVersion != catalog.Version) throw new NarrativeConflictException("narrative_catalog_changed");
+            if (command.ExpectedRevision != state.Revision) throw new NarrativeConflictException("narrative_revision_conflict");
+            (DialogueDefinition dialogue, DialogueChoice choice) = dialogues.Resolve(state, catalog, command);
+            NarrativeState updated = quests.Apply(state, catalog.Quests[dialogue.QuestId], choice);
+            return scenarios.Project(updated, catalog) with { Revision = checked(state.Revision + 1) };
+        }, clock.GetUtcNow(), cancellationToken);
+        return View(committed);
+    }
+
+    private NarrativeView View(NarrativeState state)
+    {
+        ValidateState(state);
+        return new(catalog.Version, state, dialogues.GetAvailable(state, catalog));
+    }
+
+    private void ValidateState(NarrativeState state)
+    {
+        if (state.CharacterId == Guid.Empty || state.SchemaVersion != 1 || state.Revision < 0 || state.Revision == long.MaxValue
+            || state.Quests.IsDefault || state.CompletedChapters.IsDefault || state.StoryUnlocks.IsDefault
+            || state.Quests.Any(q => q is null)
+            || state.Quests.Length != state.Quests.Select(q => q.QuestId).Distinct().Count())
+            throw new NarrativeConflictException("invalid_narrative_state");
+        foreach (QuestProgress progress in state.Quests)
+        {
+            if (!catalog.Quests.TryGetValue(progress.QuestId, out QuestDefinition? definition)
+                || definition.Version != progress.DefinitionVersion || !Enum.IsDefined(progress.Status)
+                || progress.CompletedObjectives.IsDefault
+                || progress.CompletedObjectives.Length != progress.CompletedObjectives.Distinct().Count()
+                || !progress.CompletedObjectives.All(definition.Objectives.Contains)
+                || (progress.Status == QuestStatus.Active) == (progress.CompletedObjectives.Length == definition.Objectives.Length)
+                || !definition.Prerequisites.All(id => state.Quests.Any(q => q.QuestId == id && q.Status == QuestStatus.Completed)))
+                throw new NarrativeConflictException("incompatible_narrative_state");
+        }
+        NarrativeState projected = scenarios.Project(state, catalog);
+        if (!state.CompletedChapters.SequenceEqual(projected.CompletedChapters)
+            || !state.StoryUnlocks.SequenceEqual(projected.StoryUnlocks))
+            throw new NarrativeConflictException("inconsistent_story_unlocks");
+    }
+}

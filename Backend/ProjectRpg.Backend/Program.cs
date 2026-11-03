@@ -134,6 +134,17 @@ else
 }
 
 builder.Services.AddSingleton<ItemTransactionService>();
+builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.NarrativeCatalog>(
+    (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"))
+        && builder.Configuration.GetValue<bool>("Narrative:EnableDevelopmentContent")
+        ? ProjectRpg.Backend.Narrative.NarrativeCatalog.Development
+        : ProjectRpg.Backend.Narrative.NarrativeCatalog.Empty);
+builder.Services.AddSingleton<INarrativeRepository>(provider =>
+    (INarrativeRepository)provider.GetRequiredService<IGameRepository>());
+builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.QuestManager>();
+builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.ScenarioManager>();
+builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.DialogueManager>();
+builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.NarrativeCoordinator>();
 builder.Services.AddSingleton<ICharacterProgressionRepository>(provider =>
     (ICharacterProgressionRepository)provider.GetRequiredService<IGameRepository>());
 builder.Services.AddSingleton<IEquipmentProgressionRepository>(provider =>
@@ -1171,6 +1182,7 @@ app.MapEconomyApi();
 app.MapSecurityTelemetryApi();
 app.MapDungeonRewardSnapshotApi();
 app.MapCharacterProgressionApi();
+app.MapNarrativeApi();
 app.MapEquipmentProgressionApi();
 app.MapDungeonAbandonmentApi();
 app.MapDungeonMembershipSnapshotApi();

@@ -77,9 +77,9 @@ internal static class EquipmentPersistenceCases
             groups.Add("memory_atomic_missing_field_guard_and_exact_replay");
 
             IReadOnlyList<PostgresSchemaMigration> catalog = await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory, default);
-            Require(catalog.Count == 2 && catalog[0].Version == 1 && catalog[1].Version == 2,
+            Require(catalog.Count >= 2 && catalog[0].Version == 1 && catalog[1].Version == 2,
                 "Packaged baseline/delta catalog is incomplete.");
-            Require(PostgresSchemaMigrations.GetPending(catalog,
+            Require(PostgresSchemaMigrations.GetPending(catalog.Take(2).ToArray(),
                 [new(catalog[0].Version, catalog[0].Name, catalog[0].Sha256)]).Single().Version == 2,
                 "A version-one database must require only the equipment delta.");
             groups.Add("packaged_version_two_after_immutable_baseline");
@@ -166,7 +166,8 @@ internal static class EquipmentPersistenceCases
                 seed.Parameters.AddWithValue("owner", Guid.NewGuid().ToString("D"));
                 await seed.ExecuteNonQueryAsync();
             }
-            Require(await PostgresSchemaMigrations.ApplyAsync(source, catalog, default) == 1, "Version two was not appended.");
+            Require(await PostgresSchemaMigrations.ApplyAsync(source, catalog, default) == catalog.Count - 1,
+                "Pending release migrations were not appended.");
             Require(await PostgresSchemaMigrations.ApplyAsync(source, catalog, default) == 0, "Migration was not idempotent.");
             await PostgresSchemaMigrations.ValidateAsync(source, catalog, default);
             PostgresItemRepository repository = new(source, NullLogger<PostgresItemRepository>.Instance);
