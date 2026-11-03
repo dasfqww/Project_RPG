@@ -18,7 +18,7 @@ class UGameplayAbility;
 class UAnimMontage;
 struct FGameplayEventData;
 
-UENUM()
+UENUM(BlueprintType)
 enum class ERPGWeaponCarryState : uint8
 {
 	Stowed,
@@ -58,6 +58,9 @@ public:
 	UFUNCTION()
 	void RefreshPresentation();
 	bool IsNativeManaged() const { return Presentation.bNativeManaged; }
+	/** Game-thread presentation queries; a stowed weapon remains an active loadout. */
+	bool HasActiveWeapon() const;
+	ERPGWeaponCarryState GetCarryState() const;
 	/** Called only for accepted GAS attacks and each actual attack montage/combination step. */
 	void NotifyAttackStarted(const UGameplayAbility* Ability);
 	static bool IsAttackAbility(const UGameplayAbility* Ability);
@@ -68,6 +71,7 @@ private:
 	friend class FRPGWeaponLoadoutInputTest;
 	friend class FRPGWeaponStanceTest;
 	friend class FRPGWeaponAutoStowTest;
+	friend class FRPGAnimWeaponPresentationTest;
 	void ApplyCarryPresentation();
 	void ScheduleAutoStow(float Delay);
 	void TryAutoStow();

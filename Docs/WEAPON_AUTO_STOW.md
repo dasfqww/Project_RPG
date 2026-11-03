@@ -39,3 +39,35 @@ BP_Player의 두 소켓도 별도 Cmd에서 읽기만 하여 확인했다. Unequ
 자기 임시 805,776,839 bytes를 폐기했고 남은 Temp/자기 프로세스·정리 예외는 없다.
 로컬 최소 근거: `Saved/BuildChecks/WeaponAutoStow-20261103/CompletionResult.json`.
 모듈/스냅샷은 폐기했으므로 해시는 당시 검사 증거다.
+
+## 애니메이션의 무기 보유·휴대 상태
+
+`URPGPlayerAnimInstance::NativeUpdateAnimation`은 게임 스레드에서 로드아웃의
+공개 표현 상태를 읽어 `bHasActiveWeapon`, `WeaponCarryState`,
+`bUseArmedLocomotion`을 함께 갱신한다. `ABP_Player`는 마지막 값으로 기존
+무장 레이어와 맨손 상태 머신을 선택한다. `CurrentEquippedWeaponTag`의 유효성이나
+전투 컴포넌트 내부 경로를 애니메이션 평가 중 조회하지 않는다.
+
+| 활성 무기 | 휴대 상태 | 이동 포즈 |
+|---|---|---|
+| 없음/아직 복제되지 않은 참조 | Stowed로 정규화 | 맨손 |
+| 있음 | Stowed | 맨손 |
+| 있음 | Drawn | 무장 |
+| 있음 | Sheathing | 무장: 수납 notify가 Stowed로 바꿀 때까지 |
+
+무기 보유는 손에 들고 있는지와 별개다. 수납 시에도 기존 로드아웃의 능력·입력과
+연결된 레이어는 유지한다. 무장 진입 0.2초·맨손 복귀 0.4초, Relax 5초와 자동 수납
+10초는 유지한다. 재초기화/종료·소유자 부재·해제된 컴포넌트·소멸한 무기는 중립 상태로
+초기화한다. 클라이언트도 기존 복제된 표현 상태를 사용하며 새 복제 필드는 추가하지 않는다.
+
+`Scripts/Editor/ConfigurePlayerAnimWeaponState.py`는 기본적으로 읽기 전용 검사이며,
+명시한 독립 프로젝트에서만 기존 ABP 조건을 이전한다. 실제 네트워크 전달과 GPU 포즈
+관찰은 native 역할별 상태 모형·그래프 검사와 구분한다.
+
+2026-11-03 검증: 정상 Editor 빌드 19작업·입력 1,414개 불변, 같은 모듈에서 native
+7검사 성공(새 상태 검사와 기존 상태 검사 오류/경고0). 기존 로드아웃 5검사의 경고7개는
+구분한다. ABP 작성·새 프로세스 재로드의 관련 BP5 정상 컴파일과 나머지 그래프 동일성,
+원본 설치본 SHA 일치를 확인했다. 노드 좌표 API 접근 실패2회는 사본에서만 발생해
+공식 그래프 API로 수정했으며 성공한 native 검사를 반복하지 않았다. 자기 임시/후보
+437416244 bytes를 폐기했고 잔여/예외는 없다. 근거는 로컬
+`Saved/BuildChecks/AbpCarryState-20261103/CompletionResult.json`이다.

@@ -51,6 +51,16 @@ void URPGPlayerWeaponLoadoutComponent::GetLifetimeReplicatedProps(TArray<FLifeti
 	DOREPLIFETIME(ThisClass, Presentation);
 }
 
+bool URPGPlayerWeaponLoadoutComponent::HasActiveWeapon() const
+{
+	return IsRegistered() && IsValid(Presentation.ActiveWeapon);
+}
+
+ERPGWeaponCarryState URPGPlayerWeaponLoadoutComponent::GetCarryState() const
+{
+	return HasActiveWeapon() ? Presentation.CarryState : ERPGWeaponCarryState::Stowed;
+}
+
 void URPGPlayerWeaponLoadoutComponent::OnRegister()
 {
 	Super::OnRegister();

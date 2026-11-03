@@ -9,12 +9,29 @@ void URPGPlayerAnimInstance::NativeInitializeAnimation()
 
 	OwningPlayerCharacter = Cast<ARPGPlayer>(OwningCharacter);
 	ResetRelaxState();
+	ResetWeaponState();
 }
 
 void URPGPlayerAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
 	Super::NativeUpdateAnimation(DeltaSeconds);
 	OwningPlayerCharacter = Cast<ARPGPlayer>(OwningCharacter);
+	ResetWeaponState();
+	const auto* Loadout = IsValid(OwningPlayerCharacter)
+		? OwningPlayerCharacter->FindComponentByClass<URPGPlayerWeaponLoadoutComponent>() : nullptr;
+	if (IsValid(Loadout))
+	{
+		bHasActiveWeapon = Loadout->HasActiveWeapon();
+		WeaponCarryState = Loadout->GetCarryState();
+		bUseArmedLocomotion = bHasActiveWeapon && WeaponCarryState != ERPGWeaponCarryState::Stowed;
+	}
+}
+
+void URPGPlayerAnimInstance::ResetWeaponState()
+{
+	bHasActiveWeapon = false;
+	WeaponCarryState = ERPGWeaponCarryState::Stowed;
+	bUseArmedLocomotion = false;
 }
 
 void URPGPlayerAnimInstance::ResetRelaxState()
@@ -27,6 +44,7 @@ void URPGPlayerAnimInstance::NativeUninitializeAnimation()
 {
 	OwningPlayerCharacter = nullptr;
 	ResetRelaxState();
+	ResetWeaponState();
 	Super::NativeUninitializeAnimation();
 }
 

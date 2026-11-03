@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "AnimInstance/RPGCharacterAnimInstance.h"
+#include "Component/Equipment/RPGPlayerWeaponLoadoutComponent.h"
 #include "RPGPlayerAnimInstance.generated.h"
 
 class ARPGPlayer;
@@ -25,6 +26,17 @@ protected:
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|References")
 		TObjectPtr<ARPGPlayer> OwningPlayerCharacter;
 
+	// Captured together on the game thread; graph evaluation never queries combat state.
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|Weapon")
+		bool bHasActiveWeapon = false;
+
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|Weapon")
+		ERPGWeaponCarryState WeaponCarryState = ERPGWeaponCarryState::Stowed;
+
+	/** Keep the armed pose until the sheathing notify actually stows the weapon. */
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|Weapon")
+		bool bUseArmedLocomotion = false;
+
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|LocomotionData")
 		bool bShouldEnterRelaxState = false;
 
@@ -35,5 +47,7 @@ protected:
 
 private:
 	friend class FRPGAnimInstanceStateTest;
+	friend class FRPGAnimWeaponPresentationTest;
 	void ResetRelaxState();
+	void ResetWeaponState();
 };
