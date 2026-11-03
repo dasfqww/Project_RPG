@@ -34,6 +34,8 @@ public:
 
     /** Apply one complete audio snapshot and notify once, without graphics changes or disk writes. */
     bool ApplySoundSettings(const FRPGSoundSettings& RequestedSettings);
+    /** Validate all required routing before changing live values or sending audio commands. */
+    bool ValidateSoundRouting(FText& OutError) const;
 
     void SetMasterVolume(float Volume);
     void SetVolume(ESoundType Type, float Volume);

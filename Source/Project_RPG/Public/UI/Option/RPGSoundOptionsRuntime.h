@@ -31,7 +31,8 @@ public:
     virtual FRPGSoundSettings GetCurrentSettings() const = 0;
     /** Apply one complete value snapshot without requesting persistence. */
     virtual bool TryApplySettings(const FRPGSoundSettings& Requested, const UObject* Context, FText& OutError) = 0;
-    /** Apply, write JSON, then request INI saving. False also reports changed owners/values after a write.
+    /** Apply, write authoritative JSON, commit the snapshot, then mirror committed options to INI.
+     *  Generic INI saves never commit live preview values. False also reports changed owners/values after a write.
      *  INI saving has no success return value; true does not guarantee INI disk durability. */
     virtual bool TrySaveSettings(const FRPGSoundSettings& Requested, const UObject* Context, FText& OutError) = 0;
 

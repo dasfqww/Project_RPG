@@ -188,6 +188,10 @@ namespace
             OutError = GraphicsSettingsChanged();
             return false;
         }
+        if (URPGGameUserSettings* RPGSettings = Cast<URPGGameUserSettings>(Settings))
+        {
+            if (!RPGSettings->CommitGraphicsOptions()) { OutError = GraphicsSettingsChanged(); return false; }
+        }
         Settings->SaveSettings();
         if (!MatchesCurrentSettings(Settings, Snapshot))
         {
@@ -346,6 +350,7 @@ bool FRPGGraphicsOptionsRuntime::InitializeForWorld(UWorld* World)
         {
             UE_LOG(LogRPGGraphicsOptions, Warning, TEXT("Startup graphics options rejected: %s"), *ApplyError.ToString());
         }
+        else if (IsCurrentSettings(Settings.Get())) { Settings->CommitGraphicsOptions(); }
     }
     return true;
 }
@@ -371,6 +376,10 @@ void FRPGGraphicsOptionsRuntime::RestoreSavedSettings()
             return;
         }
         const FRPGGraphicsSettings Snapshot = ReadCurrentSettings(Settings.Get());
+        if (URPGGameUserSettings* RPGSettings = Cast<URPGGameUserSettings>(Settings.Get()))
+        {
+            if (!RPGSettings->CommitGraphicsOptions()) { return; }
+        }
         Settings->SaveSettings();
         if (!MatchesCurrentSettings(Settings.Get(), Snapshot))
         {

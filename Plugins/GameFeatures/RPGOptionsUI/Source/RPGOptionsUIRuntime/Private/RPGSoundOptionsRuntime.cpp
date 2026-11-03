@@ -159,6 +159,7 @@ namespace
             OutError = SoundApplyUnavailable();
             return false;
         }
+        if (!Request.Manager->ValidateSoundRouting(OutError)) { return false; }
         if (!Request.Manager->ApplySoundSettings(Snapshot))
         {
             OutError = Request.IsCurrent() ? SoundApplyUnavailable() : SoundSettingsChanged();
@@ -210,6 +211,7 @@ bool FRPGSoundOptionsRuntime::TrySaveSettings(const FRPGSoundSettings& Requested
     if (!Request.Matches(Snapshot)) { OutError = SoundSettingsChanged(); return false; }
     if (!RPGOptionsPersistence::SaveSound(SavedData, OutError)) { return false; }
     if (!Request.Matches(Snapshot)) { OutError = SoundSettingsChanged(); return false; }
+    if (!Request.Settings->CommitSoundOptions(Snapshot)) { OutError = SoundSettingsChanged(); return false; }
     Request.Settings->SaveSettings();
     if (!Request.Matches(Snapshot)) { OutError = SoundSettingsChanged(); return false; }
     return true;
@@ -280,7 +282,8 @@ bool FRPGSoundOptionsRuntime::InitializeForWorld(UWorld* World)
     if (Request.Settings->bHasInitializedSoundOptions) { return true; }
     FRPGSoundSettings Data = ReadCurrentSoundSettings(Request.Settings.Get());
     FSoundSaveData Saved;
-    if (RPGOptionsPersistence::LoadSound(Saved)) { Data = FromSoundSaveData(Saved); }
+    const bool bLoadedJSON = RPGOptionsPersistence::LoadSound(Saved);
+    if (bLoadedJSON) { Data = FromSoundSaveData(Saved); }
     if (!Request.IsCurrent()) { return false; }
     Request.Settings->bHasInitializedSoundOptions = true;
     FText ApplyError;
@@ -289,6 +292,7 @@ bool FRPGSoundOptionsRuntime::InitializeForWorld(UWorld* World)
         Request.Settings->bHasInitializedSoundOptions = false;
         return false;
     }
+    if (bLoadedJSON && !Request.Settings->CommitSoundOptions(Data)) { return false; }
     return true;
 }
 
@@ -302,6 +306,7 @@ void FRPGSoundOptionsRuntime::RestoreSavedSettings(const UObject* Context)
     if (RPGOptionsPersistence::LoadSound(Data))
     {
         FText ApplyError;
-        ApplySoundRequest(Request, FromSoundSaveData(Data), ApplyError);
+        const FRPGSoundSettings Snapshot = FromSoundSaveData(Data);
+        if (ApplySoundRequest(Request, Snapshot, ApplyError)) { Request.Settings->CommitSoundOptions(Snapshot); }
     }
 }

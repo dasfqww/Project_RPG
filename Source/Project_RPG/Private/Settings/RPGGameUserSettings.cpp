@@ -31,6 +31,55 @@ void URPGGameUserSettings::ApplySettings(bool bCheckForCommandLineOverrides)
 	OnSoundSettingsChanged.Broadcast();
 }
 
+FRPGSoundSettings URPGGameUserSettings::GetSoundOptions() const
+{
+	return { MasterVolume, BGMVolume, EffectVolume, bMasterMuted, bBGMMuted, bEffectMuted };
+}
+
+void URPGGameUserSettings::SetSoundOptions(const FRPGSoundSettings& Values)
+{
+	MasterVolume = Values.MasterVolume;
+	BGMVolume = Values.BGMVolume;
+	EffectVolume = Values.EffectVolume;
+	bMasterMuted = Values.bMasterMuted;
+	bBGMMuted = Values.bBGMMuted;
+	bEffectMuted = Values.bEffectMuted;
+}
+
+void URPGGameUserSettings::InitializeOptionCommitState()
+{
+	if (bHasOptionCommitState) { return; }
+	CommittedSoundOptions = GetSoundOptions();
+	CommittedGraphicsDisplay = CaptureGraphicsDisplayState();
+	bHasOptionCommitState = true;
+}
+
+void URPGGameUserSettings::LoadSettings(bool bForceReload)
+{
+	if (bSavingSettings || bApplyingGraphicsOptions || HasGraphicsPreview()) { return; }
+	Super::LoadSettings(bForceReload);
+	bHasOptionCommitState = false;
+	InitializeOptionCommitState();
+	bHasInitializedGraphicsOptions = false;
+	bHasInitializedSoundOptions = false;
+}
+
+bool URPGGameUserSettings::CommitSoundOptions(const FRPGSoundSettings& Saved)
+{
+	if (!IsInGameThread() || bSavingSettings) { return false; }
+	InitializeOptionCommitState();
+	CommittedSoundOptions = Saved;
+	return true;
+}
+
+bool URPGGameUserSettings::CommitGraphicsOptions()
+{
+	if (!IsInGameThread() || bSavingSettings || HasGraphicsPreview()) { return false; }
+	InitializeOptionCommitState();
+	CommittedGraphicsDisplay = CaptureGraphicsDisplayState();
+	return true;
+}
+
 bool URPGGameUserSettings::ApplyGraphicsOptionsWithoutSaving(FIntPoint Resolution,
 	EWindowMode::Type WindowMode, bool bVSync, bool bStartup)
 {
@@ -41,8 +90,8 @@ bool URPGGameUserSettings::ApplyGraphicsOptionsWithoutSaving(FIntPoint Resolutio
 			&& WindowMode != EWindowMode::Windowed)) { return false; }
 
 	TStrongObjectPtr<URPGGameUserSettings> KeepAlive(this);
+	InitializeOptionCommitState();
 	TGuardValue<bool> ApplyingGuard(bApplyingGraphicsOptions, true);
-	PreviousGraphicsApplyDisplay = CaptureGraphicsDisplayState();
 	bHasInitializedGraphicsOptions = true;
 	SetScreenResolution(Resolution);
 	SetFullscreenMode(WindowMode);
@@ -71,22 +120,20 @@ bool URPGGameUserSettings::ApplyGraphicsOptionsWithoutSaving(FIntPoint Resolutio
 void URPGGameUserSettings::SaveSettings()
 {
 	if (bSavingSettings) { return; }
+	InitializeOptionCommitState();
 	TStrongObjectPtr<URPGGameUserSettings> KeepAlive(
 		!HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed) && !IsUnreachable() ? this : nullptr);
 	bool bCancelAfterSave = false;
 	{
 		TGuardValue<bool> SavingGuard(bSavingSettings, true);
-		if (!bGraphicsPreviewActive && !bApplyingGraphicsOptions)
-		{
-			Super::SaveSettings();
-			return;
-		}
-
-		// Audio/input saves retain the previous display during a preview or an uncommitted graphics application.
+		// Every generic save mirrors committed options, even after an apply succeeded but JSON failed.
 		const FGraphicsDisplayState LiveDisplay = CaptureGraphicsDisplayState();
-		SetGraphicsDisplayState(bGraphicsPreviewActive ? PreviousGraphicsDisplay : PreviousGraphicsApplyDisplay);
+		const FRPGSoundSettings LiveSound = GetSoundOptions();
+		SetGraphicsDisplayState(CommittedGraphicsDisplay);
+		SetSoundOptions(CommittedSoundOptions);
 		Super::SaveSettings();
-		if (bGraphicsPreviewActive || bApplyingGraphicsOptions) { SetGraphicsDisplayState(LiveDisplay); }
+		SetGraphicsDisplayState(LiveDisplay);
+		SetSoundOptions(LiveSound);
 		// Cloud-save callbacks can request cancellation while the preview settings are temporarily masked.
 		bCancelAfterSave = bGraphicsPreviewActive
 			&& (bCancelGraphicsPreviewRequested || FPlatformTime::Seconds() >= GraphicsPreviewDeadline);
@@ -107,6 +154,9 @@ URPGGameUserSettings::FGraphicsDisplayState URPGGameUserSettings::CaptureGraphic
 	State.Height = ResolutionSizeY;
 	State.WindowMode = FullscreenMode;
 	State.PreferredWindowMode = PreferredFullscreenMode;
+	State.ConfirmedWidth = LastUserConfirmedResolutionSizeX;
+	State.ConfirmedHeight = LastUserConfirmedResolutionSizeY;
+	State.ConfirmedWindowMode = LastConfirmedFullscreenMode;
 	State.bVSync = bUseVSync;
 	return State;
 }
@@ -117,6 +167,9 @@ void URPGGameUserSettings::SetGraphicsDisplayState(const FGraphicsDisplayState& 
 	ResolutionSizeY = State.Height;
 	FullscreenMode = State.WindowMode;
 	PreferredFullscreenMode = State.PreferredWindowMode;
+	LastUserConfirmedResolutionSizeX = State.ConfirmedWidth;
+	LastUserConfirmedResolutionSizeY = State.ConfirmedHeight;
+	LastConfirmedFullscreenMode = State.ConfirmedWindowMode;
 	bUseVSync = State.bVSync;
 }
 
@@ -150,6 +203,7 @@ bool URPGGameUserSettings::StartGraphicsPreview(UObject* Owner, FIntPoint Resolu
 			&& WindowMode != EWindowMode::Windowed)) { return false; }
 
 	TStrongObjectPtr<URPGGameUserSettings> KeepAlive(this);
+	InitializeOptionCommitState();
 	PreviousGraphicsDisplay = CaptureGraphicsDisplayState();
 	GraphicsPreviewOwner = Owner;
 	GraphicsPreviewWorld = World;

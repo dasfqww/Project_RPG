@@ -7,6 +7,7 @@
 #include "Components/TextBlock.h"
 #include "UI/CheckBox/RPGCheckBox.h"
 #include "UI/Option/RPGSoundOptionsRuntime.h"
+#include "Settings/RPGGameUserSettings.h"
 #include "Styling/CoreStyle.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/Input/SButton.h"
@@ -182,32 +183,53 @@ void USoundOptionMenu::InitializeFromSavedSettings()
 
 void USoundOptionMenu::OnMasterVolumeChanged(float Value)
 {
-    if (!CanInteractWithOptions()) { return; }
-    ClearSaveFeedback();
-    TStrongObjectPtr<USoundOptionMenu> KeepAlive(this);
-    TGuardValue<bool> Guard(bApplyingOptions, true);
-    if (IRPGSoundOptionsRuntime* Runtime = IRPGSoundOptionsRuntime::Get()) { Runtime->SetMasterVolume(Value, this); }
+    ApplySoundChange([Value](FRPGSoundSettings& Values) { Values.MasterVolume = Value; });
 }
 
 void USoundOptionMenu::OnMasterMuteChanged(bool bMute)
 {
-    if (!CanInteractWithOptions()) { return; }
-    ClearSaveFeedback();
-    TStrongObjectPtr<USoundOptionMenu> KeepAlive(this);
-    TGuardValue<bool> Guard(bApplyingOptions, true);
-    if (IRPGSoundOptionsRuntime* Runtime = IRPGSoundOptionsRuntime::Get())
-    {
-        Runtime->SetMasterMute(bMute, GetSliderValue(MasterVolumeSlider), this);
-    }
+    ApplySoundChange([bMute](FRPGSoundSettings& Values) { Values.bMasterMuted = bMute; });
 }
 
 void USoundOptionMenu::ApplyChannelVolume(ESoundType Type, float Value)
 {
+    if (Type != ESoundType::BGM && Type != ESoundType::Effect) { return; }
+    ApplySoundChange([Type, Value](FRPGSoundSettings& Values)
+    {
+        if (Type == ESoundType::BGM) { Values.BGMVolume = Value; }
+        else { Values.EffectVolume = Value; }
+    });
+}
+
+void USoundOptionMenu::ApplySoundChange(TFunctionRef<void(FRPGSoundSettings&)> Update)
+{
     if (!CanInteractWithOptions()) { return; }
-    ClearSaveFeedback();
     TStrongObjectPtr<USoundOptionMenu> KeepAlive(this);
     TGuardValue<bool> Guard(bApplyingOptions, true);
-    if (IRPGSoundOptionsRuntime* Runtime = IRPGSoundOptionsRuntime::Get()) { Runtime->SetChannelVolume(Type, Value, this); }
+    ClearSaveFeedback();
+    IRPGSoundOptionsRuntime* Runtime = IRPGSoundOptionsRuntime::Get();
+    FText Error;
+    bool bApplied = false;
+    if (Runtime)
+    {
+        FRPGSoundSettings Requested = Runtime->GetCurrentSettings();
+        Update(Requested);
+        bApplied = Runtime->TryApplySettings(Requested, this, Error);
+    }
+    if (!bMenuConstructed || IsRemovingFromParent()) { return; }
+    if (!bApplied)
+    {
+        // Re-read effective values when an owner change or a busy request rejected the edit.
+        if (const URPGGameUserSettings* Settings = URPGGameUserSettings::GetRPGGameUserSettings())
+        {
+            TGuardValue<bool> SynchronizingGuard(bSynchronizingOptions, true);
+            IRPGSoundOptionsRuntime::SynchronizeMenuControls(Settings->GetSoundOptions(), GetRuntimeControls(),
+                SoundTypeToSliderMap, SoundTypeToCheckBoxMap);
+        }
+        LastSaveMessage = Error.IsEmpty()
+            ? NSLOCTEXT("RPGSoundOptions", "ApplyUnavailable", "사운드 설정을 적용할 준비가 되지 않았습니다.") : Error;
+        bLastSaveFailed = true;
+    }
 }
 
 void USoundOptionMenu::OnBGMVolumeChanged(float Value)
@@ -223,13 +245,14 @@ void USoundOptionMenu::OnEffectVolumeChanged(float Value)
 void USoundOptionMenu::OnVolumeChanged(float Value)
 {
     if (!CanInteractWithOptions()) { return; }
-    ClearSaveFeedback();
-    TStrongObjectPtr<USoundOptionMenu> KeepAlive(this);
-    TGuardValue<bool> Guard(bApplyingOptions, true);
-    if (IRPGSoundOptionsRuntime* Runtime = IRPGSoundOptionsRuntime::Get())
+    ESoundType Matched = ESoundType::Max;
+    for (const auto& Pair : SoundTypeToSliderMap)
     {
-        Runtime->SetVolumeFromMenu(Value, SoundTypeToSliderMap);
+        if (!IsValid(Pair.Value) || Pair.Value->GetValue() != Value) { continue; }
+        if (Matched != ESoundType::Max) { return; }
+        Matched = Pair.Key;
     }
+    ApplyChannelVolume(Matched, Value);
 }
 
 void USoundOptionMenu::OnMuteChanged(bool bMute, URPGCheckBox* CheckBox)
@@ -240,13 +263,11 @@ void USoundOptionMenu::OnMuteChanged(bool bMute, URPGCheckBox* CheckBox)
     if (CheckBox == BGMMuteCheckBox.Get()) { Type = ESoundType::BGM; ChannelSlider = BGMVolumeSlider.Get(); }
     else if (CheckBox == EffectMuteCheckBox.Get()) { Type = ESoundType::Effect; ChannelSlider = EffectVolumeSlider.Get(); }
     if (!IsValid(CheckBox) || !IsValid(ChannelSlider)) { return; }
-    ClearSaveFeedback();
-    TStrongObjectPtr<USoundOptionMenu> KeepAlive(this);
-    TGuardValue<bool> Guard(bApplyingOptions, true);
-    if (IRPGSoundOptionsRuntime* Runtime = IRPGSoundOptionsRuntime::Get())
+    ApplySoundChange([Type, bMute](FRPGSoundSettings& Values)
     {
-        Runtime->SetChannelMute(Type, bMute, ChannelSlider->GetValue(), this);
-    }
+        if (Type == ESoundType::BGM) { Values.bBGMMuted = bMute; }
+        else { Values.bEffectMuted = bMute; }
+    });
 }
 
 void USoundOptionMenu::ApplySettings()
@@ -277,13 +298,8 @@ void USoundOptionMenu::ApplySettings()
 
 void USoundOptionMenu::ResetToDefaults()
 {
-    if (!CanInteractWithOptions()) { return; }
-    ClearSaveFeedback();
-    TStrongObjectPtr<USoundOptionMenu> KeepAlive(this);
-    {
-        TGuardValue<bool> Guard(bApplyingOptions, true);
-        if (IRPGSoundOptionsRuntime* Runtime = IRPGSoundOptionsRuntime::Get()) { Runtime->RestoreDefaultSettings(this); }
-    }
+    ApplySoundChange([](FRPGSoundSettings& Values) { Values = FRPGSoundSettings(); });
+    if (bLastSaveFailed) { return; }
     InitializeFromSavedSettings();
 }
 

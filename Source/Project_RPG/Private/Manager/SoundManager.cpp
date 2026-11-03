@@ -6,6 +6,7 @@
 #include "Settings/RPGGameUserSettings.h"
 #include "Sound/SoundMix.h"
 #include "Sound/SoundBase.h"
+#include "Sound/SoundClass.h"
 #include "UObject/UObjectGlobals.h"
 #include "UObject/StrongObjectPtr.h"
 
@@ -151,9 +152,31 @@ void USoundManager::Play(USoundBase* Sound, FVector Location, float Pitch)
     UGameplayStatics::PlaySoundAtLocation(World, Sound, Location, FRotator::ZeroRotator, Pitch);
 }
 
+bool USoundManager::ValidateSoundRouting(FText& OutError) const
+{
+    OutError = FText::GetEmpty();
+    UWorld* World = GetPlaybackWorld();
+    const URPGGameInstance* Instance = World ? Cast<URPGGameInstance>(GetGameInstance()) : nullptr;
+    const auto IsConfigured = [](const FSoundClassPair* Pair)
+    {
+        return Pair && IsValid(Pair->SoundClass) && IsValid(Pair->SoundMix);
+    };
+    if (!Instance || !IsConfigured(&Instance->GetMasterSound())
+        || !IsConfigured(Instance->GetSoundClassPair(ESoundType::BGM))
+        || !IsConfigured(Instance->GetSoundClassPair(ESoundType::Effect)))
+    {
+        OutError = NSLOCTEXT("RPGSoundOptions", "RoutingUnavailable",
+            "사운드 채널이 준비되지 않아 설정을 적용하지 못했습니다.");
+        return false;
+    }
+    return true;
+}
+
 bool USoundManager::ApplySoundSettings(const FRPGSoundSettings& RequestedSettings)
 {
     if (!IsInGameThread() || bApplyingSoundSettings) { return false; }
+    FText RoutingError;
+    if (!ValidateSoundRouting(RoutingError)) { return false; }
     // The caller may own these values; settings initialization and listeners may change them.
     FRPGSoundSettings Snapshot(RequestedSettings);
     if (!FMath::IsFinite(Snapshot.MasterVolume) || !FMath::IsFinite(Snapshot.BGMVolume)
@@ -173,9 +196,10 @@ bool USoundManager::ApplySoundSettings(const FRPGSoundSettings& RequestedSetting
             && !Settings->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed)
             && URPGGameUserSettings::GetRPGGameUserSettings() == Settings.Get();
     };
-    if (!IsCurrentOwner()) { return false; }
+    if (!IsCurrentOwner() || !Settings->CanApplySoundOptions()) { return false; }
+    Settings->InitializeOptionCommitState();
 
-    // Commit all values before updating mixes or notifying listeners.
+    // Publish live values before notifying listeners; persistence is committed by the options runtime.
     Settings->MasterVolume = Snapshot.MasterVolume;
     Settings->BGMVolume = Snapshot.BGMVolume;
     Settings->EffectVolume = Snapshot.EffectVolume;

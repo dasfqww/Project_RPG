@@ -8,6 +8,7 @@
 #include "InputCoreTypes.h"
 #include "GameplayTagContainer.h"
 #include "Type/RPGEnumTypes.h"
+#include "Settings/RPGSoundSettings.h"
 #include "UObject/SoftObjectPath.h"
 #include "RPGGameUserSettings.generated.h"
 
@@ -65,11 +66,20 @@ public:
 	static URPGGameUserSettings* GetRPGGameUserSettings();
 
 	virtual void ApplySettings(bool bCheckForCommandLineOverrides) override;
+	virtual void LoadSettings(bool bForceReload = false) override;
 	virtual void SaveSettings() override;
 	virtual void BeginDestroy() override;
 
+	/** JSON is authoritative for options; INI mirrors only successfully loaded/saved snapshots.
+	 * Generic input/graphics saves must never persist an unconfirmed audio or display change. */
+	void InitializeOptionCommitState();
+	bool CommitSoundOptions(const FRPGSoundSettings& Saved);
+	bool CommitGraphicsOptions();
+	bool CanApplySoundOptions() const { return !bSavingSettings; }
+	FRPGSoundSettings GetSoundOptions() const;
+
 	/** Apply the requested graphics values without requesting an INI save.
-	 * Concurrent audio/input saves serialize the previous display until this synchronous application ends.
+	 * Concurrent audio/input saves serialize the last committed display.
 	 * Startup preserves the existing command-line override and notification behavior.
 	 */
 	bool ApplyGraphicsOptionsWithoutSaving(FIntPoint Resolution, EWindowMode::Type WindowMode,
@@ -145,6 +155,9 @@ private:
 		uint32 Height = 0;
 		int32 WindowMode = 2;
 		int32 PreferredWindowMode = 1;
+		uint32 ConfirmedWidth = 0;
+		uint32 ConfirmedHeight = 0;
+		int32 ConfirmedWindowMode = 2;
 		bool bVSync = false;
 	};
 	FGraphicsDisplayState CaptureGraphicsDisplayState() const;
@@ -156,7 +169,10 @@ private:
 
 	FGraphicsDisplayState PreviousGraphicsDisplay;
 	FGraphicsDisplayState PreviewGraphicsDisplay;
-	FGraphicsDisplayState PreviousGraphicsApplyDisplay;
+	FGraphicsDisplayState CommittedGraphicsDisplay;
+	FRPGSoundSettings CommittedSoundOptions;
+	void SetSoundOptions(const FRPGSoundSettings& Values);
+	bool bHasOptionCommitState = false;
 	TWeakObjectPtr<UObject> GraphicsPreviewOwner;
 	TWeakObjectPtr<UWorld> GraphicsPreviewWorld;
 	FTSTicker::FDelegateHandle GraphicsPreviewTicker;

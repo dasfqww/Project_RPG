@@ -12,6 +12,7 @@ class UCheckBox;
 class URPGCheckBox;
 class UTextBlock;
 struct FRPGSoundOptionsControls;
+struct FRPGSoundSettings;
 
 /**
  * 
@@ -93,6 +94,8 @@ private:
 	void UnbindControls();
 	void ClearSaveFeedback();
 	void ApplyChannelVolume(ESoundType Type, float Value);
+	void ApplySoundChange(TFunctionRef<void(FRPGSoundSettings&)> Update);
+	friend struct FRPGSoundOptionsTestAccess;
 	bool CanInteractWithOptions() const;
 	FText GetVolumeSummary() const;
 	FReply HandleSaveClicked();
