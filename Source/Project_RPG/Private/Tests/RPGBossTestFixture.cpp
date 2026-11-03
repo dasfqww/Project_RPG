@@ -317,8 +317,21 @@ void ARPGBossNetworkTestGameMode::Tick(float DeltaSeconds)
 			BossPawn->Attributes->GetAttack() != 2.f) { return; }
 		UE_LOG(LogTemp, Display, TEXT("RAID_ENRAGE_AUTO_SERVER Attack=2 DeadlineConsumed=1"));
 		if (!StartNetworkHazard()) { UE_LOG(LogTemp, Error, TEXT("RAID_HAZARD_FAIL StartDenied")); return; }
-		TelegraphSequence = StartupBoss->BossAIComponent->BeginTelegraph(TAG_BossTestTelegraph,
-			StartupBoss->GetActorLocation() + FVector(100.f, 0.f, 0.f), 120.f);
+		if (FParse::Param(FCommandLine::Get(), TEXT("RPGBossTelegraphShapeNetwork")))
+		{
+			FRPGHitQueryShape Shape;
+			Shape.Type = ERPGHitQueryShape::RingSector;
+			Shape.Radius = 300.f;
+			Shape.InnerRadius = 150.f;
+			Shape.AngleDegrees = 270.f;
+			TelegraphSequence = StartupBoss->BossAIComponent->BeginTelegraphWithShape(TAG_BossTestTelegraph,
+				FTransform(FRotator(0.f, 90.f, 0.f), StartupBoss->GetActorLocation() + FVector(100.f, 0.f, 0.f)), Shape, 120.f);
+		}
+		else
+		{
+			TelegraphSequence = StartupBoss->BossAIComponent->BeginTelegraph(TAG_BossTestTelegraph,
+				StartupBoss->GetActorLocation() + FVector(100.f, 0.f, 0.f), 120.f);
+		}
 		if (TelegraphSequence != 0)
 		{
 			UE_LOG(LogTemp, Display, TEXT("RAID_BOSS_TELEGRAPH_STARTED Encounter=%d Sequence=%d"),

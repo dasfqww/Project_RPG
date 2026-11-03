@@ -19,13 +19,15 @@ bool URPGBossTelegraphPresentationComponent::EvaluateProgress(const FRPGBossStat
 	const FRPGBossTelegraphState& Telegraph, double ServerNow, float& OutProgress)
 {
 	OutProgress = 0.f;
+	FRPGBossTelegraphFootprint Footprint;
 	const double Duration = Telegraph.EndServerTime - Telegraph.StartServerTime;
 	if (BossState.EncounterState != ERPGBossEncounterState::InCombat || !Telegraph.bActive ||
 		Telegraph.EncounterId <= 0 || Telegraph.EncounterId != BossState.EncounterId || Telegraph.Sequence <= 0 ||
 		!Telegraph.ActionTag.IsValid() || Telegraph.AimLocation.ContainsNaN() ||
 		!FMath::IsFinite(ServerNow) || !FMath::IsFinite(Telegraph.StartServerTime) ||
 		!FMath::IsFinite(Telegraph.EndServerTime) || !FMath::IsFinite(Duration) || Duration <= 0.0 ||
-		Duration > 120.0 || ServerNow >= Telegraph.EndServerTime)
+		Duration > 120.0 || ServerNow >= Telegraph.EndServerTime ||
+		(Telegraph.Geometry.bEnabled && !FRPGBossTelegraphFootprint::Build(Telegraph.Geometry, Footprint)))
 	{
 		return false;
 	}
@@ -72,6 +74,12 @@ void URPGBossTelegraphPresentationComponent::RefreshPresentation()
 	if (GetNetMode() == NM_Client && !GameState) { HideIndicator(); return; }
 	const double ServerNow = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
 	float NewProgress = 0.f;
+	FRPGBossTelegraphFootprint Footprint;
+	const bool bShaped = Telegraph.Geometry.bEnabled;
+	if (bShaped && !FRPGBossTelegraphFootprint::Build(Telegraph.Geometry, Footprint))
+	{
+		HideIndicator(); return;
+	}
 	const FRPGBossTelegraphStyle* Style = nullptr;
 	for (const FRPGBossTelegraphStyle& Candidate : Styles)
 	{
@@ -83,7 +91,7 @@ void URPGBossTelegraphPresentationComponent::RefreshPresentation()
 		}
 	}
 	if (!EvaluateProgress(BossState, Telegraph, ServerNow, NewProgress) || !Style ||
-		!FMath::IsFinite(Style->Radius) || Style->Radius <= 0.f || Style->Radius > 2500.f ||
+		(!bShaped && (!FMath::IsFinite(Style->Radius) || Style->Radius <= 0.f || Style->Radius > 2500.f)) ||
 		!FMath::IsFinite(Style->Color.R) || !FMath::IsFinite(Style->Color.G) ||
 		!FMath::IsFinite(Style->Color.B) || !FMath::IsFinite(Style->Color.A))
 	{
@@ -91,6 +99,11 @@ void URPGBossTelegraphPresentationComponent::RefreshPresentation()
 	}
 	UMaterialInterface* Material = Style->Material.Get();
 	if (!Material || Material->GetMaterial()->MaterialDomain != MD_DeferredDecal) { HideIndicator(); return; }
+	float ShapeSupport = 0.f;
+	if (bShaped && !Material->GetScalarParameterValue(FMaterialParameterInfo(TEXT("TelegraphUseShape")), ShapeSupport))
+	{
+		HideIndicator(); return; // An old/custom circular material must not misrepresent a shaped attack.
+	}
 	if (!Indicator)
 	{
 		Indicator = NewObject<UDecalComponent>(GetOwner(), TEXT("BossTelegraphIndicator"));
@@ -103,8 +116,8 @@ void URPGBossTelegraphPresentationComponent::RefreshPresentation()
 	{
 		DynamicMaterial = UMaterialInstanceDynamic::Create(Material, this);
 		Indicator->SetDecalMaterial(DynamicMaterial);
-		Indicator->DecalSize = FVector(100.f, Style->Radius, Style->Radius);
-		FVector Location = Telegraph.AimLocation;
+		Indicator->DecalSize = bShaped ? Footprint.DecalSize : FVector(100.f, Style->Radius, Style->Radius);
+		FVector Location = bShaped ? Footprint.Center : Telegraph.AimLocation;
 		FHitResult Ground;
 		FCollisionQueryParams Query(SCENE_QUERY_STAT(BossTelegraphGround), false, GetOwner());
 		if (GetWorld()->LineTraceSingleByObjectType(Ground, Location + FVector(0.f, 0.f, 100.f),
@@ -113,8 +126,10 @@ void URPGBossTelegraphPresentationComponent::RefreshPresentation()
 			Location = Ground.ImpactPoint;
 		}
 		// Deliberately unattached: the locked aim must not follow boss movement.
-		Indicator->SetWorldLocationAndRotation(Location, FRotator(-90.f, 0.f, 0.f));
+		Indicator->SetWorldLocationAndRotation(Location, bShaped ? Footprint.DecalRotation : FRotator(-90.f, 0.f, 0.f));
 		DynamicMaterial->SetVectorParameterValue(TEXT("TelegraphColor"), Style->Color);
+		if (bShaped) Footprint.ApplyMaterialParameters(*DynamicMaterial);
+		else DynamicMaterial->SetScalarParameterValue(TEXT("TelegraphUseShape"), 0.f);
 		DisplayedEncounter = Telegraph.EncounterId;
 		DisplayedSequence = Telegraph.Sequence;
 	}

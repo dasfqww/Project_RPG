@@ -21,6 +21,14 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Strike", meta = (ClampMin = "1.0", Units = "cm"))
 	float Radius = 200.f;
+	/** Opt-in data shape. Existing assets retain their authored sphere Radius. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Strike|Shape")
+	bool bUseCustomHitShape = false;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Strike|Shape", meta = (EditCondition = "bUseCustomHitShape"))
+	FRPGHitQueryShape HitShape;
+	/** Source-centred slashes/cones versus target-centred impacts; aim yaw is locked at activation. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Strike|Shape")
+	bool bCenterHitShapeOnSource = false;
 
 	/** Opt-in area impact. All eligible threat participants inside the locked warning can be hit. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Strike")
@@ -59,6 +67,9 @@ protected:
 		FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 
 private:
+	bool BuildStrikeHitProfile(FRPGHitQueryProfile& Out) const;
+	FRPGHitQueryProfile LockedHitProfile;
+	FTransform LockedQueryTransform = FTransform::Identity;
 	FTimerHandle StrikeTimer;
 	FVector LockedAimLocation = FVector::ZeroVector;
 	int32 LockedTelegraphSequence = 0;

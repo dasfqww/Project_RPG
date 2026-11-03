@@ -140,11 +140,25 @@ void URPGBossGameplayAbility::ActivateAbility(FGameplayAbilitySpecHandle Handle,
 
 int32 URPGBossGameplayAbility::StartBossTelegraph(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds)
 {
+	return StartBossTelegraphInternal(ActionTag, AimLocation, WindupSeconds, nullptr, nullptr);
+}
+
+int32 URPGBossGameplayAbility::StartBossTelegraphForHitQuery(FGameplayTag ActionTag, const FTransform& QueryTransform,
+	const FRPGHitQueryProfile& HitProfile, float WindupSeconds)
+{
+	return StartBossTelegraphInternal(ActionTag, QueryTransform.GetLocation(), WindupSeconds, &QueryTransform, &HitProfile.Shape);
+}
+
+int32 URPGBossGameplayAbility::StartBossTelegraphInternal(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds,
+	const FTransform* QueryTransform, const FRPGHitQueryShape* Shape)
+{
 	if (TelegraphSequence != 0 || !IsBossExecutionValid()) { return 0; }
 	const uint64 StartedSerial = ExecutionSerial;
 	const int32 StartedEncounter = EncounterId;
 	const TWeakObjectPtr<URPGBossAIComponent> StartedBoss = Boss;
-	const int32 Sequence = StartedBoss->BeginTelegraph(ActionTag, AimLocation, WindupSeconds);
+	const int32 Sequence = QueryTransform && Shape
+		? StartedBoss->BeginTelegraphWithShape(ActionTag, *QueryTransform, *Shape, WindupSeconds)
+		: StartedBoss->BeginTelegraph(ActionTag, AimLocation, WindupSeconds);
 	if (Sequence != 0)
 	{
 		// A presentation listener may cancel the ability while BeginTelegraph broadcasts.

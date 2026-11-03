@@ -66,6 +66,9 @@ protected:
 	/** Publish the server-owned windup for this execution; returns zero when rejected. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Ability|Telegraph")
 	int32 StartBossTelegraph(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds);
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Ability|Telegraph")
+	int32 StartBossTelegraphForHitQuery(FGameplayTag ActionTag, const FTransform& QueryTransform,
+		const FRPGHitQueryProfile& HitProfile, float WindupSeconds);
 
 	/** End this execution's windup early; EndAbility also cleans it up. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Ability|Telegraph")
@@ -102,6 +105,8 @@ protected:
 		FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 
 private:
+	int32 StartBossTelegraphInternal(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds,
+		const FTransform* QueryTransform, const FRPGHitQueryShape* Shape);
 	bool IsBossEncounterExecutionValid() const;
 	bool IsPatternCooldownConfigurationValid() const;
 	bool PassesActivationTargetConditions(const APawn* Source, const APawn* Target, bool bRequiresTarget) const;

@@ -32,6 +32,24 @@ void URPGBossAIComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 
 int32 URPGBossAIComponent::BeginTelegraph(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds)
 {
+	return BeginTelegraphInternal(ActionTag, AimLocation, WindupSeconds, {});
+}
+
+int32 URPGBossAIComponent::BeginTelegraphWithShape(FGameplayTag ActionTag, const FTransform& QueryTransform,
+	const FRPGHitQueryShape& Shape, float WindupSeconds)
+{
+	FRPGBossTelegraphGeometry Geometry;
+	Geometry.bEnabled = true;
+	Geometry.QueryTransform = QueryTransform;
+	Geometry.Shape = Shape;
+	FRPGBossTelegraphFootprint Footprint;
+	if (!FRPGBossTelegraphFootprint::Build(Geometry, Footprint)) return 0;
+	return BeginTelegraphInternal(ActionTag, Footprint.Center, WindupSeconds, Geometry);
+}
+
+int32 URPGBossAIComponent::BeginTelegraphInternal(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds,
+	const FRPGBossTelegraphGeometry& Geometry)
+{
 	if (!CanMutate() || bPublishingTelegraph || State.EncounterState != ERPGBossEncounterState::InCombat ||
 		Telegraph.bActive || Telegraph.Sequence == MAX_int32 || !ActionTag.IsValid() ||
 		AimLocation.ContainsNaN() || !FMath::IsFinite(WindupSeconds) || WindupSeconds <= 0.f ||
@@ -46,6 +64,7 @@ int32 URPGBossAIComponent::BeginTelegraph(FGameplayTag ActionTag, FVector AimLoc
 	++Telegraph.Sequence;
 	Telegraph.ActionTag = ActionTag;
 	Telegraph.AimLocation = AimLocation;
+	Telegraph.Geometry = Geometry;
 	Telegraph.StartServerTime = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
 	Telegraph.EndServerTime = Telegraph.StartServerTime + WindupSeconds;
 	const int32 StartedEncounter = Telegraph.EncounterId;
@@ -625,6 +644,7 @@ void URPGBossAIComponent::ClearTelegraph()
 	const FRPGBossTelegraphState Previous = Telegraph;
 	Telegraph.bActive = false;
 	Telegraph.ActionTag = FGameplayTag();
+	Telegraph.Geometry = {};
 	PublishTelegraph(Previous);
 }
 

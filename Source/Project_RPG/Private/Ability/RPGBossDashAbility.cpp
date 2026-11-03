@@ -94,7 +94,13 @@ void URPGBossDashAbility::ActivateAbility(FGameplayAbilitySpecHandle Handle, con
 	if (AAIController* AI = Cast<AAIController>(SourceController.Get())) { AI->StopMovement(); }
 	if (!IsDashContextValid(Serial, true)) { if (IsActive() && GetBossExecutionSerial() == Serial) { EndAbility(Handle, ActorInfo, ActivationInfo, true, true); } return; }
 	SourceCharacter->GetCharacterMovement()->StopMovementImmediately();
-	const int32 Sequence = StartBossTelegraph(ActionTag, LockedAim, WindupSeconds);
+	FRPGHitQueryProfile WarningProfile;
+	const FVector WarningDelta = LockedAim - Start;
+	WarningProfile.Shape.Type = WarningDelta.IsNearlyZero() ? ERPGHitQueryShape::Sphere : ERPGHitQueryShape::LineSweep;
+	WarningProfile.Shape.Radius = FrozenRadius;
+	WarningProfile.Shape.Length = WarningDelta.Size();
+	const FTransform WarningTransform(WarningDelta.GetSafeNormal2D().Rotation(), Start);
+	const int32 Sequence = StartBossTelegraphForHitQuery(ActionTag, WarningTransform, WarningProfile, WindupSeconds);
 	if (!IsActive() || GetBossExecutionSerial() != Serial) { return; }
 	LockedSequence = Sequence;
 	if (Sequence == 0) { EndAbility(Handle, ActorInfo, ActivationInfo, true, true); return; }

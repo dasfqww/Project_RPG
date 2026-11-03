@@ -75,7 +75,11 @@ void URPGBossPersistentHazardAbility::ActivateAbility(FGameplayAbilitySpecHandle
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true); return;
 	}
 	LockedCenter = Target->GetActorLocation();
-	const int32 Sequence = StartBossTelegraph(ActionTag, LockedCenter, WindupSeconds);
+	FRPGHitQueryProfile WarningProfile;
+	WarningProfile.Shape.Type = ERPGHitQueryShape::Sphere;
+	WarningProfile.Shape.Radius = Radius;
+	const int32 Sequence = StartBossTelegraphForHitQuery(ActionTag,
+		FTransform(FQuat::Identity, LockedCenter), WarningProfile, WindupSeconds);
 	if (!IsActive() || GetBossExecutionSerial() != StartedSerial) { return; }
 	LockedSequence = Sequence;
 	if (Sequence == 0) { EndAbility(Handle, ActorInfo, ActivationInfo, true, true); return; }

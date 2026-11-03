@@ -1,6 +1,7 @@
 #include "Ability/RPGBossTelegraphedStrikeAbility.h"
 
 #include "AI/RPGBossAIComponent.h"
+#include "AI/RPGBossTelegraphShape.h"
 #include "AI/RPGBossThreatComponent.h"
 #include "Combat/HitQuery/RPGHitQueryTypes.h"
 #include "Engine/World.h"
@@ -26,6 +27,25 @@ namespace
 	}
 }
 
+bool URPGBossTelegraphedStrikeAbility::BuildStrikeHitProfile(FRPGHitQueryProfile& Out) const
+{
+	Out = {};
+	if (bUseCustomHitShape) Out.Shape = HitShape;
+	else
+	{
+		if (!FMath::IsFinite(Radius) || Radius <= 0.f || Radius > 2500.f) return false;
+		Out.Shape.Type = ERPGHitQueryShape::Sphere;
+		Out.Shape.Radius = Radius;
+	}
+	Out.Filter.TeamRule = ERPGHitQueryTeamRule::HostileOnly;
+	Out.Filter.MaxResults = 0;
+	FRPGBossTelegraphGeometry Geometry;
+	Geometry.bEnabled = true;
+	Geometry.Shape = Out.Shape;
+	FRPGBossTelegraphFootprint Footprint;
+	return FRPGBossTelegraphFootprint::Build(Geometry, Footprint);
+}
+
 bool URPGBossTelegraphedStrikeAbility::CanActivateAbility(FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags,
 	const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
@@ -36,9 +56,10 @@ bool URPGBossTelegraphedStrikeAbility::CanActivateAbility(FGameplayAbilitySpecHa
 	const URPGBossThreatComponent* TargetSelection = Avatar ? Avatar->FindComponentByClass<URPGBossThreatComponent>() : nullptr;
 	const UGameplayEffect* Effect = DamageEffectClass ? DamageEffectClass->GetDefaultObject<UGameplayEffect>() : nullptr;
 	const float Damage = BaseDamage.GetValueAtLevel(GetAbilityLevel());
+	FRPGHitQueryProfile Profile;
 	return BossStateComponent && !BossStateComponent->GetTelegraphState().bActive &&
 		ActionTag.IsValid() && FMath::IsFinite(WindupSeconds) && WindupSeconds >= .01f &&
-		WindupSeconds <= 120.f && FMath::IsFinite(Radius) && Radius > 0.f && Radius <= 2500.f &&
+		WindupSeconds <= 120.f && BuildStrikeHitProfile(Profile) &&
 		FMath::IsFinite(Damage) && Damage > 0.f && SecurityProfile.bRequireAuthorityHitQuery &&
 		FMath::IsFinite(RecoverySeconds) && RecoverySeconds >= 0.f && RecoverySeconds <= 5.f &&
 		(!PresentationMontage || (!PresentationMontage->HasRootMotion() &&
@@ -70,7 +91,14 @@ void URPGBossTelegraphedStrikeAbility::ActivateAbility(FGameplayAbilitySpecHandl
 	}
 	LockedAimLocation = Target->GetActorLocation();
 	LockedEncounterId = GetBossExecutionEncounterId();
-	const int32 StartedSequence = StartBossTelegraph(ActionTag, LockedAimLocation, WindupSeconds);
+	if (!BuildStrikeHitProfile(LockedHitProfile))
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+	const FRotator AimRotation = (LockedAimLocation - Avatar->GetActorLocation()).GetSafeNormal2D().Rotation();
+	LockedQueryTransform = FTransform(AimRotation, bCenterHitShapeOnSource ? Avatar->GetActorLocation() : LockedAimLocation);
+	const int32 StartedSequence = StartBossTelegraphForHitQuery(ActionTag, LockedQueryTransform, LockedHitProfile, WindupSeconds);
 	if (!IsActive() || GetBossExecutionSerial() != StartedSerial) { return; }
 	LockedTelegraphSequence = StartedSequence;
 	if (LockedTelegraphSequence == 0)
@@ -112,22 +140,16 @@ void URPGBossTelegraphedStrikeAbility::ResolveStrike(uint64 StartedSerial)
 	}
 	// End listeners may cancel or restart this per-actor ability. Never hit on behalf of the old execution.
 	if (!IsActive() || GetBossExecutionSerial() != StartedSerial || !IsBossExecutionValid()) { return; }
-	FRPGHitQueryProfile HitProfile;
-	HitProfile.Shape.Type = ERPGHitQueryShape::Sphere;
-	HitProfile.Shape.Radius = Radius;
-	HitProfile.Filter.TeamRule = ERPGHitQueryTeamRule::HostileOnly;
-	// The shared query clamps this to SecurityProfile.MaximumTargetsPerQuery before finding the captured target.
-	HitProfile.Filter.MaxResults = 0;
 	if (bHitAllThreatParticipants)
 	{
 		TArray<FRPGHitQueryResult> Hits;
-		ExecuteAreaServerDamage(FTransform(FQuat::Identity, LockedAimLocation), HitProfile,
+		ExecuteAreaServerDamage(LockedQueryTransform, LockedHitProfile,
 			DamageEffectClass, BaseDamage, SecurityProfile, Hits);
 	}
 	else
 	{
 		FRPGHitQueryResult Hit;
-		ExecuteTargetedServerDamage(FTransform(FQuat::Identity, LockedAimLocation), HitProfile,
+		ExecuteTargetedServerDamage(LockedQueryTransform, LockedHitProfile,
 			DamageEffectClass, BaseDamage, SecurityProfile, Hit);
 	}
 	if (IsActive() && GetBossExecutionSerial() == StartedSerial)

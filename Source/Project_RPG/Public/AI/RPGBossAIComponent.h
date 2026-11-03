@@ -1,4 +1,5 @@
 #pragma once
+#include "AI/RPGBossTelegraphShape.h"
 
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
@@ -81,6 +82,8 @@ struct PROJECT_RPG_API FRPGBossTelegraphState
 	UPROPERTY(BlueprintReadOnly, Category = "Boss")
 	FVector AimLocation = FVector::ZeroVector;
 	UPROPERTY(BlueprintReadOnly, Category = "Boss")
+	FRPGBossTelegraphGeometry Geometry;
+	UPROPERTY(BlueprintReadOnly, Category = "Boss")
 	double StartServerTime = 0.0;
 	UPROPERTY(BlueprintReadOnly, Category = "Boss")
 	double EndServerTime = 0.0;
@@ -121,6 +124,10 @@ public:
 	/** Return the action sequence; zero means rejected. A second action cannot replace an active one. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Telegraph")
 	int32 BeginTelegraph(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds);
+	/** Captures the exact server hit shape/transform atomically with the windup. */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Telegraph")
+	int32 BeginTelegraphWithShape(FGameplayTag ActionTag, const FTransform& QueryTransform,
+		const FRPGHitQueryShape& Shape, float WindupSeconds);
 	/** Stale callbacks cannot end a newer action. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Telegraph")
 	bool EndTelegraph(int32 ExpectedEncounterId, int32 ExpectedSequence);
@@ -154,6 +161,8 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
+	int32 BeginTelegraphInternal(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds,
+		const FRPGBossTelegraphGeometry& Geometry);
 	UPROPERTY(ReplicatedUsing = OnRep_State)
 	FRPGBossState State;
 	UPROPERTY(ReplicatedUsing = OnRep_Telegraph)

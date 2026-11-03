@@ -12,6 +12,7 @@
 #include "Perception/AISense_Sight.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Materials/MaterialInterface.h"
+#include "Components/DecalComponent.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
@@ -133,6 +134,28 @@ void ARPGBossStartupTestCharacter::Tick(float DeltaSeconds)
 			Telegraph.EncounterId == State.EncounterId && Telegraph.ActionTag.IsValid() &&
 			Telegraph.Sequence > 0 && Telegraph.EndServerTime > Telegraph.StartServerTime)
 		{
+			if (FParse::Param(FCommandLine::Get(), TEXT("RPGBossTelegraphShapeNetwork")))
+			{
+				const auto& Geometry = Telegraph.Geometry;
+				if (!Geometry.bEnabled || Geometry.Shape.Type != ERPGHitQueryShape::RingSector ||
+					Geometry.Shape.Radius != 300.f || Geometry.Shape.InnerRadius != 150.f || Geometry.Shape.AngleDegrees != 270.f ||
+					!FMath::IsNearlyEqual(Geometry.QueryTransform.Rotator().Yaw, 90.f))
+				{
+					UE_LOG(LogTemp, Error, TEXT("RAID_TELEGRAPH_SHAPE_FAIL Snapshot")); return;
+				}
+				if (!BossTelegraphPresentation->IsIndicatorVisible()) return;
+				const UMaterialInterface* Material = BossTelegraphPresentation->GetIndicator()->GetDecalMaterial();
+				float Inner = 0.f, Outer = 0.f, ShapeType = 0.f;
+				if (!Material || !Material->GetScalarParameterValue(FMaterialParameterInfo(TEXT("TelegraphInnerRadius")), Inner) ||
+					!Material->GetScalarParameterValue(FMaterialParameterInfo(TEXT("TelegraphRadius")), Outer) ||
+					!Material->GetScalarParameterValue(FMaterialParameterInfo(TEXT("TelegraphShape")), ShapeType) ||
+					Inner != 150.f || Outer != 300.f || ShapeType != static_cast<float>(ERPGHitQueryShape::RingSector) ||
+					BossAIComponent->BeginTelegraphWithShape(Telegraph.ActionTag, Geometry.QueryTransform, Geometry.Shape, 1.f) != 0)
+				{
+					UE_LOG(LogTemp, Error, TEXT("RAID_TELEGRAPH_SHAPE_FAIL MaterialOrAuthority")); return;
+				}
+				UE_LOG(LogTemp, Display, TEXT("RAID_TELEGRAPH_SHAPE_REPLICATED RingSector=1 Inner=150 Outer=300 Angle=270 Yaw=90 Material=1 AuthorityDenied=1"));
+			}
 			bSawTelegraph = true;
 			UE_LOG(LogTemp, Display, TEXT("RAID_BOSS_TELEGRAPH_REPLICATED Active=1"));
 		}
