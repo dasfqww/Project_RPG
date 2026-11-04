@@ -23,6 +23,8 @@ public sealed class OperationsEvidenceFacade(GetCharacterEvidence evidence, Oper
         var result = await evidence.ExecuteAsync(new(id, from, to, limit, state.Value.Position), context.RequestAborted);
         if (!result.IsSuccess) return Result<WebEvidencePage>.Fail(result.Error!);
         var page = result.Value;
+        if (options.Compensation.Enabled) page = page with { Coverage = page.Coverage.Select(c => c.Source == "OperationsActions"
+            ? new EvidenceCoverage(c.Source, ProjectRpg.Operations.Core.Diagnostics.LogCoverage.Unknown, "ops.evidence.query_actions_separately") : c).ToArray() };
         return Result<WebEvidencePage>.Success(new(page.Items, cursors.Write(page.Next, state.Value, options.OperatorId, key), page.HasMore, page.Coverage, from, to));
     }
     public Task<Result<EvidenceItem>> FindAsync(HttpContext context, Guid id, EvidenceSourceKind source, Guid key)

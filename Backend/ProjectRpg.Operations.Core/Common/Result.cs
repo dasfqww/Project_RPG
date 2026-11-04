@@ -1,6 +1,6 @@
 namespace ProjectRpg.Operations.Core.Common;
 
-public enum FailureKind { InvalidInput, Unauthenticated, Forbidden, NotFound, Unavailable, CursorExpired }
+public enum FailureKind { InvalidInput, Unauthenticated, Forbidden, NotFound, Unavailable, CursorExpired, Conflict, Internal }
 
 public sealed record Failure(FailureKind Kind, string Code);
 

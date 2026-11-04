@@ -26,7 +26,8 @@ public static class OperationsHttp
     public static IResult Success(HttpContext context, object data, OperationsOptions options, TimeProvider clock) =>
         Results.Json(new { data, meta = Meta(context, options, clock) }, Json);
     public static int Status(Failure failure) => failure.Kind switch { FailureKind.InvalidInput => 400, FailureKind.Unauthenticated => 401,
-        FailureKind.Forbidden => 403, FailureKind.NotFound => 404, FailureKind.CursorExpired => 410, _ => 503 };
+        FailureKind.Forbidden => 403, FailureKind.NotFound => 404, FailureKind.CursorExpired => 410,
+        FailureKind.Conflict => 409, FailureKind.Internal => 500, _ => 503 };
     public static IResult Error(HttpContext context, Failure failure) => Error(context, Status(failure), failure.Code);
     public static IResult Error(HttpContext context, int status, string code) =>
         Results.Json(new { type = "about:blank", title = code, status, code, httpRequestId = RequestId(context),

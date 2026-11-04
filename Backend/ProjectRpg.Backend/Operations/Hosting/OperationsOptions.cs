@@ -20,6 +20,7 @@ public sealed class OperationsOptions
     public bool AllowUnencryptedDevelopmentKeys { get; set; }
     public string LogRoot { get; set; } = "";
     public string SourceId { get; set; } = "backend";
+    public Infrastructure.Compensation.CompensationOptions Compensation { get; set; } = new();
     public string OperatorId => "github:" + AllowedGitHubUserId;
 
     public void Validate(IHostEnvironment environment)

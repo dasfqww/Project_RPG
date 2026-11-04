@@ -46,7 +46,7 @@ internal sealed class HostFixture : IAsyncDisposable
     { App=app; Client=client; Cookies=cookies; Clock=clock; GitHub=github; Root=root; Port=port; Origin=$"https://127.0.0.1:{port}"; this.certificate=certificate; }
 
     internal static async Task<HostFixture> StartAsync(string root, string? postgres = null, int port = 0,
-        CookieContainer? cookies = null, MutableClock? clock = null, string epoch = "operations-test-epoch-0001", bool enabled = true)
+        CookieContainer? cookies = null, MutableClock? clock = null, string epoch = "operations-test-epoch-0001", bool enabled = true, bool compensation = false, string[]? allowedDefinitions = null)
     {
         Directory.CreateDirectory(root);
         if (port == 0)
@@ -75,8 +75,13 @@ internal sealed class HostFixture : IAsyncDisposable
             ["Operations:ClientId"]="fixture", ["Operations:ClientSecret"]="fixture-only-no-real-secret",
             ["Operations:AllowedGitHubUserId"]="1", ["Operations:AuthEpoch"]=epoch,
             ["Operations:KeyDirectory"]=Path.Combine(root,"keys"), ["Operations:LogRoot"]=Path.Combine(root,"logs"),
-            ["Operations:AllowUnencryptedDevelopmentKeys"]="true"
+            ["Operations:AllowUnencryptedDevelopmentKeys"]="true",
+            ["Operations:Compensation:Enabled"]=compensation.ToString()
         });
+        if (compensation) builder.Configuration.AddInMemoryCollection((allowedDefinitions ?? [
+            ProjectRpg.Backend.Operations.Infrastructure.Compensation.CompensationCatalog.Key(FirstSliceEquipmentDefinitions.OreDefinitionName),
+            ProjectRpg.Backend.Operations.Infrastructure.Compensation.CompensationCatalog.Key(FirstSliceEquipmentDefinitions.TokenDefinitionName)])
+            .Select((value,index) => new KeyValuePair<string,string?>("Operations:Compensation:AllowedDefinitions:"+index,value)));
         builder.Services.AddSingleton<TimeProvider>(clock);
         builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(new AuthOptions { AdminToken="fixture-admin-token" }));
         builder.Services.Configure<SecurityTelemetryOptions>(_ => { });

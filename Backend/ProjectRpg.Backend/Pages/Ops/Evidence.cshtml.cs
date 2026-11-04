@@ -20,6 +20,7 @@ public sealed class EvidenceModel(OperationsEvidenceFacade evidence) : PageModel
         "ops.evidence.source_unavailable" => "조회 실패. 다른 출처의 결과만 표시합니다.",
         "ops.evidence.actor_or_result_owner_only" => "실행자 또는 결과 소유자로 확인된 범위. 전체 소유 이력은 아닙니다.",
         "ops.evidence.actions_not_implemented" => "운영 조치 기능은 아직 구현되지 않았습니다.",
+        "ops.evidence.query_actions_separately" => "캐릭터의 개별 보상 화면에서 확정 조치와 사유를 별도로 조회하세요.",
         "ops.evidence.query_logs_separately" => "기술 로그는 보존 기간을 지정해 별도로 조회하세요.",
         _ => "지정한 기간의 저장 기록을 조회했습니다. 전체 게임 변경 이력을 의미하지 않습니다."
     };

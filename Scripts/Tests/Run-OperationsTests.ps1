@@ -3,13 +3,13 @@ param([switch]$Postgres)
 
 $ErrorActionPreference = 'Stop'
 $opsWorkspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$opsRoot = Join-Path $opsWorkspace 'Saved/BuildChecks/OperationsS2-20261105'
+$opsRoot = Join-Path $opsWorkspace 'Saved/BuildChecks/OperationsCompensation-20261105'
 $opsTemp = Join-Path $opsRoot 'Temp'
 $opsRunId = [Guid]::NewGuid().ToString('N')
 $opsRunRoot = Join-Path $opsTemp $opsRunId
 $opsInputs = Join-Path $opsRunRoot 'Inputs/Backend'
 $opsArtifacts = Join-Path $opsRunRoot 'Artifacts'
-$opsContainerName = 'rpg-ops-s2-' + $opsRunId
+$opsContainerName = 'rpg-ops-comp-' + $opsRunId
 $opsContainerId = $null
 $opsOldRoot = $env:PROJECT_RPG_OPS_TEST_ROOT
 $opsOldPg = $env:PROJECT_RPG_OPS_TEST_POSTGRES
@@ -17,7 +17,7 @@ $opsOldRun = $env:PROJECT_RPG_OPS_TEST_RUN
 $opsResult = [ordered]@{ Passed=$false; RunId=$opsRunId; Postgres=[bool]$Postgres; BaseCommit=$null; Inputs=@(); Commands=@(); DeletedBytes=0L; CleanupComplete=$false; ContainerRemoved=$false; Error=$null }
 
 function Assert-OpsReservation {
-    $row = Get-Content -LiteralPath (Join-Path $opsWorkspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object { $_ -match '^\|.*operations-s2-20261105' }
+    $row = Get-Content -LiteralPath (Join-Path $opsWorkspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object { $_ -match '^\|.*operations-s3-compensation-20261105' }
     if (@($row).Count -ne 1) { throw 'Operations task reservation is missing.' }
 }
 function Get-OpsContainer {
@@ -26,7 +26,7 @@ function Get-OpsContainer {
     if ($found.Count -eq 0) { return $null }
     if ($found.Count -ne 1) { throw 'Ambiguous owned container.' }
     $info = (& docker inspect $found[0] | ConvertFrom-Json)[0]
-    if ($LASTEXITCODE -ne 0 -or $info.Name -cne ('/' + $opsContainerName) -or $info.Config.Labels.'project-rpg.run' -cne $opsRunId -or $info.Config.Labels.'project-rpg.task' -cne 'operations-s2-20261105') { throw 'Container ownership mismatch.' }
+    if ($LASTEXITCODE -ne 0 -or $info.Name -cne ('/' + $opsContainerName) -or $info.Config.Labels.'project-rpg.run' -cne $opsRunId -or $info.Config.Labels.'project-rpg.task' -cne 'operations-compensation-20261105') { throw 'Container ownership mismatch.' }
     return $info
 }
 function Remove-OpsTemp {
@@ -64,7 +64,8 @@ try {
         'ProjectRpg.Backend.MigrationTests/Program.cs','ProjectRpg.Backend/Data/InMemoryGameRepository.Operations.cs','ProjectRpg.Backend/Data/PostgresSchemaMigrations.cs',
         'ProjectRpg.Backend/Program.cs','ProjectRpg.Backend/ProjectRpg.Backend.csproj','ProjectRpg.Backend/packages.lock.json',
         'ProjectRpg.Backend/Application/DungeonRewardSettlementWorker.cs','ProjectRpg.Backend/Application/IDungeonSettlementObserver.cs',
-        'Database/Migrations/0004_operations_sessions.sql','Database/Migrations/0005_operations_evidence.sql')
+        'ProjectRpg.Backend/Data/InMemoryGameRepository.OperationsCompensation.cs','ProjectRpg.Backend/Data/PostgresItemRepository.OperationsCompensation.cs',
+        'Database/Migrations/0004_operations_sessions.sql','Database/Migrations/0005_operations_evidence.sql','Database/Migrations/0006_operations_compensation.sql')
     foreach($relative in $owned){
         $source=Join-Path $opsWorkspace ('Backend/'+$relative)
         $sourceItem=Get-Item -LiteralPath $source
@@ -79,6 +80,15 @@ try {
             $opsResult.Inputs += @{Path=$file.FullName.Substring($opsWorkspace.Length+1);SHA256=$hash}
         }
     }
+    $browserRelative='Scripts/Tests/Test-OperationsCompensationBrowser.cjs'
+    $browserSource=Join-Path $opsWorkspace $browserRelative
+    $browserTarget=Join-Path (Join-Path $opsRunRoot 'Inputs') $browserRelative
+    New-Item -ItemType Directory -Path (Split-Path -Parent $browserTarget) -Force | Out-Null
+    $browserHash=(Get-FileHash -LiteralPath $browserSource).Hash
+    Copy-Item -LiteralPath $browserSource -Destination $browserTarget
+    $opsResult.Inputs += @{Path=$browserRelative;SHA256=$browserHash}
+    & node $browserTarget (Join-Path $opsInputs 'ProjectRpg.Backend/Pages/Ops') *> (Join-Path $opsRoot ('Browser-'+$opsRunId+'.log'))
+    if($LASTEXITCODE -ne 0){throw 'Compensation browser recovery checks failed.'}
     $project=Join-Path $opsInputs 'ProjectRpg.Operations.Tests/ProjectRpg.Operations.Tests.csproj'
     $opsResult.Commands += 'dotnet build [owned snapshot Operations.Tests] --configuration Release --artifacts-path [owned Artifacts]'
     & dotnet build $project --configuration Release --artifacts-path $opsArtifacts --nologo *> (Join-Path $opsRoot ('Build-'+$opsRunId+'.log'))
@@ -92,7 +102,7 @@ try {
         & docker image inspect postgres:17-alpine --format '{{.Id}}' *> $null
         if($LASTEXITCODE -ne 0){throw 'Cached postgres:17-alpine image is required.'}
         $opsPassword=[Guid]::NewGuid().ToString('N')+[Guid]::NewGuid().ToString('N')
-        $opsContainerId = & docker run --pull=never --detach --name $opsContainerName --label ('project-rpg.run='+$opsRunId) --label 'project-rpg.task=operations-s2-20261105' --memory 512m --cpus 1 --pids-limit 128 --publish '127.0.0.1::5432' --tmpfs '/var/lib/postgresql/data:rw,size=201326592' --env 'POSTGRES_DB=ops_test' --env 'POSTGRES_USER=ops_test' --env ('POSTGRES_PASSWORD='+$opsPassword) postgres:17-alpine -c shared_buffers=16MB -c max_connections=32
+        $opsContainerId = & docker run --pull=never --detach --name $opsContainerName --label ('project-rpg.run='+$opsRunId) --label 'project-rpg.task=operations-compensation-20261105' --memory 512m --cpus 1 --pids-limit 128 --publish '127.0.0.1::5432' --tmpfs '/var/lib/postgresql/data:rw,size=201326592' --env 'POSTGRES_DB=ops_test' --env 'POSTGRES_USER=ops_test' --env ('POSTGRES_PASSWORD='+$opsPassword) postgres:17-alpine -c shared_buffers=16MB -c max_connections=32
         if($LASTEXITCODE -ne 0){throw 'Owned PostgreSQL could not start.'}
         $info=Get-OpsContainer
         if($info.Id -cne $opsContainerId -or @($info.Mounts | Where-Object Type -ne 'tmpfs').Count -ne 0){throw 'Unexpected PostgreSQL identity/mounts.'}

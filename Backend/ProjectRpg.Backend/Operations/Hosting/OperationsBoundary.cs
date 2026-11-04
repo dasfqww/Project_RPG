@@ -16,7 +16,8 @@ public sealed class OperationsRequestLimits : IDisposable
         {
             PermitLimit = value.StartsWith("login:", StringComparison.Ordinal) ? 10 :
                 value.StartsWith("callback:", StringComparison.Ordinal) ? 30 :
-                value.StartsWith("logs:", StringComparison.Ordinal) ? 10 : 120,
+                value.StartsWith("logs:", StringComparison.Ordinal) ? 10 :
+                value.StartsWith("commands:", StringComparison.Ordinal) ? 30 : 120,
             Window = value.StartsWith("login:", StringComparison.Ordinal) || value.StartsWith("callback:", StringComparison.Ordinal)
                 ? TimeSpan.FromMinutes(10) : TimeSpan.FromMinutes(1),
             QueueLimit = 0, AutoReplenishment = true
@@ -37,7 +38,9 @@ public sealed class OperationsBoundary(RequestDelegate next)
         context.Response.Headers["X-Ops-Request-Id"] = OperationsHttp.RequestId(context).ToString("D");
         context.Response.Headers["X-Content-Type-Options"] = "nosniff";
         context.Response.Headers["Referrer-Policy"] = "no-referrer";
-        context.Response.Headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+        string nonce = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(24));
+        context.Items["Ops.ScriptNonce"] = nonce;
+        context.Response.Headers["Content-Security-Policy"] = $"default-src 'none'; script-src 'nonce-{nonce}'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
         Stopwatch timer = Stopwatch.StartNew();
         events.Record(context, "ops.http.started", "OperationsRequest", "Started");
         CancellationToken original = context.RequestAborted;
@@ -45,7 +48,8 @@ public sealed class OperationsBoundary(RequestDelegate next)
         bool login = context.Request.Path == "/ops/login" && HttpMethods.IsGet(context.Request.Method)
             || context.Request.Path == "/ops/auth/login" && HttpMethods.IsPost(context.Request.Method);
         bool callback = context.Request.Path == "/ops/auth/github-callback" && HttpMethods.IsGet(context.Request.Method);
-        deadline.CancelAfter(TimeSpan.FromSeconds(login || callback ? 25 : 5));
+        bool command = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.StartsWithSegments("/ops/api");
+        deadline.CancelAfter(TimeSpan.FromSeconds(login || callback ? 25 : command ? 10 : 5));
         context.RequestAborted = deadline.Token;
         try
         {
@@ -69,7 +73,7 @@ public sealed class OperationsBoundary(RequestDelegate next)
                     return;
                 }
                 context.User = authenticated.Principal;
-                partition = (context.Request.Path.StartsWithSegments("/ops/api/logs") || context.Request.Path == "/ops/diagnostics"
+                partition = command ? "commands:" + options.OperatorId : (context.Request.Path.StartsWithSegments("/ops/api/logs") || context.Request.Path == "/ops/diagnostics"
                     ? "logs:" : "reads:") + options.OperatorId;
             }
             using RateLimitLease lease = limits.Acquire(partition);
@@ -80,9 +84,16 @@ public sealed class OperationsBoundary(RequestDelegate next)
                 await OperationsHttp.WriteErrorAsync(context, 429, "ops.rate_limited");
                 return;
             }
+            if (command)
+            {
+                if (context.Request.ContentLength > 32 * 1024) { await OperationsHttp.WriteErrorAsync(context, 413, "ops.body_too_large"); return; }
+                var size = context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+                if (size is { IsReadOnly: false }) size.MaxRequestBodySize = 32 * 1024;
+            }
             await next(context);
         }
         catch (AntiforgeryValidationException) { await OperationsHttp.WriteErrorAsync(context, 403, "ops.csrf_failed"); }
+        catch (BadHttpRequestException e) { await OperationsHttp.WriteErrorAsync(context, e.StatusCode, e.StatusCode == 413 ? "ops.body_too_large" : "ops.invalid_query"); }
         catch (Exception e) when (e is NpgsqlException or TimeoutException)
         { await OperationsHttp.WriteErrorAsync(context, 503, "ops.storage_unavailable"); }
         catch (OperationCanceledException) when (!original.IsCancellationRequested)

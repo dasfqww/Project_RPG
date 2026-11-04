@@ -1,6 +1,7 @@
 await CoreTests.RunAsync();
 await EvidenceCoreTests.RunAsync();
 await HostTests.RunAsync();
+await CompensationTests.RunAsync();
 Console.WriteLine("Operations contract tests passed.");
 
 internal static class Check

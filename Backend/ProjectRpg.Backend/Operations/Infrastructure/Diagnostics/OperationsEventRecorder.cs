@@ -48,6 +48,21 @@ public sealed class OperationsEventRecorder(OperationsLogStore store, Operations
             observation.SessionId, null, observation.TransactionRequestId, null, null, observation.Phase.ToString(),
             observation.Phase == DungeonSettlementPhase.Failed ? "settlement_failed" : null, null, "DungeonSettlement"));
     }
+    public void RecordCompensation(HttpContext context, ProjectRpg.Operations.Core.Compensation.CompensationCommand command,
+        string outcome, string? error, Guid? itemId = null)
+    {
+        try
+        {
+            string suffix = error == "ops.outcome_unknown" ? "unknown" : outcome.ToLowerInvariant();
+            Write(new(1, Guid.NewGuid(), "ops.command." + suffix, clock.GetUtcNow(), error is null ? "Information" : "Warning",
+                options.EnvironmentId, "ProjectRpg.Backend", store.BootId, BuildVersion, OperationsHttp.RequestId(context),
+                Activity.Current?.TraceId.ToString(), Activity.Current?.SpanId.ToString(), null,
+                ProjectRpg.Operations.Core.Compensation.CompensationIntent.Template, null, command.Preview.OperatorId,
+                command.Preview.Intent.CharacterId, null, null, command.RequestId, command.RequestId, itemId, command.Preview.Intent.CaseId,
+                outcome, error, null, "OperationsCompensation"));
+        }
+        catch (Exception) { /* Optional technical log failure must not alter the atomic audit/receipt result. */ }
+    }
     private void Write(LogEvent value)
     {
         // Only these typed, server-owned fields cross the logger boundary. Never attach request/body/exception objects.
