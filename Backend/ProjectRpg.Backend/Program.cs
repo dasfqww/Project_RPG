@@ -13,12 +13,28 @@ using ProjectRpg.Backend.Domain;
 using ProjectRpg.Backend.Validation;
 
 const string migrateSchemaArgument = "--migrate-schema";
+const string validateNarrativeArgument = "--validate-narrative-catalog";
 int migrateSchemaCount = args.Count(argument => argument == migrateSchemaArgument);
+int validateNarrativeCount = args.Count(argument => argument == validateNarrativeArgument);
 if (migrateSchemaCount > 1)
     throw new InvalidOperationException("Specify --migrate-schema only once.");
+if (validateNarrativeCount > 1)
+    throw new InvalidOperationException("Specify --validate-narrative-catalog only once.");
+if (migrateSchemaCount != 0 && validateNarrativeCount != 0)
+    throw new InvalidOperationException("Choose one startup mode: migration or narrative validation.");
 WebApplicationBuilder builder = WebApplication.CreateBuilder(
-    args.Where(argument => argument != migrateSchemaArgument).ToArray());
+    args.Where(argument => argument != migrateSchemaArgument && argument != validateNarrativeArgument).ToArray());
 ApplyEnvironmentOverrides(builder.Configuration);
+// Validate the selected immutable content before migration, listeners or workers start.
+var narrativeCatalog = ProjectRpg.Backend.Narrative.NarrativeCatalogLoader.LoadConfigured(
+    builder.Configuration, builder.Environment);
+if (validateNarrativeCount == 1)
+{
+    Console.WriteLine($"Narrative catalog valid: version {narrativeCatalog.Version}, "
+        + $"quests {narrativeCatalog.Quests.Count}, chapters {narrativeCatalog.Chapters.Count}, "
+        + $"dialogues {narrativeCatalog.Dialogues.Count}. No host or database started.");
+    return;
+}
 if (migrateSchemaCount == 1)
 {
     // A deployment job, not a web host: no listeners or settlement workers start.
@@ -134,11 +150,7 @@ else
 }
 
 builder.Services.AddSingleton<ItemTransactionService>();
-builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.NarrativeCatalog>(
-    (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"))
-        && builder.Configuration.GetValue<bool>("Narrative:EnableDevelopmentContent")
-        ? ProjectRpg.Backend.Narrative.NarrativeCatalog.Development
-        : ProjectRpg.Backend.Narrative.NarrativeCatalog.Empty);
+builder.Services.AddSingleton(narrativeCatalog);
 builder.Services.AddSingleton<INarrativeRepository>(provider =>
     (INarrativeRepository)provider.GetRequiredService<IGameRepository>());
 builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.QuestManager>();

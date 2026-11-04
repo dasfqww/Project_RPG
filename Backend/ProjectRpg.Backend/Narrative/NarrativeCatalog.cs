@@ -18,12 +18,15 @@ public sealed class NarrativeCatalog
         Quests = quests.ToFrozenDictionary(q => q.Id, StringComparer.Ordinal);
         Chapters = chapters.ToFrozenDictionary(c => c.Id, StringComparer.Ordinal);
         Dialogues = dialogues.ToFrozenDictionary(d => d.Id, StringComparer.Ordinal);
+        Require(Quests.Count <= 256 && Chapters.Count <= 256 && Dialogues.Count <= 256,
+            "narrative_catalog_limit_exceeded");
         foreach (QuestDefinition q in Quests.Values)
         {
             Require(NarrativeCommand.ValidId(q.Id) && q.Version > 0 && !q.Objectives.IsDefaultOrEmpty
                 && !q.Prerequisites.IsDefault && q.Objectives.Length == q.Objectives.Distinct().Count()
                 && q.Objectives.All(NarrativeCommand.ValidId)
                 && q.Prerequisites.Length == q.Prerequisites.Distinct().Count()
+                && q.Objectives.Length <= 256 && q.Prerequisites.Length <= 256
                 && q.Prerequisites.All(Quests.ContainsKey), "invalid_quest_definition");
         }
         HashSet<string> visiting = new(StringComparer.Ordinal), visited = new(StringComparer.Ordinal);
@@ -41,15 +44,18 @@ public sealed class NarrativeCatalog
                 && c.StoryUnlocks.All(NarrativeCommand.ValidId)
                 && c.RequiredQuests.Length == c.RequiredQuests.Distinct().Count()
                 && c.StoryUnlocks.Length == c.StoryUnlocks.Distinct().Count(), "invalid_chapter_definition");
+        Require(Chapters.Values.SelectMany(c => c.StoryUnlocks).Distinct().Count() <= 256,
+            "narrative_catalog_limit_exceeded");
         foreach (DialogueDefinition d in Dialogues.Values)
         {
             Require(NarrativeCommand.ValidId(d.Id) && Quests.ContainsKey(d.QuestId)
-                && !string.IsNullOrWhiteSpace(d.Speaker) && !string.IsNullOrWhiteSpace(d.Text)
-                && !d.Choices.IsDefaultOrEmpty
+                && !string.IsNullOrWhiteSpace(d.Speaker) && d.Speaker.Length <= 256
+                && !string.IsNullOrWhiteSpace(d.Text) && d.Text.Length <= 4096
+                && !d.Choices.IsDefaultOrEmpty && d.Choices.Length <= 64 && d.Choices.All(c => c is not null)
                 && (d.RequiredStatus is null || Enum.IsDefined(d.RequiredStatus.Value))
                 && d.Choices.Length == d.Choices.Select(c => c.Id).Distinct().Count(), "invalid_dialogue_definition");
             foreach (DialogueChoice c in d.Choices)
-                Require(NarrativeCommand.ValidId(c.Id) && !string.IsNullOrWhiteSpace(c.Text)
+                Require(c is not null && NarrativeCommand.ValidId(c.Id) && !string.IsNullOrWhiteSpace(c.Text) && c.Text.Length <= 1024
                     && Enum.IsDefined(c.Effect)
                     && (c.Effect == DialogueEffect.RecordObjective
                         ? d.RequiredStatus == QuestStatus.Active && c.ObjectiveId is not null
@@ -58,29 +64,30 @@ public sealed class NarrativeCatalog
                             ? d.RequiredStatus is null : d.RequiredStatus == QuestStatus.ReadyToReport)),
                     "invalid_dialogue_choice");
         }
+        foreach (QuestDefinition q in Quests.Values)
+        {
+            DialogueChoice[] actions = [.. Dialogues.Values.Where(d => d.QuestId == q.Id).SelectMany(d => d.Choices)];
+            Require(actions.Any(c => c.Effect == DialogueEffect.AcceptQuest)
+                && actions.Any(c => c.Effect == DialogueEffect.ReportQuest)
+                && q.Objectives.All(id => actions.Any(c => c.Effect == DialogueEffect.RecordObjective && c.ObjectiveId == id)),
+                "unreachable_quest_definition");
+        }
     }
 
     private static void Require(bool condition, string code)
     {
-        if (!condition) throw new ArgumentException(code);
+        if (!condition) throw new NarrativeDefinitionException(code);
     }
 
     public static NarrativeCatalog Empty { get; } = new(1, [], [], []);
 
     // Technical first-slice content, opt-in on Development/Testing hosts only.
     // These IDs are deliberately independent of the unapproved CH01 story proposal.
-    public static NarrativeCatalog Development { get; } = new(1,
-        [new("DEV.Introduction", 1, [], ["contact", "preparation"])],
-        [new("DEV.Prologue", ["DEV.Introduction"], ["DEV.Story.Next"])],
-        [new("DEV.Contact.Offer", "Contact", "Speak with the contact and instructor.",
-            "DEV.Introduction", null, [new("accept", "Accept the introduction", DialogueEffect.AcceptQuest)]),
-         new("DEV.Contact.Explain", "Contact", "Find out why preparation is needed.",
-            "DEV.Introduction", QuestStatus.Active,
-            [new("confirm", "Confirm the situation", DialogueEffect.RecordObjective, "contact")]),
-         new("DEV.Instructor.Explain", "Instructor", "Learn what to prepare before departure.",
-            "DEV.Introduction", QuestStatus.Active,
-            [new("confirm", "Confirm the preparation", DialogueEffect.RecordObjective, "preparation")]),
-         new("DEV.Contact.Report", "Contact", "Report that the preparations are understood.",
-            "DEV.Introduction", QuestStatus.ReadyToReport,
-            [new("report", "Report completion", DialogueEffect.ReportQuest)])]);
+    private static readonly Lazy<NarrativeCatalog> DevelopmentCatalog = new(NarrativeCatalogLoader.LoadDevelopment);
+    public static NarrativeCatalog Development => DevelopmentCatalog.Value;
+}
+
+internal sealed class NarrativeDefinitionException(string code) : ArgumentException(code)
+{
+    public string Code { get; } = code;
 }

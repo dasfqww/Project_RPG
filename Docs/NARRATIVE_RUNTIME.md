@@ -27,6 +27,8 @@
 
 기본 카탈로그는 비어 있다. Development/Testing 환경에서 `Narrative:EnableDevelopmentContent=true`를 명시했을 때만 `DEV.Introduction`을 제공한다. Contact의 수락 → Contact/Instructor 각각 확인 → Contact 보고의 네 명령으로 `DEV.Prologue`와 `DEV.Story.Next`를 확정한다. 추가 성장 보상은0이다. 이는 기술 검증용 의뢰이며 CH01 세계관의 채택이나 실제 NPC 배치를 뜻하지 않는다. 첫 UI 연결도 이 계약을 사용한다.
 
+2026-11-05부터 외부 JSON을 `Narrative:CatalogPath`로 선택해 같은 매니저/UI 계약을 사용할 수 있다. 시작 전 형식·참조·순환·진행 경로·UE 응답 한도를 검사하고, 오류가 있으면 빈 데이터로 대체하지 않고 시작을 거절한다. 개발 예제도 같은 형식의 내장 JSON으로 옮겼으며 ID/대사/진도 계약은 유지한다. `--validate-narrative-catalog`는 DB/호스트를 시작하지 않고 검사 후 종료한다. 파일 형식·설정·버전/저장 호환 경계는 [콘텐츠 저작 안내](NARRATIVE_CONTENT_AUTHORING.md)를 따른다.
+
 ## 검증
 
 `Scripts/Tests/Run-NarrativeManagerTests.ps1 -Postgres`는 독립 입력/출력에서 빌드하고, 라벨로 소유한 임시 PostgreSQL을 사용한 뒤 임시 파일·컨테이너를 정리한다. 소스 해시를 전후 대조하고 작은 로그·요약만 로컬에 보존한다. PostgreSQL 실행에는 Docker와 캐시된 `postgres:17-alpine`이 필요하다.

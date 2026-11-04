@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": 1,
+  "quests": [
+    { "id": "DEV.Introduction", "version": 1, "prerequisites": [], "objectives": ["contact", "preparation"] }
+  ],
+  "chapters": [
+    { "id": "DEV.Prologue", "requiredQuests": ["DEV.Introduction"], "storyUnlocks": ["DEV.Story.Next"] }
+  ],
+  "dialogues": [
+    {
+      "id": "DEV.Contact.Offer", "speaker": "Contact", "text": "Speak with the contact and instructor.",
+      "questId": "DEV.Introduction", "requiredStatus": null,
+      "choices": [{ "id": "accept", "text": "Accept the introduction", "effect": "AcceptQuest" }]
+    },
+    {
+      "id": "DEV.Contact.Explain", "speaker": "Contact", "text": "Find out why preparation is needed.",
+      "questId": "DEV.Introduction", "requiredStatus": "Active",
+      "choices": [{ "id": "confirm", "text": "Confirm the situation", "effect": "RecordObjective", "objectiveId": "contact" }]
+    },
+    {
+      "id": "DEV.Instructor.Explain", "speaker": "Instructor", "text": "Learn what to prepare before departure.",
+      "questId": "DEV.Introduction", "requiredStatus": "Active",
+      "choices": [{ "id": "confirm", "text": "Confirm the preparation", "effect": "RecordObjective", "objectiveId": "preparation" }]
+    },
+    {
+      "id": "DEV.Contact.Report", "speaker": "Contact", "text": "Report that the preparations are understood.",
+      "questId": "DEV.Introduction", "requiredStatus": "ReadyToReport",
+      "choices": [{ "id": "report", "text": "Report completion", "effect": "ReportQuest" }]
+    }
+  ]
+}

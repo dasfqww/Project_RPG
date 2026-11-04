@@ -8,6 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Remove="Narrative\Content\development.json" />
+    <EmbeddedResource Include="Narrative\Content\development.json"
+                      LogicalName="ProjectRpg.Backend.Narrative.Content.development.json" />
     <PackageReference Include="Npgsql" Version="9.0.5" />
   </ItemGroup>
 
