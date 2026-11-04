@@ -20,6 +20,7 @@ struct FRPGCharacterProgressionResult;
 struct FRPGCharacterSkillConfiguration;
 struct FRPGEquipmentMutationCommand;
 struct FRPGEquipmentMutationHttpResult;
+struct FRPGNarrativeHttpResult;
 class FRPGDungeonDisconnectionJournal;
 class FRPGDungeonConsumeJournal;
 
@@ -301,6 +302,9 @@ public:
 
 	/** Pinned player/endpoint identity only, never exposes a bearer or service credential. */
 	bool GetPlayerEquipmentContext(FString& OutEndpoint, FString& OutSteamId) const;
+	/** Build-only owner-scoped narrative GET/choice POST; player credentials remain private. */
+	FHttpRequestPtr CreatePlayerNarrativeRequest(FGuid CharacterId, const FString& ChoiceBody,
+		TFunction<void(FRPGNarrativeHttpResult)> Completion);
 	/** Build only; the intent owner must durably save before dispatching this request. */
 	FHttpRequestPtr CreatePlayerEquipmentMutationRequest(const FRPGEquipmentMutationCommand& Command,
 		TFunction<void(FRPGEquipmentMutationHttpResult)> Completion);
@@ -434,6 +438,7 @@ private:
 		const FString& JoinTicket, const FString& ExpiresAt, bool bSuccess, const FString& ErrorCode = FString());
 	friend struct FRPGBackendAuthTestAccess;
 	friend struct FRPGEquipmentMutationTestAccess;
+	friend struct FRPGNarrativeTestAccess;
 	friend class FRPGMenuFrontendTest;
 	friend struct FRPGDungeonDepartureJournalTestAccess;
 	friend struct FRPGSteamLobbyPublicationTestAccess;
