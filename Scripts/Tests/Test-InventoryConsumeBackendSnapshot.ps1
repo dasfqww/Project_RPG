@@ -2,7 +2,9 @@
 param()
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$taskRoot=Join-Path $workspace 'Saved/BuildChecks/ConsumeBackendSnapshot-20261101'
+# Leave room for the longer Operations.Core project name in nested fixture roots
+# when this regression runs under Windows PowerShell 5's Copy-Item path limit.
+$taskRoot=Join-Path $workspace 'Saved/BuildChecks/ConsumeSnap'
 $id=[guid]::NewGuid().ToString('N');$temp=Join-Path $taskRoot ('Temp/'+$id)
 $resultDir=Join-Path $taskRoot $id
 $helper=Join-Path $workspace 'Scripts/Network/Fixtures/InventoryConsumeBackendSnapshot.ps1'
@@ -109,6 +111,15 @@ try {
     $groups.Add('Fresh-private-input mode permits normal restore and refuses NoBackendRestore before run allocation')
     foreach($path in $sentinels.Keys){Assert-That ((Get-FileHash -LiteralPath $path).Hash -ceq $sentinels[$path]) 'Original build output sentinel changed.'}
     foreach($path in $controls){Assert-That ((Get-FileHash -LiteralPath $path).Hash -ceq $before[$path]) 'Runner/helper/test input changed during verification.'}
+    $core=Join-Path $project 'Backend/ProjectRpg.Operations.Core'
+    Write-Fixture (Join-Path $core 'ProjectRpg.Operations.Core.csproj') '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net9.0</TargetFramework></PropertyGroup></Project>'
+    Write-Fixture (Join-Path $core 'Core.cs') 'class OperationsCoreFixture {}'
+    Write-Fixture (Join-Path $application 'Pages/Ops/Index.cshtml') '@page'
+    Write-Fixture $projectFile ($projectXml.Replace('</ItemGroup>','<ProjectReference Include="../ProjectRpg.Operations.Core/ProjectRpg.Operations.Core.csproj" /></ItemGroup>'))
+    $opsSnapshot=New-InventoryConsumeBackendSnapshot $project (New-Destination)
+    Assert-That (Test-Path -LiteralPath (Join-Path $opsSnapshot.SnapshotRoot 'Backend/ProjectRpg.Operations.Core/Core.cs')) 'Operations Core was not frozen.'
+    Assert-That (Test-Path -LiteralPath (Join-Path $opsSnapshot.SnapshotRoot 'Backend/ProjectRpg.Backend/Pages/Ops/Index.cshtml')) 'Razor source was not frozen.'
+    $groups.Add('Explicit Operations Core reference and Razor source captured with the host')
     $proof.passed=$true
 } catch {$proof.failure=$_.Exception.Message;$proof.failureLocation=$_.ScriptStackTrace}
 finally {

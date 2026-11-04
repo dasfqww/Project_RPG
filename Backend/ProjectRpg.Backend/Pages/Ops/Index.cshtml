@@ -1,0 +1,21 @@
+@page "/ops"
+@model ProjectRpg.Backend.Pages.Ops.IndexModel
+<h1>캐릭터 검색</h1>
+<form method="get">
+<label for="kind">검색 기준</label>
+<select name="kind" id="kind"><option value="SteamId" selected="@(Model.Kind == "SteamId")">Steam ID</option><option value="CharacterId" selected="@(Model.Kind == "CharacterId")">캐릭터 ID</option></select>
+<input name="value" aria-label="정확한 ID" value="@Model.Value" maxlength="128" required />
+<button type="submit">검색</button>
+</form>
+@if (Model.Error is not null) { <p class="error">@Model.Error.Code · 조회할 수 없습니다. 입력과 추적 번호를 확인하세요.</p> }
+@if (Model.Results is not null)
+{
+<table><thead><tr><th>캐릭터</th><th>계정</th><th>성장 정보</th></tr></thead><tbody>
+@foreach (var c in Model.Results.Items)
+{
+<tr><td><a href="/ops/characters/@c.CharacterId">@c.Name</a><br /><code>@c.CharacterId</code></td><td>@c.AccountId</td><td>@c.Progression.State · @c.Progression.ClassId · @c.Progression.Level</td></tr>
+}
+</tbody></table>
+@if (Model.Results.Items.Count == 0) { <p>검색 결과가 없습니다.</p> }
+@if (Model.Results.NextCursor is not null) { <a href="@Model.NextLink">다음 페이지</a> }
+}

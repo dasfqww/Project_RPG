@@ -1,0 +1,9 @@
+@page "/ops/login"
+@model ProjectRpg.Backend.Pages.Ops.LoginModel
+<h1>운영자 로그인</h1>
+<p>등록된 GitHub 계정으로 로그인하세요.</p>
+<form method="post" action="/ops/auth/login">
+@Html.AntiForgeryToken()
+<input type="hidden" name="returnUrl" value="/ops" />
+<button type="submit">GitHub로 로그인</button>
+</form>

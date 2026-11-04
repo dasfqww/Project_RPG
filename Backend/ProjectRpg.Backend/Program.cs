@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using ProjectRpg.Backend.Operations.Hosting;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
@@ -168,6 +169,7 @@ builder.Services.AddSingleton<ItemOwnerAccessService>();
 builder.Services.AddSingleton<CurrencyTransactionService>();
 builder.Services.AddHostedService<DungeonRewardSettlementWorker>();
 
+builder.Services.AddOperations(builder.Configuration, builder.Environment);
 WebApplication app = builder.Build();
 
 ValidateApiRateLimitConfiguration(
@@ -187,6 +189,8 @@ else
         .EnsureCreatedAsync(CancellationToken.None);
 }
 
+app.UseOperations();
+app.MapOperations();
 app.UseMiddleware<ApiIngressRateLimitMiddleware>();
 app.UseMiddleware<ApiAuthenticationMiddleware>();
 app.UseMiddleware<AuthenticatedApiRateLimitMiddleware>();

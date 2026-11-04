@@ -23,7 +23,9 @@ function Get-InventoryConsumeBackendInputs {
     param([string]$ProjectRoot)
     $root=[IO.Path]::GetFullPath($ProjectRoot).TrimEnd('\')
     $files=[Collections.Generic.List[string]]::new()
-    foreach($part in @('ProjectRpg.Backend','Database')){
+    $parts=@('ProjectRpg.Backend','Database')
+    if(Test-Path -LiteralPath (Join-Path $root 'Backend/ProjectRpg.Operations.Core')){$parts+='ProjectRpg.Operations.Core'}
+    foreach($part in $parts){
         $source=Join-Path $root ('Backend/'+$part)
         $stack=[Collections.Generic.Stack[string]]::new();$stack.Push($source)
         while($stack.Count){
@@ -76,7 +78,12 @@ function New-InventoryConsumeBackendSnapshot {
     $hashes=@{};foreach($path in $paths){$hashes[$path]=(Get-FileHash -LiteralPath $path).Hash}
     foreach($path in $paths | Where-Object {[IO.Path]::GetExtension($_) -in '.csproj','.props','.targets'}){
         $document=[Xml.XmlDocument]::new();$document.XmlResolver=$null;$document.Load($path)
-        if($document.SelectNodes('//*[local-name()="ProjectReference" or local-name()="Import"]').Count){
+        $references=@($document.SelectNodes('//*[local-name()="ProjectReference"]'))
+        $core=[IO.Path]::GetFullPath((Join-Path $root 'Backend/ProjectRpg.Operations.Core/ProjectRpg.Operations.Core.csproj'))
+        $invalidReferences=@($references | Where-Object {
+            $path -cne $project -or [IO.Path]::GetFullPath((Join-Path (Split-Path $path) $_.Include)) -cne $core -or $core -cnotin $paths
+        })
+        if($invalidReferences.Count -or $document.SelectNodes('//*[local-name()="Import"]').Count){
             throw 'Backend snapshot requires an explicitly self-contained application project.'
         }
     }

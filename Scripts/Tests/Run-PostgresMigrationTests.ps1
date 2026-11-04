@@ -166,7 +166,7 @@ try {
     Assert-Reservation
     Push-Location $rpgRoot
     try {
-        $sources = @(& rg --files Backend/ProjectRpg.Backend Backend/ProjectRpg.Backend.MigrationTests -g '*.cs' -g '*.csproj' -g '*.json')
+        $sources = @(& rg --files Backend/ProjectRpg.Backend Backend/ProjectRpg.Operations.Core Backend/ProjectRpg.Backend.MigrationTests Backend/Database -g '*.cs' -g '*.cshtml' -g '*.csproj' -g '*.json' -g '*.sql')
         if ($LASTEXITCODE -ne 0) { throw 'Source inventory failed.' }
     }
     finally { Pop-Location }

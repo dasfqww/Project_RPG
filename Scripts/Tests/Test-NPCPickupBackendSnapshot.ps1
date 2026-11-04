@@ -64,6 +64,16 @@ $snapshot=New-NPCPickupBackendSnapshot $f.root $f.destination
 if ($snapshot.inputs.Count -ne 5 -or !(Test-Path -LiteralPath (Join-Path $f.destination 'Database\Migrations\0002_item_equipment_progression.sql')) -or
     (Get-FileHash -LiteralPath $migration).Hash -cne (Get-FileHash -LiteralPath (Join-Path $f.destination 'Database\Migrations\0002_item_equipment_progression.sql')).Hash) {throw 'Version 2 migration input was not copied exactly'}
 $count++
+$f=New-Fixture
+$core=Join-Path $f.root 'Backend/ProjectRpg.Operations.Core'
+New-Item -ItemType Directory -Path $core,(Join-Path $f.source 'Pages/Ops') -Force | Out-Null
+'<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net9.0</TargetFramework></PropertyGroup></Project>' | Set-Content -LiteralPath (Join-Path $core 'ProjectRpg.Operations.Core.csproj')
+'class OperationsCoreFixture {}' | Set-Content -LiteralPath (Join-Path $core 'Fixture.cs')
+'@page' | Set-Content -LiteralPath (Join-Path $f.source 'Pages/Ops/Index.cshtml')
+'<Project><ItemGroup><ProjectReference Include="../ProjectRpg.Operations.Core/ProjectRpg.Operations.Core.csproj" /><Content Include="../Database/schema.sql" /></ItemGroup></Project>' | Set-Content -LiteralPath $f.project
+$snapshot=New-NPCPickupBackendSnapshot $f.root $f.destination
+if($snapshot.inputs.Count -ne 7 -or -not (Test-Path -LiteralPath (Join-Path $f.destination 'ProjectRpg.Operations.Core/Fixture.cs')) -or -not (Test-Path -LiteralPath (Join-Path $f.destination 'ProjectRpg.Backend/Pages/Ops/Index.cshtml'))){throw 'Operations Core/Razor dependency omitted.'}
+$count++
 Write-Host "PASS: $count backend input snapshot cases"
 } finally {
     $allowedRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../Saved/Tests/NPCPickupBackend'))

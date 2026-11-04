@@ -51,9 +51,9 @@ function Api([string]$Method,[string]$Path,$Body=$null){
 }
 try{
     Reservation
-    foreach($directory in @('ProjectRpg.Backend','ProjectRpg.Backend.NarrativeTests','Database')){
+    foreach($directory in @('ProjectRpg.Backend','ProjectRpg.Operations.Core','ProjectRpg.Backend.NarrativeTests','Database')){
         $source=Join-Path $workspace ('Backend/'+$directory)
-        foreach($file in Get-ChildItem -LiteralPath $source -File -Recurse | Where-Object {$_.FullName -notmatch '[\\/](bin|obj)[\\/]' -and $_.Extension -in '.cs','.csproj','.json','.sql'}){
+        foreach($file in Get-ChildItem -LiteralPath $source -File -Recurse | Where-Object {$_.FullName -notmatch '[\\/](bin|obj)[\\/]' -and $_.Extension -in '.cs','.cshtml','.csproj','.json','.sql'}){
             if($file.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Linked input refused'}
             $before=(Get-FileHash -LiteralPath $file.FullName).Hash
             $target=Join-Path $inputs ($directory+'/'+$file.FullName.Substring($source.Length+1))

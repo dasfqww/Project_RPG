@@ -1,0 +1,31 @@
+@page "/ops/characters/{id}"
+@model ProjectRpg.Backend.Pages.Ops.CharacterModel
+@if (Model.Character is not null)
+{
+<h1>@Model.Character.Name</h1>
+<dl><dt>캐릭터 ID</dt><dd><code>@Model.Character.CharacterId</code></dd><dt>계정</dt><dd>@Model.Character.AccountId</dd><dt>원정대</dt><dd><code>@Model.Character.RosterId</code></dd><dt>성장 정보</dt><dd>@Model.Character.Progression.State · @Model.Character.Progression.ClassId · @Model.Character.Progression.Level</dd></dl>
+<nav><a href="?panel=wallet">활성 재화</a><a href="?panel=inventory&container=Inventory">가방</a><a href="?panel=inventory&container=Equipment">장비</a><a href="?panel=inventory&container=Mail">우편</a><a href="?panel=sessions">던전·정산 기록</a></nav>
+}
+@if (Model.Error is not null) { <p class="error">@Model.Error.Code · 이 조회를 완료하지 못했습니다.</p> }
+@if (Model.Wallet is not null)
+{
+<h2>활성 재화</h2><table><thead><tr><th>재화</th><th>소유 범위</th><th>잔액</th><th>Revision</th></tr></thead><tbody>
+@foreach(var w in Model.Wallet.Balances){<tr><td>@w.DisplayName (@w.CurrencyCode)</td><td>@w.Scope · @w.OwnerId</td><td>@w.Balance</td><td>@w.Revision</td></tr>}
+</tbody></table>
+}
+@if (Model.Inventory is not null)
+{
+<h2>아이템</h2><div class="scroll"><table><thead><tr><th>아이템</th><th>정의</th><th>수량</th><th>위치</th><th>상태</th><th>Revision</th></tr></thead><tbody>
+@foreach(var i in Model.Inventory.Items){<tr><td><code>@i.ItemId</code></td><td>@i.DefinitionType:@i.DefinitionName v@i.DefinitionVersion</td><td>@i.Quantity</td><td>@i.ContainerType / @i.ContainerId / @i.SlotIndex</td><td>@i.LifecycleState · @i.BindState · 잠금 @i.IsLocked</td><td>@i.Revision</td></tr>}
+</tbody></table></div>
+@if(Model.Inventory.Items.Count == 0){<p>이 컨테이너에 저장된 아이템이 없습니다.</p>}
+}
+@if (Model.Sessions is not null)
+{
+<h2>저장된 던전·정산 상태</h2><p class="muted">리스와 만료 시각은 저장된 관측 정보입니다. 실시간 접속 여부를 뜻하지 않습니다.</p>
+<table><thead><tr><th>던전·세션</th><th>저장 상태</th><th>리스 관측</th><th>정산</th></tr></thead><tbody>
+@foreach(var s in Model.Sessions.Items){<tr><td>@s.DungeonId (@s.Difficulty)<br /><code>@s.DungeonSessionId</code></td><td>@s.StoredState<br />@s.UpdatedAtUtc.ToString("u")</td><td>@s.Timing<br />@s.SessionExpiresAtUtc.ToString("u")</td><td>@s.Settlement?.StoredState · @s.Settlement?.AttemptCount</td></tr>}
+</tbody></table>
+@if(Model.Sessions.Items.Count == 0){<p>저장된 참가 기록이 없습니다.</p>}
+}
+@if (Model.NextLink is not null){<a href="@Model.NextLink">다음 페이지</a>}

@@ -1,0 +1,20 @@
+@inject OperationsOptions Options
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Project RPG 운영</title>
+<style>
+body{font:16px/1.6 system-ui,sans-serif;background:#101923;color:#e1eaf3;margin:0}header,main{max-width:1100px;margin:auto;padding:24px}header{display:flex;gap:24px;align-items:center;border-bottom:1px solid #345}header strong{margin-right:auto}a{color:#8dceff}form{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:20px 0}input,select,button{font:inherit;padding:8px;border:1px solid #678;border-radius:4px}input,select{background:#182635;color:#fff}button{background:#b6e2ff;color:#123;cursor:pointer}table{width:100%;border-collapse:collapse;margin:20px 0}td,th{text-align:left;padding:10px;border-bottom:1px solid #345;vertical-align:top;overflow-wrap:anywhere}.muted{color:#a8b8c8}.error{background:#43252b;padding:16px}code{overflow-wrap:anywhere}nav{display:flex;gap:18px;flex-wrap:wrap}dl{display:grid;grid-template-columns:130px 1fr;gap:8px}dt{color:#a8b8c8}dd{margin:0}.scroll{overflow:auto}
+</style>
+</head>
+<body>
+<header><strong>Project RPG 운영</strong><span>@Options.EnvironmentId</span><a href="/ops">캐릭터 검색</a><a href="/ops/diagnostics">로그 추적</a>
+@if (User.Identity?.IsAuthenticated == true)
+{
+<form method="post" action="/ops/auth/logout">@Html.AntiForgeryToken()<button type="submit">로그아웃</button></form>
+}
+</header>
+<main>@RenderBody()<p class="muted">관측 시각: @DateTimeOffset.UtcNow.ToString("u") · 추적 번호: <a href="/ops/diagnostics?httpRequestId=@OperationsHttp.RequestId(Context)"><code>@OperationsHttp.RequestId(Context)</code></a><br />빌드: <code>@ProjectRpg.Backend.Operations.Infrastructure.Diagnostics.OperationsEventRecorder.BuildVersion</code></p></main>
+</body>
+</html>

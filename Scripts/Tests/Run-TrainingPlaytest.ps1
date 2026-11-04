@@ -173,7 +173,7 @@ function Get-TrainingRuntimeDiagnostics([string]$Text,[bool]$AllowPlannedReturn,
 try{
     # Capture backend inputs once. All builds and database state are private.
     $backend=Join-Path $workspace 'Backend'
-    foreach($part in @('ProjectRpg.Backend','Database')){
+    foreach($part in @('ProjectRpg.Backend','ProjectRpg.Operations.Core','Database')){
         $source=Join-Path $backend $part
         foreach($file in Get-ChildItem -LiteralPath $source -File -Recurse | Where-Object FullName -notmatch '\\(bin|obj|artifacts)\\'){
             $relative=$file.FullName.Substring($backend.Length+1)
@@ -187,7 +187,7 @@ try{
     }
     # Another owner may edit backend sources while this runner uses a private build.
     # Require one coherent file set at the snapshot boundary, then use only the copy.
-    $currentBackendFiles=@(foreach($part in @('ProjectRpg.Backend','Database')){
+    $currentBackendFiles=@(foreach($part in @('ProjectRpg.Backend','ProjectRpg.Operations.Core','Database')){
         Get-ChildItem -LiteralPath (Join-Path $backend $part) -File -Recurse | Where-Object FullName -notmatch '\\(bin|obj|artifacts)\\' | ForEach-Object {$_.FullName.Substring($backend.Length+1)}
     })
     if(Compare-Object @($backendHashes.ToArray().path | Sort-Object) @($currentBackendFiles | Sort-Object)){throw 'Backend file set changed while snapshotting'}

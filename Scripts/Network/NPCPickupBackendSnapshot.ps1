@@ -18,10 +18,19 @@ function New-NPCPickupBackendSnapshot {
     $source=Join-Path $projectPath 'Backend\ProjectRpg.Backend'
     $projectFile=Join-Path $source 'ProjectRpg.Backend.csproj'
     [xml]$projectXml=Get-Content -Raw -LiteralPath $projectFile
-    $allowedContent=@('..\Database\schema.sql','..\Database\Migrations\0002_item_equipment_progression.sql')
+    $allowedContent=@('../Database/schema.sql','../Database/Migrations/0002_item_equipment_progression.sql',
+        '../Database/Migrations/0003_character_narrative.sql','../Database/Migrations/0004_operations_sessions.sql')
+    $references=@($projectXml.SelectNodes('//ProjectReference'))
+    $core=Join-Path $projectPath 'Backend/ProjectRpg.Operations.Core'
+    $coreProject=Join-Path $core 'ProjectRpg.Operations.Core.csproj'
+    $invalidReferences=@($references | Where-Object {[IO.Path]::GetFullPath((Join-Path $source $_.Include)) -cne $coreProject})
+    if($references.Count){
+        [xml]$coreXml=Get-Content -Raw -LiteralPath $coreProject
+        if($coreXml.SelectNodes('//ProjectReference|//Import|//Compile|//Content[@Include]').Count){throw 'Uncaptured operations core dependencies.'}
+    }
     $contentInputs=@($projectXml.SelectNodes('//Content[@Include]'))
-    if ($projectXml.SelectNodes('//ProjectReference|//Import|//Compile').Count -or
-        @($contentInputs | Where-Object {$_.Include -cnotin $allowedContent}).Count) {
+    if ($invalidReferences.Count -or $projectXml.SelectNodes('//Import|//Compile').Count -or
+        @($contentInputs | Where-Object {$_.Include.Replace('\','/') -cnotin $allowedContent}).Count) {
         throw 'Backend build dependencies changed; extend explicit snapshot capture before running E2E.'
     }
     # Parent MSBuild imports are not part of the currently supported project.
@@ -32,7 +41,8 @@ function New-NPCPickupBackendSnapshot {
         }
     }
     function Get-BackendInputs {
-        @((Get-ChildItem -LiteralPath $source -Recurse -File | Where-Object {$_.FullName -notmatch '\\(?:bin|obj|artifacts|\.git|\.vs)\\'}).FullName)+
+        $trees=@($source);if($references.Count){$trees+=$core}
+        @((Get-ChildItem -LiteralPath $trees -Recurse -File | Where-Object {$_.FullName -notmatch '\\(?:bin|obj|artifacts|\.git|\.vs)\\'}).FullName)+
             @($contentInputs | ForEach-Object {[IO.Path]::GetFullPath((Join-Path $source $_.Include))})
     }
     $paths=@(Get-BackendInputs | Sort-Object -CaseSensitive)
@@ -47,10 +57,13 @@ function New-NPCPickupBackendSnapshot {
     })
     $cache=@()
     if ($ReuseRestoreCache) {
-        foreach ($name in @('project.assets.json','ProjectRpg.Backend.csproj.nuget.g.props','ProjectRpg.Backend.csproj.nuget.g.targets')) {
-            $original=Join-Path $source "obj\$name"
+        $restoreProjects=@('ProjectRpg.Backend');if($references.Count){$restoreProjects+='ProjectRpg.Operations.Core'}
+        foreach ($restoreProject in $restoreProjects) {
+        foreach ($name in @('project.assets.json',($restoreProject+'.csproj.nuget.g.props'),($restoreProject+'.csproj.nuget.g.targets'))) {
+            $original=Join-Path $projectPath "Backend\$restoreProject\obj\$name"
             if (-not (Test-Path -LiteralPath $original -PathType Leaf)) { throw 'NoBackendRestore requires existing local restore metadata.' }
-            $cache+= [ordered]@{originalPath=$original;path=(Join-Path $destination "ProjectRpg.Backend\obj\$name");SHA256=(Get-FileHash -LiteralPath $original).Hash}
+            $cache+= [ordered]@{originalPath=$original;path=(Join-Path $destination "$restoreProject\obj\$name");SHA256=(Get-FileHash -LiteralPath $original).Hash}
+        }
         }
     }
     foreach ($inputFile in @($inputs)+@($cache)) {

@@ -64,12 +64,12 @@ function Get-OwnedContainer {
 try {
     Assert-Reservation
     # Only backend build inputs. No UE outputs, user settings or shared runtime files.
-    $directories = @('ProjectRpg.Backend','ProjectRpg.Backend.NarrativeTests',
+    $directories = @('ProjectRpg.Backend','ProjectRpg.Operations.Core','ProjectRpg.Backend.NarrativeTests',
         'ProjectRpg.Backend.MigrationTests','ProjectRpg.Backend.StarterEquipmentTests','Database')
     foreach ($directory in $directories) {
         $source = Join-Path $rpgRoot ('Backend/' + $directory)
         $files = @(Get-ChildItem -LiteralPath $source -Recurse -File | Where-Object {
-            $_.FullName -notmatch '[\\/](bin|obj)[\\/]' -and $_.Extension -in @('.cs','.csproj','.sql','.json')
+            $_.FullName -notmatch '[\\/](bin|obj)[\\/]' -and $_.Extension -in @('.cs','.cshtml','.csproj','.sql','.json')
         })
         foreach ($file in $files) {
             if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing linked input.' }
