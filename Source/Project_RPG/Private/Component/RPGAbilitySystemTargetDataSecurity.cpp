@@ -8,6 +8,7 @@
 #include "GameFramework/Actor.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "HAL/PlatformTime.h"
 #include "Skill/RPGGameplayAbility_SkillContainer.h"
 #include "Skill/RPGSkillExecutionPolicy.h"
 #if !UE_BUILD_SHIPPING
@@ -126,10 +127,33 @@ bool URPGAbilitySystemComponent::AdmitTargetDataRequest(const FGameplayAbilitySp
 	return TargetDataRequestSequences.FindOrAdd(Key).TryAccept(MessageKey.Current, bCancellation);
 }
 
+bool URPGAbilitySystemComponent::AdmitGenericReplicatedEvent(EAbilityGenericReplicatedEvent::Type EventType,
+	const FGameplayAbilitySpecHandle Handle, const FPredictionKey OriginalKey)
+{
+	const AActor* Owner = GetOwnerActor();
+	const AActor* Avatar = GetAvatarActor();
+	if (!Owner || !Owner->HasAuthority() || !Avatar || !Avatar->HasAuthority() ||
+		bDungeonGameplayAuthorityRevoked || IsDungeonGameplayRevoked(Avatar) ||
+		!GenericEventRequestBudget.TryConsume(FPlatformTime::Seconds())) return false;
+	if (static_cast<uint32>(EventType) >= static_cast<uint32>(EAbilityGenericReplicatedEvent::MAX)) return false;
+	const FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
+	if (!Spec || !Spec->Ability || !Spec->IsActive()) return false;
+	// Do not let arbitrary handles/old keys create GAS replicated-data cache entries.
+	// Compare the actual activation key, including server-generated keys; never trust the supplied handle alone.
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS // Preserve legacy GAS compatibility without relying on it for new abilities.
+	if (Spec->Ability->GetInstancingPolicy() == EGameplayAbilityInstancingPolicy::NonInstanced)
+		return Spec->ActivationInfo.GetActivationPredictionKey() == OriginalKey;
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	for (const UGameplayAbility* Instance : Spec->GetAbilityInstances())
+		if (Instance && Instance->IsActive() &&
+			Instance->GetCurrentActivationInfo().GetActivationPredictionKey() == OriginalKey) return true;
+	return false; // Late input is normal: discard without raising risk.
+}
+
 void URPGAbilitySystemComponent::ServerSetReplicatedEvent_Implementation(EAbilityGenericReplicatedEvent::Type EventType,
 	FGameplayAbilitySpecHandle AbilityHandle, FPredictionKey AbilityOriginalPredictionKey, FPredictionKey CurrentPredictionKey)
 {
-	if (bDungeonGameplayAuthorityRevoked || IsDungeonGameplayRevoked(GetAvatarActor())) return;
+	if (!AdmitGenericReplicatedEvent(EventType, AbilityHandle, AbilityOriginalPredictionKey)) return;
 	Super::ServerSetReplicatedEvent_Implementation(EventType, AbilityHandle, AbilityOriginalPredictionKey, CurrentPredictionKey);
 }
 
@@ -137,7 +161,8 @@ void URPGAbilitySystemComponent::ServerSetReplicatedEventWithPayload_Implementat
 	FGameplayAbilitySpecHandle AbilityHandle, FPredictionKey AbilityOriginalPredictionKey, FPredictionKey CurrentPredictionKey,
 	FVector_NetQuantize100 VectorPayload)
 {
-	if (bDungeonGameplayAuthorityRevoked || IsDungeonGameplayRevoked(GetAvatarActor())) return;
+	if (!AdmitGenericReplicatedEvent(EventType, AbilityHandle, AbilityOriginalPredictionKey) ||
+		!IsFiniteVector(VectorPayload)) return;
 	Super::ServerSetReplicatedEventWithPayload_Implementation(EventType, AbilityHandle, AbilityOriginalPredictionKey, CurrentPredictionKey, VectorPayload);
 }
 

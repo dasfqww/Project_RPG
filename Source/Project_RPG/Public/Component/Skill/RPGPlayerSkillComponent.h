@@ -6,6 +6,7 @@
 #include "Component/PawnExtensionComponentBase.h"
 #include "GameplayTagContainer.h"
 #include "Type/RPGStructTypes.h"
+#include "Security/RPGServerRequestBudget.h"
 #include "RPGPlayerSkillComponent.generated.h"
 
 class URPGSkillDefinition;
@@ -186,6 +187,9 @@ protected:
 	void OnRep_ReplicatedSkillData();
 	
 private:
+	friend struct FRPGRpcIngressTestAccess;
+	bool AdmitConfigurationRequest();
+	FRPGServerRequestBudget ConfigurationRequestBudget{32, 16.0};
 	bool bEndingPlay = false;
 	bool CanModifySkill(FGameplayTag SkillTag) const;
 	bool ApplyLevelUpSkill(FGameplayTag SkillTag);

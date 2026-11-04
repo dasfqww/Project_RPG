@@ -1,4 +1,5 @@
 #include "Component/Skill/RPGPlayerSkillComponent.h"
+#include "HAL/PlatformTime.h"
 
 #include "Engine/GameInstance.h"
 #include "Net/UnrealNetwork.h"
@@ -468,10 +469,16 @@ void URPGPlayerSkillComponent::AddTotalSP(const int32 Amount)
 	OnSkillDataChanged.Broadcast(FGameplayTag());
 }
 
+bool URPGPlayerSkillComponent::AdmitConfigurationRequest()
+{
+	return IsAuthorityOwner() && !bEndingPlay && !IsDungeonGameplayRevoked(GetOwner()) &&
+		ConfigurationRequestBudget.TryConsume(FPlatformTime::Seconds());
+}
+
 void URPGPlayerSkillComponent::ServerTryLevelUpSkill_Implementation(
 	const FGameplayTag SkillTag)
 {
-	if (!IsAuthorityOwner()) return;
+	if (!AdmitConfigurationRequest()) return;
 	ApplyLevelUpSkill(SkillTag);
 	TouchAuthoritativeRevision();
 }
@@ -479,7 +486,7 @@ void URPGPlayerSkillComponent::ServerTryLevelUpSkill_Implementation(
 void URPGPlayerSkillComponent::ServerTryLevelDownSkill_Implementation(
 	const FGameplayTag SkillTag)
 {
-	if (!IsAuthorityOwner()) return;
+	if (!AdmitConfigurationRequest()) return;
 	ApplyLevelDownSkill(SkillTag);
 	TouchAuthoritativeRevision();
 }
@@ -488,7 +495,7 @@ void URPGPlayerSkillComponent::ServerLevelUpToMax_Implementation(
 	const FGameplayTag SkillTag,
 	const int32 TargetGoalLevel)
 {
-	if (!IsAuthorityOwner()) return;
+	if (!AdmitConfigurationRequest()) return;
 	ApplyLevelUpToMax(SkillTag, TargetGoalLevel);
 	TouchAuthoritativeRevision();
 }
@@ -496,7 +503,7 @@ void URPGPlayerSkillComponent::ServerLevelUpToMax_Implementation(
 void URPGPlayerSkillComponent::ServerResetSkillLevel_Implementation(
 	const FGameplayTag SkillTag)
 {
-	if (!IsAuthorityOwner()) return;
+	if (!AdmitConfigurationRequest()) return;
 	ApplyResetSkillLevel(SkillTag);
 	TouchAuthoritativeRevision();
 }
@@ -506,7 +513,7 @@ void URPGPlayerSkillComponent::ServerSelectTripod_Implementation(
 	const int32 TierIndex,
 	const int32 OptionIndex)
 {
-	if (!IsAuthorityOwner()) return;
+	if (!AdmitConfigurationRequest()) return;
 	ApplySelectTripod(SkillTag, TierIndex, OptionIndex);
 	TouchAuthoritativeRevision();
 }

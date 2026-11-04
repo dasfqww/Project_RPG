@@ -11,6 +11,16 @@ class URPGTargetDataSecurityTestASC final : public URPGAbilitySystemComponent
 {
 	GENERATED_BODY()
 public:
+	void SubmitGeneric(EAbilityGenericReplicatedEvent::Type Event, FGameplayAbilitySpecHandle Handle,
+		FPredictionKey Original, FPredictionKey Message)
+	{
+		ServerSetReplicatedEvent_Implementation(Event, Handle, Original, Message);
+	}
+	void SubmitGenericPayload(EAbilityGenericReplicatedEvent::Type Event, FGameplayAbilitySpecHandle Handle,
+		FPredictionKey Original, FPredictionKey Message, FVector Payload)
+	{
+		ServerSetReplicatedEventWithPayload_Implementation(Event, Handle, Original, Message, Payload);
+	}
 	void Submit(FGameplayAbilitySpecHandle Handle, FPredictionKey OriginalKey,
 		const FGameplayAbilityTargetDataHandle& Data, FPredictionKey MessageKey)
 	{

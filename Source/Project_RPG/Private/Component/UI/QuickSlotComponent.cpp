@@ -2,6 +2,7 @@
 
 
 #include "Component/UI/QuickSlotComponent.h"
+#include "HAL/PlatformTime.h"
 #include "Net/UnrealNetwork.h"
 #include "Item/RPGItemBase.h"
 #include "Character/RPGBaseCharacter.h"
@@ -112,11 +113,17 @@ void UQuickSlotComponent::SetSkillSlot(int32 Index, FGameplayTag AbilityTag)
 	}
 }
 
+bool UQuickSlotComponent::AdmitSlotRequest()
+{
+	return GetOwner() && GetOwner()->HasAuthority() &&
+		SlotRequestBudget.TryConsume(FPlatformTime::Seconds());
+}
+
 void UQuickSlotComponent::Server_SetSkillSlot_Implementation(int32 Index, FGameplayTag AbilityTag)
 {
 	// Editor script dispatch can execute an RPC locally on a client. Do not
 	// route that invocation back through the client request path recursively.
-	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
+	if (!AdmitSlotRequest()) return;
 	SetSkillSlot(Index, AbilityTag);
 	++SkillSlotsRevision;
 	GetOwner()->ForceNetUpdate();
@@ -178,7 +185,7 @@ void UQuickSlotComponent::SetItemSlotById(int32 Index, FGuid ItemId)
 
 void UQuickSlotComponent::Server_SetItemSlotById_Implementation(int32 Index, FGuid ItemId)
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
+	if (!AdmitSlotRequest()) return;
 	SetItemSlotById(Index, ItemId);
 }
 
@@ -438,7 +445,7 @@ void UQuickSlotComponent::ClearSlot(bool bIsSkillSlot, int32 Index)
 
 void UQuickSlotComponent::Server_ClearSlot_Implementation(bool bIsSkillSlot, int32 Index)
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
+	if (!AdmitSlotRequest()) return;
 	ClearSlot(bIsSkillSlot, Index);
 	if (bIsSkillSlot)
 	{

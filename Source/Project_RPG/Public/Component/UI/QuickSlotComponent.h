@@ -7,6 +7,7 @@
 #include "Components/ActorComponent.h"
 #include "Type/RPGStructTypes.h"
 #include "Item/Projection/RPGInventoryProjectionTypes.h"
+#include "Security/RPGServerRequestBudget.h"
 #include "QuickSlotComponent.generated.h"
 
 class URPGItemBase;
@@ -129,6 +130,9 @@ private:
 	void UnbindInventoryProjection();
 	void EnsureInventoryProjectionBinding();
 	void BroadcastSlotChanged(bool bIsSkillSlot, int32 Index);
+	friend struct FRPGRpcIngressTestAccess;
+	bool AdmitSlotRequest();
+	FRPGServerRequestBudget SlotRequestBudget{32, 16.0};
 
 	UPROPERTY()
 	TWeakObjectPtr<URPGInventoryProjectionComponent> BoundProjection;

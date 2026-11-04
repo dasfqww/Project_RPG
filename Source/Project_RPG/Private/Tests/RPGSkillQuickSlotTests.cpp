@@ -20,6 +20,9 @@
 #include "RPGInputTags.h"
 #include "Skill/RPGGameplayAbility_SkillContainer.h"
 #include "Skill/RPGSkillDefinition.h"
+#include "PlayerClass/RPGPlayerClassDefinition.h"
+#include "PlayerClass/RPGPlayerClassComponent.h"
+#include "Tests/RPGTargetDataSecurityTestFixture.h"
 #include "UI/RPGDragDropOperation.h"
 #include "UI/RPGQuickSlotWidget.h"
 #include "UI/Skill/RPGSkillQuickSlotDragDrop.h"
@@ -169,25 +172,54 @@ bool FRPGSkillQuickSlotRegistrationTest::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("Ability system"), ASC) || !TestNotNull(TEXT("Slot storage"), Slots) ||
 		!TestNotNull(TEXT("Palette owner"), Palette)) return false;
 	ASC->InitAbilityActorInfo(Player, Player);
-	URPGSkillDefinition* LastDefinition = nullptr;
-	auto Grant = [this, ASC, &LastDefinition](const FGameplayTag Tag)
+	auto* Class = NewObject<URPGPlayerClassDefinition>(Player);
+	Class->ClassId = TEXT("QuickSlotRegistrationFixture");
+	const auto* DefinitionProperty = FindFProperty<FObjectPropertyBase>(URPGGameplayAbility_SkillContainer::StaticClass(), TEXT("SkillDefinition"));
+	if (!TestNotNull(TEXT("Definition property"), DefinitionProperty)) return false;
+	TMap<UObject*, TObjectPtr<UObject>> PreviousDefinitions;
+	ON_SCOPE_EXIT
 	{
-		const auto Handle = ASC->GiveAbility(FGameplayAbilitySpec(URPGGameplayAbility_SkillContainer::StaticClass(), 1));
-		const auto* Property = FindFProperty<FObjectPropertyBase>(URPGGameplayAbility_SkillContainer::StaticClass(), TEXT("SkillDefinition"));
-		const FGameplayAbilitySpec* Spec = ASC->FindAbilitySpecFromHandle(Handle);
-		UGameplayAbility* Instance = Spec ? Spec->GetPrimaryInstance() : nullptr;
-		if (!TestNotNull(TEXT("Definition property"), Property) || !TestNotNull(TEXT("Granted instance"), Instance))
-			return FGameplayAbilitySpecHandle();
+		for (const auto& Entry : PreviousDefinitions)
+			DefinitionProperty->SetObjectPropertyValue_InContainer(Entry.Key, Entry.Value.Get());
+	};
+	URPGSkillDefinition* LastDefinition = nullptr;
+	auto Prepare = [ASC, Class, DefinitionProperty, &LastDefinition, &PreviousDefinitions](const FGameplayTag Tag,
+		TSubclassOf<URPGGameplayAbility_SkillContainer> AbilityClass)
+	{
 		URPGSkillDefinition* Definition = NewObject<URPGSkillDefinition>(ASC);
 		Definition->SkillTag = Tag;
 		LastDefinition = Definition;
-		Property->SetObjectPropertyValue_InContainer(Instance, Definition);
-		return Handle;
+		UObject* Default = AbilityClass.GetDefaultObject();
+		PreviousDefinitions.Add(Default, DefinitionProperty->GetObjectPropertyValue_InContainer(Default));
+		DefinitionProperty->SetObjectPropertyValue_InContainer(Default, Definition);
+		auto& Binding = Class->Skills.AddDefaulted_GetRef();
+		Binding.Definition = Definition; Binding.AbilityClass = AbilityClass;
 	};
-	// Registered tags serve as transient identities; no authored data or CDO is edited.
+	// Worker-local CDO definitions are restored on exit; no authored asset is edited.
 	const FGameplayTag First = RPGGameplayTags::InputTag_QuickSkill_1;
 	const FGameplayTag Second = RPGGameplayTags::InputTag_QuickSkill_2;
-	if (!Grant(First).IsValid() || !Grant(Second).IsValid()) return false;
+	Prepare(First, URPGGameplayAbility_SkillContainer::StaticClass());
+	Prepare(Second, URPGSkillTerminationSecurityTestAbility::StaticClass());
+	FRPGPlayerSkillRestoreData Record;
+	Record.ClassId = Class->GetPrimaryAssetId(); Record.TotalSP = 50; Record.bIdentityUnlocked = false;
+	for (const auto& Binding : Class->Skills)
+	{
+		auto& Entry = Record.AcquiredSkills.AddDefaulted_GetRef();
+		Entry.SkillTag = Binding.Definition->SkillTag; Entry.SaveData.SkillLevel = 1;
+	}
+	const uint32 Generation = Palette->BeginClassSkillRestore(Record.ClassId);
+	FText RestoreError;
+	if (!TestTrue(TEXT("Restore acquired class skills"), Palette->CompleteClassSkillRestore(Generation, Class, Record, RestoreError))) return false;
+	auto* ClassOwner = Player->FindComponentByClass<URPGPlayerClassComponent>();
+	if (!TestNotNull(TEXT("Class grant owner"), ClassOwner)) return false;
+	ClassOwner->NotifyAbilitySystemReady(*ASC, 1);
+	for (const auto& Binding : Class->Skills)
+	{
+		const auto* Spec = ASC->FindAbilitySpecFromClass(Binding.AbilityClass);
+		if (!TestNotNull(TEXT("Class-owned spec"), Spec) || !TestNotNull(TEXT("Granted instance"), Spec->GetPrimaryInstance())) return false;
+		DefinitionProperty->SetObjectPropertyValue_InContainer(Spec->GetPrimaryInstance(), Binding.Definition);
+	}
+	if (!TestTrue(TEXT("Initialize empty acquired slots"), Slots->InitializeSkillSlotsFromRecord(Generation, {}, RestoreError))) return false;
 
 	// Base icons must agree even when only the table has an icon.
 	URPGSkillSlotViewModel* PaletteSlot = NewObject<URPGSkillSlotViewModel>(ASC);
@@ -264,7 +296,10 @@ bool FRPGSkillQuickSlotRegistrationTest::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("Foreign pawn"), Foreign)) return false;
 	Drag->SourceComponent = NewObject<URPGPlayerSkillComponent>(Foreign);
 	TestFalse(TEXT("Cross-pawn drops are rejected"), FRPGSkillQuickSlotDragDrop::Drop(*Drag, *Slots, 3));
-	Grant(Second);
+	const auto Duplicate = ASC->GiveAbility(FGameplayAbilitySpec(URPGSkillTerminationSecurityTestAbility::StaticClass(), 1));
+	const auto* DuplicateSpec = ASC->FindAbilitySpecFromHandle(Duplicate);
+	if (!TestNotNull(TEXT("Duplicate fixture grant"), DuplicateSpec) || !TestNotNull(TEXT("Duplicate instance"), DuplicateSpec->GetPrimaryInstance())) return false;
+	DefinitionProperty->SetObjectPropertyValue_InContainer(DuplicateSpec->GetPrimaryInstance(), LastDefinition);
 	TestFalse(TEXT("Duplicate grants fail closed"), Slots->CanAssignSkillSlot(3, Second));
 	ASC->ClearAllAbilities();
 	return true;
