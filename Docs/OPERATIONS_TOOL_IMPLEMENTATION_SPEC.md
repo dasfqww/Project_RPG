@@ -1,8 +1,8 @@
 # 운영툴 구현 계약 v1 — 상세 설계 완료 기준
 
-작성일: 2026-11-05 · 상태: v1 설계 확정, S1 구현/격리 검증 완료. 실제 운영 배포 미수행
+작성일: 2026-11-05 · 상태: v1 설계 확정, S1·S2 구현/격리 검증 완료. 실제 운영 배포 미수행
 
-S1의 소스 경계·설정·기동/검증 방법은 [운영툴 실행 문서](OPERATIONS_TOOL_RUNTIME.md)에 기록한다. S2~S4는 아래 계약을 따른 후속 구현 범위이며 S1 완료를 v1 전체 구현 완료로 취급하지 않는다.
+S1·S2의 소스 경계·설정·기동/검증 방법은 [운영툴 실행 문서](OPERATIONS_TOOL_RUNTIME.md)에 기록한다. S3~S4는 아래 계약을 따른 후속 구현 범위이며 S1·S2 완료를 v1 전체 구현 완료로 취급하지 않는다.
 
 사용자 요청은 SOLID·유지보수성·로그 추적을 갖춘 운영툴의 설계를 끝내는 것이다. 이 문서는 [아키텍처](OPERATIONS_TOOL_ARCHITECTURE.md)의 상세 계약을 확정한다. [제작 계획](SOLO_OPERATIONS_TOOL_PLAN.md)은 범위/순서, [추적 계약](OPERATIONS_LOG_TRACING.md)은 공통 사건 의미를 관리한다. 값·DTO·오류·동시성 정책의 최종 기준은 본 문서이며, 변경할 때 관련 요약도 함께 갱신한다.
 
@@ -217,6 +217,10 @@ Complete는 고정한 보존 파일을 끝까지 검색했다는 뜻이다. 사�
 
 `GET /ops/api/characters/{id}/timeline?fromUtc&toUtc&limit&cursor`는 최근 7일/최대 30일·50/200건으로 제한한다. 출력 `EvidencePage={items,nextCursor,hasMore,coverage}`이고 각 항목은 `{sourceKind,sourceKey,occurredAtUtc,characterId?,ownerScope,ownerId,sessionId?,requestId?,itemIds[],status,linkReason}`다. linkReason은 DirectReceipt/SessionMembership/OwnerScope/TechnicalCorrelation 중 하나다.
 
+구현된 S2에서 sourceKind는 CurrencyReceipt/ItemReceipt/Settlement다. `(occurredAtUtc DESC, sourceKind의 위 순서, sourceKey DESC)`로 병합하며 소스별 마지막 반환 위치를 보호 커서에 담는다. 응답에 고정 기간 fromUtc/toUtc를 함께 반환한다. 항목에는 operation·currencyChanges(최대 16개, 모든 int64 문자열)·storedState·detailsTruncated를 추가하고 itemIds는 최대 64개다. `GET /ops/api/characters/{id}/evidence/{sourceKind}/{sourceKey}`는 같은 ReadEvidence 권한과 대상 연결 검사를 거친 안전한 단일 근거 DTO다. 미연결/부재는 404 `ops.evidence_not_found`, 해석 불가능한 원본은 해당 출처 실패다. 결과 소유자 연결만 있는 아이템 영수증에서는 다른 참가자의 itemIds를 제외한다.
+
+coverage는 소스별 `{source,coverage,detailCode}` 배열이다. DB의 Complete는 해당 조회 범위의 저장 기록을 읽었다는 뜻이며 전체 게임 변경 이력을 보증하지 않는다. ItemReceipt는 actor/result-owner로 연결 가능한 범위만 있어 Partial이다. 아직 없는 OperationsActions는 NotInstrumented, 별도로 조회하는 TechnicalLogs는 Unknown이다. 일부 출처 실패 시 해당 출처 Unknown/사유와 다른 출처 결과를 반환하되 cursor를 중단하고, 전체 출처 실패는 503이다. 페이지 간 하나의 DB snapshot이나 소급 로그 계측을 보장하지 않는다.
+
 화면 `/ops/characters/{id}/evidence`는 기간·출처별 상태·원래 영수증/로그 연결을 보여준다. `/ops/characters/{id}/compensation`은 최근 조치→사건/품목/사유→미리보기→실행/미확정→원래 결과 확인 순서다. `/ops/accounts/{accountId}/restriction`은 현재 제한/Revision→기간/사유→확인→실행/결과, `/ops/service-control`은 현재 mode/공지/Revision→수정→확인→실행/결과다. 읽기/확인 GET은 변경을 수행하지 않으며 각 POST/PUT은 앞의 인가/CSRF·원자 계약을 따른다. 각 화면에 결과 대기/거절/저장 장애/원래 요청 재확인 상태를 따로 표시한다.
 
 소스는 실제 [스키마](../Backend/Database/schema.sql)의 세션/멤버/정산·currency_transaction_receipts·item_transaction_receipts와 ops_actions다. 재화는 character_id/committed_at 인덱스, 아이템은 actor_type/actor_id/committed_at/request_id 복합 인덱스, 정산은 character_ids GIN과 시간 조건을 사용한다. 아이템 result_records에는 GIN jsonb_path_ops를 두고 실제 camelCase/문자열 enum의 owner.type/owner.ownerId containment와 시간/건수 조건으로 조회한다. actor 검색과 결과 소유자 검색의 중복은 request_id로 제거한다. 현재 소유자·영수증 결과만으로 모든 이전 소유자를 복원하지 않으며 이 범위는 coverage에 표시한다. 인덱스는 추가 migration으로 관리한다.
@@ -224,6 +228,7 @@ Complete는 고정한 보존 파일을 끝까지 검색했다는 뜻이다. 사�
 - 새 게임 효과/영수증이 발생할 때도 기존 권위 기록이 근거다. 로그 검색 실패가 영수증 조회를 가로막지 않는다. 각 소스를 제한 조회 후 `(occurredAtUtc,sourceKind,sourceKey)`로 병합하고 source별 cursor를 보호한다.
 - 이미 존재하는 기록에서 확인 가능한 연결만 반환한다. 오래된 데이터에 원인이 없으면 Unknown이며 가상 거래/세션을 만들지 않는다. 기술 로그 삭제가 DB 영수증 삭제로 전파되지 않는다.
 - 조사 상태는 Delivered(확정 영수증), Pending(정산 Pending/Processing), Failed(정산 Failed), Unknown(기록 부족)이다. Delivered 뒤 소비/이동은 별도 사건이고 '현재 가방에 없음'만으로 Failed로 바꾸지 않는다.
+- Completed 정산 자체는 개별 지급 영수증이 아니므로 해당 항목은 Unknown이며 저장 상태 Completed를 함께 보여준다. 소비·이동 영수증의 Delivered는 해당 operation이 확정됐다는 의미다. 원래 영수증에 없는 sessionId는 null로 유지하고 현재 잔액/가방만으로 연결을 합성하지 않는다.
 - 원래 session/정산/거래 ID를 worker·필요한 UE 갱신 이벤트에 추가한다. 같은 trace가 전파되지 않은 구간은 업무 ID로 연결됐다고 표시한다. 새로운 계측 이전 기간은 자동 소급 완료 처리하지 않는다.
 
 ## 8. S3 개별 보상과 제재
@@ -324,4 +329,4 @@ Ops 활성 상태에서 인증·키 보호·DB 세션·영속 로그 root가 잘
 - **구현 때 검증할 사실:** 실제 라이브러리 버전/호스트 호환성, 기존 코드와 잠금 경합, 실제 DB/UE 연결·성능·복구 목표. 검증이 설계 가정을 반증하면 해당 결정과 영향을 문서화해 수정한다.
 - **v1 밖:** S5 대량/예약·직원 권한 UI·자유 편집/회수·전체 경제 대시보드. 별도 기능 요청 시 설계한다.
 
-설계 단계의 남은 미결 항목은 없다. S1의 Core 경계→운영 인증→기본 조회/인벤토리/세션→로그 저장·검색은 구현하고 격리 환경에서 검증했다. 실제 운영 배포 성공과 S2~S4 구현은 별도 검증으로 보고한다.
+설계 단계의 남은 미결 항목은 없다. S1 기본 조회·인증·추적과 S2 보상 근거 조사·worker 원래 요청/세션 ID 계측을 구현하고 격리 환경에서 검증했다. 게임 서버/UE 전체 사건 계측과 실제 운영 배포는 미검증 범위로 표시한다. S3~S4 구현은 별도 검증으로 보고한다.

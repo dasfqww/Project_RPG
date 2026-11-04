@@ -4,6 +4,8 @@
 <p>추적 번호 또는 이벤트를 입력하세요. 기본 최근 1시간, 한 검색 최대 24시간입니다.</p>
 <form method="get">
 <label>HTTP 추적 번호 <input name="httpRequestId" value="@Request.Query["httpRequestId"]" maxlength="36" /></label>
+<label>거래 요청 ID <input name="transactionRequestId" value="@Request.Query["transactionRequestId"]" maxlength="36" /></label>
+<label>던전 세션 ID <input name="dungeonSessionId" value="@Request.Query["dungeonSessionId"]" maxlength="36" /></label>
 <label>이벤트 <input name="eventName" value="@Request.Query["eventName"]" list="events" maxlength="128" /></label>
 <datalist id="events"><option value="ops.http.completed"></option><option value="ops.access.denied"></option><option value="ops.character.query.failed"></option></datalist>
 <label>시작(UTC) <input name="fromUtc" value="@Model.From" placeholder="2026-11-05T00:00:00Z" /></label>

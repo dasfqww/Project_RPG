@@ -19,7 +19,7 @@ function New-NPCPickupBackendSnapshot {
     $projectFile=Join-Path $source 'ProjectRpg.Backend.csproj'
     [xml]$projectXml=Get-Content -Raw -LiteralPath $projectFile
     $allowedContent=@('../Database/schema.sql','../Database/Migrations/0002_item_equipment_progression.sql',
-        '../Database/Migrations/0003_character_narrative.sql','../Database/Migrations/0004_operations_sessions.sql')
+        '../Database/Migrations/0003_character_narrative.sql','../Database/Migrations/0004_operations_sessions.sql','../Database/Migrations/0005_operations_evidence.sql')
     $references=@($projectXml.SelectNodes('//ProjectReference'))
     $core=Join-Path $projectPath 'Backend/ProjectRpg.Operations.Core'
     $coreProject=Join-Path $core 'ProjectRpg.Operations.Core.csproj'

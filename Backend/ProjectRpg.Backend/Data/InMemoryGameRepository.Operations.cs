@@ -8,6 +8,12 @@ namespace ProjectRpg.Backend.Data;
 
 public sealed partial class InMemoryGameRepository
 {
+    internal IReadOnlyList<ProjectRpg.Operations.Core.Evidence.EvidenceItem> ReadOperationsSettlements(Guid id)
+    {
+        lock (_dungeonGate)
+            return _dungeonRewardSettlements.Values.Where(s => s.CharacterIds.Contains(id)).Select(s =>
+                EvidenceMapping.Settlement(s.DungeonSessionId, id, s.UpdatedAt, s.State.ToString())).ToArray();
+    }
     internal Result<Page<CharacterHeader>> SearchOperationsCharacters(CharacterLookup query)
     {
         lock (_characterGate)

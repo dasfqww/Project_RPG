@@ -24,6 +24,12 @@ public static class OperationsEndpoints
             return Results.Redirect("/ops/login");
         }).RequireAuthorization(OperationsAuthentication.Policy);
         var api = app.MapGroup("/ops/api").RequireAuthorization(OperationsAuthentication.Policy);
+        api.MapGet("/characters/{id}/timeline", async (string id, HttpContext c, OperationsEvidenceFacade q, OperationsOptions o, TimeProvider t) =>
+            OperationsInput.Id(id, out Guid value) ? Reply(c, await q.ReadAsync(c, value), o, t) : OperationsHttp.Error(c, Failures.InvalidQuery));
+        api.MapGet("/characters/{id}/evidence/{source}/{key}", async (string id, string source, string key, HttpContext c, OperationsEvidenceFacade q, OperationsOptions o, TimeProvider t) =>
+            OperationsInput.Id(id, out Guid value) && OperationsInput.Id(key, out Guid sourceKey) && OperationsEvidenceFacade.Kind(source, out var kind)
+                && OperationsInput.KnownQuery(c)
+                ? Reply(c, await q.FindAsync(c, value, kind, sourceKey), o, t) : OperationsHttp.Error(c, Failures.InvalidQuery));
         api.MapGet("/characters", async (HttpContext c, OperationsReadFacade q, OperationsOptions o, TimeProvider t) => Reply(c, await q.SearchAsync(c), o, t));
         api.MapGet("/characters/{id}", async (string id, HttpContext c, OperationsReadFacade q, OperationsOptions o, TimeProvider t) =>
             OperationsInput.Id(id, out Guid value) && OperationsInput.KnownQuery(c)

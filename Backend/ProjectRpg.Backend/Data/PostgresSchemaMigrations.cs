@@ -50,10 +50,13 @@ public static class PostgresSchemaMigrations
             Path.Combine(baseDirectory, "Database", "Migrations", "0003_character_narrative.sql"), cancellationToken);
         string operations = await File.ReadAllTextAsync(
             Path.Combine(baseDirectory, "Database", "Migrations", "0004_operations_sessions.sql"), cancellationToken);
+        string evidence = await File.ReadAllTextAsync(
+            Path.Combine(baseDirectory, "Database", "Migrations", "0005_operations_evidence.sql"), cancellationToken);
         return [new PostgresSchemaMigration(1, "baseline", sql),
             new PostgresSchemaMigration(2, "item_equipment_progression", equipment),
             new PostgresSchemaMigration(3, "character_narrative", narrative),
-            new PostgresSchemaMigration(4, "operations_sessions", operations)];
+            new PostgresSchemaMigration(4, "operations_sessions", operations),
+            new PostgresSchemaMigration(5, "operations_evidence", evidence)];
     }
 
     // Development/Testing replays the current idempotent catalog under the existing

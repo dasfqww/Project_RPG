@@ -10,6 +10,7 @@ using ProjectRpg.Backend.Operations.Web;
 using ProjectRpg.Operations.Core.Access;
 using ProjectRpg.Operations.Core.Characters;
 using ProjectRpg.Operations.Core.Diagnostics;
+using ProjectRpg.Operations.Core.Evidence;
 using ProjectRpg.Operations.Core.Inventory;
 using ProjectRpg.Operations.Core.Sessions;
 using ProjectRpg.Operations.Core.Wallets;
@@ -43,6 +44,7 @@ public static class OperationsHosting
             services.AddSingleton<IInventoryReadStore, PostgresInventoryReadStore>();
             services.AddSingleton<IWalletReadStore, PostgresWalletReadStore>();
             services.AddSingleton<ISessionEvidenceReadStore, PostgresSessionEvidenceReadStore>();
+            services.AddSingleton<IEvidenceReadStore, PostgresEvidenceReadStore>();
         }
         else
         {
@@ -54,6 +56,7 @@ public static class OperationsHosting
             services.AddSingleton<IInventoryReadStore, MemoryInventoryReadStore>();
             services.AddSingleton<IWalletReadStore, MemoryWalletReadStore>();
             services.AddSingleton<ISessionEvidenceReadStore, MemorySessionEvidenceReadStore>();
+            services.AddSingleton<IEvidenceReadStore, MemoryEvidenceReadStore>();
         }
         services.AddSingleton<OperationsTicketStore>();
         OperationsAuthentication.Register(services, options);
@@ -64,12 +67,15 @@ public static class OperationsHosting
         services.AddScoped<GetWallet>();
         services.AddScoped<GetSessionEvidence>();
         services.AddScoped<SearchOperationLogs>();
+        services.AddScoped<GetCharacterEvidence>();
+        services.AddScoped<OperationsEvidenceFacade>();
         services.AddSingleton<OperationsCursor>();
         services.AddScoped<OperationsReadFacade>();
         services.AddSingleton<OperationsRequestLimits>();
         services.AddSingleton<OperationsLogStore>();
         services.AddSingleton<OperationsEventRecorder>();
         services.AddSingleton<OperationsStorageTrace>();
+        services.AddSingleton<ProjectRpg.Backend.Application.IDungeonSettlementObserver, OperationsSettlementObserver>();
         services.AddSingleton<IOperationLogReader, LocalJsonlOperationLogReader>();
         services.AddHostedService(p => p.GetRequiredService<OperationsLogStore>());
         services.AddHostedService<OperationsSessionMaintenance>();

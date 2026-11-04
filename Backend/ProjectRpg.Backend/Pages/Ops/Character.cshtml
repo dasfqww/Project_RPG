@@ -3,6 +3,7 @@
 @if (Model.Character is not null)
 {
 <h1>@Model.Character.Name</h1>
+<p><a href="/ops/characters/@Model.Character.CharacterId/evidence">보상 근거 조사</a></p>
 <dl><dt>캐릭터 ID</dt><dd><code>@Model.Character.CharacterId</code></dd><dt>계정</dt><dd>@Model.Character.AccountId</dd><dt>원정대</dt><dd><code>@Model.Character.RosterId</code></dd><dt>성장 정보</dt><dd>@Model.Character.Progression.State · @Model.Character.Progression.ClassId · @Model.Character.Progression.Level</dd></dl>
 <nav><a href="?panel=wallet">활성 재화</a><a href="?panel=inventory&container=Inventory">가방</a><a href="?panel=inventory&container=Equipment">장비</a><a href="?panel=inventory&container=Mail">우편</a><a href="?panel=sessions">던전·정산 기록</a></nav>
 }

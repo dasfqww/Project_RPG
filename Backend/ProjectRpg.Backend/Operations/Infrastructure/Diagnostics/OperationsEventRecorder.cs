@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using ProjectRpg.Backend.Operations.Hosting;
 using ProjectRpg.Backend.Operations.Web;
 using ProjectRpg.Operations.Core.Diagnostics;
+using ProjectRpg.Backend.Application;
 
 namespace ProjectRpg.Backend.Operations.Infrastructure.Diagnostics;
 
@@ -28,6 +29,27 @@ public sealed class OperationsEventRecorder(OperationsLogStore store, Operations
             operation[..Math.Min(operation.Length, 128)], durationMs, actor, characterId, null, null, null, null, null, null,
             outcome[..Math.Min(outcome.Length, 64)], errorCode is null ? null : errorCode[..Math.Min(errorCode.Length, 128)],
             context.Response.StatusCode, "Operations", truncated);
+        Write(value);
+    }
+    public void RecordSettlement(DungeonSettlementObservation observation)
+    {
+        string eventName = observation.Phase switch
+        {
+            DungeonSettlementPhase.ReceiptCommitted => "game.reward.receipt.committed",
+            DungeonSettlementPhase.Started => "game.settlement.attempt.started",
+            DungeonSettlementPhase.Completed => "game.settlement.attempt.completed",
+            DungeonSettlementPhase.Requeued => "game.settlement.attempt.requeued",
+            _ => "game.settlement.attempt.failed"
+        };
+        Write(new(1, Guid.NewGuid(), eventName, clock.GetUtcNow(), observation.Phase == DungeonSettlementPhase.Failed ? "Warning" : "Information",
+            options.EnvironmentId, "ProjectRpg.Backend", store.BootId, BuildVersion, null,
+            Activity.Current?.TraceId.ToString(), Activity.Current?.SpanId.ToString(), null,
+            "DungeonRewardSettlement.Attempt" + observation.Attempt, null, null, observation.CharacterId, null,
+            observation.SessionId, null, observation.TransactionRequestId, null, null, observation.Phase.ToString(),
+            observation.Phase == DungeonSettlementPhase.Failed ? "settlement_failed" : null, null, "DungeonSettlement"));
+    }
+    private void Write(LogEvent value)
+    {
         // Only these typed, server-owned fields cross the logger boundary. Never attach request/body/exception objects.
         byte[] json = JsonSerializer.SerializeToUtf8Bytes(value, OperationsHttp.Json);
         if (json.Length > 16 * 1024)

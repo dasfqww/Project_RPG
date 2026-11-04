@@ -1,4 +1,5 @@
 await CoreTests.RunAsync();
+await EvidenceCoreTests.RunAsync();
 await HostTests.RunAsync();
 Console.WriteLine("Operations contract tests passed.");
 

@@ -27,6 +27,7 @@ internal static class HostTests
             await memory.SeedAsync();
             await SessionAbsoluteExpiryAsync(memory);
             await AccessAndReadAsync(memory);
+            await EvidenceHostTests.RunAsync(memory);
             await CursorAndSessionAsync(memory);
         }
         string? postgres=Environment.GetEnvironmentVariable("PROJECT_RPG_OPS_TEST_POSTGRES");
@@ -39,8 +40,8 @@ internal static class HostTests
             await using (var source=NpgsqlDataSource.Create(postgres))
             {
                 var catalog=await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory,default);
-                Check.That(await PostgresSchemaMigrations.ApplyAsync(source,catalog.Take(3).ToArray(),default)==3,"Published v3 catalog installs.");
-                Check.That(await PostgresSchemaMigrations.ApplyAsync(source,catalog,default)==1,"Operations upgrades v3 with exactly one append migration.");
+                Check.That(await PostgresSchemaMigrations.ApplyAsync(source,catalog.Take(4).ToArray(),default)==4,"Published v4 catalog installs.");
+                Check.That(await PostgresSchemaMigrations.ApplyAsync(source,catalog,default)==1,"Operations upgrades v4 with exactly one append migration.");
                 Check.That(await PostgresSchemaMigrations.ApplyAsync(source,catalog,default)==0,"Operations migration is idempotent through history.");
                 await PostgresSchemaMigrations.ValidateAsync(source,catalog,default);
             }
@@ -52,6 +53,7 @@ internal static class HostTests
                 string before=await FingerprintAsync(pg);
                 await AccessAndReadAsync(pg);
                 Check.That(before==await FingerprintAsync(pg),"Operations reads leave every gameplay table unchanged (including expired leases/progression).");
+                await EvidenceHostTests.RunAsync(pg);
                 CookieContainer cookies=pg.Cookies; int port=pg.Port; MutableClock clock=pg.Clock; Guid id=pg.CharacterId;
                 await pg.StopAsync();
                 await using (var restored=await HostFixture.StartAsync(pgRoot,postgres,port,cookies,clock))
@@ -181,7 +183,7 @@ internal static class HostTests
         Check.That(response.Headers.CacheControl?.NoStore==true,"Operations response is not cacheable.");
         return JsonDocument.Parse(body);
     }
-    private static async Task<string> FingerprintAsync(HostFixture host)
+    internal static async Task<string> FingerprintAsync(HostFixture host)
     {
         var source=host.App.Services.GetRequiredService<NpgsqlDataSource>();
         await using var connection=await source.OpenConnectionAsync();

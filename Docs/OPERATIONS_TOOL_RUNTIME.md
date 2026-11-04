@@ -1,6 +1,6 @@
-# 운영툴 S1 실행과 유지보수
+# 운영툴 S1·S2 실행과 유지보수
 
-2026-11-05 · S1 구현: 개인 로그인, 캐릭터/아이템/재화/던전 조회, 운영 요청 로그 추적. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md)의 S2 보상 조사·S3 지급/제재·S4 점검/감시/백업은 후속 구현 범위다.
+2026-11-05 · S1 개인 로그인/기본 조회/로그 추적과 S2 보상 영수증·정산 조사 구현. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md)의 S3 지급/제재·S4 점검/감시/백업은 후속 구현 범위다.
 
 ## 구현 경계
 
@@ -8,7 +8,7 @@
 - [Operations/Hosting](../Backend/ProjectRpg.Backend/Operations/Hosting/)은 DI·인증·관리망·요청 제한을 조립한다. [Web](../Backend/ProjectRpg.Backend/Operations/Web/)은 입력/커서/응답 변환을 담당하며 [Razor 화면](../Backend/ProjectRpg.Backend/Pages/Ops/)과 JSON API가 같은 유스케이스를 쓴다.
 - [읽기 어댑터](../Backend/ProjectRpg.Backend/Operations/Infrastructure/Reads/)는 저장된 데이터만 관측한다. PostgreSQL은 READ ONLY / REPEATABLE READ, 명령 3초·요청 5초 제한이다. 조회가 만료 리스 정리나 성장 보상 반영을 호출하지 않는다. 패널 간 동일 snapshot은 보장하지 않는다.
 - 운영 인증은 게임 Bearer와 별도다. GitHub 숫자 ID 한 개를 허용하고 PKCE/state·CSRF, Secure/HttpOnly cookie, 서버 세션을 사용한다. 세션은 유휴 30분/절대 8시간이며 로그아웃과 AuthEpoch 변경으로 무효화한다.
-- 로그 수집/저장 구현은 Infrastructure에만 둔다. 요청 번호 → HTTP trace → PostgreSQL 읽기 child span을 연결한다. 전체 게임 서버·UE·정산 worker의 사건 계측과 보상 영수증 조사는 S2에서 확장한다.
+- 로그 수집/저장 구현은 Infrastructure에만 둔다. 요청 번호 → HTTP trace → PostgreSQL 읽기 child span을 연결한다. 정산 worker는 별도 관측 포트로 원래 세션/거래 요청 ID·시도 trace를 남긴다. 게임 서버/UE 전체 사건 계측은 제공하지 않으며 같은 HTTP trace가 worker까지 전파됐다고 표시하지 않는다.
 
 인터페이스를 추가할 때는 교체할 외부 의존성 또는 실제 유스케이스 경계가 있어야 한다. 새로운 지급 기능을 읽기 포트나 PageModel에 넣지 않는다. 여러 책임을 묶는 공통 repository/manager로 합치지 않는다.
 
@@ -41,7 +41,7 @@ GitHub 앱 callback은 정확히 `<ManagementOrigin>/ops/auth/github-callback`�
 ## 스키마와 시작 순서
 
 1. 같은 릴리스의 Backend와 `ProjectRpg.Operations.Core.dll`, 컴파일된 Razor, `Database` SQL을 함께 publish한다. Backend의 ProjectReference가 Core를 포함한다. NuGet 전이 의존성은 [packages.lock.json](../Backend/ProjectRpg.Backend/packages.lock.json)으로 고정한다.
-2. 기존 배포 절차대로 별도 DDL 역할에서 `dotnet ProjectRpg.Backend.dll --migrate-schema`를 실행한다. 새 [0004_operations_sessions.sql](../Backend/Database/Migrations/0004_operations_sessions.sql)은 운영 세션 테이블과 조회 인덱스를 추가한다. v1~v3 SQL은 변경하지 않았다. 운영툴이 비활성이어도 새 릴리스의 migration catalog는 v4다.
+2. 기존 배포 절차대로 별도 DDL 역할에서 `dotnet ProjectRpg.Backend.dll --migrate-schema`를 실행한다. [0004_operations_sessions.sql](../Backend/Database/Migrations/0004_operations_sessions.sql)은 운영 세션 테이블, [0005_operations_evidence.sql](../Backend/Database/Migrations/0005_operations_evidence.sql)은 영수증/정산 조회 인덱스를 추가한다. 기존 v1~v4 SQL은 변경하지 않았다. 운영툴이 비활성이어도 새 릴리스의 migration catalog는 v5다.
 3. 런타임 역할에 기존 게임 권한과 `ops_operator_sessions`의 SELECT/INSERT/UPDATE/DELETE 권한을 부여한다. 스키마 초기화가 권한을 자동 부여하지는 않는다. 일반 운영 기동은 기존 계약대로 migration 이력을 검증한다.
 4. 운영 설정을 주입하고 기존 백엔드를 기동한다. 관리망에서 `/ops/login` → GitHub 로그인 → `/ops` 검색을 확인한다. 조회는 게임 상태를 바꾸지 않지만 운영 세션의 last_seen/revoke/purge는 기록한다.
 
@@ -57,7 +57,19 @@ GitHub 앱 callback은 정확히 `<ManagementOrigin>/ops/auth/github-callback`�
 
 기술 로그는 하루 또는 32MiB마다 회전하고 최대 30파일/14일을 보존한다. 4096개 비동기 큐가 넘치면 요청을 막지 않고 drop 수를 기록한다. 종료 flush 한도는 5초다. `catalogue.json`은 파일 관측/부팅/유실 정보를 담고, 실제 기록은 `ops-*.jsonl`이다. Windows에서 쓰는 중인 파일의 길이는 읽기 handle에서 확인한다. 기술 로그는 감사 원장이나 지급 영수증이 아니다. cookie/token/code/요청 body/SQL·예외 원문은 기록하지 않는다.
 
-## 유지할 검증
+## 보상 근거 조사(S2)
+
+S2에서는 캐릭터 상세의 **보상 근거 조사**로 이동한다. 기본 최근 7일/최대 30일이며 재화 영수증·아이템 영수증·정산을 시간 역순으로 합친다. 같은 시각에는 CurrencyReceipt → ItemReceipt → Settlement, 각 출처의 GUID 역순이다. 소스별 마지막으로 반환한 위치를 커서에 보존하며 패널/페이지 전체가 하나의 과거 DB snapshot이라는 보장은 없다.
+
+`GET /ops/api/characters/{id}/timeline`은 이 목록을, `GET /ops/api/characters/{id}/evidence/{sourceKind}/{sourceKey}`는 대상과의 연결을 재검사한 단일 기록을 반환한다. 임의 SQL/원문 JSON은 노출하지 않는다. 재화 변화는 최대 16개, 아이템 ID는 최대 64개이며 생략 시 detailsTruncated를 표시한다. sourceKind는 CurrencyReceipt/ItemReceipt/Settlement다. 존재하더라도 해당 캐릭터와 연결되지 않으면 단일 조회는 404다.
+
+`Delivered`는 해당 영수증의 처리가 확정됐다는 뜻이다. Consume/Move 등 후속 처리도 operation을 함께 읽는다. 정산 Pending/Processing은 Pending, Failed는 Failed, Completed만 있는 경우에는 개별 보상을 단정하지 않고 Unknown이다. 소비 이후에도 과거 지급 영수증은 Delivered로 남는다. 아이템은 실행자 또는 결과 소유자로만 연결되므로 소유 이력 범위는 Partial이며, 결과 소유자만 일치할 때 다른 참가자의 아이템 ID는 제외한다. 재화의 Account/Roster 잔액 변화는 영수증 내부의 실제 scope/ownerId로 표시한다.
+
+원래 영수증에 sessionId가 없으면 생성해 채우지 않는다. 정산 시도 로그가 있으면 transactionRequestId로 원래 세션과 연결해 조사한다. 목록의 로그 링크는 사건 전후 5분을 사용한다. worker는 성공 commit 뒤 각 재화/아이템 요청 ID를 `game.reward.receipt.committed`에 남기며, 시작/완료/실패/재시도도 같은 시도 trace에 연결한다. 관측기 실패는 보상 commit/정산 처리를 변경하지 않는다. 과거/유실 로그 및 아직 없는 운영 조치(S3)는 Unknown/NotInstrumented이며 DB 영수증과 별도로 조회한다.
+
+일부 DB 출처만 실패하면 조회된 근거와 실패한 출처를 함께 보여 주고 이어보기는 중단한다. 전체 출처 실패는 503이다. 복구 후 처음부터 조회하며, 누락된 출처를 건너뛰는 커서는 발급하지 않는다. 기술 로그 서비스에 의존하지 않고 DB 근거를 조회한다.
+
+## 검사 실행
 
 저장소 루트에서 실행한다. PostgreSQL 검사는 Docker와 이미 준비된 `postgres:17-alpine` 이미지가 필요하며 기존 DB에는 연결하지 않는다.
 
@@ -69,6 +81,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Test-Inventory
 
 운영툴 러너는 게시 HEAD의 Backend에 해당 운영툴 소스만 덮은 닫힌 입력을 만들고 별도 bin/obj로 빌드한다. 실제 loopback HTTPS, 실제 ASP.NET OAuth/cookie/antiforgery handler, 모의 GitHub backchannel을 사용한다. PostgreSQL은 실행별 라벨·동적 loopback 포트·tmpfs 컨테이너다. 후속 구현에서 입력 경로를 추가하면 러너의 소유 overlay 목록도 갱신한다.
 
-검증 범위는 Core 의존 방향/권한·입력, 잘못된 OAuth state/비허용 계정/공급자 실패, CSRF·게임 인증 분리, int64 정밀도·페이지, 리스 조회 무변경, 로그 child span·커서·손상/회전, 유휴/절대 만료·로그아웃, PostgreSQL 세션/키 재시작 복원·AuthEpoch, v3→v4 단일 migration이다. 실제 게임 테이블 전체의 조회 전후 지문도 비교한다. 스냅샷 러너는 Core·Razor·SQL 의존성을 함께 포착하고 무관한 외부 참조는 계속 거절한다.
+검증 범위는 Core 의존 방향/권한·입력, 잘못된 OAuth state/비허용 계정/공급자 실패, CSRF·게임 인증 분리, int64 정밀도·페이지, 리스 조회 무변경, 로그 child span·커서·손상/회전, 유휴/절대 만료·로그아웃, PostgreSQL 세션/키 재시작 복원·AuthEpoch, v4→v5 단일 migration이다. S2는 실제 worker의 재화/아이템 원자 commit·관측기 예외 이후 처리, 동시각 출처 병합/페이지·actor/result 중복 제거·소비 후 영수증·소유 범위·정산 상태 구분·단일 조회의 연결 검증을 포함한다. 실제 게임 테이블 전체의 조회 전후 지문도 비교한다. 스냅샷 러너는 Core·Razor·SQL 의존성을 함께 포착하고 무관한 외부 참조는 계속 거절한다.
 
 자기 테스트 프로세스 종료 후 실행별 Temp와 자기 라벨 DB 컨테이너를 자동 폐기한다. 작은 결과/명령·입력 해시만 `Saved/BuildChecks`에 남으며 제품 커밋에는 포함하지 않는다. 이 검사는 실제 GitHub 계정 연결, 운영 배포, 브라우저 시각 검사, UE 실행 또는 부하 검사를 대신하지 않는다.

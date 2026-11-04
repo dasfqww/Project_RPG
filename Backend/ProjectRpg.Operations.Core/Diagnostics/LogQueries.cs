@@ -23,7 +23,9 @@ public sealed record OperationLogQuery(DateTimeOffset FromUtc, DateTimeOffset To
     public static readonly IReadOnlySet<string> EventNames = new HashSet<string>(StringComparer.Ordinal)
     { "ops.http.started", "ops.http.completed", "ops.access.denied", "ops.character.query.completed",
       "ops.character.query.failed", "ops.storage.query.completed", "ops.storage.query.failed",
-      "ops.logs.search.completed", "ops.logs.search.failed" }.ToFrozenSet(StringComparer.Ordinal);
+      "ops.logs.search.completed", "ops.logs.search.failed", "ops.evidence.query.completed", "ops.evidence.query.failed",
+      "game.reward.receipt.committed", "game.settlement.attempt.started", "game.settlement.attempt.completed",
+      "game.settlement.attempt.failed", "game.settlement.attempt.requeued" }.ToFrozenSet(StringComparer.Ordinal);
     public bool IsValid => ToUtc > FromUtc && ToUtc - FromUtc <= TimeSpan.FromHours(24)
         && Limit is >= 1 and <= 200 && SourceId is { Length: >= 1 and <= 64 }
         && Filters.Count is >= 1 and <= 10 && Filters.Any(p => IdFields.Contains(p.Key) || p.Key == "eventName")

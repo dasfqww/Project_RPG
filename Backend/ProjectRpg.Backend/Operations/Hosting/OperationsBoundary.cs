@@ -94,7 +94,8 @@ public sealed class OperationsBoundary(RequestDelegate next)
         {
             context.RequestAborted = original;
             if (context.Items["Ops.QueryKind"] is string kind)
-                events.Record(context, kind == "Logs" ? (context.Response.StatusCode < 400 ? "ops.logs.search.completed" : "ops.logs.search.failed")
+                events.Record(context, kind == "Evidence" ? (context.Response.StatusCode < 400 ? "ops.evidence.query.completed" : "ops.evidence.query.failed")
+                    : kind == "Logs" ? (context.Response.StatusCode < 400 ? "ops.logs.search.completed" : "ops.logs.search.failed")
                     : (context.Response.StatusCode < 400 ? "ops.character.query.completed" : "ops.character.query.failed"),
                     kind, context.Response.StatusCode < 400 ? "Succeeded" : "Failed", timer.Elapsed.TotalMilliseconds,
                     context.Response.StatusCode >= 400 ? "ops.query_failed" : null,

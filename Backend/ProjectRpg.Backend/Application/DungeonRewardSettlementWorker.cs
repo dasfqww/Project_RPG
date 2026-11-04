@@ -13,7 +13,8 @@ public sealed class DungeonRewardSettlementWorker(
     IDungeonRewardCommitRepository rewardCommitRepository,
     TimeProvider timeProvider,
     IOptions<DungeonSettlementOptions> options,
-    ILogger<DungeonRewardSettlementWorker> logger) : BackgroundService
+    ILogger<DungeonRewardSettlementWorker> logger,
+    IDungeonSettlementObserver? observer = null) : BackgroundService
 {
     private readonly DungeonSettlementOptions _options = options.Value;
     private readonly string _workerId =
@@ -68,6 +69,9 @@ public sealed class DungeonRewardSettlementWorker(
             return false;
         }
 
+        using var attempt = new System.Diagnostics.Activity("DungeonRewardSettlement.Attempt")
+            .SetIdFormat(System.Diagnostics.ActivityIdFormat.W3C).Start();
+        Observe(new(settlement.DungeonSessionId, settlement.AttemptCount, DungeonSettlementPhase.Started));
         try
         {
             DungeonRewardCommitBatch batch = await BuildCommitBatchAsync(
@@ -86,6 +90,7 @@ public sealed class DungeonRewardSettlementWorker(
                     commitResult.Error ?? "Reward settlement failed permanently.",
                     timeProvider.GetUtcNow(),
                     cancellationToken);
+                Observe(new(settlement.DungeonSessionId, settlement.AttemptCount, DungeonSettlementPhase.Failed));
                 logger.LogError(
                     "Dungeon reward settlement {DungeonSessionId} failed permanently: {Error}",
                     settlement.DungeonSessionId,
@@ -93,11 +98,19 @@ public sealed class DungeonRewardSettlementWorker(
                 return true;
             }
 
+            foreach (var entry in batch.CurrencyEntries)
+                Observe(new(settlement.DungeonSessionId, settlement.AttemptCount, DungeonSettlementPhase.ReceiptCommitted,
+                    entry.Request.CharacterId, entry.Request.RequestId));
+            foreach (var request in batch.ItemRequests)
+                if (Guid.TryParse(request.Actor.OwnerId, out Guid character))
+                    Observe(new(settlement.DungeonSessionId, settlement.AttemptCount, DungeonSettlementPhase.ReceiptCommitted,
+                        character, request.RequestId));
             await gameRepository.CompleteDungeonRewardSettlementAsync(
                 settlement.DungeonSessionId,
                 _workerId,
                 timeProvider.GetUtcNow(),
                 cancellationToken);
+            Observe(new(settlement.DungeonSessionId, settlement.AttemptCount, DungeonSettlementPhase.Completed));
             logger.LogInformation(
                 "Dungeon reward settlement {DungeonSessionId} completed for {MemberCount} members.",
                 settlement.DungeonSessionId,
@@ -115,6 +128,7 @@ public sealed class DungeonRewardSettlementWorker(
                 exception.Message,
                 timeProvider.GetUtcNow(),
                 cancellationToken);
+            Observe(new(settlement.DungeonSessionId, settlement.AttemptCount, DungeonSettlementPhase.Failed));
             logger.LogError(
                 exception,
                 "Dungeon reward settlement {DungeonSessionId} failed permanently.",
@@ -135,6 +149,7 @@ public sealed class DungeonRewardSettlementWorker(
                     $"Retry limit reached: {exception.Message}",
                     retryNow,
                     cancellationToken);
+                Observe(new(settlement.DungeonSessionId, settlement.AttemptCount, DungeonSettlementPhase.Failed));
                 logger.LogError(
                     exception,
                     "Dungeon reward settlement {DungeonSessionId} exhausted retries.",
@@ -156,6 +171,7 @@ public sealed class DungeonRewardSettlementWorker(
                     retryNow,
                     retryNow.AddSeconds(delaySeconds),
                     cancellationToken);
+                Observe(new(settlement.DungeonSessionId, settlement.AttemptCount, DungeonSettlementPhase.Requeued));
                 logger.LogWarning(
                     exception,
                     "Dungeon reward settlement {DungeonSessionId} will retry after {DelaySeconds} seconds.",
@@ -165,6 +181,12 @@ public sealed class DungeonRewardSettlementWorker(
         }
 
         return true;
+    }
+
+    private void Observe(DungeonSettlementObservation observation)
+    {
+        try { observer?.Observe(observation); }
+        catch (Exception) { logger.LogWarning("Settlement observation unavailable; reward processing continues."); }
     }
 
     private async Task<DungeonRewardCommitBatch> BuildCommitBatchAsync(

@@ -91,13 +91,16 @@ internal sealed class HostFixture : IAsyncDisposable
             builder.Services.AddSingleton<IItemRepository>(p => p.GetRequiredService<InMemoryItemRepository>());
             builder.Services.AddSingleton<IGameRepository>(p => new InMemoryGameRepository(
                 p.GetRequiredService<InMemoryTransactionGate>(), p.GetRequiredService<InMemoryItemRepository>()));
+            builder.Services.AddSingleton<IDungeonRewardCommitRepository,InMemoryDungeonRewardCommitRepository>();
         }
         else
         {
             builder.Services.AddSingleton(NpgsqlDataSource.Create(postgres));
             builder.Services.AddSingleton<PostgresItemRepository>();
             builder.Services.AddSingleton<IItemRepository>(p => p.GetRequiredService<PostgresItemRepository>());
-            builder.Services.AddSingleton<IEconomyRepository, PostgresEconomyRepository>();
+            builder.Services.AddSingleton<PostgresEconomyRepository>();
+            builder.Services.AddSingleton<IEconomyRepository>(p => p.GetRequiredService<PostgresEconomyRepository>());
+            builder.Services.AddSingleton<IDungeonRewardCommitRepository,PostgresDungeonRewardCommitRepository>();
             builder.Services.AddSingleton<IGameRepository, PostgresGameRepository>();
         }
         FakeGitHub github = new();

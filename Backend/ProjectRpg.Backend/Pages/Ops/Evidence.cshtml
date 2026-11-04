@@ -1,0 +1,28 @@
+@page "/ops/characters/{id}/evidence"
+@model ProjectRpg.Backend.Pages.Ops.EvidenceModel
+<h1>보상 근거 조사</h1>
+<a href="/ops/characters/@Model.CharacterId">캐릭터 상세</a>
+<p>확정 영수증과 현재 저장된 정산 상태를 따로 보여줍니다. 이후 소비·이동이나 정산 상태 변경이 과거 영수증을 취소하지 않습니다.</p>
+<form method="get"><label>시작(UTC) <input name="fromUtc" value="@Model.From" /></label><label>종료(UTC) <input name="toUtc" value="@Model.To" /></label><button type="submit">조회</button></form>
+@if(Model.Error is not null){<p class="error">@Model.Error.Code · 조사 기록을 조회하지 못했습니다.</p>}
+@if(Model.Evidence is not null)
+{
+<p>기본 최근 7일, 한 번에 최대 30일입니다. Completed 정산만으로 개별 보상 수령을 확정하지 않습니다.</p>
+<ul>@foreach(var c in Model.Evidence.Coverage){<li>@c.Source: @c.Coverage · @ProjectRpg.Backend.Pages.Ops.EvidenceModel.CoverageDescription(c)</li>}</ul>
+@if(Model.SourceUnavailable){<p class="error">일부 출처를 조회하지 못했습니다. 누락된 자료를 건너뛰지 않도록 이어보기를 중단했습니다. 복구 후 처음부터 다시 조회하세요.</p>}
+<p class="muted">아이템 기록은 당시 실행자 또는 결과 소유자가 연결된 영수증입니다. 모든 과거 소유 이력을 복원하지 않습니다. 로그는 보존 범위가 다르므로 별도로 조회합니다.</p>
+<div class="scroll"><table><thead><tr><th>시각·출처</th><th>확정 근거·연결</th><th>결과</th><th>원본 식별자</th></tr></thead><tbody>
+@foreach(var e in Model.Evidence.Items)
+{
+<tr><td>@e.OccurredAtUtc.ToString("u")<br />@e.SourceKind</td><td>@e.Operation<br />@e.LinkReason<br />@e.OwnerScope / @e.OwnerId</td><td>@e.Status · @e.StoredState
+@foreach(var change in e.CurrencyChanges){<div>@change.CurrencyCode: @change.Delta (@change.PreviousBalance → @change.NewBalance) · @change.Scope</div>}
+@foreach(var item in e.ItemIds){<div><code>@item</code></div>}
+@if(e.DetailsTruncated){<div>표시 한도로 일부 상세가 생략되었습니다.</div>}
+</td><td><a href="/ops/api/characters/@Model.CharacterId/evidence/@e.SourceKind/@e.SourceKey">영수증·정산 조회</a><br /><code>@e.SourceKey</code><br />
+@if(e.RequestId.HasValue || e.SessionId.HasValue){<a href="@ProjectRpg.Backend.Pages.Ops.EvidenceModel.LogLink(e)">이 시각의 요청·정산 로그</a>}
+</td></tr>
+}
+</tbody></table></div>
+@if(Model.Evidence.Items.Count == 0){<p>이 기간과 연결 범위에서 확인된 기록이 없습니다. 지급 실패를 뜻하지 않습니다.</p>}
+@if(Model.NextLink is not null){<a href="@Model.NextLink">다음 기록</a>}
+}
