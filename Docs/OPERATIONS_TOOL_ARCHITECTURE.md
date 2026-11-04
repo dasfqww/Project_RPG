@@ -1,10 +1,10 @@
 # 운영툴 아키텍처 — SOLID와 유지보수성 우선
 
-작성일: 2026-11-04 · 설계 v1 · 상태: 설계 문서, 제품 코드 미구현
+작성일: 2026-11-04 · 상세 확정: 2026-11-05 · 설계 v1.1 · 상태: 설계 문서, 제품 코드 미구현
 
 사용자 지시: **SOLID를 지키면서 유지보수하기 용이하게 설계하는 것이 0순위다. 로그 추적도 설계에 포함한다.**
 
-[제작 계획](SOLO_OPERATIONS_TOOL_PLAN.md)은 기능 범위·단계를, 이 문서는 책임·의존 방향·호출 계약을, [로그 추적 계약](OPERATIONS_LOG_TRACING.md)은 사건 연결·검색·보존을 관리한다. 이후 구현은 이 세 문서를 함께 따른다. 아래 경로·타입·호출 예시는 신규 설계이며 이미 존재하는 코드가 아니다.
+[제작 계획](SOLO_OPERATIONS_TOOL_PLAN.md)은 기능 범위·단계를, 이 문서는 책임·의존 방향을, [로그 추적 계약](OPERATIONS_LOG_TRACING.md)은 사건 연결·검색·보존을 관리한다. 인증 공급자·정확한 DTO/오류·저장/동시성·운영 정책은 [구현 계약 v1](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md)에서 확정했다. 이후 구현은 네 문서를 함께 따른다. 아래 경로·타입·호출 예시는 신규 설계이며 이미 존재하는 코드가 아니다.
 
 ## 1. 결정 요약
 
@@ -102,9 +102,9 @@ public interface IOperatorAccess
 
 public interface ICharacterReadStore
 {
-    Task<Result<CharacterSearchPage>> SearchAsync(
+    Task<Result<Page<CharacterHeader>>> SearchAsync(
         CharacterLookup query, CancellationToken cancellationToken);
-    Task<Result<CharacterSummary>> FindAsync(
+    Task<Result<CharacterHeader>> FindAsync(
         Guid characterId, CancellationToken cancellationToken);
 }
 
@@ -127,7 +127,7 @@ public interface ICompensationCommitter
 
 `Result<T>`는 성공 값 또는 분류된 실패 중 하나다. 성공인데 값이 null이거나, 실패를 빈 목록으로 반환하는 모델을 만들지 않는다. 검색 결과 0건은 성공한 빈 페이지, 단일 대상 부재는 NotFound다. 사용자가 취소한 작업은 취소로 전달하며 저장 장애로 바꾸지 않는다.
 
-| Core 결과 | Web 매핑 초안 | 의미 |
+| Core 결과 | Web 매핑 요약 | 의미 |
 |---|---|---|
 | InvalidInput | 400/필드 오류 | 잘못된 ID·필터·한도 |
 | Unauthenticated / Forbidden | API 401/403, 페이지는 로그인 안내/권한 거절 | 인증 부재와 권한 부족 구분 |
@@ -148,6 +148,7 @@ public interface ICompensationCommitter
 | [IGameRepository](../Backend/ProjectRpg.Backend/Data/IGameRepository.cs)는 인증·세션·정산·인벤토리 읽기/쓰기를 함께 포함 | Core에 주입하지 않고 좁은 읽기 포트로 보호 |
 | [PostgresGameRepository](../Backend/ProjectRpg.Backend/Data/PostgresGameRepository.cs)의 `GetDungeonSessionAsync`, `GetActiveDungeonSessionForCharacterAsync`는 `CleanupExpiredDungeonSessionsAsync` 실행 | 운영 읽기에서 재사용 금지. 저장된 상태·만료 시각을 SELECT하는 snapshot 조회 추가 |
 | [Memory 구현](../Backend/ProjectRpg.Backend/Data/InMemoryGameRepository.cs)의 같은 조회도 만료 정리 실행 | Memory에도 별도 잠금 내 복사 snapshot 필요. PG만 읽기 전용으로 만들고 대체 가능하다고 주장하지 않음 |
+| [성장 저장소](../Backend/ProjectRpg.Backend/Data/ICharacterProgressionRepository.cs)의 LoadProgressionAsync는 정산을 반영할 수 있음 | 운영 성장 표시는 GetStoredProgressionSummaries 의미의 저장값 조회만 사용 |
 | [PostgresItemRepository](../Backend/ProjectRpg.Backend/Data/PostgresItemRepository.cs)의 소유자 조회는 limit이 있고 커서 없음 | 제한 목록을 전체 목록으로 보여주지 않음. 운영 전용 제한/커서 조회로 보완 |
 | [PostgresEconomyRepository](../Backend/ProjectRpg.Backend/Data/PostgresEconomyRepository.cs)의 지갑은 활성 통화 정의만 반환 | S1에서는 '활성 재화'로 명시. 과거 비활성 재화 조사 요구는 S2 조회 계약에서 별도 처리 |
 | 일반 재화/아이템 commit은 각 저장소가 연결·트랜잭션을 소유 | 두 공개 commit과 감사 저장을 순서대로 호출해 원자 지급이라고 하지 않음 |
@@ -184,7 +185,7 @@ sequenceDiagram
     end
 ```
 
-- 화면은 유스케이스를 직접 호출한다. 같은 프로세스의 `/ops/api`를 HTTP로 다시 호출하지 않는다. JSON 엔드포인트가 필요해지면 동일 유스케이스의 추가 어댑터로 붙인다.
+- 화면은 유스케이스를 직접 호출한다. 같은 프로세스의 `/ops/api`를 HTTP로 다시 호출하지 않는다. S1 JSON 조회 엔드포인트도 동일 유스케이스의 Web 어댑터로 제공한다.
 - 정확한 Steam ID/캐릭터 GUID 검색부터 제공한다. 기본 상세와 재화/인벤토리/세션 패널은 각각 실패 상태를 표시한다. 한 패널의 장애 때문에 다른 결과를 성공한 빈 데이터로 바꾸지 않는다.
 - PG 조회는 읽기 전용 트랜잭션 또는 충분히 제한된 SELECT로 실행하며 만료 정리·잠금 해제·정산 재시도를 수행하지 않는다. 여러 SQL을 하나의 일관된 snapshot이라고 표시할 때만 같은 연결의 적절한 읽기 트랜잭션으로 묶는다.
 - 세션은 저장 상태·저장된 만료 시각·관측 시각을 함께 반환한다. 시간이 지났다는 계산은 표시 정책일 뿐 DB 상태 전이가 아니다. 게임의 실제 입장 권한을 새로 결정하지 않는다.
@@ -195,11 +196,11 @@ sequenceDiagram
 
 ## 7. 인증과 호스트 조립
 
-운영용 cookie scheme 이름을 `OperationsCookie`, 정책 이름을 `OperationsAccess`로 고정한다. 신원 공급자가 검증한 안정된 운영자 식별자를 허용 목록과 대조하고 운영 세션으로 연결한다. 실제 로그인 공급자/계정 설정은 배포 입력으로 남기며, 쿠키 자체를 비밀번호 검증 기능으로 간주하지 않는다. 임의 헤더·Player/Administrator/GameServer 토큰으로 운영 세션을 발급하지 않는다.
+GitHub OAuth scheme `OperationsGitHub`, cookie scheme `OperationsCookie`, 정책 `OperationsAccess`를 사용한다. 검증한 GitHub 숫자 ID 한 개의 허용 목록과 PG 서버 세션으로 운영자 신원을 연결한다. 유휴 30분/절대 8시간, PKCE·폐기·CSRF와 접근 제한은 구현 계약 §2를 따른다. 실제 앱 자격/계정 ID/주소만 배포 입력이다. 임의 헤더·Player/Administrator/GameServer 토큰으로 운영 세션을 발급하지 않는다.
 
 인가 정책은 해당 scheme을 명시한다. 다른 인증 scheme의 신원이 운영 권한으로 섞이지 않도록 하는 ASP.NET 구성을 사용한다. [특정 scheme으로 인가하기](https://learn.microsoft.com/en-us/aspnet/core/security/authorization/authorize-with-a-specific-scheme?view=aspnetcore-9.0)
 
-호스트의 논리 순서는 오류/추적 컨텍스트 → 라우팅 → 인증 → 인가·해당 경로 요청 제한 → 엔드포인트다. 기존 `/api`의 Bearer 인증/요청 제한 순서는 유지하고, `/ops`는 운영 scheme·정책으로 보호한다. 상세 미들웨어 순서는 구현 시 실제 호스트로 검증한다.
+호스트의 논리 순서는 오류/추적 컨텍스트 → Ops ingress/익명 경로 제한 → 라우팅·명시적 인증/인가 → 인증 주체 요청 제한 → 입력/엔드포인트다. 기존 `/api`의 Bearer 인증/요청 제한 순서는 유지하고, `/ops`는 운영 scheme·정책으로 보호한다. 실제 미들웨어 연결이 이 순서와 경로별 정책을 지키는지 구현 시 검증한다.
 
 - `AddOperations(configuration, environment)`는 설정 검증·Core 유스케이스·필요한 어댑터·인증/인가를 등록한다. `MapOperations`는 허용된 페이지와 필요한 엔드포인트만 매핑한다.
 - 기본 비활성. 활성 상태인데 인증/로그 검색 경로 등 필수 설정이 누락되면 기동 검증에서 실패한다. 개발 테스트용 인증 우회가 운영 환경에서 활성화되지 않게 한다.
@@ -263,13 +264,14 @@ S1에는 아래 코드를 만들지 않지만, 읽기/쓰기 분리와 저장 �
 | 운영 로그인 공급자 | 인증 어댑터·호스트 설정 | 조회/지급 유스케이스 |
 | 새 보상 종류 | 해당 정책·명령·저장 규칙/등록 | 기존 조회·다른 조치의 정책 |
 
-## 11. 구현 단위와 결정해야 할 입력
+## 11. 구현 단위와 배포 입력
 
 1. **기반과 조회 첫 흐름:** Core 경계·호스트 조립·개인 인증·정확한 ID 검색·기본 상세·구조화 요청 로그를 함께 연결한다.
 2. **S1 완성:** 읽기 전용 재화/가방/우편/세션 패널과 기본 로그 검색 페이지, 부분 실패·커서·추적 검증을 마무리한다.
 3. **S2 조사:** 원래 정산/영수증/worker/UE 사건의 연결과 계측 범위를 확장한다.
-4. **S3 이후:** 보상 한 종류의 원자 명령부터 추가한다. 제재·대량 작업은 각각의 정책/유스케이스로 진행한다.
+4. **S3:** 허용된 아이템 1종·1개의 우편 지급, 기간 제재/해제를 각각의 유스케이스로 구현한다.
+5. **S4:** 공지·Open/Drain, 외부 감시/webhook, pgBackRest 백업·복구 절차를 연결한다. 대량 작업은 v1 밖이다.
 
-구현 착수 전에 필요한 배포 입력은 운영자 로그인 공급자/허용 신원, 접근 경로, 로그 저장 위치·할당량이다. S3에는 첫 보상 템플릿과 온라인 반영 정책이 필요하다. 이 값들이 아직 정해지지 않았다는 이유로 Core에 공급자별 코드를 섞지 않는다.
+로그인 방식·로그 공급자/할당량·첫 보상 템플릿/반영 시점·제재/점검 정책은 구현 계약에서 확정했다. 실제 계정 ID·OAuth 자격·관리 주소·영속 경로·허용 품목·감시/백업 자격만 배포 입력으로 남는다. 이 값은 Core 의존 방향을 바꾸지 않는다.
 
-이번 설계의 완료 기준은 책임/의존 방향, S1 계약, 기존 코드와의 연결·부작용 경계, 변경의 원자성, 로그 추적과 검증 기준이 명시되는 것이다. 실제 기능 완료는 이후 구현·검증 기록으로 판단한다.
+설계의 완료 기준은 책임/의존 방향, S1~S4 상세 계약, 기존 코드의 부작용/동시성 경계, 로그와 운영 정책, 요구사항별 검증 기준이 확정되는 것이다. 구현 계약 §11~12에 완료 범위와 검증 인계를 기록했다. 실제 기능 완료는 이후 구현·검증 기록으로 판단한다.
