@@ -3,9 +3,9 @@ using ProjectRpg.Backend.Domain;
 
 namespace ProjectRpg.Backend.Application;
 
-// Bind the existing game and item singleton repositories; never accept a commit body here.
-public sealed class DungeonPickupCommitService(IGameRepository gameRepository, IItemRepository itemRepository,
-    TimeProvider clock, ILogger<DungeonPickupCommitService> logger)
+// The application depends on an atomic operation, independent of the storage provider.
+public sealed class DungeonPickupCommitService(IDungeonPickupCommitRepository repository,
+    ILogger<DungeonPickupCommitService> logger)
 {
     public async Task<DungeonPickupCommitResult> CommitAsync(Guid sessionId, string serverId, Guid requestId,
         CancellationToken cancellationToken)
@@ -15,14 +15,7 @@ public sealed class DungeonPickupCommitService(IGameRepository gameRepository, I
             return new(DungeonPickupCommitStatus.InvalidRequest);
         try
         {
-            return (gameRepository, itemRepository) switch
-            {
-                (InMemoryGameRepository game, InMemoryItemRepository items) =>
-                    game.CommitPickup(items, sessionId, serverId, requestId, clock, cancellationToken),
-                (PostgresGameRepository game, PostgresItemRepository items) =>
-                    await game.CommitPickupAsync(items, sessionId, serverId, requestId, clock, cancellationToken),
-                _ => throw new InvalidOperationException("Pickup repositories must use the same storage provider.")
-            };
+            return await repository.CommitAsync(sessionId, serverId, requestId, cancellationToken);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception exception)

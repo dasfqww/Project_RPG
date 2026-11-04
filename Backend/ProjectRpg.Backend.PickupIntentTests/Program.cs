@@ -21,6 +21,7 @@ using ProjectRpg.Backend.Domain;
 
 try
 {
+    await PickupCommitBoundaryTests.Run();
     Func<IGameRepository> memory = () => new InMemoryGameRepository();
     Func<IItemRepository> memoryItems = () => new InMemoryItemRepository(new InMemoryTransactionGate());
     if (args.Contains("--item-revision-only"))
@@ -249,7 +250,8 @@ static class Checks
         var builder = WebApplication.CreateBuilder(); builder.Configuration.Sources.Clear(); builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton(f.Repo); builder.Services.AddSingleton(f.Intents);
-        builder.Services.AddSingleton(f.Items); builder.Services.AddSingleton<DungeonPickupCommitService>();
+        builder.Services.AddSingleton(f.Items); builder.Services.AddSingleton(f.CommitRepository());
+        builder.Services.AddSingleton<DungeonPickupCommitService>();
         builder.Services.AddSingleton(clock); builder.Services.AddSingleton(tokens);
         builder.Services.AddSingleton<IOptions<AuthOptions>>(Options.Create(new AuthOptions { AdminToken = admin }));
         builder.Services.AddSingleton<IOptions<SecurityTelemetryOptions>>(Options.Create(new SecurityTelemetryOptions()));
@@ -361,7 +363,15 @@ sealed class Fixture(IGameRepository repo, DateTimeOffset now, GameCharacter a, 
     public Task<DungeonPickupIntentResult> Read() => Intents.ReadPickupIntentAsync(Session, Server, Command.RequestId, Now, default);
     public Task<DungeonAbandonment> Abandon() => Repo.AbandonDungeonSessionAsync(Session, A.SteamId, A.CharacterId, Now, default);
     public DungeonPickupCommitService CommitService(TimeProvider? clock = null) =>
-        new(Repo, Items, clock ?? new FixedClock(Now), NullLogger<DungeonPickupCommitService>.Instance);
+        new(CommitRepository(clock), NullLogger<DungeonPickupCommitService>.Instance);
+    public IDungeonPickupCommitRepository CommitRepository(TimeProvider? clock = null) => (Repo, Items) switch
+    {
+        (InMemoryGameRepository game, InMemoryItemRepository store) =>
+            new InMemoryDungeonPickupCommitRepository(game, store, clock ?? new FixedClock(Now)),
+        (PostgresGameRepository game, PostgresItemRepository store) =>
+            new PostgresDungeonPickupCommitRepository(game, store, clock ?? new FixedClock(Now)),
+        _ => throw new InvalidOperationException("Unconfigured test storage provider.")
+    };
     public Task<DungeonPickupCommitResult> Commit() => CommitService().CommitAsync(Session, Server, Command.RequestId, default);
     public static ItemRepositoryCommitRequest CommandFor(GameCharacter character)
     {
@@ -403,7 +413,12 @@ sealed class PrivateSchema : IAsyncDisposable
     private PrivateSchema(string connection)
     {
         var config = new NpgsqlConnectionStringBuilder(connection) { Timeout = 5, CommandTimeout = 30, MaxPoolSize = 20, ApplicationName = name };
-        Checks.Require(config.Host == "127.0.0.1" && config.Port == 54329 && config.Database == "project_rpg" && config.Username == "project_rpg", "Tests require the explicit local development database.");
+        string? run = Environment.GetEnvironmentVariable("PROJECT_RPG_PICKUP_INTENT_TEST_RUN");
+        bool isolated = Guid.TryParseExact(run, "N", out _) && config.Database == "rpg_solid_" + run
+            && config.Username == "solid_test";
+        bool development = config.Port == 54329 && config.Database == "project_rpg" && config.Username == "project_rpg";
+        Checks.Require(config.Host == "127.0.0.1" && (isolated || development),
+            "Tests require the explicit local development database or a named isolated run database.");
         config.SearchPath = "pg_catalog"; admin = NpgsqlDataSource.Create(config.ConnectionString);
         config.SearchPath = name; Source = NpgsqlDataSource.Create(config.ConnectionString);
     }

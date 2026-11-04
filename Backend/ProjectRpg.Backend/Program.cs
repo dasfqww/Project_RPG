@@ -105,6 +105,10 @@ if (string.Equals(storageProvider, "Postgres", StringComparison.OrdinalIgnoreCas
     builder.Services.AddSingleton<PostgresItemRepository>();
     builder.Services.AddSingleton<IItemRepository>(provider =>
         provider.GetRequiredService<PostgresItemRepository>());
+    builder.Services.AddSingleton<IDungeonPickupCommitRepository>(provider =>
+        new PostgresDungeonPickupCommitRepository(
+            (PostgresGameRepository)provider.GetRequiredService<IGameRepository>(),
+            provider.GetRequiredService<PostgresItemRepository>(), provider.GetRequiredService<TimeProvider>()));
     builder.Services.AddSingleton<PostgresEconomyRepository>();
     builder.Services.AddSingleton<IEconomyRepository>(provider =>
         provider.GetRequiredService<PostgresEconomyRepository>());
@@ -136,6 +140,10 @@ else if (string.Equals(storageProvider, "Memory", StringComparison.OrdinalIgnore
     builder.Services.AddSingleton<InMemoryItemRepository>();
     builder.Services.AddSingleton<IItemRepository>(provider =>
         provider.GetRequiredService<InMemoryItemRepository>());
+    builder.Services.AddSingleton<IDungeonPickupCommitRepository>(provider =>
+        new InMemoryDungeonPickupCommitRepository(
+            (InMemoryGameRepository)provider.GetRequiredService<IGameRepository>(),
+            provider.GetRequiredService<InMemoryItemRepository>(), provider.GetRequiredService<TimeProvider>()));
     builder.Services.AddSingleton<InMemoryEconomyRepository>();
     builder.Services.AddSingleton<IEconomyRepository>(provider =>
         provider.GetRequiredService<InMemoryEconomyRepository>());

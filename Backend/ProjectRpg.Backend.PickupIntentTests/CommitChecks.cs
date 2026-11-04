@@ -36,6 +36,9 @@ static class CommitChecks
         }
         await Test("grant, consumption and immutable exact retry", async f =>
         {
+            var otherOwner = new ItemOwnerRef(ItemOwnerType.Character, f.B.CharacterId.ToString("D"));
+            string before = JsonSerializer.Serialize((await f.Items.FindByOwnerAsync(f.Command.Actor, true, 100, default)).OrderBy(r => r.ItemId));
+            string otherBefore = JsonSerializer.Serialize((await f.Items.FindByOwnerAsync(otherOwner, true, 100, default)).OrderBy(r => r.ItemId));
             var prepared = (await f.Prepare()).Intent!;
             var first = await f.Commit(); var retry = await f.Commit(); var stored = (await f.Read()).Intent!;
             Require(first.Status == DungeonPickupCommitStatus.Committed && retry.Status == DungeonPickupCommitStatus.AlreadyCommitted
@@ -43,8 +46,10 @@ static class CommitChecks
                 "Atomic grant/consumption/retry failed.");
             Require(first.Receipt!.RequestId == f.Command.RequestId && first.Receipt.Records.Single().Revision == 1
                 && first.Receipt.CommittedAt == retry.Receipt!.CommittedAt, "Original receipt changed.");
-            Require((await f.Items.FindByOwnerAsync(f.Command.Actor, true, 100, default)).Count == 1
-                && (await f.Items.FindByOwnerAsync(new(ItemOwnerType.Character, f.B.CharacterId.ToString("D")), true, 100, default)).Count == 0,
+            var after = await f.Items.FindByOwnerAsync(f.Command.Actor, true, 100, default);
+            Require(after.Count(r => r.ItemId == first.Receipt.Records.Single().ItemId) == 1
+                && JsonSerializer.Serialize(after.Where(r => r.ItemId != first.Receipt.Records.Single().ItemId).OrderBy(r => r.ItemId)) == before
+                && JsonSerializer.Serialize((await f.Items.FindByOwnerAsync(otherOwner, true, 100, default)).OrderBy(r => r.ItemId)) == otherBefore,
                 "Duplicate grant or other-party ownership changed.");
         });
         await Test("missing and invalid reservation never grant", async f =>
@@ -107,10 +112,11 @@ static class CommitChecks
         });
         await Test("simultaneous duplicate commits grant only once", async f =>
         {
+            int originalCount = (await f.Items.FindByOwnerAsync(f.Command.Actor, true, 100, default)).Count;
             await f.Prepare(); var results = await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => Task.Run(f.Commit)));
             Require(results.Count(r => r.Status == DungeonPickupCommitStatus.Committed) == 1
                 && results.Count(r => r.Status == DungeonPickupCommitStatus.AlreadyCommitted) == 19
-                && (await f.Items.FindByOwnerAsync(f.Command.Actor, true, 100, default)).Count == 1, "Concurrent duplicate item/receipt.");
+                && (await f.Items.FindByOwnerAsync(f.Command.Actor, true, 100, default)).Count == originalCount + 1, "Concurrent duplicate item/receipt.");
         });
         await Test("commit versus opt-out is serial with no late authority", async f =>
         {
@@ -210,7 +216,8 @@ static class CommitChecks
         var builder = WebApplication.CreateBuilder(); builder.Configuration.Sources.Clear(); builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton(f.Repo); builder.Services.AddSingleton(f.Intents); builder.Services.AddSingleton(f.Items);
-        builder.Services.AddSingleton(clock); builder.Services.AddSingleton(tokens); builder.Services.AddSingleton<DungeonPickupCommitService>();
+        builder.Services.AddSingleton(clock); builder.Services.AddSingleton(tokens);
+        builder.Services.AddSingleton(f.CommitRepository(clock)); builder.Services.AddSingleton<DungeonPickupCommitService>();
         builder.Services.AddSingleton<IOptions<AuthOptions>>(Options.Create(new AuthOptions { AdminToken = admin }));
         builder.Services.AddSingleton<IOptions<SecurityTelemetryOptions>>(Options.Create(new SecurityTelemetryOptions()));
         builder.Services.AddScoped<BearerAuthenticator>();
@@ -257,7 +264,8 @@ static class CommitChecks
     {
         async Task<Fixture> Create() => await Fixture.Create(schema.Repository(), items: schema.Items());
         var persistent = await Create(); await persistent.Prepare(); await persistent.Commit();
-        var service = new DungeonPickupCommitService(schema.Repository(), schema.Items(), new FixedClock(persistent.Now),
+        var service = new DungeonPickupCommitService(new PostgresDungeonPickupCommitRepository(
+            (PostgresGameRepository)schema.Repository(), (PostgresItemRepository)schema.Items(), new FixedClock(persistent.Now)),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<DungeonPickupCommitService>.Instance);
         Require((await service.CommitAsync(persistent.Session, persistent.Server, persistent.Command.RequestId, default)).Status == DungeonPickupCommitStatus.AlreadyCommitted
             && await schema.Scalar("SELECT count(*) FROM dungeon_pickup_intents WHERE request_id = @id AND consumed_at IS NOT NULL", persistent.Command.RequestId) == 1,
@@ -332,6 +340,7 @@ static class CommitChecks
 
         // Directly affected old caller: the optional authorization hook must not change reward commits.
         var reward = await Create();
+        int originalRewardCount = (await reward.Items.FindByOwnerAsync(reward.Command.Actor, true, 100, default)).Count;
         var rewards = new PostgresDungeonRewardCommitRepository(schema.Source, new PostgresEconomyRepository(schema.Source),
             (PostgresItemRepository)reward.Items, Microsoft.Extensions.Logging.Abstractions.NullLogger<PostgresDungeonRewardCommitRepository>.Instance);
         var rewardItem = reward.Command.Mutations[0].NewRecord;
@@ -341,7 +350,7 @@ static class CommitChecks
         DungeonRewardCommitBatch batch = new([], [grant], [1]);
         Require((await rewards.CommitAsync(batch, reward.Now, default)).Succeeded
             && (await rewards.CommitAsync(batch, reward.Now, default)).Succeeded
-            && (await reward.Items.FindByOwnerAsync(reward.Command.Actor, true, 100, default)).Count == 1
+            && (await reward.Items.FindByOwnerAsync(reward.Command.Actor, true, 100, default)).Count == originalRewardCount + 1
             && await schema.Scalar("SELECT count(*) FROM dungeon_pickup_intents WHERE request_id = @id", reward.Command.RequestId) == 0,
             "Existing reward caller/default transaction hook regressed.");
         Console.WriteLine("PASS PostgresCommit: existing reward transaction caller still grants and retries once without pickup consumption.");

@@ -184,3 +184,16 @@ Legacy 자산의 Definition 조회 전환은
 - `Item/Transaction`은 Repository와 Catalog 인터페이스만 사용한다.
 - UI는 Record를 직접 변경하지 않고 서버 명령의 결과만 표시한다.
 - 모든 상태 변경은 서버의 Transaction Service를 통과한다.
+## 2026-11-05 백엔드 픽업 확정의 저장소 경계
+
+`DungeonPickupCommitService`는 `IDungeonPickupCommitRepository`의 원자 확정 계약만
+사용한다. Memory/PostgreSQL 어댑터는 DI 조립 지점에서 기존 game/item singleton과
+연결하며, 잠금 순서·잠금 대기 이후 시계 확인·아이템/영수증/예약 소비의 원자성을
+기존 저장 구현에 위임한다. 다른 구현체를 추가할 때 Application의 타입 분기를
+수정할 필요가 없다. HTTP 요청/응답과 저장 형식은 유지한다.
+
+직접 회귀는 `Scripts/Tests/Run-SolidBackendTests.ps1`이다. 게시 Backend와 명시한
+수정 파일만 독립 사본으로 빌드하고, 별도 PostgreSQL 컨테이너/DB 및 loopback HTTP로
+기존 픽업 검사와 독립 구현체의 상태·취소·실패 전달을 확인한다. 성공/실패 모두
+자기 사본/컨테이너를 정리한다. 기존 지급 검사는 캐릭터 생성 장비를 기준값으로
+보존하면서 새 픽업 한 개만 증가하는지 확인한다.
