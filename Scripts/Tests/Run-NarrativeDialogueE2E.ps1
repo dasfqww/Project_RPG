@@ -2,7 +2,7 @@
 param([string]$EngineRoot='D:/UE_5.8', [string]$ExpectedModuleSHA256='',
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$TaskId='narrative-dialogue-20261104',
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$ProofName='NarrativeDialogue-20261104',
-    [string]$BackendRoot='')
+    [string]$BackendRoot='', [switch]$IncludeInformation)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if(!$BackendRoot){$BackendRoot=Join-Path $workspace 'Backend'}
@@ -43,7 +43,8 @@ function New-BackendProcess([string]$Arguments) {
     $start.EnvironmentVariables['ConnectionStrings__Postgres']=$connection
     $start.EnvironmentVariables['Auth__AdminToken']=$adminToken
     $start.EnvironmentVariables['Steam__AllowDevelopmentAuthentication']='true'
-    $start.EnvironmentVariables['Narrative__EnableDevelopmentContent']='true'
+    $start.EnvironmentVariables['Narrative__EnableDevelopmentContent']=if($IncludeInformation){'false'}else{'true'}
+    $start.EnvironmentVariables['Narrative__CatalogPath']=if($IncludeInformation){$informationCatalog}else{''}
     $start.EnvironmentVariables['Kestrel__Endpoints__Http__Url']=$url
     $start.EnvironmentVariables['RateLimits__Enabled']='false'
     $child=[Diagnostics.Process]::new(); $child.StartInfo=$start
@@ -82,7 +83,7 @@ function Sql([string]$Query) {
     return ([string]::Join("`n",$answer)).Trim()
 }
 function Run-Frontend([string]$Phase) {
-    $output=@(& (Join-Path $PSScriptRoot 'Run-NarrativeFrontendTests.ps1') -EngineRoot $EngineRoot -ExpectedModuleSHA256 $ExpectedModuleSHA256 -Phase $Phase -BackendUrl ($url+'/api') -CharacterId $character.characterId -SteamId $steam -TaskId $TaskId -ProofName $ProofName)
+    $output=@(& (Join-Path $PSScriptRoot 'Run-NarrativeFrontendTests.ps1') -EngineRoot $EngineRoot -ExpectedModuleSHA256 $ExpectedModuleSHA256 -Phase $Phase -BackendUrl ($url+'/api') -CharacterId $character.characterId -SteamId $steam -TaskId $TaskId -ProofName $ProofName -IncludeInformation:$IncludeInformation)
     $line=@($output | Where-Object {$_ -like 'Result: *'})
     if($line.Count -ne 1){throw 'Missing native proof result'}
     $path=$line[0].Substring(8); $proof=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
@@ -117,6 +118,13 @@ try {
     $build|Set-Content -LiteralPath (Join-Path $run 'BackendBuild.log') -Encoding UTF8
     if($LASTEXITCODE -ne 0){throw 'Isolated backend build failed'}
     $backendDll=Join-Path $artifacts 'bin/ProjectRpg.Backend/debug/ProjectRpg.Backend.dll'
+    if($IncludeInformation){
+        $content=Get-Content -LiteralPath (Join-Path $inputs 'ProjectRpg.Backend/Narrative/Content/development.json') -Raw -Encoding UTF8|ConvertFrom-Json
+        $information=Get-Content -LiteralPath (Join-Path $BackendRoot 'ProjectRpg.Backend.NarrativeTests/Fixtures/information.json') -Raw -Encoding UTF8|ConvertFrom-Json
+        $content.dialogues=@($content.dialogues)+@($information.dialogues)
+        $informationCatalog=Join-Path $temp 'information.json'
+        [IO.File]::WriteAllText($informationCatalog,($content|ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
+    }
     $password=[Guid]::NewGuid().ToString('N');$adminToken=[Guid]::NewGuid().ToString('N')+[Guid]::NewGuid().ToString('N')
     $created=& docker run --pull=never --detach --name $containerName --label ('project-rpg.run='+$runId) --label ('project-rpg.task='+$owner) --memory 512m --cpus 1 --pids-limit 128 --publish '127.0.0.1::5432' --tmpfs '/var/lib/postgresql/data:rw,size=201326592' --env POSTGRES_DB=narrative_ui --env POSTGRES_USER=narrative_ui --env ('POSTGRES_PASSWORD='+$password) postgres:17-alpine -c shared_buffers=16MB -c max_connections=32
     if($LASTEXITCODE -ne 0){throw 'Own PostgreSQL failed to start'}

@@ -19,7 +19,8 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
             if (command.CatalogVersion != catalog.Version) throw new NarrativeConflictException("narrative_catalog_changed");
             if (command.ExpectedRevision != state.Revision) throw new NarrativeConflictException("narrative_revision_conflict");
             (DialogueDefinition dialogue, DialogueChoice choice) = dialogues.Resolve(state, catalog, command);
-            NarrativeState updated = quests.Apply(state, catalog.Quests[dialogue.QuestId], choice);
+            if (dialogue.Informational) throw new NarrativeConflictException("informational_dialogue_not_mutable");
+            NarrativeState updated = quests.Apply(state, catalog.Quests[dialogue.QuestId!], choice);
             return scenarios.Project(updated, catalog) with { Revision = checked(state.Revision + 1) };
         }, clock.GetUtcNow(), cancellationToken);
         return View(committed);

@@ -6,15 +6,16 @@ using System.Text.Json;
 namespace ProjectRpg.Backend.Narrative;
 
 public enum QuestStatus { Active, ReadyToReport, Completed }
-public enum DialogueEffect { AcceptQuest, RecordObjective, ReportQuest }
+public enum DialogueEffect { AcceptQuest, RecordObjective, ReportQuest, None }
 
 public sealed record QuestDefinition(string Id, int Version, ImmutableArray<string> Prerequisites,
     ImmutableArray<string> Objectives, string? Title = null, ImmutableDictionary<string, string>? ObjectiveTexts = null);
 public sealed record ChapterDefinition(string Id, ImmutableArray<string> RequiredQuests,
     ImmutableArray<string> StoryUnlocks);
-public sealed record DialogueChoice(string Id, string Text, DialogueEffect Effect, string? ObjectiveId = null);
-public sealed record DialogueDefinition(string Id, string Speaker, string Text, string QuestId,
-    QuestStatus? RequiredStatus, ImmutableArray<DialogueChoice> Choices);
+public sealed record DialogueChoice(string Id, string Text, DialogueEffect Effect, string? ObjectiveId = null,
+    string? NextDialogueId = null);
+public sealed record DialogueDefinition(string Id, string Speaker, string Text, string? QuestId,
+    QuestStatus? RequiredStatus, ImmutableArray<DialogueChoice> Choices, bool Informational = false, bool EntryPoint = true);
 public sealed record QuestProgress(string QuestId, int DefinitionVersion, QuestStatus Status,
     ImmutableArray<string> CompletedObjectives);
 public sealed record NarrativeState(Guid CharacterId, int SchemaVersion, long Revision,
@@ -49,8 +50,8 @@ public sealed record NarrativeCommand(Guid RequestId, long ExpectedRevision, int
 
 public sealed class NarrativeConflictException(string code) : Exception(code);
 public sealed record DialogueView(string Id, string Speaker, string Text,
-    ImmutableArray<DialogueChoiceView> Choices);
-public sealed record DialogueChoiceView(string Id, string Text);
+    ImmutableArray<DialogueChoiceView> Choices, bool Informational = false, bool EntryPoint = true);
+public sealed record DialogueChoiceView(string Id, string Text, string? NextDialogueId = null);
 public sealed record QuestObjectiveView(string Id, string? Text, bool Completed);
 public sealed record QuestJournalEntry(string QuestId, int DefinitionVersion, string Status,
     ImmutableArray<string> CompletedObjectives, string? Title, ImmutableArray<QuestObjectiveView> Objectives)

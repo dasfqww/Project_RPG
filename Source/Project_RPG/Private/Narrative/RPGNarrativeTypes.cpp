@@ -118,6 +118,9 @@ bool FRPGNarrativeCodec::Decode(const FString& Body, const FGuid ExpectedCharact
             || !Text(*Item, TEXT("speaker"), 256, Speaker) || !Text(*Item, TEXT("text"), 4096, Line)
             || !(*Item)->TryGetArrayField(TEXT("choices"), Choices) || Choices->IsEmpty() || Choices->Num() > 64) return false;
         Dialogue.Speaker = FText::FromString(Speaker); Dialogue.Text = FText::FromString(Line);
+        if (((*Item)->HasField(TEXT("informational")) && !(*Item)->TryGetBoolField(TEXT("informational"), Dialogue.bInformational))
+            || ((*Item)->HasField(TEXT("entryPoint")) && !(*Item)->TryGetBoolField(TEXT("entryPoint"), Dialogue.bEntryPoint))
+            || (!Dialogue.bInformational && !Dialogue.bEntryPoint)) return false;
         TSet<FString> ChoiceIds;
         for (const auto& ChoiceValue : *Choices)
         {
@@ -126,10 +129,17 @@ bool FRPGNarrativeCodec::Decode(const FString& Body, const FGuid ExpectedCharact
             if (!ChoiceValue || !ChoiceValue->TryGetObject(ChoiceObject) || !*ChoiceObject
                 || !(*ChoiceObject)->TryGetStringField(TEXT("id"), Choice.Id) || !Id(Choice.Id) || ChoiceIds.Contains(Choice.Id)
                 || !Text(*ChoiceObject, TEXT("text"), 1024, Label)) return false;
+            const auto Next = (*ChoiceObject)->TryGetField(TEXT("nextDialogueId"));
+            if (Next && !Next->IsNull()
+                && (!Next->TryGetString(Choice.NextDialogueId) || !Id(Choice.NextDialogueId) || !Dialogue.bInformational)) return false;
             ChoiceIds.Add(Choice.Id); Choice.Text = FText::FromString(Label); Dialogue.Choices.Add(MoveTemp(Choice));
         }
         DialogueIds.Add(Dialogue.Id); Parsed.AvailableDialogues.Add(MoveTemp(Dialogue));
     }
+    for (const auto& Node : Parsed.AvailableDialogues)
+        for (const auto& Choice : Node.Choices)
+            if (!Choice.NextDialogueId.IsEmpty() && !Parsed.AvailableDialogues.ContainsByPredicate(
+                [&](const auto& Target) { return Target.Id == Choice.NextDialogueId && Target.bInformational; })) return false;
     Out = MoveTemp(Parsed); return true;
 }
 

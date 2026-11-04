@@ -76,6 +76,7 @@ namespace RPGNarrativeTests
     {
         FString Account = TEXT("76561198000000001");
         FString LastBody;
+        int32 Sends = 0;
         TFunction<void(FRPGNarrativeHttpResult)> Pending;
         bool GetContext(FString& Endpoint, FString& SteamId) const override
         {
@@ -83,7 +84,7 @@ namespace RPGNarrativeTests
         }
         bool Send(FGuid, const FString& Body, TFunction<void(FRPGNarrativeHttpResult)> Completion) override
         {
-            LastBody = Body; Pending = MoveTemp(Completion); return true;
+            ++Sends; LastBody = Body; Pending = MoveTemp(Completion); return true;
         }
         void Cancel() override { Pending = nullptr; }
         bool Complete(const FString& Body, const int32 Status = 200)
@@ -125,6 +126,77 @@ namespace RPGNarrativeTests
             GEngine->DestroyWorldContext(World); World->DestroyWorld(false);
         }
     };
+}
+
+namespace RPGNarrativeTests
+{
+    FString InformationSnapshot(bool bBrokenLink = false)
+    {
+        TSharedPtr<FJsonObject> Root, Information;
+        FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Snapshot(0)), Root);
+        FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(FString(TEXT(R"json({"nodes":[
+          {"id":"INFO.Start","speaker":"Guide","text":"Choose a topic.","informational":true,"choices":[{"id":"ask","text":"Ask","nextDialogueId":"INFO.Topic"},{"id":"close","text":"Close"}]},
+          {"id":"INFO.Topic","speaker":"Guide","text":"Character progress.","informational":true,"entryPoint":false,"choices":[{"id":"more","text":"More","nextDialogueId":"INFO.Detail"},{"id":"back","text":"Back","nextDialogueId":"INFO.Start"}]},
+          {"id":"INFO.Detail","speaker":"Guide","text":"Reading does not complete objectives.","informational":true,"entryPoint":false,"choices":[{"id":"back","text":"Back","nextDialogueId":"INFO.Topic"},{"id":"close","text":"Close"}]}
+        ]})json"))), Information);
+        auto Nodes = Root->GetArrayField(TEXT("availableDialogues"));
+        auto Extra = Information->GetArrayField(TEXT("nodes"));
+        if (bBrokenLink) Extra[0]->AsObject()->GetArrayField(TEXT("choices"))[0]->AsObject()->SetStringField(TEXT("nextDialogueId"), TEXT("missing"));
+        Nodes.Append(Extra); Root->SetArrayField(TEXT("availableDialogues"), Nodes);
+        FString Body; FJsonSerializer::Serialize(Root.ToSharedRef(), TJsonWriterFactory<>::Create(&Body)); return Body;
+    }
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGNarrativeInformationTest, "ProjectRPG.Narrative.InformationDialogue",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGNarrativeInformationTest::RunTest(const FString&)
+{
+    using namespace RPGNarrativeTests;
+    FRPGNarrativeSnapshot Parsed;
+    TestFalse(TEXT("Dangling information links rejected"), FRPGNarrativeCodec::Decode(InformationSnapshot(true), Character, Parsed));
+    TestTrue(TEXT("Information graph decodes"), FRPGNarrativeCodec::Decode(InformationSnapshot(), Character, Parsed));
+    FGameFixture Fixture;
+    if (!TestTrue(TEXT("Information fixture"), Fixture.Init())) return false;
+#if UE_SUPPORT_FOR_ACTOR_TICK_DISABLE
+    Fixture.World->EnableActorTickAndUserCallbacks(true);
+#endif
+    Fixture.World->InitializeActorsForPlay(FURL());
+    auto* Controller = Fixture.World->SpawnActor<APlayerController>();
+    if (!Controller) return false;
+    Controller->SetPlayer(Fixture.Player); Fixture.World->AddController(Controller);
+    auto* Flow = Fixture.Player->GetSubsystem<URPGNarrativeCoordinator>();
+    auto Transport = MakeShared<FTransport>(); FRPGNarrativeTestAccess::Attach(Flow, Transport); Flow->SelectCharacter(Character);
+    TStrongObjectPtr<URPGNarrativeDialogueWidget> Panel(CreateWidget<URPGNarrativeDialogueWidget>(Controller));
+    Panel->SetOwningLocalPlayer(Fixture.Player); Panel->OpenForCharacter(Character);
+    const auto Slate = Panel->TakeWidget(); Transport->Complete(InformationSnapshot());
+    auto Click = [&](const FString& Node, const FString& Choice)
+    {
+        auto* List = Cast<UVerticalBox>(Panel->GetWidgetFromName(TEXT("NarrativeActions")));
+        for (auto* Child : List->GetAllChildren())
+            if (auto* Row = Cast<URPGNarrativeActionWidget>(Child))
+                if (Row->GetDialogueId() == Node && Row->GetChoiceId() == Choice)
+                    if (auto* Button = Cast<UButton>(Row->GetWidgetFromName(TEXT("NarrativeActionButton"))))
+                    { Button->OnClicked.Broadcast(); return true; }
+        return false;
+    };
+    TestEqual(TEXT("Only entry nodes shown"), Cast<UVerticalBox>(Panel->GetWidgetFromName(TEXT("NarrativeActions")))->GetChildrenCount(), 2);
+    TestFalse(TEXT("Hidden continuation is not a public entry"), Flow->BeginDialogue(TEXT("INFO.Topic")));
+    TestTrue(TEXT("Information entry button"), Click(TEXT("INFO.Start"), FString()));
+    TestTrue(TEXT("Question button"), Click(TEXT("INFO.Start"), TEXT("ask")));
+    TestTrue(TEXT("More button"), Click(TEXT("INFO.Topic"), TEXT("more")));
+    TestTrue(TEXT("Back to question"), Click(TEXT("INFO.Detail"), TEXT("back")));
+    TestTrue(TEXT("Back to topics"), Click(TEXT("INFO.Topic"), TEXT("back")));
+    TestTrue(TEXT("Close conversation"), Click(TEXT("INFO.Start"), TEXT("close")));
+    FRPGDialogueNode Active;
+    TestFalse(TEXT("Close choice clears local conversation"), Flow->GetDialogueManager()->GetActiveDialogue(Active));
+    Click(TEXT("INFO.Start"), FString()); Click(TEXT("INFO.Start"), TEXT("ask")); Panel->CloseScreen();
+    TestFalse(TEXT("Closing after navigation clears the owned continuation"), Flow->GetDialogueManager()->GetActiveDialogue(Active));
+    TestEqual(TEXT("Read-only navigation sent only the initial GET"), Transport->Sends, 1);
+    TestFalse(TEXT("No pending command from information"), Flow->HasPendingChoice());
+    TestTrue(TEXT("No quest progress invented"), Flow->GetQuestManager()->GetQuests(Character).IsEmpty());
+    Panel->OpenForCharacter(Character); Transport->Complete(InformationSnapshot());
+    Click(TEXT("DEV.Contact.Offer"), FString()); Click(TEXT("DEV.Contact.Offer"), TEXT("accept"));
+    TestTrue(TEXT("Progression choice still sends a command"), Flow->HasPendingChoice() && Flow->IsBusy());
+    Transport->Complete(Snapshot(1)); Panel->CloseScreen(); return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGNarrativeCodecTest, "ProjectRPG.Narrative.Codec",
@@ -423,6 +495,20 @@ namespace RPGNarrativeTests
             if (Narrative->HasPendingChoice() || !Narrative->HasCurrentSnapshot()) return Fail(TEXT("HTTP response not confirmed"));
             auto* Panel = Lobby->GetNarrativeDialogueWidget();
             if (!Panel || !Panel->IsInViewport()) return Fail(TEXT("Story panel closed unexpectedly"));
+            if (!bInformationChecked && FParse::Param(FCommandLine::Get(), TEXT("RPGNarrativeInformation")))
+            {
+                if (!Click(Panel, TEXT("INFO.Start"), FString()) || !Click(Panel, TEXT("INFO.Start"), TEXT("ask"))
+                    || !Click(Panel, TEXT("INFO.Topic"), TEXT("more")) || !Click(Panel, TEXT("INFO.Detail"), TEXT("back"))
+                    || !Click(Panel, TEXT("INFO.Topic"), TEXT("back")) || !Click(Panel, TEXT("INFO.Start"), TEXT("close")))
+                    return Fail(TEXT("Real server information graph did not navigate through viewport buttons"));
+                FRPGDialogueNode Conversation;
+                if (Narrative->IsBusy() || Narrative->HasPendingChoice()
+                    || !Narrative->GetQuestManager()->HasRevision(Character, bRestore ? 4 : 0)
+                    || Narrative->GetDialogueManager()->GetActiveDialogue(Conversation))
+                    return Fail(TEXT("Information navigation created a write or left an active conversation"));
+                bInformationChecked = true;
+                Test->AddInfo(TEXT("Real HTTP information graph navigated without a progress command."));
+            }
             if (Choice > 0 || bRestore)
             {
                 const auto Quests = Narrative->GetQuestManager()->GetQuests(Character);
@@ -439,7 +525,7 @@ namespace RPGNarrativeTests
                     || !Narrative->GetQuestManager()->IsQuestCompleted(Character, TEXT("DEV.Introduction"))
                     || !Narrative->GetScenarioManager()->IsChapterCompleted(Character, TEXT("DEV.Prologue"))
                     || !Narrative->GetScenarioManager()->IsStoryUnlocked(Character, TEXT("DEV.Story.Next"))
-                    || !Narrative->GetDialogueManager()->GetAvailableDialogues().IsEmpty())
+                    || Narrative->GetDialogueManager()->GetAvailableDialogues().ContainsByPredicate([](const auto& D) { return !D.bInformational; }))
                     return Fail(TEXT("Completion or fresh-process restoration mismatch"));
                 Test->AddInfo(FString(TEXT("Narrative HTTP persistence verified: ")) + (bRestore ? TEXT("restore") : TEXT("complete")));
                 Panel->CloseScreen(); return true;
@@ -477,7 +563,7 @@ namespace RPGNarrativeTests
         FAutomationTestBase* Test;
         FGuid Character;
         FString Steam, WorldName;
-        bool bRestore = false, bCheckedClose = false;
+        bool bRestore = false, bCheckedClose = false, bInformationChecked = false;
         double Deadline = FPlatformTime::Seconds() + 90;
         int32 Stage = 0, Choice = 0;
         TStrongObjectPtr<UGameInstance> Instance;

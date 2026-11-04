@@ -18,6 +18,7 @@ try
     Require(args.Length == 0 || args.SequenceEqual(["--postgres"]), "Unknown arguments.");
     DefinitionCases();
     await NarrativeCatalogTests.RunAsync();
+    await NarrativeInformationTests.RunAsync();
     InMemoryTransactionGate gate = new();
     InMemoryGameRepository memory = new(gate, new InMemoryItemRepository(gate));
     await RepositoryCases(memory, () => memory, "Memory");

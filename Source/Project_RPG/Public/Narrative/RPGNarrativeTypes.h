@@ -33,6 +33,7 @@ struct PROJECT_RPG_API FRPGDialogueChoice
     GENERATED_BODY()
     UPROPERTY(BlueprintReadOnly) FString Id;
     UPROPERTY(BlueprintReadOnly) FText Text;
+    UPROPERTY(BlueprintReadOnly) FString NextDialogueId;
 };
 
 USTRUCT(BlueprintType)
@@ -43,6 +44,8 @@ struct PROJECT_RPG_API FRPGDialogueNode
     UPROPERTY(BlueprintReadOnly) FText Speaker;
     UPROPERTY(BlueprintReadOnly) FText Text;
     UPROPERTY(BlueprintReadOnly) TArray<FRPGDialogueChoice> Choices;
+    UPROPERTY(BlueprintReadOnly) bool bInformational = false;
+    UPROPERTY(BlueprintReadOnly) bool bEntryPoint = true;
 };
 
 struct PROJECT_RPG_API FRPGNarrativeSnapshot

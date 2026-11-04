@@ -69,7 +69,7 @@ bool URPGNarrativeCoordinator::Refresh()
 bool URPGNarrativeCoordinator::BeginDialogue(const FString& DialogueId)
 {
     if (!HasCurrentSnapshot() || bBusy || PendingChoice
-        || !Dialogues->Dialogues.ContainsByPredicate([&](const auto& D) { return D.Id == DialogueId; })) return false;
+        || !Dialogues->Dialogues.ContainsByPredicate([&](const auto& D) { return D.Id == DialogueId && D.bEntryPoint; })) return false;
     Dialogues->ActiveId = DialogueId; OnChanged.Broadcast(); return true;
 }
 void URPGNarrativeCoordinator::CloseDialogue()
@@ -82,6 +82,13 @@ bool URPGNarrativeCoordinator::Choose(const FString& ChoiceId)
     FRPGDialogueNode Active;
     if (!HasCurrentSnapshot() || bBusy || PendingChoice || !Dialogues->GetActiveDialogue(Active)
         || !Active.Choices.ContainsByPredicate([&](const auto& C) { return C.Id == ChoiceId; })) return false;
+    if (Active.bInformational)
+    {
+        const auto* Choice = Active.Choices.FindByPredicate([&](const auto& C) { return C.Id == ChoiceId; });
+        if (Choice->NextDialogueId.IsEmpty()) { CloseDialogue(); return true; }
+        if (!Dialogues->Dialogues.ContainsByPredicate([&](const auto& D) { return D.Id == Choice->NextDialogueId && D.bInformational; })) return false;
+        Dialogues->ActiveId = Choice->NextDialogueId; OnChanged.Broadcast(); return true;
+    }
     FRPGNarrativeCommand Command{FGuid::NewGuid(), Revision, CatalogVersion, Active.Id, ChoiceId};
     if (!FRPGNarrativeCodec::Encode(Command, PendingBody)) return false;
     PendingChoice = MoveTemp(Command); return Dispatch(true);

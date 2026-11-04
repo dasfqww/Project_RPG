@@ -52,22 +52,42 @@ public sealed class NarrativeCatalog
             "narrative_catalog_limit_exceeded");
         foreach (DialogueDefinition d in Dialogues.Values)
         {
-            Require(NarrativeCommand.ValidId(d.Id) && Quests.ContainsKey(d.QuestId)
+            Require(NarrativeCommand.ValidId(d.Id)
+                && (d.Informational ? d.QuestId is null && d.RequiredStatus is null
+                    : d.EntryPoint && d.QuestId is not null && Quests.ContainsKey(d.QuestId))
                 && !string.IsNullOrWhiteSpace(d.Speaker) && d.Speaker.Length <= 256
                 && !string.IsNullOrWhiteSpace(d.Text) && d.Text.Length <= 4096
                 && !d.Choices.IsDefaultOrEmpty && d.Choices.Length <= 64 && d.Choices.All(c => c is not null)
                 && (d.RequiredStatus is null || Enum.IsDefined(d.RequiredStatus.Value))
                 && d.Choices.Length == d.Choices.Select(c => c.Id).Distinct().Count(), "invalid_dialogue_definition");
             foreach (DialogueChoice c in d.Choices)
+            {
                 Require(c is not null && NarrativeCommand.ValidId(c.Id) && !string.IsNullOrWhiteSpace(c.Text) && c.Text.Length <= 1024
-                    && Enum.IsDefined(c.Effect)
+                    && Enum.IsDefined(c.Effect), "invalid_dialogue_choice");
+                if (d.Informational)
+                    Require(c.Effect == DialogueEffect.None && c.ObjectiveId is null
+                        && (c.NextDialogueId is null || NarrativeCommand.ValidId(c.NextDialogueId)
+                            && Dialogues.TryGetValue(c.NextDialogueId, out var target) && target.Informational),
+                        "invalid_information_choice");
+                else Require(c.Effect != DialogueEffect.None && c.NextDialogueId is null
                     && (c.Effect == DialogueEffect.RecordObjective
                         ? d.RequiredStatus == QuestStatus.Active && c.ObjectiveId is not null
-                            && Quests[d.QuestId].Objectives.Contains(c.ObjectiveId)
+                            && Quests[d.QuestId!].Objectives.Contains(c.ObjectiveId)
                         : c.ObjectiveId is null && (c.Effect == DialogueEffect.AcceptQuest
                             ? d.RequiredStatus is null : d.RequiredStatus == QuestStatus.ReadyToReport)),
                     "invalid_dialogue_choice");
+            }
         }
+        HashSet<string> reachable = new(StringComparer.Ordinal);
+        Stack<string> pending = new(Dialogues.Values.Where(d => d.Informational && d.EntryPoint).Select(d => d.Id));
+        while (pending.TryPop(out string? id))
+        {
+            if (!reachable.Add(id)) continue;
+            foreach (var choice in Dialogues[id].Choices)
+                if (choice.NextDialogueId is { } next) pending.Push(next);
+        }
+        Require(Dialogues.Values.Where(d => d.Informational).All(d => reachable.Contains(d.Id)),
+            "unreachable_information_dialogue");
         foreach (QuestDefinition q in Quests.Values)
         {
             DialogueChoice[] actions = [.. Dialogues.Values.Where(d => d.QuestId == q.Id).SelectMany(d => d.Choices)];
@@ -78,7 +98,7 @@ public sealed class NarrativeCatalog
         }
     }
 
-    private static void Require(bool condition, string code)
+    private static void Require([System.Diagnostics.CodeAnalysis.DoesNotReturnIf(false)] bool condition, string code)
     {
         if (!condition) throw new NarrativeDefinitionException(code);
     }

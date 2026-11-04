@@ -7,9 +7,10 @@ public sealed class DialogueManager(QuestManager quests)
 {
     private bool Available(NarrativeState state, NarrativeCatalog catalog, DialogueDefinition definition)
     {
+        if (definition.Informational) return true;
         QuestProgress? progress = state.Quests.SingleOrDefault(q => q.QuestId == definition.QuestId);
         return definition.RequiredStatus is { } status ? progress?.Status == status
-            : quests.CanAccept(state, catalog.Quests[definition.QuestId]);
+            : quests.CanAccept(state, catalog.Quests[definition.QuestId!]);
     }
 
     private static bool ChoiceAvailable(NarrativeState state, DialogueDefinition definition, DialogueChoice choice)
@@ -31,6 +32,7 @@ public sealed class DialogueManager(QuestManager quests)
         [.. catalog.Dialogues.Values.OrderBy(d => d.Id, StringComparer.Ordinal)
             .Where(d => Available(state, catalog, d))
             .Select(d => new DialogueView(d.Id, d.Speaker, d.Text,
-                [.. d.Choices.Where(c => ChoiceAvailable(state, d, c)).Select(c => new DialogueChoiceView(c.Id, c.Text))]))
+                [.. d.Choices.Where(c => ChoiceAvailable(state, d, c)).Select(c => new DialogueChoiceView(c.Id, c.Text, c.NextDialogueId))],
+                d.Informational, d.EntryPoint))
             .Where(d => d.Choices.Length != 0)];
 }

@@ -54,11 +54,21 @@ GameInstance 캐시는 현재 엔드포인트/계정에 묶고 캐릭터 ID로 �
 
 서버 응답의 캐릭터/버전/형식과 계정·엔드포인트·연결 수명을 확인한다. 오래된 결과로 GameInstance 캐시를 되돌리지 않으며 퀘스트·시나리오·대화 리비전이 일치할 때 현재 대화를 노출한다. 다른 LocalPlayer가 같은 캐릭터 캐시를 갱신한 경우에는 이전 대화가 숨겨지고 해당 LocalPlayer가 다시 조회한다.
 
-`Scripts/Tests/Run-NarrativeFrontendTests.ps1`은 현재 DLL을 독립 런타임에 복사해 `ProjectRPG.Narrative.Codec`, `.Coordinator`, `.PlayerTransport`, `.SubsystemOwnership`, `.DialogueWidget`과 기존 로비/내비게이션/뒤로가기 검사4를 실행한다. 엔진의 실제 Subsystem 소유권·캐릭터/계정 분리·종료·재시도·늦은 응답과 위젯의 선택 이벤트를 확인한다. HTTP/DB를 사용하는 선택 검사는 아래 별도 러너로 실행한다.
+`Scripts/Tests/Run-NarrativeFrontendTests.ps1`은 현재 DLL을 독립 런타임에 복사해 `ProjectRPG.Narrative.Codec`, `.Coordinator`, `.PlayerTransport`, `.SubsystemOwnership`, `.DialogueWidget`, `.InformationDialogue`과 기존 로비/내비게이션/뒤로가기 검사4를 실행한다. 엔진의 실제 Subsystem 소유권·캐릭터/계정 분리·종료·재시도·늦은 응답과 위젯의 선택 이벤트를 확인한다. HTTP/DB를 사용하는 선택 검사는 아래 별도 러너로 실행한다.
 
 2026-11-04 원본 반영 확인: UHT·핵심 CPP6/신규 생성5/기존 생성 묶음4 컴파일과 정상 게임 모듈 집중 링크를 완료했다. 같은 `5557C6E1…1BB16EB9` DLL의 독립 런타임에서 위 native4 모두 Success·프로세스 종료0·검사 구간 오류0이다. 캐릭터별 캐시, 다중 GameInstance/LocalPlayer의 엔진 소유권과 분리, LocalPlayer 제거 후 GameInstance 캐시 보존, 계정 전환·재시도·오래된 응답을 확인했다. 기존 에셋/환경 경고는 남으며 GPU·실제 백엔드 HTTP 플레이 검증은 아니다.
 
 전체 Editor 타깃 시도는 다른 사설 UBT의 전역 잠금 대기 중 자기 프로세스만 종료했으며, 위 결과를 전체 타깃 성공으로 표시하지 않는다. 기존 공유 출력의 0-byte probe OBJ1·누락 의존 import6을 복구한 뒤 집중 링크했다. 원본 제품 소스와 검증 사본을 구분하며, 사본 취득 직후 공유 입력/출력 예약을 해제했다. 자기 런타임/DLL/UserDir·캐시와 연결11개를 안전하게 정리했고 원본 `Binaries`/`Intermediate`와 유지할 소스/검사는 보존했다.
+
+## 정보형 대화 분기
+
+2026-11-05: 정의의 `informational`/`entryPoint`와 선택지의 `nextDialogueId`를 추가했다. 기존 노드는 진행형·직접 진입으로 읽어 기존 JSON/클라이언트 계약을 유지한다. `DialogueEffect.None`은 정보형에서만 허용하고 진행형 연결/목표 효과와 섞지 않는다. 모든 정보형 노드가 진입점에서 도달 가능한지 검사하며, 이전 주제로 돌아가는 정보형 순환은 허용한다.
+
+조회 응답은 노드의 두 플래그와 선택지의 다음 ID를 포함한다. 새 클라이언트는 진입점만 목록에 노출하고, 정보 선택은 Coordinator가 현재 승인된 스냅샷의 정보 노드로 이동하거나 닫는다. HTTP 명령·미확정 요청·서버 리비전/진도/영수증을 만들지 않는다. 다음 정보 노드로 이동한 뒤 창을 닫을 때도 해당 창이 소유한 현재 대화를 닫는다. 일반 질문을 POST로 보낸 구형/위조 클라이언트는 서버에서 거절하며 진도와 영수증은 보존한다. 기존 진행 선택의 서버 승인 경로는 유지한다. [작성 규칙](NARRATIVE_CONTENT_AUTHORING.md#정보형-질문돌아가기닫기)을 따른다.
+
+2026-11-05 확인: UHT·관련 CPP/생성 코드 집중 컴파일·게임 링크와 같은 EB806654…AED1A29의 native10/UE0/검사 오류0이 통과했다. 실제 game 클라이언트2가 서버에서 읽은 주제→추가 설명→돌아가기→닫기를 저장 명령 없이 실행했고, 기존 의뢰의 HTTP/PG 완료·새 UE/백엔드 복원·영수증4/다른 캐릭터 진도0/성장 불변도 유지했다. `Run-NarrativeDialogueE2E.ps1 -IncludeInformation`은 기본 개발 의뢰와 검증용 정보 그래프를 임시 카탈로그로 합쳐 이 경로를 검사한다. 기본 개발/운영 카탈로그를 바꾸지 않는다.
+
+서버는 Git66c7e7d+본인9파일의 닫힌 사본에서 저작·Memory·인증 HTTP/위조 정보 POST 거절·영수증 미생성을 확인했고, 게시된 운영툴 통합 Gitc11feba+동일9파일 사본에서도 빌드0경고/0오류·같은 서버 회귀와 실제 호스트 FILE 의뢰 완료/해금·검증 CLI가 통과했다. UE/PG 전체 흐름은 전자 서버 기준이며 후자를 포함한 전체 프로젝트/GPU/물리 입력/실제 OAuth 검증으로 확대하지 않는다. 최초 C# nullable 분석 오류는 검증 함수의 실패 시 비복귀 계약을 명시해 보완했다. 모든 시도 본인 임시351,636,726 bytes/연결33·사본/DB/자식 정리·Temp/예외0·작은 근거만 유지한다. 근거는 `Saved/BuildChecks/NarrativeInformation-20261105/3f5bef3e8eb64487a8a43d9d03e6e4e2/Result.json`, `42dbcdb6b4e141d8a60b0303f5aacec8/Result.json`, `Combined-2b5b0d3bc11044ddab5005b04784784f/Result.json`이며 폐기한 사본의 해시는 당시 증거다.
 
 ## 의뢰 진행 표시
 

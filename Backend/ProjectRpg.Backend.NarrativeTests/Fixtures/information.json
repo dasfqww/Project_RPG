@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": 1,
+  "quests": [],
+  "chapters": [],
+  "dialogues": [
+    {
+      "id": "INFO.Start", "speaker": "Guide", "text": "Choose a topic.",
+      "questId": null, "requiredStatus": null, "informational": true,
+      "choices": [
+        { "id": "ask", "text": "How do quests work?", "effect": "None", "nextDialogueId": "INFO.Topic" },
+        { "id": "close", "text": "Close", "effect": "None" }
+      ]
+    },
+    {
+      "id": "INFO.Topic", "speaker": "Guide", "text": "Quest progress belongs to each character.",
+      "questId": null, "requiredStatus": null, "informational": true, "entryPoint": false,
+      "choices": [
+        { "id": "more", "text": "Tell me more.", "effect": "None", "nextDialogueId": "INFO.Detail" },
+        { "id": "back", "text": "Back to topics", "effect": "None", "nextDialogueId": "INFO.Start" }
+      ]
+    },
+    {
+      "id": "INFO.Detail", "speaker": "Guide", "text": "Reading this information does not complete objectives.",
+      "questId": null, "requiredStatus": null, "informational": true, "entryPoint": false,
+      "choices": [
+        { "id": "back", "text": "Back", "effect": "None", "nextDialogueId": "INFO.Topic" },
+        { "id": "close", "text": "Close", "effect": "None" }
+      ]
+    }
+  ]
+}

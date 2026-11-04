@@ -152,7 +152,13 @@ void URPGNarrativeDialogueWidget::Act(const FString& DialogueId, const FString& 
     {
         FRPGDialogueNode Active;
         if (Coordinator->GetDialogueManager()->GetActiveDialogue(Active) && Active.Id == DialogueId)
-            Coordinator->Choose(ChoiceId);
+        {
+            if (Coordinator->Choose(ChoiceId))
+            {
+                FRPGDialogueNode Current;
+                OwnedDialogue = Coordinator->GetDialogueManager()->GetActiveDialogue(Current) ? Current.Id : FString();
+            }
+        }
     }
     Render();
 }
@@ -209,7 +215,8 @@ void URPGNarrativeDialogueWidget::Render()
         {
             const auto Nodes = Coordinator->GetDialogueManager()->GetAvailableDialogues();
             for (const auto& Node : Nodes)
-                AddAction(FText::Format(NSLOCTEXT("RPGNarrative", "Node", "{0}: {1}"), Node.Speaker, Node.Text), Node.Id, FString(), !bLastBusy && !bLastPending);
+                if (Node.bEntryPoint)
+                    AddAction(FText::Format(NSLOCTEXT("RPGNarrative", "Node", "{0}: {1}"), Node.Speaker, Node.Text), Node.Id, FString(), !bLastBusy && !bLastPending);
             if (Nodes.IsEmpty()) Body->SetText(NSLOCTEXT("RPGNarrative", "Empty", "지금 진행할 수 있는 대화가 없습니다."));
         }
     }

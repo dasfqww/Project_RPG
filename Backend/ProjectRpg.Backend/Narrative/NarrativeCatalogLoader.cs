@@ -120,7 +120,8 @@ public static class NarrativeCatalogLoader
             completedChapters = catalog.Chapters.Keys,
             storyUnlocks = catalog.Chapters.Values.SelectMany(c => c.StoryUnlocks).Distinct(),
             availableDialogues = catalog.Dialogues.Values.Select(d => new { id = d.Id, speaker = d.Speaker,
-                text = d.Text, choices = d.Choices.Select(c => new { id = c.Id, text = c.Text }) })
+                text = d.Text, informational = d.Informational, entryPoint = d.EntryPoint,
+                choices = d.Choices.Select(c => new { id = c.Id, text = c.Text, nextDialogueId = c.NextDialogueId }) })
         });
         if (response.Length > MaximumBytes) throw new NarrativeCatalogException("narrative_catalog_response_too_large");
     }

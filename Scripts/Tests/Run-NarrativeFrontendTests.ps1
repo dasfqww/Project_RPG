@@ -3,7 +3,7 @@ param([string]$EngineRoot='D:/UE_5.8', [string]$ExpectedModuleSHA256='',
     [ValidateSet('native','complete','restore')][string]$Phase='native',
     [string]$BackendUrl='', [Guid]$CharacterId=[Guid]::Empty, [string]$SteamId='',
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$TaskId='narrative-dialogue-20261104',
-    [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$ProofName='NarrativeDialogue-20261104')
+    [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$ProofName='NarrativeDialogue-20261104', [switch]$IncludeInformation)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $proof=Join-Path $workspace ('Saved/BuildChecks/'+$ProofName)
@@ -12,6 +12,7 @@ $temp=Join-Path $run 'Temp'
 $runtime=Join-Path $temp 'Runtime'
 $process=$null; $loaded=$null; $copies=[Collections.Generic.List[object]]::new()
 $tests=@('ProjectRPG.Narrative.Codec','ProjectRPG.Narrative.Coordinator','ProjectRPG.Narrative.PlayerTransport','ProjectRPG.Narrative.SubsystemOwnership','ProjectRPG.Narrative.DialogueWidget')
+$tests+=@('ProjectRPG.Narrative.InformationDialogue')
 $tests+=@('ProjectRPG.Online.DungeonLobbyWidget','ProjectRPG.Online.DungeonLobbyNavigation.NativeConnection','ProjectRPG.Online.DungeonLobbyNavigation.OrderAndAvailability','ProjectRPG.Online.DungeonLobbyBackInput.Preparation')
 if($Phase -ne 'native'){
     if($BackendUrl -notmatch '^http://127\.0\.0\.1:\d+/api$' -or $CharacterId -eq [Guid]::Empty -or $SteamId -notmatch '^7656119\d{10}$'){throw 'Invalid isolated HTTP probe context'}
@@ -81,6 +82,7 @@ AssetManagerClassName=/Script/Engine.AssetManager
             ('-ini:Game:[/Script/Project_RPG.HttpWebManager]:ApiUrl='+$BackendUrl),
             ('-ini:Game:[/Script/Project_RPG.RPGOnlineLobbySubsystem]:LobbyMapPackage='+$world),
             '-ini:Game:[/Script/Project_RPG.RPGOnlineLobbySubsystem]:bAutoShowOnlineLobby=False')
+        if($IncludeInformation){$arguments+='-RPGNarrativeInformation'}
     }
     $arguments | Set-Content -LiteralPath (Join-Path $run 'Command.txt') -Encoding UTF8
     $program=Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe'
