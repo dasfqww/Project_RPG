@@ -60,6 +60,14 @@ GameInstance 캐시는 현재 엔드포인트/계정에 묶고 캐릭터 ID로 �
 
 전체 Editor 타깃 시도는 다른 사설 UBT의 전역 잠금 대기 중 자기 프로세스만 종료했으며, 위 결과를 전체 타깃 성공으로 표시하지 않는다. 기존 공유 출력의 0-byte probe OBJ1·누락 의존 import6을 복구한 뒤 집중 링크했다. 원본 제품 소스와 검증 사본을 구분하며, 사본 취득 직후 공유 입력/출력 예약을 해제했다. 자기 런타임/DLL/UserDir·캐시와 연결11개를 안전하게 정리했고 원본 `Binaries`/`Intermediate`와 유지할 소스/검사는 보존했다.
 
+## 목표의 선행 조건
+
+2026-11-05: `QuestDefinition.ObjectivePrerequisites`로 같은 의뢰 안의 순차/동시 목표 연결을 작성한다. 생략/null/빈 매핑은 기존 동시 진행이며, 지정된 선행은 모두 확인해야 한다. 카탈로그는 잘못된 참조·중복·자기 참조/순환·null 배열을 거절한다. `QuestManager.CanRecordObjective`를 선택지 조회/선택 승인·실제 전이에서 사용하고 Coordinator의 저장 검사에도 선행 일관성을 적용한다. 가능한 선택지가 없는 노드는 응답에서 빠지며, 저널/UE 응답과 저장 스키마는 유지한다. [작성 규칙](NARRATIVE_CONTENT_AUTHORING.md#순차-목표와-동시-목표).
+
+Git3d0903c+본인7 소스의 닫힌 사본에서 빌드 경고/오류0·기존 저작/정보 대화/입장 자격/Memory·인증 HTTP 회귀와 새 목표 검사가 통과했다. 순차/동시·여러 선행 AND와 합류/연쇄, 잘못된 참조/중복/자기/순환/null 거절, 실제 HTTP의 막힌 노드 제외·위조 요청 거절/영수증 미생성·동일 요청 재생/오래된 리비전 거절·전체 목표→보고→챕터 해금/새 Coordinator 복원·비정상 저장 거절·부캐/성장 분리를 확인했다. 외부 JSON v7 실제 호스트 의뢰/검증 CLI·기동 거절 회귀도 통과했다. 검증 뒤 게시된64b082c는 픽업 전용 어댑터/DI 추가이며 본인 입력7/러너 SHA 불변을 대조했다. 이 결과는 UE/GPU·NPC/전투 사건·PG 영속 재검사 결과가 아니다.
+
+`Run-NarrativeAuthoringTests.ps1`의 `TaskId`/`ProofName`/`BackendRoot`로 원본 공통 호스트 편집과 겹치지 않는 Git 사본을 검증했다. 실행/소스 사본 임시17,044,765 bytes·자식 정리·Temp/예외0. 작은 근거: `Saved/BuildChecks/NarrativeObjectiveOrder-20261105/b2f7c9c0066a4eccbb1cfb0adfaac1b0/Result.json`, `Source-69777c871c05462386ddfac90d695d7c/Result.json`, `CleanupSummary.json`. 폐기한 사본의 해시는 당시 근거로만 사용한다. NPC 원본은 전체 Source 고정 해제와 Controller 담당 추가 인계 뒤 별도 예약한다.
+
 ## 이야기 해금 입장 검사
 
 `DungeonStoryAdmission`은 `DungeonContent:Entries[].RequiredStoryUnlocks`와 현재 이야기 카탈로그를 고정해 서버의 캐릭터별 저장에서 입장 자격을 읽는다. 모든 해금 AND·미완료/보고 대기/타 캐릭터 불인정이며 기존 Coordinator의 상태/정의 버전·챕터 투영 검사를 공유한다. 설정 ID/중복/개수·미정의 해금 참조는 시작 시 거절한다. 조건 생략은 기존 콘텐츠의 동작을 유지한다. [작성·운영 규칙](NARRATIVE_CONTENT_AUTHORING.md#이야기-해금과-던전-입장).

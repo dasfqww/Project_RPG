@@ -20,6 +20,7 @@ try
     await NarrativeCatalogTests.RunAsync();
     await NarrativeInformationTests.RunAsync();
     await NarrativeDialogueGateTests.RunAsync();
+    await NarrativeObjectiveOrderTests.RunAsync();
     InMemoryTransactionGate gate = new();
     InMemoryGameRepository memory = new(gate, new InMemoryItemRepository(gate));
     await NarrativeStoryAdmissionTests.RunAsync(memory, "Memory");

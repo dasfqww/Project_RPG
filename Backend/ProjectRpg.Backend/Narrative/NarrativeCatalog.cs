@@ -32,6 +32,21 @@ public sealed class NarrativeCatalog
                 && (q.ObjectiveTexts is null || q.ObjectiveTexts.All(pair => q.Objectives.Contains(pair.Key)
                     && !string.IsNullOrWhiteSpace(pair.Value) && pair.Value.Length <= 1024)),
                 "invalid_quest_presentation");
+            Require(q.ObjectivePrerequisites is null || q.ObjectivePrerequisites.Count <= q.Objectives.Length
+                && q.ObjectivePrerequisites.All(pair => q.Objectives.Contains(pair.Key)
+                    && !pair.Value.IsDefault && pair.Value.Length <= 256
+                    && pair.Value.Length == pair.Value.Distinct().Count()
+                    && pair.Value.All(id => q.Objectives.Contains(id) && id != pair.Key)),
+                "invalid_objective_prerequisites");
+            HashSet<string> objectiveVisiting = new(StringComparer.Ordinal), objectiveVisited = new(StringComparer.Ordinal);
+            void VisitObjective(string id)
+            {
+                if (objectiveVisited.Contains(id)) return;
+                Require(objectiveVisiting.Add(id), "cyclic_objective_prerequisites");
+                foreach (string parent in q.RequiredObjectives(id)) VisitObjective(parent);
+                objectiveVisiting.Remove(id); objectiveVisited.Add(id);
+            }
+            foreach (string id in q.Objectives) VisitObjective(id);
         }
         HashSet<string> visiting = new(StringComparer.Ordinal), visited = new(StringComparer.Ordinal);
         void Visit(string id)

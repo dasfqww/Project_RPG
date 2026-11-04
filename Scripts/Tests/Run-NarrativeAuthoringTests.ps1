@@ -1,15 +1,21 @@
 [CmdletBinding()]
-param()
+param(
+    [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$TaskId='narrative-authoring-20261105',
+    [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$ProofName='NarrativeAuthoring-20261105',
+    [string]$BackendRoot
+)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$run=Join-Path $workspace ('Saved/BuildChecks/NarrativeAuthoring-20261105/'+[Guid]::NewGuid().ToString('N'))
+if(!$BackendRoot){$BackendRoot=Join-Path $workspace 'Backend'}
+$BackendRoot=[IO.Path]::GetFullPath($BackendRoot)
+$run=Join-Path $workspace ('Saved/BuildChecks/'+$ProofName+'/'+[Guid]::NewGuid().ToString('N'))
 $temp=Join-Path $run 'Temp';$inputs=Join-Path $temp 'Backend';$artifacts=Join-Path $temp 'artifacts'
 $result=[ordered]@{Passed=$false;Tests=$false;FileHttp=$false;OfflineValidation=$false;InvalidStartup=$false;InputsUnchanged=$false;Cleanup=$null;TempDeleted=$false;Failure=$null}
 $copies=[Collections.Generic.List[object]]::new();$hostProcess=$null;$hostOut=$null;$hostErr=$null
 $null=New-Item -ItemType Directory -Path $inputs -Force
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Reservation {
-    if(@(Get-Content -LiteralPath (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object {$_ -match '^\|[^|]*narrative-authoring-20261105'}).Count -ne 1){throw 'Own reservation missing'}
+    if(@(Get-Content -LiteralPath (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object {$_ -match ('^\|[^|]*'+[Regex]::Escape($TaskId)+'(?: |\|)')}).Count -ne 1){throw 'Own reservation missing'}
 }
 function Start-Child([string]$Arguments,[string]$CatalogPath='',[string]$WorkingDirectory=(Join-Path $inputs 'ProjectRpg.Backend')){
     $start=[Diagnostics.ProcessStartInfo]::new();$start.FileName=(Get-Command dotnet).Source
@@ -52,7 +58,7 @@ function Api([string]$Method,[string]$Path,$Body=$null){
 try{
     Reservation
     foreach($directory in @('ProjectRpg.Backend','ProjectRpg.Operations.Core','ProjectRpg.Backend.NarrativeTests','Database')){
-        $source=Join-Path $workspace ('Backend/'+$directory)
+        $source=Join-Path $BackendRoot $directory
         foreach($file in Get-ChildItem -LiteralPath $source -File -Recurse | Where-Object {$_.FullName -notmatch '[\\/](bin|obj)[\\/]' -and $_.Extension -in '.cs','.cshtml','.csproj','.json','.sql'}){
             if($file.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Linked input refused'}
             $before=(Get-FileHash -LiteralPath $file.FullName).Hash

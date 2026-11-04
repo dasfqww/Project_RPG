@@ -15,9 +15,10 @@ public sealed class DialogueManager(QuestManager quests)
             : quests.CanAccept(state, catalog.Quests[definition.QuestId!]);
     }
 
-    private static bool ChoiceAvailable(NarrativeState state, DialogueDefinition definition, DialogueChoice choice)
+    private bool ChoiceAvailable(NarrativeState state, NarrativeCatalog catalog, DialogueDefinition definition, DialogueChoice choice)
         => choice.Effect != DialogueEffect.RecordObjective
-            || !state.Quests.Single(q => q.QuestId == definition.QuestId).CompletedObjectives.Contains(choice.ObjectiveId!);
+            || quests.CanRecordObjective(state.Quests.SingleOrDefault(q => q.QuestId == definition.QuestId),
+                catalog.Quests[definition.QuestId!], choice.ObjectiveId!);
 
     public (DialogueDefinition Dialogue, DialogueChoice Choice) Resolve(NarrativeState state,
         NarrativeCatalog catalog, NarrativeCommand command)
@@ -25,7 +26,7 @@ public sealed class DialogueManager(QuestManager quests)
         if (!catalog.Dialogues.TryGetValue(command.DialogueId, out DialogueDefinition? definition)
             || !Available(state, catalog, definition)) throw new NarrativeConflictException("dialogue_not_available");
         DialogueChoice? choice = definition.Choices.SingleOrDefault(c => c.Id == command.ChoiceId);
-        if (choice is null || !ChoiceAvailable(state, definition, choice))
+        if (choice is null || !ChoiceAvailable(state, catalog, definition, choice))
             throw new NarrativeConflictException("dialogue_choice_not_available");
         return (definition, choice);
     }
@@ -34,7 +35,7 @@ public sealed class DialogueManager(QuestManager quests)
         [.. catalog.Dialogues.Values.OrderBy(d => d.Id, StringComparer.Ordinal)
             .Where(d => Available(state, catalog, d))
             .Select(d => new DialogueView(d.Id, d.Speaker, d.Text,
-                [.. d.Choices.Where(c => ChoiceAvailable(state, d, c)).Select(c => new DialogueChoiceView(c.Id, c.Text, c.NextDialogueId))],
+                [.. d.Choices.Where(c => ChoiceAvailable(state, catalog, d, c)).Select(c => new DialogueChoiceView(c.Id, c.Text, c.NextDialogueId))],
                 d.Informational, d.EntryPoint))
             .Where(d => d.Choices.Length != 0)];
 }

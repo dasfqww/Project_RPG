@@ -9,7 +9,12 @@ public enum QuestStatus { Active, ReadyToReport, Completed }
 public enum DialogueEffect { AcceptQuest, RecordObjective, ReportQuest, None }
 
 public sealed record QuestDefinition(string Id, int Version, ImmutableArray<string> Prerequisites,
-    ImmutableArray<string> Objectives, string? Title = null, ImmutableDictionary<string, string>? ObjectiveTexts = null);
+    ImmutableArray<string> Objectives, string? Title = null, ImmutableDictionary<string, string>? ObjectiveTexts = null,
+    ImmutableDictionary<string, ImmutableArray<string>>? ObjectivePrerequisites = null)
+{
+    internal ImmutableArray<string> RequiredObjectives(string objectiveId) =>
+        ObjectivePrerequisites?.GetValueOrDefault(objectiveId, []) ?? [];
+}
 public sealed record ChapterDefinition(string Id, ImmutableArray<string> RequiredQuests,
     ImmutableArray<string> StoryUnlocks);
 public sealed record DialogueChoice(string Id, string Text, DialogueEffect Effect, string? ObjectiveId = null,

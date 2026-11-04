@@ -47,6 +47,7 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
                 || progress.CompletedObjectives.IsDefault
                 || progress.CompletedObjectives.Length != progress.CompletedObjectives.Distinct().Count()
                 || !progress.CompletedObjectives.All(definition.Objectives.Contains)
+                || !progress.CompletedObjectives.All(id => definition.RequiredObjectives(id).All(progress.CompletedObjectives.Contains))
                 || (progress.Status == QuestStatus.Active) == (progress.CompletedObjectives.Length == definition.Objectives.Length)
                 || !definition.Prerequisites.All(id => state.Quests.Any(q => q.QuestId == id && q.Status == QuestStatus.Completed)))
                 throw new NarrativeConflictException("incompatible_narrative_state");
