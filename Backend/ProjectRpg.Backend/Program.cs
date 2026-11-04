@@ -160,6 +160,7 @@ else
         $"Unsupported storage provider '{storageProvider}'. Use Memory or Postgres.");
 }
 
+builder.Services.AddGameRepositoryContracts();
 builder.Services.AddSingleton<ItemTransactionService>();
 builder.Services.AddSingleton(narrativeCatalog);
 builder.Services.AddSingleton<INarrativeRepository>(provider =>
@@ -212,7 +213,7 @@ app.MapPost(
     async (
         SteamTicketRequest request,
         ISteamTicketValidator steamTicketValidator,
-        IGameRepository repository,
+        IAuthenticationRepository repository,
         AccessTokenService accessTokenService,
         IOptions<AuthOptions> authOptions,
         TimeProvider timeProvider,
@@ -267,7 +268,7 @@ app.MapPost(
 
 app.MapGet(
     "/api/characters",
-    async (HttpContext context, IGameRepository repository, ICharacterProgressionRepository progression,
+    async (HttpContext context, ICharacterRepository repository, ICharacterProgressionRepository progression,
         CancellationToken cancellationToken) =>
     {
         context.Response.Headers.CacheControl = "no-store";
@@ -290,7 +291,7 @@ app.MapGet(
     "/api/rosters",
     async (
         HttpContext context,
-        IGameRepository repository,
+        ICharacterRepository repository,
         CancellationToken cancellationToken) =>
     {
         AuthenticatedPrincipal principal = context.GetProjectRpgPrincipal();
@@ -318,7 +319,7 @@ app.MapPost(
     async (
         CreateCharacterRequest request,
         HttpContext context,
-        IGameRepository repository,
+        ICharacterRepository repository,
         TimeProvider timeProvider,
         CancellationToken cancellationToken) =>
     {

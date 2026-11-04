@@ -111,6 +111,16 @@ internal static class EquipmentCraftingCases
             CraftFixture full = await NewFixture(game, items, tokenCount);
             await Fill(items, full, 1);
             ItemRecord gear = Make(full.Owner, Target, 1, 1, true) with { Location = new(ItemContainerType.Equipment, full.Owner.OwnerId, 1) };
+            // Creation now equips a starter chest. Preserve it in fixture mail before
+            // placing the target used by this equipped-dismantle regression.
+            ItemRecord? starter = (await items.FindByOwnerAsync(full.Owner, false, 100, default))
+                .SingleOrDefault(x => x.Location == gear.Location);
+            if (starter is not null)
+            {
+                var moved = await items.CommitAsync(new(Guid.NewGuid(), "CraftFixture", "preserve-starter", full.Owner, 0,
+                    [new(starter.Revision, starter with { Location = new(ItemContainerType.Mail, "CraftFixture.Starter", 0) })]), Now, default);
+                Require(moved.Status == ItemRepositoryCommitStatus.Committed, "Could not preserve starter fixture equipment.");
+            }
             gear = (await Seed(items, full.Owner, [gear]))[0];
             var result = await equipment.DismantleEquipmentAsync(full.Steam, Dismantle(full, gear), Now, default);
             ItemRecord returned = result.Records.Single(x => x.LifecycleState == ItemLifecycleState.Active);

@@ -4,7 +4,7 @@ using ProjectRpg.Backend.Domain;
 namespace ProjectRpg.Backend.Application;
 
 public sealed class CurrencyTransactionService(
-    IGameRepository gameRepository,
+    ICurrencyAuthorityRepository gameRepository,
     IEconomyRepository economyRepository,
     TimeProvider timeProvider)
 {

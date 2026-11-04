@@ -9,7 +9,7 @@ using ProjectRpg.Backend.Domain;
 namespace ProjectRpg.Backend.Application;
 
 public sealed class DungeonRewardSettlementWorker(
-    IGameRepository gameRepository,
+    IDungeonSettlementRepository gameRepository,
     IDungeonRewardCommitRepository rewardCommitRepository,
     TimeProvider timeProvider,
     IOptions<DungeonSettlementOptions> options,

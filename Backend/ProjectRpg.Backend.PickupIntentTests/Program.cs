@@ -22,6 +22,7 @@ using ProjectRpg.Backend.Domain;
 try
 {
     await PickupCommitBoundaryTests.Run();
+    await RepositoryContractTests.Run();
     Func<IGameRepository> memory = () => new InMemoryGameRepository();
     Func<IItemRepository> memoryItems = () => new InMemoryItemRepository(new InMemoryTransactionGate());
     if (args.Contains("--item-revision-only"))

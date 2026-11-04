@@ -44,6 +44,7 @@ internal static class EquipmentLobbyHttpCases
         builder.Services.AddSingleton<IOptions<SecurityTelemetryOptions>>(Options.Create(new SecurityTelemetryOptions()));
         builder.Services.AddScoped<BearerAuthenticator>();
         builder.Services.AddSingleton<ItemTransactionService>();
+        builder.Services.AddGameRepositoryContracts();
         builder.Services.AddSingleton<ItemOwnerAccessService>();
         await using WebApplication app = builder.Build();
         app.UseMiddleware<ApiAuthenticationMiddleware>();

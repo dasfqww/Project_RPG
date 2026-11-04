@@ -3,7 +3,7 @@ using ProjectRpg.Backend.Domain;
 
 namespace ProjectRpg.Backend.Application;
 
-public sealed class ItemOwnerAccessService(IGameRepository gameRepository)
+public sealed class ItemOwnerAccessService(ICharacterOwnershipRepository gameRepository)
 {
     public async Task<bool> CanReadAsync(
         AuthenticatedPrincipal principal,

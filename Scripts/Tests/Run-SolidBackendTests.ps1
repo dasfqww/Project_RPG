@@ -1,4 +1,4 @@
-param([string[]]$AdditionalOverlay = @(), [string[]]$AdditionalProjects = @())
+param([string[]]$AdditionalOverlay = @(), [string[]]$AdditionalProjects = @(), [switch]$RepositoryContracts)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $task = 'solid-boundaries-20261105'
@@ -18,7 +18,28 @@ $overlay = @(
  'Backend/ProjectRpg.Backend/Program.cs',
  'Backend/ProjectRpg.Backend.PickupIntentTests/Program.cs',
  'Backend/ProjectRpg.Backend.PickupIntentTests/CommitChecks.cs',
- 'Backend/ProjectRpg.Backend.PickupIntentTests/PickupCommitBoundaryTests.cs'
+ 'Backend/ProjectRpg.Backend.PickupIntentTests/PickupCommitBoundaryTests.cs',
+ 'Backend/ProjectRpg.Backend/Application/ItemOwnerAccessService.cs',
+ 'Backend/ProjectRpg.Backend/Application/CurrencyTransactionService.cs',
+ 'Backend/ProjectRpg.Backend/Application/DungeonRewardSettlementWorker.cs',
+ 'Backend/ProjectRpg.Backend/Data/IGameRepository.cs',
+ 'Backend/ProjectRpg.Backend/Data/GameRepositoryContracts.cs',
+ 'Backend/ProjectRpg.Backend/Data/IAuthenticationRepository.cs',
+ 'Backend/ProjectRpg.Backend/Data/ICharacterOwnershipRepository.cs',
+ 'Backend/ProjectRpg.Backend/Data/ICharacterEconomyRepository.cs',
+ 'Backend/ProjectRpg.Backend/Data/ICharacterRepository.cs',
+ 'Backend/ProjectRpg.Backend/Data/IDungeonMembershipRepository.cs',
+ 'Backend/ProjectRpg.Backend/Data/IGameServerMembershipRepository.cs',
+ 'Backend/ProjectRpg.Backend/Data/IDungeonSessionRepository.cs',
+ 'Backend/ProjectRpg.Backend/Data/IDungeonSettlementRepository.cs',
+ 'Backend/ProjectRpg.Backend/Data/IJoinTicketRepository.cs',
+ 'Backend/ProjectRpg.Backend/Data/ILegacyInventoryRepository.cs',
+ 'Backend/ProjectRpg.Backend/Data/ICurrencyAuthorityRepository.cs',
+ 'Backend/ProjectRpg.Backend.PickupIntentTests/RepositoryContractTests.cs',
+ 'Backend/ProjectRpg.Backend.PickupIntentTests/ItemCommitReplayChecks.cs',
+ 'Backend/ProjectRpg.Backend.StarterEquipmentTests/EquipmentLobbyHttpCases.cs',
+ 'Backend/ProjectRpg.Backend.StarterEquipmentTests/EquipmentCraftingHttpCases.cs',
+ 'Backend/ProjectRpg.Backend.StarterEquipmentTests/EquipmentCraftingCases.cs'
 ) + $AdditionalOverlay | Sort-Object -Unique
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 $result = [ordered]@{ Passed=$false; Head=''; Hashes=@{}; Tests=@(); RemovedBytes=0; CleanupComplete=$false }
@@ -59,6 +80,7 @@ try {
  $port = (& docker port $containerId 5432/tcp).Trim().Split(':')[-1]
  $env:PROJECT_RPG_PICKUP_INTENT_TEST_POSTGRES = "Host=127.0.0.1;Port=$port;Database=$database;Username=solid_test;Password=$password"
  $env:PROJECT_RPG_PICKUP_INTENT_TEST_RUN = $runId
+ if ($RepositoryContracts) { $AdditionalProjects += 'ProjectRpg.Backend.StarterEquipmentTests' }
  foreach ($project in (@('ProjectRpg.Backend.PickupIntentTests') + $AdditionalProjects | Select-Object -Unique)) {
   if ($project -notmatch '^ProjectRpg\.[A-Za-z.]+$') { throw 'Invalid project name' }
   $projectPath = Join-Path $inputs "Backend/$project/$project.csproj"
@@ -68,6 +90,14 @@ try {
   if ($project -eq 'ProjectRpg.Backend.PickupIntentTests') { $arguments += '--require-postgres' }
   Invoke-Dotnet $arguments ($project+'.test.log')
   $result.Tests += $project
+  if ($RepositoryContracts -and $project -eq 'ProjectRpg.Backend.PickupIntentTests') {
+   Invoke-Dotnet @($dll,'--item-replay-only') ($project+'.replay.log')
+  }
+  if ($RepositoryContracts -and $project -eq 'ProjectRpg.Backend.StarterEquipmentTests') {
+   foreach ($mode in @('--equipment-rewards-memory','--equipment-crafting-memory','--equipment-lobby-memory')) {
+    Invoke-Dotnet @($dll,$mode) ($project+$mode+'.log')
+   }
+  }
  }
  foreach ($relative in $overlay) {
   if ((Get-FileHash -LiteralPath (Join-Path $workspace $relative) -Algorithm SHA256).Hash -ne $result.Hashes[$relative]) { throw "Source changed during verification: $relative" }

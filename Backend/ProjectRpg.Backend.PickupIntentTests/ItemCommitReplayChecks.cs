@@ -291,6 +291,7 @@ static class ItemCommitReplayChecks
         builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton(fixture.Repo); builder.Services.AddSingleton(fixture.Items);
         builder.Services.AddSingleton(clock); builder.Services.AddSingleton(tokens);
+        builder.Services.AddGameRepositoryContracts();
         builder.Services.AddSingleton<ItemTransactionService>(); builder.Services.AddSingleton<ItemOwnerAccessService>();
         builder.Services.AddSingleton<IOptions<AuthOptions>>(Options.Create(new AuthOptions()));
         builder.Services.AddSingleton<IOptions<SecurityTelemetryOptions>>(Options.Create(new SecurityTelemetryOptions()));
