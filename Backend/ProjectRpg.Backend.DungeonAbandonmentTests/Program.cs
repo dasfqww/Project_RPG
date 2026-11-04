@@ -601,6 +601,7 @@ static class Tests
         builder.Services.AddSingleton<IOptions<AuthOptions>>(Options.Create(new AuthOptions { AdminToken = admin }));
         builder.Services.AddSingleton<IOptions<SecurityTelemetryOptions>>(Options.Create(new SecurityTelemetryOptions()));
         builder.Services.AddScoped<BearerAuthenticator>();
+        StoryAdmissionTestServices.AddUnrestricted(builder.Services);
         await using WebApplication app = builder.Build();
         app.UseMiddleware<ApiAuthenticationMiddleware>(); app.MapDungeonAbandonmentApi();
         await app.StartAsync();
@@ -662,6 +663,7 @@ static class Tests
         builder.Services.AddSingleton<IOptions<AuthOptions>>(Options.Create(new AuthOptions()));
         builder.Services.AddSingleton<IOptions<SecurityTelemetryOptions>>(Options.Create(new SecurityTelemetryOptions()));
         builder.Services.AddScoped<BearerAuthenticator>();
+        StoryAdmissionTestServices.AddUnrestricted(builder.Services);
         await using WebApplication app = builder.Build();
         app.UseMiddleware<ApiAuthenticationMiddleware>(); app.MapDungeonAdmissionApi();
         await app.StartAsync();

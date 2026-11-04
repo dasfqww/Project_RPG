@@ -15,7 +15,7 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
         command.Validate();
         NarrativeState committed = await repository.CommitNarrativeAsync(characterId, steamId, command, state =>
         {
-            ValidateState(state);
+            ValidateState(state, catalog);
             if (command.CatalogVersion != catalog.Version) throw new NarrativeConflictException("narrative_catalog_changed");
             if (command.ExpectedRevision != state.Revision) throw new NarrativeConflictException("narrative_revision_conflict");
             (DialogueDefinition dialogue, DialogueChoice choice) = dialogues.Resolve(state, catalog, command);
@@ -28,12 +28,12 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
 
     private NarrativeView View(NarrativeState state)
     {
-        ValidateState(state);
+        ValidateState(state, catalog);
         return new(catalog.Version, state, dialogues.GetAvailable(state, catalog),
             [.. state.Quests.Select(q => QuestJournalEntry.From(q, catalog.Quests[q.QuestId]))]);
     }
 
-    private void ValidateState(NarrativeState state)
+    internal static void ValidateState(NarrativeState state, NarrativeCatalog catalog)
     {
         if (state.CharacterId == Guid.Empty || state.SchemaVersion != 1 || state.Revision < 0 || state.Revision == long.MaxValue
             || state.Quests.IsDefault || state.CompletedChapters.IsDefault || state.StoryUnlocks.IsDefault
@@ -51,7 +51,7 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
                 || !definition.Prerequisites.All(id => state.Quests.Any(q => q.QuestId == id && q.Status == QuestStatus.Completed)))
                 throw new NarrativeConflictException("incompatible_narrative_state");
         }
-        NarrativeState projected = scenarios.Project(state, catalog);
+        NarrativeState projected = new ScenarioManager().Project(state, catalog);
         if (!state.CompletedChapters.SequenceEqual(projected.CompletedChapters)
             || !state.StoryUnlocks.SequenceEqual(projected.StoryUnlocks))
             throw new NarrativeConflictException("inconsistent_story_unlocks");

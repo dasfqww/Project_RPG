@@ -172,6 +172,7 @@ static class ConnectionExpirationTests
         builder.Services.AddSingleton<IOptions<AuthOptions>>(Options.Create(new AuthOptions()));
         builder.Services.AddSingleton<IOptions<SecurityTelemetryOptions>>(Options.Create(new SecurityTelemetryOptions()));
         builder.Services.AddScoped<BearerAuthenticator>();
+        StoryAdmissionTestServices.AddUnrestricted(builder.Services);
         await using WebApplication app = builder.Build();
         app.UseMiddleware<ApiAuthenticationMiddleware>();
         app.MapDungeonAdmissionApi(); app.MapDungeonMembershipSnapshotApi();

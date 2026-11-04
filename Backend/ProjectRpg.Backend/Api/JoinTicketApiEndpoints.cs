@@ -4,6 +4,7 @@ using ProjectRpg.Backend.Configuration;
 using ProjectRpg.Backend.Contracts;
 using ProjectRpg.Backend.Data;
 using ProjectRpg.Backend.Domain;
+using ProjectRpg.Backend.Narrative;
 using ProjectRpg.Backend.Validation;
 
 namespace ProjectRpg.Backend.Api;
@@ -15,12 +16,17 @@ public static class JoinTicketApiEndpoints
         endpoints.MapPost("/api/join-tickets", async (
             CreateJoinTicketRequest request, HttpContext context, IGameRepository repository,
             AccessTokenService accessTokenService, IOptions<AuthOptions> authOptions,
+            DungeonStoryAdmission storyAdmission, TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             AuthenticatedPrincipal principal = context.GetProjectRpgPrincipal();
             if (principal.Kind != PrincipalKind.Player || principal.SteamId is null)
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+            string? storyError = await storyAdmission.GetMemberErrorAsync(repository, request.DungeonSessionId,
+                request.CharacterId, principal.SteamId, timeProvider.GetUtcNow(), cancellationToken);
+            if (storyError is not null) return Results.Conflict(new { error = storyError });
 
             int lifetimeSeconds = Math.Clamp(authOptions.Value.JoinTicketLifetimeSeconds, 10, 5 * 60);
             IssuedAccessToken ticket = accessTokenService.Issue(TimeSpan.FromSeconds(lifetimeSeconds));

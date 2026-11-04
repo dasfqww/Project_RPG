@@ -2,6 +2,7 @@ using ProjectRpg.Backend.Authentication;
 using ProjectRpg.Backend.Contracts;
 using ProjectRpg.Backend.Data;
 using ProjectRpg.Backend.Domain;
+using ProjectRpg.Backend.Narrative;
 
 namespace ProjectRpg.Backend.Api;
 
@@ -87,6 +88,7 @@ public static class DungeonAdmissionApiEndpoints
         app.MapPost("/api/dungeon-sessions/{dungeonSessionId:guid}/members/{characterId:guid}/admission-confirmation",
             async (Guid dungeonSessionId, Guid characterId, ConfirmDungeonAdmissionRequest request,
                 HttpContext context, IGameRepository repository, TimeProvider timeProvider,
+                DungeonStoryAdmission storyAdmission,
                 CancellationToken cancellationToken) =>
             {
                 context.Response.Headers.CacheControl = "no-store";
@@ -101,6 +103,9 @@ public static class DungeonAdmissionApiEndpoints
 
                 try
                 {
+                    string? storyError = await storyAdmission.GetMemberErrorAsync(repository, dungeonSessionId,
+                        characterId, request.SteamId, timeProvider.GetUtcNow(), cancellationToken);
+                    if (storyError is not null) return Results.Conflict(new { error = storyError });
                     bool confirmed = await repository.ConfirmDungeonMemberAdmissionAsync(
                         dungeonSessionId, principal.ServerId, request.SteamId, characterId,
                         request.ConnectionGeneration, timeProvider.GetUtcNow(), cancellationToken);

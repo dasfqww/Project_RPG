@@ -12,4 +12,5 @@ public sealed class DungeonContentEntryOptions
     public string DungeonId { get; init; } = string.Empty;
     public string MapPackage { get; init; } = string.Empty;
     public List<string> Difficulties { get; init; } = [];
+    public List<string> RequiredStoryUnlocks { get; init; } = [];
 }

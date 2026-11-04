@@ -22,6 +22,7 @@ try
     await NarrativeDialogueGateTests.RunAsync();
     InMemoryTransactionGate gate = new();
     InMemoryGameRepository memory = new(gate, new InMemoryItemRepository(gate));
+    await NarrativeStoryAdmissionTests.RunAsync(memory, "Memory");
     await RepositoryCases(memory, () => memory, "Memory");
     await HttpCases();
     if (args.Length != 0) await PostgresCases();
@@ -34,6 +35,7 @@ catch (Exception error)
     Console.Error.WriteLine("FAIL Narrative: " + (error is TestFailure ? error.Message
         : error is NarrativeConflictException ? error.Message
         : error is PostgresException pg ? "SQLSTATE " + pg.SqlState : error.GetType().Name));
+    Console.Error.WriteLine(error.StackTrace);
     return 1;
 }
 
@@ -191,18 +193,19 @@ static async Task PostgresCases()
     Require(config.Host == "127.0.0.1" && config.Database == "narrative_test", "Refusing shared PostgreSQL target.");
     await using NpgsqlDataSource source = NpgsqlDataSource.Create(config.ConnectionString);
     var catalog = await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory, default);
-    Require(catalog.Count == 3 && await PostgresSchemaMigrations.ApplyAsync(source, catalog, default) == 3, "Fresh migration failed.");
+    Require(catalog.Count >= 3 && await PostgresSchemaMigrations.ApplyAsync(source, catalog, default) == catalog.Count, "Fresh migration failed.");
     Require(await PostgresSchemaMigrations.ApplyAsync(source, catalog, default) == 0, "Migration reapplied.");
     await PostgresSchemaMigrations.ValidateAsync(source, catalog, default);
     PostgresGameRepository Repo() => new(source, NullLogger<PostgresGameRepository>.Instance);
     await RepositoryCases(Repo(), Repo, "PostgreSQL");
+    await NarrativeStoryAdmissionTests.RunAsync(Repo(), "PostgreSQL");
     await using NpgsqlDataSource reopened = NpgsqlDataSource.Create(config.ConnectionString);
     var game = new PostgresGameRepository(reopened, NullLogger<PostgresGameRepository>.Instance);
     GameCharacter completed = (await game.GetCharactersAsync("76561198000000001", default))
         .Single(c => Coordinator(game).LoadAsync(c.CharacterId, c.SteamId, default).GetAwaiter().GetResult().State.Revision == 4);
     Require((await Coordinator(game).LoadAsync(completed.CharacterId, completed.SteamId, default)).State.CompletedChapters.Length == 1,
         "Fresh database connection failed to restore completed chapter.");
-    Console.WriteLine("PASS Narrative PostgreSQL: migrations v1-v3, no-op replay, validation, reopened connection restoration.");
+    Console.WriteLine($"PASS Narrative PostgreSQL: migrations v1-v{catalog.Count}, no-op replay, validation, reopened connection restoration.");
 }
 static async Task Reject(Func<Task> action, string code)
 {

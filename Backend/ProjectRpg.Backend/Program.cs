@@ -56,8 +56,10 @@ ValidateAuthConfiguration(
     builder.Configuration.GetSection(AuthOptions.SectionName)
         .Get<AuthOptions>() ?? new AuthOptions());
 // Validate before connecting/migrating storage. No empty/permissive fallback.
-builder.Services.AddSingleton(DungeonDevelopmentProfiles.Resolve(
-    builder.Configuration, builder.Environment, AppContext.BaseDirectory));
+var dungeonContentCatalog = DungeonDevelopmentProfiles.Resolve(
+    builder.Configuration, builder.Environment, AppContext.BaseDirectory);
+builder.Services.AddSingleton(dungeonContentCatalog);
+builder.Services.AddSingleton(new ProjectRpg.Backend.Narrative.DungeonStoryAdmission(dungeonContentCatalog, narrativeCatalog));
 
 builder.Services.Configure<AuthOptions>(
     builder.Configuration.GetSection(AuthOptions.SectionName));
@@ -397,6 +399,7 @@ app.MapPost(
         HttpContext context,
         IGameRepository repository,
         DungeonContentCatalog contentCatalog,
+        ProjectRpg.Backend.Narrative.DungeonStoryAdmission storyAdmission,
         AccessTokenService accessTokenService,
         IOptions<AuthOptions> authOptions,
         IOptions<DungeonSessionOptions> sessionOptions,
@@ -447,6 +450,9 @@ app.MapPost(
             60);
         try
         {
+            string? storyError = await storyAdmission.GetErrorAsync(repository, request.CharacterId,
+                principal.SteamId, dungeonId, cancellationToken);
+            if (storyError is not null) return Results.Conflict(new { error = storyError });
             if (!await CharacterProgressionApiEndpoints.CanEnterAsync(repository, request.CharacterId,
                     dungeonId, difficulty, now, cancellationToken))
                 return Results.Conflict(new { error = "progression_prerequisite_not_met" });
@@ -514,6 +520,7 @@ app.MapPost(
         JoinDungeonSessionRequest request,
         HttpContext context,
         IGameRepository repository,
+        ProjectRpg.Backend.Narrative.DungeonStoryAdmission storyAdmission,
         IOptions<DungeonSessionOptions> sessionOptions,
         TimeProvider timeProvider,
         CancellationToken cancellationToken) =>
@@ -552,6 +559,12 @@ app.MapPost(
         try
         {
             DungeonSession? targetSession = await repository.GetDungeonSessionAsync(dungeonSessionId, now, cancellationToken);
+            if (targetSession is not null)
+            {
+                string? storyError = await storyAdmission.GetErrorAsync(repository, request.CharacterId,
+                    principal.SteamId, targetSession.DungeonId, cancellationToken);
+                if (storyError is not null) return Results.Conflict(new { error = storyError });
+            }
             if (targetSession is not null && !await CharacterProgressionApiEndpoints.CanEnterAsync(repository,
                     request.CharacterId, targetSession.DungeonId, targetSession.Difficulty, now, cancellationToken))
                 return Results.Conflict(new { error = "progression_prerequisite_not_met" });
