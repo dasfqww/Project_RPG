@@ -21,11 +21,13 @@ public sealed class OperationsOptions
     public string LogRoot { get; set; } = "";
     public string SourceId { get; set; } = "backend";
     public Infrastructure.Compensation.CompensationOptions Compensation { get; set; } = new();
+    public Monitoring.OperationsMonitorOptions Monitor { get; set; } = new();
     public string OperatorId => "github:" + AllowedGitHubUserId;
 
     public void Validate(IHostEnvironment environment)
     {
         if (!Enabled) return;
+        Monitor.Validate();
         if (!Uri.TryCreate(ManagementOrigin, UriKind.Absolute, out Uri? origin) || origin.Scheme != "https"
             || origin.AbsolutePath != "/" || origin.Query.Length != 0 || origin.Fragment.Length != 0 || origin.UserInfo.Length != 0)
             throw new InvalidOperationException("Operations requires an HTTPS management origin without a path.");

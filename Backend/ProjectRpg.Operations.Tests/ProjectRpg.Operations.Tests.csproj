@@ -10,5 +10,6 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../ProjectRpg.Operations.Core/ProjectRpg.Operations.Core.csproj" />
     <ProjectReference Include="../ProjectRpg.Backend/ProjectRpg.Backend.csproj" />
+    <ProjectReference Include="../ProjectRpg.Operations.Monitor/ProjectRpg.Operations.Monitor.csproj" />
   </ItemGroup>
 </Project>

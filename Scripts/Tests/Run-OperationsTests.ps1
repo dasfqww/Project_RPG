@@ -3,13 +3,13 @@ param([switch]$Postgres)
 
 $ErrorActionPreference = 'Stop'
 $opsWorkspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$opsRoot = Join-Path $opsWorkspace 'Saved/BuildChecks/OperationsCompensation-20261105'
+$opsRoot = Join-Path $opsWorkspace 'Saved/BuildChecks/OperationsMonitoring-20261105'
 $opsTemp = Join-Path $opsRoot 'Temp'
 $opsRunId = [Guid]::NewGuid().ToString('N')
 $opsRunRoot = Join-Path $opsTemp $opsRunId
 $opsInputs = Join-Path $opsRunRoot 'Inputs/Backend'
 $opsArtifacts = Join-Path $opsRunRoot 'Artifacts'
-$opsContainerName = 'rpg-ops-comp-' + $opsRunId
+$opsContainerName = 'rpg-ops-monitor-' + $opsRunId
 $opsContainerId = $null
 $opsOldRoot = $env:PROJECT_RPG_OPS_TEST_ROOT
 $opsOldPg = $env:PROJECT_RPG_OPS_TEST_POSTGRES
@@ -17,7 +17,7 @@ $opsOldRun = $env:PROJECT_RPG_OPS_TEST_RUN
 $opsResult = [ordered]@{ Passed=$false; RunId=$opsRunId; Postgres=[bool]$Postgres; BaseCommit=$null; Inputs=@(); Commands=@(); DeletedBytes=0L; CleanupComplete=$false; ContainerRemoved=$false; Error=$null }
 
 function Assert-OpsReservation {
-    $row = Get-Content -LiteralPath (Join-Path $opsWorkspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object { $_ -match '^\|.*operations-s3-compensation-20261105' }
+    $row = Get-Content -LiteralPath (Join-Path $opsWorkspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object { $_ -match '^\|.*operations-monitoring-20261105' }
     if (@($row).Count -ne 1) { throw 'Operations task reservation is missing.' }
 }
 function Get-OpsContainer {
@@ -26,7 +26,7 @@ function Get-OpsContainer {
     if ($found.Count -eq 0) { return $null }
     if ($found.Count -ne 1) { throw 'Ambiguous owned container.' }
     $info = (& docker inspect $found[0] | ConvertFrom-Json)[0]
-    if ($LASTEXITCODE -ne 0 -or $info.Name -cne ('/' + $opsContainerName) -or $info.Config.Labels.'project-rpg.run' -cne $opsRunId -or $info.Config.Labels.'project-rpg.task' -cne 'operations-compensation-20261105') { throw 'Container ownership mismatch.' }
+    if ($LASTEXITCODE -ne 0 -or $info.Name -cne ('/' + $opsContainerName) -or $info.Config.Labels.'project-rpg.run' -cne $opsRunId -or $info.Config.Labels.'project-rpg.task' -cne 'operations-monitoring-20261105') { throw 'Container ownership mismatch.' }
     return $info
 }
 function Remove-OpsTemp {
@@ -60,12 +60,11 @@ try {
     & git -C $opsWorkspace archive --format=zip ('--output='+$archive) $opsResult.BaseCommit Backend
     if($LASTEXITCODE -ne 0){throw 'Published dependency snapshot failed.'}
     Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $opsRunRoot 'Inputs')
-    $owned=@('ProjectRpg.Operations.Core','ProjectRpg.Operations.Tests','ProjectRpg.Backend/Operations','ProjectRpg.Backend/Pages/Ops',
-        'ProjectRpg.Backend.MigrationTests/Program.cs','ProjectRpg.Backend/Data/InMemoryGameRepository.Operations.cs','ProjectRpg.Backend/Data/PostgresSchemaMigrations.cs',
-        'ProjectRpg.Backend/Program.cs','ProjectRpg.Backend/ProjectRpg.Backend.csproj','ProjectRpg.Backend/packages.lock.json',
-        'ProjectRpg.Backend/Application/DungeonRewardSettlementWorker.cs','ProjectRpg.Backend/Application/IDungeonSettlementObserver.cs',
-        'ProjectRpg.Backend/Data/InMemoryGameRepository.OperationsCompensation.cs','ProjectRpg.Backend/Data/PostgresItemRepository.OperationsCompensation.cs',
-        'Database/Migrations/0004_operations_sessions.sql','Database/Migrations/0005_operations_evidence.sql','Database/Migrations/0006_operations_compensation.sql')
+    $owned=@('ProjectRpg.Operations.Core/Monitoring','ProjectRpg.Operations.Monitor',
+        'ProjectRpg.Backend/Data/InMemoryGameRepository.OperationsMonitoring.cs','ProjectRpg.Backend/Operations/Monitoring',
+        'ProjectRpg.Backend/Operations/Hosting/OperationsOptions.cs','ProjectRpg.Backend/Operations/Hosting/OperationsHosting.cs',
+        'ProjectRpg.Operations.Tests/HostFixture.cs','ProjectRpg.Operations.Tests/Program.cs','ProjectRpg.Operations.Tests/ProjectRpg.Operations.Tests.csproj',
+        'ProjectRpg.Operations.Tests/MonitoringHostTests.cs','ProjectRpg.Operations.Tests/MonitoringPolicyTests.cs')
     foreach($relative in $owned){
         $source=Join-Path $opsWorkspace ('Backend/'+$relative)
         $sourceItem=Get-Item -LiteralPath $source
@@ -102,7 +101,7 @@ try {
         & docker image inspect postgres:17-alpine --format '{{.Id}}' *> $null
         if($LASTEXITCODE -ne 0){throw 'Cached postgres:17-alpine image is required.'}
         $opsPassword=[Guid]::NewGuid().ToString('N')+[Guid]::NewGuid().ToString('N')
-        $opsContainerId = & docker run --pull=never --detach --name $opsContainerName --label ('project-rpg.run='+$opsRunId) --label 'project-rpg.task=operations-compensation-20261105' --memory 512m --cpus 1 --pids-limit 128 --publish '127.0.0.1::5432' --tmpfs '/var/lib/postgresql/data:rw,size=201326592' --env 'POSTGRES_DB=ops_test' --env 'POSTGRES_USER=ops_test' --env ('POSTGRES_PASSWORD='+$opsPassword) postgres:17-alpine -c shared_buffers=16MB -c max_connections=32
+        $opsContainerId = & docker run --pull=never --detach --name $opsContainerName --label ('project-rpg.run='+$opsRunId) --label 'project-rpg.task=operations-monitoring-20261105' --memory 512m --cpus 1 --pids-limit 128 --publish '127.0.0.1::5432' --tmpfs '/var/lib/postgresql/data:rw,size=201326592' --env 'POSTGRES_DB=ops_test' --env 'POSTGRES_USER=ops_test' --env ('POSTGRES_PASSWORD='+$opsPassword) postgres:17-alpine -c shared_buffers=16MB -c max_connections=32
         if($LASTEXITCODE -ne 0){throw 'Owned PostgreSQL could not start.'}
         $info=Get-OpsContainer
         if($info.Id -cne $opsContainerId -or @($info.Mounts | Where-Object Type -ne 'tmpfs').Count -ne 0){throw 'Unexpected PostgreSQL identity/mounts.'}

@@ -1,6 +1,6 @@
 # 운영툴 실행과 유지보수
 
-2026-11-05 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 영수증·정산 조사, S3 개별 아이템 보상 구현. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md)의 기간 제재/해제·S4 점검/감시/백업은 후속 구현 범위다.
+2026-11-05 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 영수증·정산 조사, S3 개별 아이템 보상과 S4 런타임 감시·알림 구현. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md)의 기간 제재/해제·공지/점검·백업 수집/복구는 후속 구현 범위다.
 
 ## 구현 경계
 
@@ -33,6 +33,8 @@
 | `Operations__SourceId` | 기본 `backend`; S1 단일 호스트 소스 식별자 |
 | `Operations__Compensation__Enabled` | 기본 false. 개별 보상/API/조치 조회 활성화 |
 | `Operations__Compensation__AllowedDefinitions__0` 등 | 기본 빈 목록으로 지급 불가. 지원하는 서버 정의/버전의 정확한 key만 허용 |
+| `Operations__Monitor__Enabled` | 기본 false. 별도 기계 상태 조회 활성화 |
+| `Operations__Monitor__Token` | 기계 인증 전용 32~256자 영문/숫자/`-`/`_` 비밀값. 게임 관리자/OAuth 자격과 분리 |
 
 Windows에서 키 보호 인증서를 생략하면 서비스 계정의 DPAPI로 암호화한다. 해당 계정과 키 디렉터리를 함께 유지한다. Windows 디렉터리 ACL은 서비스 계정과 필요한 관리자만 접근하도록 배포 때 설정한다. Linux에서는 디렉터리 권한을 0700으로 설정한다. reparse point/junction 경로는 거절한다. 운영 호스트 시간대는 UTC가 필요하며 시작 시 검사한다.
 
@@ -85,6 +87,32 @@ PostgreSQL에서 운영 요청 → 캐릭터 → 기존 아이템 owner/request 
 
 `ops.command.started/committed/replayed/rejected/unknown`은 HTTP trace와 운영 요청·아이템 거래·사건·아이템 ID를 연결한다. 감사 원장은 기술 로그 유실과 무관하게 DB에 보존된다. UI의 성공 표시는 지급 확정이며 UE의 즉시 갱신을 보장하지 않는다. 다음 로비·우편 재조회 반영이 계약이다. 기간 제재/해제는 이 범위에 포함하지 않았다.
 
+## 런타임 감시·알림(S4 독립 범위)
+
+외부 관리 호스트에서 [Operations.Monitor](../Backend/ProjectRpg.Operations.Monitor/)를 실행한다. 게임 backend와 다른 프로세스/호스트여야 backend 종료도 감지한다. [Core 감시 정책](../Backend/ProjectRpg.Operations.Core/Monitoring/MonitorCycle.cs)은 HTTP/파일 구현에 의존하지 않으며 probe·상태 저장·알림 전달 포트를 사용한다. 백엔드 [기계 상태 경계](../Backend/ProjectRpg.Backend/Operations/Monitoring/OperationsMonitoring.cs)는 기존 인증/입장 API와 독립적이다.
+
+`GET /internal/operations/status`는 관리 HTTPS origin·허용 네트워크와 전용 bearer를 요구한다. 운영 cookie와 게임 관리자 bearer는 이 경로의 자격이 아니며 monitor token도 운영/게임 API 권한을 주지 않는다. 정확한 GET만 제공하고 query는 거절하며 분당 30회·5초 제한이다. forward header는 기존 KnownProxies에서 온 관리 요청에만 적용한다. 공개 ingress에서 `/internal/operations`도 차단해야 한다. 응답은 observedAtUtc/bootId/ready, 정산 Pending·Processing·Failed 수/가장 오래된 미완료 생성 시각/최근 Failed 갱신 시각, 로그 droppedCount/sinkErrorCount/retainedBytes/파일 관측 lastWriteAtUtc뿐이다. DB/로그 관측 실패는 Unknown/503으로 응답하며 식별자·오류 본문·SQL을 노출하지 않는다. PostgreSQL 집계는 READ ONLY/REPEATABLE READ로 게임 상태를 바꾸지 않는다.
+
+감시기는 30초마다 `/health/live`, `/health/ready`, 기계 상태를 함께 수집한다. 한 회 수집 한도는 5초이며 HTTP 실패·과대/손상/오래된 응답을 최신 정상값으로 취급하지 않는다. 3회 연속 수집 실패에 장애 알림, 2회 연속 정상에 복구 알림, 지속 장애는 30분마다 요약한다. Failed 정산은 최초 관측과 수 증가/최근 실패 시각 전진 시 즉시 알린다. Pending/Processing이 2분 넘게 남은 상태는 3회 연속 관측 시 알린다. 로그 drop/sink error 증가와 설정 공간 예산 초과도 감지한다. 관측 실패는 정산·로그 장애를 해제하는 정상 표본으로 쓰지 않는다.
+
+`dotnet publish Backend/ProjectRpg.Operations.Monitor/ProjectRpg.Operations.Monitor.csproj -c Release`로 감시기를 별도 배포하고 다음 환경 변수를 서비스에 주입한다. 실제 비밀값은 저장소에 넣지 않는다.
+
+| 외부 감시 환경 변수 | 조건 |
+|---|---|
+| `RPG_MONITOR_ENVIRONMENT`, `RPG_MONITOR_SERVICE` | 각 영문/숫자/`-`/`_` 1~64자, 예: 환경 ID와 `backend` |
+| `RPG_MONITOR_BACKEND_ORIGIN` | 관리 HTTPS origin, 경로/query 없음 |
+| `RPG_MONITOR_TOKEN` | backend의 Operations Monitor Token과 같은 전용 기계 비밀값 |
+| `RPG_MONITOR_WEBHOOK_URL` | 배포에서 지정한 HTTPS 수신 endpoint |
+| `RPG_MONITOR_WEBHOOK_TOKEN` | 수신 endpoint 전용 bearer 비밀값 |
+| `RPG_MONITOR_STATE_DIRECTORY` | 서비스 계정만 쓰는 비공개 절대 경로. Windows ACL은 배포에서 제한 |
+| `RPG_MONITOR_LOG_BUDGET_BYTES` | 기본 1GiB, 최소 1MiB. 실제 보관 예산 |
+
+실행은 `dotnet ProjectRpg.Operations.Monitor.dll`, 단일 수집은 `--once`다. TLS 인증서를 정상 검증하고 redirect는 따라가지 않는다. webhook URL/인증과 응답 본문/예외 원문은 출력하지 않는다. 감시 서비스의 프로세스 생존은 배포 호스트의 서비스 관리자에서 관리하고 종료 코드 1은 설정/상태/실행 오류로 조사한다.
+
+상태 디렉터리의 `monitor.lock`을 단독 소유하고 `state.json`에 환경·서비스·incident 상태와 미전송 event를 보관한다. 전송 전에 eventId를 저장하고 파일 flush/원자 교체 후 HTTP를 보낸다. 성공하지 못하면 같은 eventId로 1/5/15분 간격 최대 3회 재전송하며 지속 장애 요약은 별도 event다. 수신자는 eventId로 중복을 제거해야 한다. 손상/다른 환경의 상태는 자동 초기화하지 않고 오류로 멈춘다. 상태 디렉터리를 삭제하면 알림 중복이 생길 수 있으므로 배포 때 유지한다. 링크/reparse 경로와 64KiB 초과 상태를 거절한다. 전체 원문 개인정보 대신 고정 summary와 빈 referenceIds를 보낸다.
+
+이번 범위는 런타임/정산/로그 감시다. pgBackRest 상태 수집·백업 실패/보존 경보, Drain 장기 지속 경보는 각각 백업 및 서비스 제어 구현에 연결할 후속 범위다. 실제 외부 관리 호스트·알림 수신 서비스 배포와 장애 주입 리허설은 별도로 수행한다. 제재·해제는 공통 입장 API와 UE 검증 자원 인계 후 진행한다.
+
 ## 검사 실행
 
 저장소 루트에서 실행한다. PostgreSQL 검사는 Docker와 이미 준비된 `postgres:17-alpine` 이미지가 필요하며 기존 DB에는 연결하지 않는다.
@@ -100,5 +128,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Test-Inventory
 검증 범위는 Core 의존 방향/권한·입력, 잘못된 OAuth state/비허용 계정/공급자 실패, CSRF·게임 인증 분리, int64 정밀도·페이지, 리스 조회 무변경, 로그 child span·커서·손상/회전, 유휴/절대 만료·로그아웃, PostgreSQL 세션/키 재시작 복원·AuthEpoch, v5→v6 단일 migration이다. S2는 실제 worker의 재화/아이템 원자 commit·관측기 예외 이후 처리, 동시각 출처 병합/페이지·actor/result 중복 제거·소비 후 영수증·소유 범위·정산 상태 구분·단일 조회의 연결 검증을 포함한다. 실제 게임 테이블 전체의 조회 전후 지문도 비교한다. 스냅샷 러너는 Core·Razor·SQL 의존성을 함께 포착하고 무관한 외부 참조는 계속 거절한다.
 
 보상 검사는 실제 HTTPS/CSRF·기본 거절·정의 검증·body/rate 한도, 만료 뒤 동일 영수증·정책 변경/재시작, 동시 요청/사건 중복, PostgreSQL 감사 실패 후 전체 롤백·리스/세션 NOWAIT·부재 리스 FK 경합·독립 Pending/Processing 차단·영수증 불일치를 포함한다. 실제 페이지 스크립트를 DOM/storage/fetch 어댑터에서 실행해 응답 유실/새로고침/같은 ID 미리보기 갱신/저장소 실패/로그아웃도 검증한다.
+
+감시는 정책의 실패/복구/지연/반복 경보와 영속 상태 재시작·중복 실행·재전송·손상 거절을 검사한다. 실제 HTTPS 상태/API 권한 분리·Memory/PG 읽기 전후 지문·민감 정보 제외·webhook 실패/재전송도 포함한다. 테스트는 자체 loopback 인증서를 신뢰하는 클라이언트를 사용하며 제품 감시기에는 인증서 검증 우회 설정이 없다.
 
 자기 테스트 프로세스 종료 후 실행별 Temp와 자기 라벨 DB 컨테이너를 자동 폐기한다. 작은 결과/명령·입력 해시만 `Saved/BuildChecks`에 남으며 제품 커밋에는 포함하지 않는다. 이 검사는 실제 GitHub 계정 연결, 운영 배포, 실제 브라우저 렌더링, UE 실행 또는 부하 검사를 대신하지 않는다.

@@ -46,7 +46,9 @@ internal sealed class HostFixture : IAsyncDisposable
     { App=app; Client=client; Cookies=cookies; Clock=clock; GitHub=github; Root=root; Port=port; Origin=$"https://127.0.0.1:{port}"; this.certificate=certificate; }
 
     internal static async Task<HostFixture> StartAsync(string root, string? postgres = null, int port = 0,
-        CookieContainer? cookies = null, MutableClock? clock = null, string epoch = "operations-test-epoch-0001", bool enabled = true, bool compensation = false, string[]? allowedDefinitions = null)
+        CookieContainer? cookies = null, MutableClock? clock = null, string epoch = "operations-test-epoch-0001", bool enabled = true, bool compensation = false, string[]? allowedDefinitions = null,
+        bool monitoring = false, Action<Microsoft.Extensions.DependencyInjection.IServiceCollection>? customize = null,
+        Action<WebApplication>? customizeRoutes = null)
     {
         Directory.CreateDirectory(root);
         if (port == 0)
@@ -76,7 +78,8 @@ internal sealed class HostFixture : IAsyncDisposable
             ["Operations:AllowedGitHubUserId"]="1", ["Operations:AuthEpoch"]=epoch,
             ["Operations:KeyDirectory"]=Path.Combine(root,"keys"), ["Operations:LogRoot"]=Path.Combine(root,"logs"),
             ["Operations:AllowUnencryptedDevelopmentKeys"]="true",
-            ["Operations:Compensation:Enabled"]=compensation.ToString()
+            ["Operations:Compensation:Enabled"]=compensation.ToString(),
+            ["Operations:Monitor:Enabled"]=monitoring.ToString(), ["Operations:Monitor:Token"]=new string('m',48)
         });
         if (compensation) builder.Configuration.AddInMemoryCollection((allowedDefinitions ?? [
             ProjectRpg.Backend.Operations.Infrastructure.Compensation.CompensationCatalog.Key(FirstSliceEquipmentDefinitions.OreDefinitionName),
@@ -110,12 +113,16 @@ internal sealed class HostFixture : IAsyncDisposable
         }
         FakeGitHub github = new();
         builder.Services.AddOperations(builder.Configuration,builder.Environment);
+        builder.Services.AddSingleton<ProjectRpg.Backend.Application.IStorageReadinessProbe,ProjectRpg.Backend.Application.MemoryStorageReadinessProbe>();
+        customize?.Invoke(builder.Services);
         if (enabled) builder.Services.Configure<OAuthOptions>(OperationsAuthentication.GitHubScheme, options => options.BackchannelHttpHandler=github);
         WebApplication app=builder.Build();
         await app.Services.GetRequiredService<IGameRepository>().EnsureCreatedAsync(default);
         app.UseOperations();
         app.UseMiddleware<ApiAuthenticationMiddleware>();
         app.MapOperations();
+        ProjectRpg.Backend.Api.HealthApiEndpoints.MapHealthApi(app);
+        customizeRoutes?.Invoke(app);
         app.MapGet("/api/protected", (HttpContext c) => Results.Json(new { kind=c.GetProjectRpgPrincipal().Kind.ToString() }));
         await app.StartAsync();
         cookies ??= new();

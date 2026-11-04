@@ -27,6 +27,7 @@ public static class OperationsHosting
         options.Validate(environment);
         services.AddSingleton(options);
         if (!options.Enabled) return services;
+        Monitoring.OperationsMonitoring.Register(services, string.Equals(configuration["Storage:Provider"], "Postgres", StringComparison.OrdinalIgnoreCase));
         var compensationPolicy = new CompensationCatalog(options);
         services.AddSingleton<ICompensationPolicy>(compensationPolicy);
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
@@ -123,7 +124,8 @@ public static class OperationsHosting
         _ = app.Services.GetService<X509Certificate2>(); // Container owns/disposes the configured key protector certificate.
         app.UseRouting();
         if (options.KnownProxies.Length > 0)
-            app.UseWhen(c => c.Request.Path.StartsWithSegments("/ops"), branch => branch.UseForwardedHeaders());
+            app.UseWhen(c => c.Request.Path.StartsWithSegments("/ops") || c.Request.Path.StartsWithSegments("/internal/operations"), branch => branch.UseForwardedHeaders());
+        app.UseMiddleware<Monitoring.OperationsMonitorBoundary>();
         app.UseMiddleware<OperationsBoundary>();
         app.UseAuthentication();
         app.UseAuthorization();
@@ -133,6 +135,7 @@ public static class OperationsHosting
     {
         if (!app.Services.GetRequiredService<OperationsOptions>().Enabled) return app;
         OperationsEndpoints.Map(app);
+        Monitoring.OperationsMonitoring.Map(app);
         app.MapRazorPages();
         return app;
     }
