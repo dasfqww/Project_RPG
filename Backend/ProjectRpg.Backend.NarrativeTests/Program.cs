@@ -165,6 +165,11 @@ static async Task HttpCases()
         using JsonDocument json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Require(json.RootElement.GetProperty("revision").GetString() == "1"
             && json.RootElement.GetProperty("quests")[0].GetProperty("status").GetString() == "Active", "HTTP revision/status contract failed.");
+        JsonElement journal = json.RootElement.GetProperty("quests")[0];
+        Require(journal.GetProperty("title").GetString() == "출발 전 확인"
+            && journal.GetProperty("objectives").GetArrayLength() == 2
+            && journal.GetProperty("objectives")[0].GetProperty("text").GetString() == "연락책의 상황 설명 확인"
+            && !journal.GetProperty("objectives")[0].GetProperty("completed").GetBoolean(), "HTTP journal metadata/progress mismatch.");
         Require((await client.PostAsJsonAsync(route + "/choices", command)).IsSuccessStatusCode, "HTTP replay failed.");
         response = await client.PostAsJsonAsync(route + "/choices", new { requestId = Guid.NewGuid(), expectedRevision = "0", catalogVersion = 1, dialogueId = "DEV.Contact.Offer", choiceId = "accept" });
         Require(response.StatusCode == HttpStatusCode.Conflict, "Stale HTTP revision accepted.");

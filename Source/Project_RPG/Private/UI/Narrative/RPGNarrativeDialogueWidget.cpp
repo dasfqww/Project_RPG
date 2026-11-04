@@ -52,7 +52,12 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
         Text(TEXT("NarrativeTitle"))->SetText(NSLOCTEXT("RPGNarrative", "Title", "인물과 이야기"));
         Speaker = Text(TEXT("NarrativeSpeaker")); Body = Text(TEXT("NarrativeBody"));
         Progress = Text(TEXT("NarrativeProgress")); Status = Text(TEXT("NarrativeStatus"));
-        auto* Height = WidgetTree->ConstructWidget<USizeBox>(); Height->SetHeightOverride(280.f); Page->AddChildToVerticalBox(Height);
+        auto* JournalHeight = WidgetTree->ConstructWidget<USizeBox>(); JournalHeight->SetHeightOverride(120.f);
+        Page->AddChildToVerticalBox(JournalHeight);
+        auto* JournalScroll = WidgetTree->ConstructWidget<UScrollBox>(); JournalHeight->SetContent(JournalScroll);
+        Journal = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("NarrativeQuestJournal"));
+        Journal->SetAutoWrapText(true); JournalScroll->AddChild(Journal);
+        auto* Height = WidgetTree->ConstructWidget<USizeBox>(); Height->SetHeightOverride(180.f); Page->AddChildToVerticalBox(Height);
         auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>(); Height->SetContent(Scroll);
         Actions = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("NarrativeActions")); Scroll->AddChild(Actions);
         auto Button = [&](const TCHAR* Name, const FText& Label)
@@ -160,11 +165,12 @@ void URPGNarrativeDialogueWidget::AddAction(const FText& Label, const FString& D
 }
 void URPGNarrativeDialogueWidget::Render()
 {
-    if (!Actions || !Speaker || !Body || !Status) return;
+    if (!Actions || !Speaker || !Body || !Status || !Journal) return;
     bLastReadable = MatchesSelection() && Coordinator->HasCurrentSnapshot();
     bLastBusy = MatchesSelection() && Coordinator->IsBusy();
     bLastPending = MatchesSelection() && Coordinator->HasPendingChoice();
     Actions->ClearChildren(); Speaker->SetText(FText::GetEmpty()); Body->SetText(FText::GetEmpty()); Progress->SetText(FText::GetEmpty());
+    Journal->SetText(FText::GetEmpty());
     RefreshButton->SetIsEnabled(MatchesSelection() && !bLastBusy && !bLastPending);
     RetryButton->SetVisibility(bLastPending ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
     RetryButton->SetIsEnabled(!bLastBusy);
@@ -173,6 +179,26 @@ void URPGNarrativeDialogueWidget::Render()
         const auto Quests = Coordinator->GetQuestManager()->GetQuests(Character);
         const int32 Done = Quests.FilterByPredicate([](const auto& Q) { return Q.Status == ERPGQuestStatus::Completed; }).Num();
         Progress->SetText(FText::Format(NSLOCTEXT("RPGNarrative", "Progress", "완료한 의뢰 {0}개"), FText::AsNumber(Done)));
+        TArray<FText> Lines;
+        for (const auto& Quest : Quests)
+        {
+            const FText Title = Quest.Title.IsEmpty() ? NSLOCTEXT("RPGNarrative", "UnnamedQuest", "의뢰") : Quest.Title;
+            const FText State = Quest.Status == ERPGQuestStatus::Completed ? NSLOCTEXT("RPGNarrative", "CompletedQuest", "완료")
+                : Quest.Status == ERPGQuestStatus::ReadyToReport ? NSLOCTEXT("RPGNarrative", "ReportableQuest", "보고 가능")
+                : NSLOCTEXT("RPGNarrative", "ActiveQuest", "진행 중");
+            Lines.Add(FText::Format(NSLOCTEXT("RPGNarrative", "JournalHeading", "{0} · {1}"), Title, State));
+            if (Quest.Status == ERPGQuestStatus::Completed) continue;
+            if (Quest.Objectives.IsEmpty())
+                Lines.Add(FText::Format(NSLOCTEXT("RPGNarrative", "LegacyGoals", "  완료한 목표 {0}개"), FText::AsNumber(Quest.CompletedObjectives.Num())));
+            for (int32 Index = 0; Index < Quest.Objectives.Num(); ++Index)
+            {
+                const auto& Objective = Quest.Objectives[Index];
+                const FText Label = Objective.Text.IsEmpty() ? FText::Format(NSLOCTEXT("RPGNarrative", "UnnamedObjective", "목표 {0}"), FText::AsNumber(Index + 1)) : Objective.Text;
+                Lines.Add(FText::Format(NSLOCTEXT("RPGNarrative", "JournalGoal", "  {0} {1}"),
+                    Objective.bCompleted ? NSLOCTEXT("RPGNarrative", "GoalDone", "[완료]") : FText::FromString(TEXT("[ ]")), Label));
+            }
+        }
+        Journal->SetText(Lines.IsEmpty() ? NSLOCTEXT("RPGNarrative", "NoQuests", "수락한 의뢰가 없습니다.") : FText::Join(FText::FromString(TEXT("\n")), Lines));
         FRPGDialogueNode Active;
         if (Coordinator->GetDialogueManager()->GetActiveDialogue(Active))
         {

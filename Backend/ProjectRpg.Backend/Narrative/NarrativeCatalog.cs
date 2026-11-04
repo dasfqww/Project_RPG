@@ -28,6 +28,10 @@ public sealed class NarrativeCatalog
                 && q.Prerequisites.Length == q.Prerequisites.Distinct().Count()
                 && q.Objectives.Length <= 256 && q.Prerequisites.Length <= 256
                 && q.Prerequisites.All(Quests.ContainsKey), "invalid_quest_definition");
+            Require((q.Title is null || !string.IsNullOrWhiteSpace(q.Title) && q.Title.Length <= 256)
+                && (q.ObjectiveTexts is null || q.ObjectiveTexts.All(pair => q.Objectives.Contains(pair.Key)
+                    && !string.IsNullOrWhiteSpace(pair.Value) && pair.Value.Length <= 1024)),
+                "invalid_quest_presentation");
         }
         HashSet<string> visiting = new(StringComparer.Ordinal), visited = new(StringComparer.Ordinal);
         void Visit(string id)

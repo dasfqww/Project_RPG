@@ -38,6 +38,14 @@ namespace RPGNarrativeJson
     {
         return Object && Object->TryGetStringField(Key, Out) && !Out.IsEmpty() && Out.Len() <= Limit;
     }
+    bool OptionalText(const TSharedPtr<FJsonObject>& Object, const TCHAR* Key, int32 Limit, FText& Out)
+    {
+        const auto Field = Object->TryGetField(Key);
+        if (!Field || Field->IsNull()) return true;
+        FString Value;
+        if (!Text(Object, Key, Limit, Value)) return false;
+        Out = FText::FromString(Value); return true;
+    }
 }
 
 bool FRPGNarrativeCodec::Decode(const FString& Body, const FGuid ExpectedCharacter, FRPGNarrativeSnapshot& Out)
@@ -76,6 +84,26 @@ bool FRPGNarrativeCodec::Decode(const FString& Body, const FGuid ExpectedCharact
         else if (Status == TEXT("ReadyToReport")) Quest.Status = ERPGQuestStatus::ReadyToReport;
         else if (Status == TEXT("Completed")) Quest.Status = ERPGQuestStatus::Completed;
         else return false;
+        if (!OptionalText(*Item, TEXT("title"), 256, Quest.Title)) return false;
+        if ((*Item)->HasField(TEXT("objectives")))
+        {
+            const TArray<TSharedPtr<FJsonValue>>* Objectives = nullptr;
+            if (!(*Item)->TryGetArrayField(TEXT("objectives"), Objectives) || Objectives->IsEmpty() || Objectives->Num() > 256) return false;
+            TSet<FString> ObjectiveIds;
+            for (const auto& ObjectiveValue : *Objectives)
+            {
+                const TSharedPtr<FJsonObject>* Entry = nullptr; FRPGQuestObjectiveView Objective;
+                if (!ObjectiveValue || !ObjectiveValue->TryGetObject(Entry) || !*Entry
+                    || !(*Entry)->TryGetStringField(TEXT("id"), Objective.Id) || !Id(Objective.Id) || ObjectiveIds.Contains(Objective.Id)
+                    || !OptionalText(*Entry, TEXT("text"), 1024, Objective.Text)
+                    || !(*Entry)->TryGetBoolField(TEXT("completed"), Objective.bCompleted)
+                    || Objective.bCompleted != Quest.CompletedObjectives.Contains(Objective.Id)) return false;
+                ObjectiveIds.Add(Objective.Id); Quest.Objectives.Add(MoveTemp(Objective));
+            }
+            for (const auto& Completed : Quest.CompletedObjectives) if (!ObjectiveIds.Contains(Completed)) return false;
+            const bool bAllDone = Quest.CompletedObjectives.Num() == Quest.Objectives.Num();
+            if ((Quest.Status == ERPGQuestStatus::Active) == bAllDone) return false;
+        }
         QuestIds.Add(Quest.QuestId); Parsed.Quests.Add(MoveTemp(Quest));
     }
     if (!Object->TryGetArrayField(TEXT("availableDialogues"), Values) || Values->Num() > 256) return false;

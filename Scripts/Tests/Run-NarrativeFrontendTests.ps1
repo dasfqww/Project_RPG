@@ -1,10 +1,12 @@
 [CmdletBinding()]
 param([string]$EngineRoot='D:/UE_5.8', [string]$ExpectedModuleSHA256='',
     [ValidateSet('native','complete','restore')][string]$Phase='native',
-    [string]$BackendUrl='', [Guid]$CharacterId=[Guid]::Empty, [string]$SteamId='')
+    [string]$BackendUrl='', [Guid]$CharacterId=[Guid]::Empty, [string]$SteamId='',
+    [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$TaskId='narrative-dialogue-20261104',
+    [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$ProofName='NarrativeDialogue-20261104')
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$proof=Join-Path $workspace 'Saved/BuildChecks/NarrativeDialogue-20261104'
+$proof=Join-Path $workspace ('Saved/BuildChecks/'+$ProofName)
 $run=Join-Path $proof ([Guid]::NewGuid().ToString('N'))
 $temp=Join-Path $run 'Temp'
 $runtime=Join-Path $temp 'Runtime'
@@ -34,7 +36,7 @@ function Copy-Tree([string]$From,[string]$To,[switch]$Binaries){
 }
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 try{
-    $rows=@(Get-Content -LiteralPath (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object {$_ -match '^\|[^|]*narrative-dialogue-20261104'})
+    $rows=@(Get-Content -LiteralPath (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object {$_ -match ('^\|[^|]*'+[regex]::Escape($TaskId))})
     if($rows.Count -ne 1){throw 'Own task reservation missing'}
     Copy-Fixed (Join-Path $workspace 'Project_RPG.uproject') (Join-Path $runtime 'Project_RPG.uproject')
     Copy-Tree (Join-Path $workspace 'Config') (Join-Path $runtime 'Config')

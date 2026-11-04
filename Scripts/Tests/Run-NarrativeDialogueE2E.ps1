@@ -1,11 +1,15 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [string]$ExpectedModuleSHA256='')
+param([string]$EngineRoot='D:/UE_5.8', [string]$ExpectedModuleSHA256='',
+    [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$TaskId='narrative-dialogue-20261104',
+    [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$ProofName='NarrativeDialogue-20261104',
+    [string]$BackendRoot='')
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+if(!$BackendRoot){$BackendRoot=Join-Path $workspace 'Backend'}
 if(!$ExpectedModuleSHA256){$ExpectedModuleSHA256=(Get-FileHash -LiteralPath (Join-Path $workspace 'Binaries/Win64/UnrealEditor-Project_RPG.dll') -Algorithm SHA256).Hash}
-$owner='narrative-dialogue-20261104'
+$owner=$TaskId
 $runId=[Guid]::NewGuid().ToString('N')
-$run=Join-Path $workspace ('Saved/BuildChecks/NarrativeDialogue-20261104/'+$runId)
+$run=Join-Path $workspace ('Saved/BuildChecks/'+$ProofName+'/'+$runId)
 $temp=Join-Path $run 'Temp'
 $inputs=Join-Path $temp 'Backend'
 $artifacts=Join-Path $temp 'artifacts'
@@ -78,7 +82,7 @@ function Sql([string]$Query) {
     return ([string]::Join("`n",$answer)).Trim()
 }
 function Run-Frontend([string]$Phase) {
-    $output=@(& (Join-Path $PSScriptRoot 'Run-NarrativeFrontendTests.ps1') -EngineRoot $EngineRoot -ExpectedModuleSHA256 $ExpectedModuleSHA256 -Phase $Phase -BackendUrl ($url+'/api') -CharacterId $character.characterId -SteamId $steam)
+    $output=@(& (Join-Path $PSScriptRoot 'Run-NarrativeFrontendTests.ps1') -EngineRoot $EngineRoot -ExpectedModuleSHA256 $ExpectedModuleSHA256 -Phase $Phase -BackendUrl ($url+'/api') -CharacterId $character.characterId -SteamId $steam -TaskId $TaskId -ProofName $ProofName)
     $line=@($output | Where-Object {$_ -like 'Result: *'})
     if($line.Count -ne 1){throw 'Missing native proof result'}
     $path=$line[0].Substring(8); $proof=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
@@ -92,9 +96,12 @@ try {
     Assert-Reservation
     & docker image inspect postgres:17-alpine --format '{{.Id}}' *> $null
     if($LASTEXITCODE -ne 0){throw 'Docker with cached postgres:17-alpine is required'}
-    foreach($directory in @('ProjectRpg.Backend','Database')){
-        $from=Join-Path $workspace ('Backend/'+$directory)
-        foreach($file in Get-ChildItem -LiteralPath $from -File -Recurse | Where-Object {$_.FullName -notmatch '[\\/](bin|obj)[\\/]' -and $_.Extension -in '.cs','.csproj','.sql','.json'}){
+    foreach($directory in @('ProjectRpg.Backend','Database','ProjectRpg.Operations.Core')){
+        $from=Join-Path $BackendRoot $directory
+        # Newer game hosts reference Operations.Core and compile Razor pages.
+        # Older closed narrative snapshots have neither dependency.
+        if(!(Test-Path -LiteralPath $from) -and $directory -eq 'ProjectRpg.Operations.Core'){continue}
+        foreach($file in Get-ChildItem -LiteralPath $from -File -Recurse | Where-Object {$_.FullName -notmatch '[\\/](bin|obj)[\\/]' -and $_.Extension -in '.cs','.csproj','.sql','.json','.cshtml'}){
             if($file.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Linked backend input refused'}
             $before=(Get-FileHash -LiteralPath $file.FullName).Hash
             $target=Join-Path $inputs ($directory+'/'+$file.FullName.Substring($from.Length+1))

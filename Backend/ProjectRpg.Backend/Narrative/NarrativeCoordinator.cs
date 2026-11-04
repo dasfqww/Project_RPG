@@ -28,7 +28,8 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
     private NarrativeView View(NarrativeState state)
     {
         ValidateState(state);
-        return new(catalog.Version, state, dialogues.GetAvailable(state, catalog));
+        return new(catalog.Version, state, dialogues.GetAvailable(state, catalog),
+            [.. state.Quests.Select(q => QuestJournalEntry.From(q, catalog.Quests[q.QuestId]))]);
     }
 
     private void ValidateState(NarrativeState state)

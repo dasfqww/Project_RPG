@@ -30,6 +30,12 @@ internal static class NarrativeCatalogTests
         NarrativeCatalog catalog = Parse(source);
         Require(catalog.Quests.ContainsKey("AUTH.Introduction") && catalog.Dialogues.Count == 4, "Authored IDs not loaded.");
         Require(NarrativeCatalog.Development.Quests.ContainsKey("DEV.Introduction"), "Embedded development content changed.");
+        Reject(Changed(r => Quest(r)["title"] = " "), "invalid_quest_presentation");
+        Reject(Changed(r => Quest(r)["title"] = new string('x', 257)), "invalid_quest_presentation");
+        Reject(Changed(r => Quest(r)["objectiveTexts"]!["missing"] = "Unknown goal"), "invalid_quest_presentation");
+        Reject(Changed(r => Quest(r)["objectiveTexts"]!["contact"] = new string('x', 1025)), "invalid_quest_presentation");
+        var legacy = Parse(Changed(r => { Quest(r).Remove("title"); Quest(r).Remove("objectiveTexts"); }));
+        Require(legacy.Quests.Values.Single().Title is null, "Legacy catalog gained an invented title.");
         _ = NarrativeCatalogLoader.Parse((byte[])[0xef, 0xbb, 0xbf, .. Encoding.UTF8.GetBytes(source)]);
         Reject(source.Replace("\"schemaVersion\": 1", "\"schemaVersion\": 1, \"schemaVersion\": 1"), "duplicate_narrative_json_property");
         Reject(Changed(r => r["schemaVersion"] = 2), "unsupported_narrative_catalog_schema");
@@ -104,6 +110,8 @@ internal static class NarrativeCatalogTests
                 new(Guid.NewGuid(), i, catalog.Version, "AUTH." + nodesToUse[i], choices[i]), default);
         var done = await flow.LoadAsync(character.CharacterId, owner, default);
         Require(done.State.CompletedChapters.Contains("AUTH.Prologue") && done.State.Revision == 4, "Authored flow did not complete.");
+        Require(done.Journal.Single().Title == "출발 전 확인" && done.Journal.Single().Objectives.All(o => o.Completed),
+            "Completed journal presentation is not derived from stored progress.");
         Console.WriteLine("PASS Narrative authoring: strict JSON, limits, references/cycles/reachability, configuration, renamed authored flow.");
     }
     private static void Require(bool value, string message) { if (!value) throw new TestFailure(message); }

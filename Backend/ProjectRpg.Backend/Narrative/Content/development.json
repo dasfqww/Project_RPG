@@ -2,7 +2,11 @@
   "schemaVersion": 1,
   "catalogVersion": 1,
   "quests": [
-    { "id": "DEV.Introduction", "version": 1, "prerequisites": [], "objectives": ["contact", "preparation"] }
+    {
+      "id": "DEV.Introduction", "version": 1, "prerequisites": [], "objectives": ["contact", "preparation"],
+      "title": "출발 전 확인",
+      "objectiveTexts": { "contact": "연락책의 상황 설명 확인", "preparation": "교관의 준비 안내 확인" }
+    }
   ],
   "chapters": [
     { "id": "DEV.Prologue", "requiredQuests": ["DEV.Introduction"], "storyUnlocks": ["DEV.Story.Next"] }

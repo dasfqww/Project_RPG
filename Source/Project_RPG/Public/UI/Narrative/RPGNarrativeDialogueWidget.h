@@ -62,6 +62,7 @@ private:
     UPROPERTY(Transient) TObjectPtr<UTextBlock> Body;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> Status;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> Progress;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> Journal;
     UPROPERTY(Transient) TObjectPtr<UButton> RefreshButton;
     UPROPERTY(Transient) TObjectPtr<UButton> RetryButton;
     FGuid Character;

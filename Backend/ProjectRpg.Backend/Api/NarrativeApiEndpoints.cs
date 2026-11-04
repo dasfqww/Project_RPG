@@ -53,8 +53,7 @@ public static class NarrativeApiEndpoints
     {
         view.CatalogVersion, view.State.CharacterId, view.State.SchemaVersion,
         Revision = view.State.Revision.ToString(CultureInfo.InvariantCulture),
-        Quests = view.State.Quests.Select(q => new { q.QuestId, q.DefinitionVersion,
-            Status = q.Status.ToString(), q.CompletedObjectives }),
+        Quests = view.Journal,
         view.State.CompletedChapters, view.State.StoryUnlocks, view.AvailableDialogues
     };
 }

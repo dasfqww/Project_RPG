@@ -115,8 +115,8 @@ public static class NarrativeCatalogLoader
         {
             catalogVersion = catalog.Version, characterId = Guid.Empty, schemaVersion = 1,
             revision = long.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            quests = catalog.Quests.Values.Select(q => new { questId = q.Id, definitionVersion = q.Version,
-                status = "ReadyToReport", completedObjectives = q.Objectives }),
+            quests = catalog.Quests.Values.Select(q => QuestJournalEntry.From(
+                new(q.Id, q.Version, QuestStatus.ReadyToReport, q.Objectives), q)),
             completedChapters = catalog.Chapters.Keys,
             storyUnlocks = catalog.Chapters.Values.SelectMany(c => c.StoryUnlocks).Distinct(),
             availableDialogues = catalog.Dialogues.Values.Select(d => new { id = d.Id, speaker = d.Speaker,

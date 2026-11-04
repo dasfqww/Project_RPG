@@ -7,6 +7,15 @@ UENUM(BlueprintType)
 enum class ERPGQuestStatus : uint8 { Active, ReadyToReport, Completed };
 
 USTRUCT(BlueprintType)
+struct PROJECT_RPG_API FRPGQuestObjectiveView
+{
+    GENERATED_BODY()
+    UPROPERTY(BlueprintReadOnly) FString Id;
+    UPROPERTY(BlueprintReadOnly) FText Text;
+    UPROPERTY(BlueprintReadOnly) bool bCompleted = false;
+};
+
+USTRUCT(BlueprintType)
 struct PROJECT_RPG_API FRPGQuestProgress
 {
     GENERATED_BODY()
@@ -14,6 +23,8 @@ struct PROJECT_RPG_API FRPGQuestProgress
     UPROPERTY(BlueprintReadOnly) int32 DefinitionVersion = 0;
     UPROPERTY(BlueprintReadOnly) ERPGQuestStatus Status = ERPGQuestStatus::Active;
     UPROPERTY(BlueprintReadOnly) TArray<FString> CompletedObjectives;
+    UPROPERTY(BlueprintReadOnly) FText Title;
+    UPROPERTY(BlueprintReadOnly) TArray<FRPGQuestObjectiveView> Objectives;
 };
 
 USTRUCT(BlueprintType)

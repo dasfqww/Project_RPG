@@ -9,7 +9,7 @@ public enum QuestStatus { Active, ReadyToReport, Completed }
 public enum DialogueEffect { AcceptQuest, RecordObjective, ReportQuest }
 
 public sealed record QuestDefinition(string Id, int Version, ImmutableArray<string> Prerequisites,
-    ImmutableArray<string> Objectives);
+    ImmutableArray<string> Objectives, string? Title = null, ImmutableDictionary<string, string>? ObjectiveTexts = null);
 public sealed record ChapterDefinition(string Id, ImmutableArray<string> RequiredQuests,
     ImmutableArray<string> StoryUnlocks);
 public sealed record DialogueChoice(string Id, string Text, DialogueEffect Effect, string? ObjectiveId = null);
@@ -51,5 +51,14 @@ public sealed class NarrativeConflictException(string code) : Exception(code);
 public sealed record DialogueView(string Id, string Speaker, string Text,
     ImmutableArray<DialogueChoiceView> Choices);
 public sealed record DialogueChoiceView(string Id, string Text);
+public sealed record QuestObjectiveView(string Id, string? Text, bool Completed);
+public sealed record QuestJournalEntry(string QuestId, int DefinitionVersion, string Status,
+    ImmutableArray<string> CompletedObjectives, string? Title, ImmutableArray<QuestObjectiveView> Objectives)
+{
+    public static QuestJournalEntry From(QuestProgress progress, QuestDefinition definition) => new(
+        progress.QuestId, progress.DefinitionVersion, progress.Status.ToString(), progress.CompletedObjectives,
+        definition.Title, [.. definition.Objectives.Select(id => new QuestObjectiveView(id,
+            definition.ObjectiveTexts?.GetValueOrDefault(id), progress.CompletedObjectives.Contains(id)))]);
+}
 public sealed record NarrativeView(int CatalogVersion, NarrativeState State,
-    ImmutableArray<DialogueView> AvailableDialogues);
+    ImmutableArray<DialogueView> AvailableDialogues, ImmutableArray<QuestJournalEntry> Journal);

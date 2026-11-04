@@ -19,6 +19,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
 #include "Components/VerticalBox.h"
+#include "Components/TextBlock.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "Misc/CommandLine.h"
@@ -51,9 +52,12 @@ namespace RPGNarrativeTests
         const FString Prefix = FString::Printf(TEXT("{\"characterId\":\"%s\",\"catalogVersion\":1,\"schemaVersion\":1,\"revision\":\"%d\","),
             *InCharacter.ToString(EGuidFormats::DigitsWithHyphensLower), Revision);
         const FString Quest = Revision == 0 ? TEXT("[]") : FString::Printf(
-            TEXT("[{\"questId\":\"DEV.Introduction\",\"definitionVersion\":1,\"status\":\"%s\",\"completedObjectives\":%s}]"),
+            TEXT("[{\"questId\":\"DEV.Introduction\",\"definitionVersion\":1,\"status\":\"%s\",\"completedObjectives\":%s,")
+            TEXT("\"title\":\"Test quest\",\"objectives\":[{\"id\":\"contact\",\"text\":\"Contact briefing\",\"completed\":%s},")
+            TEXT("{\"id\":\"preparation\",\"text\":\"Preparation briefing\",\"completed\":%s}]}]"),
             Revision == 4 ? TEXT("Completed") : Revision == 3 ? TEXT("ReadyToReport") : TEXT("Active"),
-            Revision >= 3 ? TEXT("[\"contact\",\"preparation\"]") : Revision == 2 ? TEXT("[\"contact\"]") : TEXT("[]"));
+            Revision >= 3 ? TEXT("[\"contact\",\"preparation\"]") : Revision == 2 ? TEXT("[\"contact\"]") : TEXT("[]"),
+            Revision >= 2 ? TEXT("true") : TEXT("false"), Revision >= 3 ? TEXT("true") : TEXT("false"));
         auto Node = [](const TCHAR* Id, const TCHAR* Choice)
         {
             return FString::Printf(TEXT("{\"id\":\"DEV.%s\",\"speaker\":\"Contact\",\"text\":\"Test dialogue\",\"choices\":[{\"id\":\"%s\",\"text\":\"Confirm\"}]}"), Id, Choice);
@@ -131,6 +135,17 @@ bool FRPGNarrativeCodecTest::RunTest(const FString&)
     FRPGNarrativeSnapshot Parsed;
     TestTrue(TEXT("Backend contract decodes"), FRPGNarrativeCodec::Decode(Snapshot(4), Character, Parsed));
     TestEqual(TEXT("Completed status"), Parsed.Quests[0].Status, ERPGQuestStatus::Completed);
+    TestEqual(TEXT("Authored quest title"), Parsed.Quests[0].Title.ToString(), FString(TEXT("Test quest")));
+    TestTrue(TEXT("Authored goals carry confirmed completion"), Parsed.Quests[0].Objectives.Num() == 2 && Parsed.Quests[0].Objectives[0].bCompleted);
+    TestFalse(TEXT("Inconsistent journal flags rejected"), FRPGNarrativeCodec::Decode(
+        Snapshot(4).Replace(TEXT("\"completed\":true"), TEXT("\"completed\":false")), Character, Parsed));
+    TSharedPtr<FJsonObject> LegacyObject;
+    FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Snapshot(4)), LegacyObject);
+    auto LegacyQuest = LegacyObject->GetArrayField(TEXT("quests"))[0]->AsObject();
+    LegacyQuest->RemoveField(TEXT("title")); LegacyQuest->RemoveField(TEXT("objectives"));
+    FString LegacyBody; FJsonSerializer::Serialize(LegacyObject.ToSharedRef(), TJsonWriterFactory<>::Create(&LegacyBody));
+    TestTrue(TEXT("Older snapshot without presentation still decodes"), FRPGNarrativeCodec::Decode(LegacyBody, Character, Parsed));
+    TestTrue(TEXT("Legacy metadata has no invented ID label"), Parsed.Quests[0].Title.IsEmpty() && Parsed.Quests[0].Objectives.IsEmpty());
     TestFalse(TEXT("Foreign character rejected"), FRPGNarrativeCodec::Decode(Snapshot(4), FGuid::NewGuid(), Parsed));
     TestFalse(TEXT("Fractional version rejected"), FRPGNarrativeCodec::Decode(Snapshot(4).Replace(TEXT("\"catalogVersion\":1"), TEXT("\"catalogVersion\":1.5")), Character, Parsed));
     TestFalse(TEXT("Revision overflow rejected"), FRPGNarrativeCodec::Decode(Snapshot(4).Replace(TEXT("\"revision\":\"4\""), TEXT("\"revision\":\"9223372036854775808\"")), Character, Parsed));
@@ -322,6 +337,10 @@ bool FRPGNarrativeDialogueWidgetTest::RunTest(const FString&)
     TestEqual(TEXT("Widget retry retains the original command"), Transport->LastBody, Intent);
     if (!TestTrue(TEXT("Retry POST callback exists"), Transport->Complete(Snapshot(1)))) return false;
     TestEqual(TEXT("Server approval populates progress"), Flow->GetQuestManager()->GetQuests(Character).Num(), 1);
+    auto* Journal = Cast<UTextBlock>(Panel->GetWidgetFromName(TEXT("NarrativeQuestJournal")));
+    if (!TestNotNull(TEXT("Quest journal control"), Journal)) return false;
+    TestTrue(TEXT("Journal displays authored title and unfinished goal"), Journal->GetText().ToString().Contains(TEXT("Test quest"))
+        && Journal->GetText().ToString().Contains(TEXT("Contact briefing")));
     int32 Revision = 1;
     for (const FString Node : {FString(TEXT("DEV.Contact.Explain")), FString(TEXT("DEV.Instructor.Explain")), FString(TEXT("DEV.Contact.Report"))})
     {
@@ -330,6 +349,7 @@ bool FRPGNarrativeDialogueWidgetTest::RunTest(const FString&)
         if (!TestTrue(TEXT("Dialogue choice POST callback exists"), Transport->Complete(Snapshot(++Revision)))) return false;
     }
     TestTrue(TEXT("Report button commits through coordinator"), Flow->GetScenarioManager()->IsChapterCompleted(Character, TEXT("DEV.Prologue")));
+    TestTrue(TEXT("Completed quest retains its title"), Journal->GetText().ToString().Contains(TEXT("Test quest")));
     TestEqual(TEXT("Completed dialogue list is empty"), Cast<UVerticalBox>(Panel->GetWidgetFromName(TEXT("NarrativeActions")))->GetChildrenCount(), 0);
     Panel->CloseScreen();
     return true;
@@ -403,6 +423,16 @@ namespace RPGNarrativeTests
             if (Narrative->HasPendingChoice() || !Narrative->HasCurrentSnapshot()) return Fail(TEXT("HTTP response not confirmed"));
             auto* Panel = Lobby->GetNarrativeDialogueWidget();
             if (!Panel || !Panel->IsInViewport()) return Fail(TEXT("Story panel closed unexpectedly"));
+            if (Choice > 0 || bRestore)
+            {
+                const auto Quests = Narrative->GetQuestManager()->GetQuests(Character);
+                auto* Journal = Cast<UTextBlock>(Panel->GetWidgetFromName(TEXT("NarrativeQuestJournal")));
+                if (Quests.Num() != 1 || Quests[0].Title.IsEmpty() || Quests[0].Objectives.Num() != 2
+                    || !Journal || !Journal->GetText().ToString().Contains(Quests[0].Title.ToString()))
+                    return Fail(TEXT("Real HTTP journal metadata did not reach the viewport"));
+                if (!bRestore && Choice < 4 && !Journal->GetText().ToString().Contains(Quests[0].Objectives[0].Text.ToString()))
+                    return Fail(TEXT("Real HTTP goal description missing from journal"));
+            }
             if (bRestore || Choice == 4)
             {
                 if (!Narrative->GetQuestManager()->HasRevision(Character, 4)

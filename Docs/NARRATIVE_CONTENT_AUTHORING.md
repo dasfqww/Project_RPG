@@ -36,7 +36,11 @@ dotnet run --project Backend/ProjectRpg.Backend -- --validate-narrative-catalog 
   "schemaVersion": 1,
   "catalogVersion": 1,
   "quests": [
-    { "id": "SAMPLE.Intro", "version": 1, "prerequisites": [], "objectives": ["briefing"] }
+    {
+      "id": "SAMPLE.Intro", "version": 1, "prerequisites": [], "objectives": ["briefing"],
+      "title": "안내 확인",
+      "objectiveTexts": { "briefing": "연락책에게 안내 듣기" }
+    }
   ],
   "chapters": [
     { "id": "SAMPLE.Prologue", "requiredQuests": ["SAMPLE.Intro"], "storyUnlocks": ["SAMPLE.Next"] }
@@ -67,6 +71,7 @@ dotnet run --project Backend/ProjectRpg.Backend -- --validate-narrative-catalog 
 |---|---|
 | 최상위 | `schemaVersion=1`, 양의 정수 `catalogVersion`, 배열 `quests`/`chapters`/`dialogues` 필수 |
 | 의뢰 | 양의 정수 `version`, `prerequisites` 배열, 비어 있지 않은 `objectives` 배열. 모든 선행 의뢰를 완료해야 수락 가능 |
+| 의뢰 표시 | 선택 사항 `title`과 `objectiveTexts`(목표 ID → 설명). 기존 파일은 생략 가능. 지정한 설명의 키는 해당 의뢰의 목표여야 함 |
 | 챕터 | 비어 있지 않은 `requiredQuests`, `storyUnlocks` 배열. 필수 의뢰 전부 완료 시 계산 |
 | 대화 | ID·화자·본문·대상 의뢰·`requiredStatus`·선택지 필수. 새 의뢰 제안의 상태도 생략하지 않고 명시적 `null` 사용 |
 | 수락 | `effect=AcceptQuest`, 대화의 `requiredStatus=null`, `objectiveId` 없음 |
@@ -84,6 +89,7 @@ ID는 영문 ASCII 문자·숫자·마침표·밑줄·하이픈만 사용하며 
 | 의뢰별 목표·선행 / 전체 고유 이야기 해금 | 각각256개 |
 | 대화별 선택지 | 64개 |
 | 화자 / 본문 / 선택지 문장 | 각각256 / 4096 / 1024 UTF-16 코드 단위 |
+| 의뢰명 / 목표 설명 | 각각256 / 1024 UTF-16 코드 단위. 지정한 값은 공백만으로 작성할 수 없음 |
 
 모든 노드·선택지·진도 ID를 포함한 응답 크기를 과대 추정해, JSON 이스케이프 후에도 UE의 1MiB 응답 한도를 넘지 않는지 검사한다. 이 상한은 이번 첫 클라이언트 계약의 한도이며 대형 카탈로그 분할·페이지 조회를 구현했다는 뜻은 아니다.
 
