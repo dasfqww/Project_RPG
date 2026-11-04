@@ -15,7 +15,11 @@ public sealed record ChapterDefinition(string Id, ImmutableArray<string> Require
 public sealed record DialogueChoice(string Id, string Text, DialogueEffect Effect, string? ObjectiveId = null,
     string? NextDialogueId = null);
 public sealed record DialogueDefinition(string Id, string Speaker, string Text, string? QuestId,
-    QuestStatus? RequiredStatus, ImmutableArray<DialogueChoice> Choices, bool Informational = false, bool EntryPoint = true);
+    QuestStatus? RequiredStatus, ImmutableArray<DialogueChoice> Choices, bool Informational = false, bool EntryPoint = true,
+    ImmutableArray<string> RequiredCompletedQuests = default)
+{
+    internal ImmutableArray<string> CompletionRequirements => RequiredCompletedQuests.IsDefault ? [] : RequiredCompletedQuests;
+}
 public sealed record QuestProgress(string QuestId, int DefinitionVersion, QuestStatus Status,
     ImmutableArray<string> CompletedObjectives);
 public sealed record NarrativeState(Guid CharacterId, int SchemaVersion, long Revision,

@@ -7,6 +7,8 @@ public sealed class DialogueManager(QuestManager quests)
 {
     private bool Available(NarrativeState state, NarrativeCatalog catalog, DialogueDefinition definition)
     {
+        if (!definition.CompletionRequirements.All(id => state.Quests.Any(q => q.QuestId == id && q.Status == QuestStatus.Completed)))
+            return false;
         if (definition.Informational) return true;
         QuestProgress? progress = state.Quests.SingleOrDefault(q => q.QuestId == definition.QuestId);
         return definition.RequiredStatus is { } status ? progress?.Status == status

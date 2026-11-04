@@ -52,6 +52,10 @@ public sealed class NarrativeCatalog
             "narrative_catalog_limit_exceeded");
         foreach (DialogueDefinition d in Dialogues.Values)
         {
+            var requirements = d.CompletionRequirements;
+            Require(requirements.Length <= 256 && requirements.Length == requirements.Distinct().Count()
+                && requirements.All(NarrativeCommand.ValidId) && requirements.All(Quests.ContainsKey)
+                && (d.Informational || requirements.IsEmpty), "invalid_dialogue_requirements");
             Require(NarrativeCommand.ValidId(d.Id)
                 && (d.Informational ? d.QuestId is null && d.RequiredStatus is null
                     : d.EntryPoint && d.QuestId is not null && Quests.ContainsKey(d.QuestId))
@@ -76,6 +80,9 @@ public sealed class NarrativeCatalog
                         : c.ObjectiveId is null && (c.Effect == DialogueEffect.AcceptQuest
                             ? d.RequiredStatus is null : d.RequiredStatus == QuestStatus.ReadyToReport)),
                     "invalid_dialogue_choice");
+                if (d.Informational && c.NextDialogueId is { } next)
+                    Require(requirements.ToHashSet(StringComparer.Ordinal).SetEquals(Dialogues[next].CompletionRequirements),
+                        "inconsistent_information_requirements");
             }
         }
         HashSet<string> reachable = new(StringComparer.Ordinal);

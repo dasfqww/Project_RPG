@@ -19,6 +19,7 @@ try
     DefinitionCases();
     await NarrativeCatalogTests.RunAsync();
     await NarrativeInformationTests.RunAsync();
+    await NarrativeDialogueGateTests.RunAsync();
     InMemoryTransactionGate gate = new();
     InMemoryGameRepository memory = new(gate, new InMemoryItemRepository(gate));
     await RepositoryCases(memory, () => memory, "Memory");
