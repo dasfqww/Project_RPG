@@ -52,8 +52,24 @@ GameInstance 캐시는 현재 엔드포인트/계정에 묶고 캐릭터 ID로 �
 
 서버 응답의 캐릭터/버전/형식과 계정·엔드포인트·연결 수명을 확인한다. 오래된 결과로 GameInstance 캐시를 되돌리지 않으며 퀘스트·시나리오·대화 리비전이 일치할 때 현재 대화를 노출한다. 다른 LocalPlayer가 같은 캐릭터 캐시를 갱신한 경우에는 이전 대화가 숨겨지고 해당 LocalPlayer가 다시 조회한다.
 
-`Scripts/Tests/Run-NarrativeFrontendTests.ps1`은 현재 DLL을 독립 런타임에 복사해 `ProjectRPG.Narrative.Codec`, `.Coordinator`, `.PlayerTransport`, `.SubsystemOwnership`을 실행한다. 엔진의 실제 Subsystem 생성/소유자·다중 GameInstance/LocalPlayer·캐릭터 분리·종료·계정 변경·재시도·늦은 응답을 확인하는 검사다. 실제 NPC 배치·선택지 위젯 에셋·다인 사건·클라이언트와 백엔드의 전체 HTTP 플레이는 별도 범위다.
+`Scripts/Tests/Run-NarrativeFrontendTests.ps1`은 현재 DLL을 독립 런타임에 복사해 `ProjectRPG.Narrative.Codec`, `.Coordinator`, `.PlayerTransport`, `.SubsystemOwnership`, `.DialogueWidget`과 기존 로비/내비게이션/뒤로가기 검사4를 실행한다. 엔진의 실제 Subsystem 소유권·캐릭터/계정 분리·종료·재시도·늦은 응답과 위젯의 선택 이벤트를 확인한다. HTTP/DB를 사용하는 선택 검사는 아래 별도 러너로 실행한다.
 
 2026-11-04 원본 반영 확인: UHT·핵심 CPP6/신규 생성5/기존 생성 묶음4 컴파일과 정상 게임 모듈 집중 링크를 완료했다. 같은 `5557C6E1…1BB16EB9` DLL의 독립 런타임에서 위 native4 모두 Success·프로세스 종료0·검사 구간 오류0이다. 캐릭터별 캐시, 다중 GameInstance/LocalPlayer의 엔진 소유권과 분리, LocalPlayer 제거 후 GameInstance 캐시 보존, 계정 전환·재시도·오래된 응답을 확인했다. 기존 에셋/환경 경고는 남으며 GPU·실제 백엔드 HTTP 플레이 검증은 아니다.
 
 전체 Editor 타깃 시도는 다른 사설 UBT의 전역 잠금 대기 중 자기 프로세스만 종료했으며, 위 결과를 전체 타깃 성공으로 표시하지 않는다. 기존 공유 출력의 0-byte probe OBJ1·누락 의존 import6을 복구한 뒤 집중 링크했다. 원본 제품 소스와 검증 사본을 구분하며, 사본 취득 직후 공유 입력/출력 예약을 해제했다. 자기 런타임/DLL/UserDir·캐시와 연결11개를 안전하게 정리했고 원본 `Binaries`/`Intermediate`와 유지할 소스/검사는 보존했다.
+
+## 로비의 이야기 창
+
+캐릭터로 로비에 접속한 뒤 **인물과 이야기**를 누르면 해당 LocalPlayer의 `URPGNarrativeDialogueWidget`을 연다. 화면은 서버의 현재 가능한 대화, 인물·본문·선택지, 완료한 의뢰 수를 표시한다. 진행할 대화가 없으면 빈 상태를 안내한다. 이 화면은 네이티브 UMG로 구성하며 기존 대화 Blueprint나 NPC 에셋을 교체하지 않는다.
+
+대화 열기·닫기는 로컬 표시만 바꾼다. 수락·확인·보고는 표시된 선택지를 눌렀을 때만 Coordinator를 통해 서버로 전송한다. 응답 전에는 의뢰 진도나 해금을 먼저 바꾸지 않는다. 결과 미확정 시 **선택 결과 다시 확인**이 원래 명령을 재전송하며, 창을 닫았다 다시 열어도 미확정 명령을 보존한다. 접속 오류는 사용자용 문구로 안내하고 내부 ID·리비전·오류 코드는 화면에 노출하지 않는다.
+
+인증·본인 캐릭터·로비/세션 상태를 다시 검사한 뒤 창을 열며, 캐릭터/접속 문맥이 바뀌면 이전 창을 닫거나 내용을 숨긴다. 조회/미확정 선택 중에는 캐릭터 변경과 새 던전 이동을 차단한다. 새 창에서 기존 미확정 선택을 복구할 수 있다. 전투 성장, 입장 조건, 부캐 이야기 건너뛰기 정책을 이 UI가 대신 판정하지 않는다.
+
+`Scripts/Tests/Run-NarrativeDialogueE2E.ps1`은 캐시된 `postgres:17-alpine`과 Docker를 사용한다. 임시 DB에 명시적으로 마이그레이션하고, 독립 백엔드의 개발 인증으로 새 캐릭터 둘을 만든다. UE에서는 실제 플레이어 인증·로비 메뉴·UMG 버튼 이벤트·HTTP를 거쳐 개발 의뢰를 수락/확인/보고한다. 이어 같은 임시 DB를 유지한 채 백엔드와 UE를 새 프로세스로 시작해 복원한다. 완료/해금, 명령 영수증4건, 다른 캐릭터의 초기 진도, 성장 저장 불변을 대조한다. 개발 콘텐츠는 이 전용 백엔드에서만 켜며 원본 설정을 수정하지 않는다. 토큰·DB 비밀번호는 프로세스 메모리/자식 환경에서만 사용하고 결과 파일에 남기지 않는다.
+
+두 러너는 각자의 `Saved/BuildChecks/NarrativeDialogue-20261104/<GUID>/Temp`와 자신이 시작한 프로세스/라벨 컨테이너만 정리한다. Content/Resources 연결은 원본을 따라가지 않고 해제하며 작은 로그·해시·결과만 보존한다. HTTP 검사는 독립 `-game -nullrhi` 클라이언트의 엔진 소유 GameInstance·LocalPlayer·Controller와 실제 화면에 추가된 UMG의 클릭 델리게이트를 사용한다. 물리 마우스·GPU 외형·실제 NPC 배치·다인 전투 사건 검증과는 구분한다.
+
+2026-11-04 확인: UHT·로비 헤더 소비 코드를 포함한 집중 컴파일/게임 모듈 링크를 완료했다. `0DBE6945…552A6BC2`의 native9가 모두 Success·프로세스 종료0·검사 구간 오류0이다. 이후 제품6소스의 SHA는 그대로 유지하고 HTTP 검사 어댑터만 정상 게임 월드를 사용하도록 바꿨다. 최종 `4709F09A…4AAB4EC7`의 서로 다른 게임 클라이언트 두 개가 실제 HTTP 완료/새 프로세스 복원을 각각 통과했다. PostgreSQL 진도4·완료/해금·영수증4건·다른 캐릭터 진도0·성장 저장 불변을 확인했다. 로컬 근거는 `Saved/BuildChecks/NarrativeDialogue-20261104/CompletionResult.json`과 `d1ab4fb0e3504cd880c2b96172a57ee4/Result.json`이다.
+
+초기 미보유 Slate 수명/검사 소유자 오류와 최소 RPC 월드의 비동기 컨트롤러 소멸, 냉시작 제한시간 초과는 실패 기록으로 남겼다. 최종 HTTP 검사는 직접 만든 월드·컨트롤러를 사용하지 않는다. 전체 Editor 타깃 빌드나 GPU 외형 확인을 이 결과로 대신하지 않는다. 모든 시도에서 본인 임시 2,019,439,774 bytes와 연결132개·자기 DB 컨테이너/프로세스를 정리했으며 Temp/대형 예외0이다. 원본 Binaries/Intermediate·다른 담당 변경은 보존했다. 폐기한 검사 사본의 해시는 당시 증거로만 사용한다.

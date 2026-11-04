@@ -15,6 +15,16 @@
 #include "HAL/PlatformTime.h"
 #include "Serialization/JsonSerializer.h"
 #include "UObject/StrongObjectPtr.h"
+#include "UI/Narrative/RPGNarrativeDialogueWidget.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/Button.h"
+#include "Components/VerticalBox.h"
+#include "Framework/Application/SlateApplication.h"
+#include "GameFramework/PlayerController.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "Online/RPGDungeonSessionSubsystem.h"
+#include "UI/Lobby/RPGOnlineLobbyWidget.h"
 
 struct FRPGNarrativeTestAccess
 {
@@ -72,12 +82,13 @@ namespace RPGNarrativeTests
             LastBody = Body; Pending = MoveTemp(Completion); return true;
         }
         void Cancel() override { Pending = nullptr; }
-        void Complete(const FString& Body, const int32 Status = 200)
+        bool Complete(const FString& Body, const int32 Status = 200)
         {
             auto Callback = MoveTemp(Pending);
+            if (!Callback) return false;
             FRPGNarrativeHttpResult Result; Result.bCurrentPlayerContext = true;
             Result.bTransportSuccessful = Status != 0; Result.StatusCode = Status; Result.Body = Body;
-            Callback(MoveTemp(Result));
+            Callback(MoveTemp(Result)); return true;
         }
     };
     struct FGameFixture
@@ -250,6 +261,221 @@ bool FRPGNarrativeHttpTest::RunTest(const FString&)
     TestTrue(TEXT("Callback still completes"), bCalled); TestFalse(TEXT("Old credential callback is stale"), bCurrent);
     TestFalse(TEXT("No request after logout"), Web->CreatePlayerNarrativeRequest(RPGNarrativeTests::Character,
         FString(), [](FRPGNarrativeHttpResult) {}).IsValid());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGNarrativeDialogueWidgetTest, "ProjectRPG.Narrative.DialogueWidget",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGNarrativeDialogueWidgetTest::RunTest(const FString&)
+{
+    using namespace RPGNarrativeTests;
+    FGameFixture Fixture;
+    if (!TestTrue(TEXT("UI fixture"), Fixture.Init())) return false;
+#if UE_SUPPORT_FOR_ACTOR_TICK_DISABLE
+    Fixture.World->EnableActorTickAndUserCallbacks(true);
+#endif
+    Fixture.World->InitializeActorsForPlay(FURL());
+    auto* Controller = Fixture.World->SpawnActor<APlayerController>();
+    if (!TestNotNull(TEXT("Widget player controller"), Controller)) return false;
+    Controller->SetPlayer(Fixture.Player); Fixture.World->AddController(Controller);
+    if (!TestEqual(TEXT("Controller registered for this world"), Fixture.Player->GetPlayerController(Fixture.World), Controller)) return false;
+    auto* Flow = Fixture.Player->GetSubsystem<URPGNarrativeCoordinator>();
+    auto Transport = MakeShared<FTransport>(); FRPGNarrativeTestAccess::Attach(Flow, Transport);
+    Flow->SelectCharacter(Character);
+    TStrongObjectPtr<URPGNarrativeDialogueWidget> Panel(CreateWidget<URPGNarrativeDialogueWidget>(Controller));
+    if (!TestNotNull(TEXT("Native story widget"), Panel.Get())) return false;
+    Panel->SetOwningLocalPlayer(Fixture.Player);
+    TestTrue(TEXT("Open exact character"), Panel->OpenForCharacter(Character));
+    const TSharedRef<SWidget> PanelSlate = Panel->TakeWidget();
+    Transport->Complete(Snapshot(0));
+    auto Click = [&](const FString& Node, const FString& Choice) -> bool
+    {
+        auto* List = Cast<UVerticalBox>(Panel->GetWidgetFromName(TEXT("NarrativeActions")));
+        if (!List) return false;
+        for (auto* Child : List->GetAllChildren())
+            if (auto* Row = Cast<URPGNarrativeActionWidget>(Child))
+                if (Row->GetDialogueId() == Node && Row->GetChoiceId() == Choice)
+                {
+                    Row->TakeWidget();
+                    if (auto* Button = Cast<UButton>(Row->GetWidgetFromName(TEXT("NarrativeActionButton"))))
+                    { Button->OnClicked.Broadcast(); return true; }
+                }
+        return false;
+    };
+    TestTrue(TEXT("Open from rendered server node"), Click(TEXT("DEV.Contact.Offer"), FString()));
+    TestFalse(TEXT("Opening a conversation does not accept"), Flow->HasPendingChoice());
+    Panel->CloseScreen();
+    FRPGDialogueNode Active;
+    TestFalse(TEXT("Closing clears only local conversation"), Flow->GetDialogueManager()->GetActiveDialogue(Active));
+    TestTrue(TEXT("Closing does not create quest progress"), Flow->GetQuestManager()->GetQuests(Character).IsEmpty());
+    if (!TestTrue(TEXT("Reopen dispatches GET"), Panel->OpenForCharacter(Character))
+        || !TestTrue(TEXT("Reopen GET callback exists"), Transport->Complete(Snapshot(0)))) return false;
+    Click(TEXT("DEV.Contact.Offer"), FString());
+    TestTrue(TEXT("Authored accept button dispatches"), Click(TEXT("DEV.Contact.Offer"), TEXT("accept")));
+    const FString Intent = Transport->LastBody;
+    TestTrue(TEXT("No local progress before server reply"), Flow->GetQuestManager()->GetQuests(Character).IsEmpty());
+    if (!TestTrue(TEXT("Accept POST callback exists"), Transport->Complete(FString(), 0))) return false;
+    Panel->CloseScreen(); Panel->OpenForCharacter(Character);
+    auto* Retry = Cast<UButton>(Panel->GetWidgetFromName(TEXT("NarrativeRetry")));
+    if (!TestNotNull(TEXT("Uncertain result has retry control"), Retry)) return false;
+    Retry->OnClicked.Broadcast();
+    TestEqual(TEXT("Widget retry retains the original command"), Transport->LastBody, Intent);
+    if (!TestTrue(TEXT("Retry POST callback exists"), Transport->Complete(Snapshot(1)))) return false;
+    TestEqual(TEXT("Server approval populates progress"), Flow->GetQuestManager()->GetQuests(Character).Num(), 1);
+    int32 Revision = 1;
+    for (const FString Node : {FString(TEXT("DEV.Contact.Explain")), FString(TEXT("DEV.Instructor.Explain")), FString(TEXT("DEV.Contact.Report"))})
+    {
+        TestTrue(TEXT("Server node appears in story list"), Click(Node, FString()));
+        TestTrue(TEXT("Server choice appears in conversation"), Click(Node, Revision == 3 ? TEXT("report") : TEXT("confirm")));
+        if (!TestTrue(TEXT("Dialogue choice POST callback exists"), Transport->Complete(Snapshot(++Revision)))) return false;
+    }
+    TestTrue(TEXT("Report button commits through coordinator"), Flow->GetScenarioManager()->IsChapterCompleted(Character, TEXT("DEV.Prologue")));
+    TestEqual(TEXT("Completed dialogue list is empty"), Cast<UVerticalBox>(Panel->GetWidgetFromName(TEXT("NarrativeActions")))->GetChildrenCount(), 0);
+    Panel->CloseScreen();
+    return true;
+}
+namespace RPGNarrativeTests
+{
+    // Opt-in real HTTP test. The runner supplies only nonsecret IDs and a private
+    // loopback configuration; no test transport or state injection is used here.
+    class FHttpDialogueCommand final : public IAutomationLatentCommand
+    {
+    public:
+        FHttpDialogueCommand(FAutomationTestBase* InTest, FGuid InCharacter, FString InSteam,
+            FString InWorld, bool bInRestore)
+            : Test(InTest), Character(InCharacter), Steam(MoveTemp(InSteam)), WorldName(MoveTemp(InWorld)), bRestore(bInRestore) {}
+        ~FHttpDialogueCommand()
+        {
+            if (Lobby.IsValid()) Lobby->RemoveFromParent();
+        }
+        bool Update() override
+        {
+            if (FPlatformTime::Seconds() > Deadline) return Fail(FString::Printf(TEXT("HTTP dialogue timed out at stage %d, choice %d"), Stage, Choice));
+            if (Stage == 0)
+            {
+                if (!FSlateApplication::IsInitialized()) return Fail(TEXT("Slate unavailable"));
+                for (const auto& Context : GEngine->GetWorldContexts())
+                    if (Context.WorldType == EWorldType::Game && Context.World()
+                        && Context.World()->GetOutermost()->GetName() == WorldName)
+                    { World = Context.World(); break; }
+                if (!World || !World->HasBegunPlay()) return false;
+                Instance.Reset(World->GetGameInstance());
+                Player = Instance.IsValid() ? Instance->GetFirstGamePlayer() : nullptr;
+                Controller = Player ? Player->GetPlayerController(World) : nullptr;
+                if (!Controller || Controller->GetLocalPlayer() != Player) return false;
+                Web = Instance->GetSubsystem<UHttpWebManager>();
+                Flow = Instance->GetSubsystem<URPGDungeonSessionSubsystem>();
+                Narrative = Player->GetSubsystem<URPGNarrativeCoordinator>();
+                if (!Web || !Flow || !Narrative)
+                    return Fail(FString::Printf(TEXT("Isolated services missing: web=%d flow=%d narrative=%d"), Web != nullptr, Flow != nullptr, Narrative != nullptr));
+                if (!Web->GetApiUrl().StartsWith(TEXT("http://127.0.0.1:")))
+                    return Fail(TEXT("Isolated loopback endpoint not applied: ") + Web->GetApiUrl());
+                Web->AuthenticateWithSteamTicket(TEXT("dev:") + Steam); Stage = 1; return false;
+            }
+            if (Stage == 1)
+            {
+                if (!Web->HasAccessToken()) return false;
+                if (Web->GetAuthenticatedSteamId() != Steam) return Fail(TEXT("Wrong authenticated owner"));
+                if (Player->GetPlayerController(World) != Controller || Controller->GetLocalPlayer() != Player)
+                    return Fail(FString::Printf(TEXT("Controller changed awaiting auth: registered=%d local=%d destroyed=%d worldTearingDown=%d"),
+                        Player->GetPlayerController(World) == Controller, Controller->GetLocalPlayer() == Player,
+                        Controller->IsActorBeingDestroyed(), World->bIsTearingDown));
+                if (!Flow->SelectCharacter(Character.ToString(EGuidFormats::DigitsWithHyphensLower))) return Fail(TEXT("Character selection failed"));
+                Lobby.Reset(CreateWidget<URPGOnlineLobbyWidget>(Controller));
+                if (!Lobby.IsValid() || Lobby->GetOwningLocalPlayer() != Player)
+                    return Fail(FString::Printf(TEXT("Created lobby context mismatch: exists=%d initialized=%d valid=%d"),
+                        Lobby.IsValid(), Lobby.IsValid() && Lobby->GetPlayerContext().IsInitialized(), Lobby.IsValid() && Lobby->GetPlayerContext().IsValid()));
+                if (!Lobby.IsValid() || !Lobby->AddToPlayerScreen()) return Fail(TEXT("Lobby viewport unavailable"));
+                Stage = 2; return false;
+            }
+            if (Stage == 2)
+            {
+                if (Lobby->GetCharacterOption(Character.ToString(EGuidFormats::DigitsWithHyphensLower)).IsEmpty()
+                    || Lobby->IsFrontendRequestInFlight()) return false;
+                auto* Button = Cast<UButton>(Lobby->GetWidgetFromName(TEXT("OpenStoryMenuButton")));
+                if (!Button || !Button->GetIsEnabled() || !Button->IsVisible()) return false;
+                Button->OnClicked.Broadcast();
+                if (!Lobby->GetNarrativeDialogueWidget() || !Lobby->GetNarrativeDialogueWidget()->IsInViewport())
+                    return Fail(TEXT("Story menu did not open the actual viewport panel"));
+                Stage = 3; return false;
+            }
+            if (Narrative->IsBusy()) return false;
+            if (Narrative->HasPendingChoice() || !Narrative->HasCurrentSnapshot()) return Fail(TEXT("HTTP response not confirmed"));
+            auto* Panel = Lobby->GetNarrativeDialogueWidget();
+            if (!Panel || !Panel->IsInViewport()) return Fail(TEXT("Story panel closed unexpectedly"));
+            if (bRestore || Choice == 4)
+            {
+                if (!Narrative->GetQuestManager()->HasRevision(Character, 4)
+                    || !Narrative->GetQuestManager()->IsQuestCompleted(Character, TEXT("DEV.Introduction"))
+                    || !Narrative->GetScenarioManager()->IsChapterCompleted(Character, TEXT("DEV.Prologue"))
+                    || !Narrative->GetScenarioManager()->IsStoryUnlocked(Character, TEXT("DEV.Story.Next"))
+                    || !Narrative->GetDialogueManager()->GetAvailableDialogues().IsEmpty())
+                    return Fail(TEXT("Completion or fresh-process restoration mismatch"));
+                Test->AddInfo(FString(TEXT("Narrative HTTP persistence verified: ")) + (bRestore ? TEXT("restore") : TEXT("complete")));
+                Panel->CloseScreen(); return true;
+            }
+            if (!Narrative->GetQuestManager()->HasRevision(Character, Choice)) return Fail(TEXT("Unexpected server revision"));
+            if (!bCheckedClose)
+            {
+                if (!Click(Panel, TEXT("DEV.Contact.Offer"), FString())) return Fail(TEXT("Offer row missing"));
+                Panel->CloseScreen();
+                if (Narrative->HasPendingChoice() || !Narrative->GetQuestManager()->GetQuests(Character).IsEmpty())
+                    return Fail(TEXT("Open/close changed quest state"));
+                bCheckedClose = true; Stage = 2; return false;
+            }
+            const TCHAR* Nodes[] = {TEXT("DEV.Contact.Offer"), TEXT("DEV.Contact.Explain"), TEXT("DEV.Instructor.Explain"), TEXT("DEV.Contact.Report")};
+            const TCHAR* Choices[] = {TEXT("accept"), TEXT("confirm"), TEXT("confirm"), TEXT("report")};
+            if (!Click(Panel, Nodes[Choice], FString()) || !Click(Panel, Nodes[Choice], Choices[Choice]))
+                return Fail(TEXT("Rendered dialogue/choice button missing or disabled"));
+            if (!Narrative->IsBusy()) return Fail(TEXT("Choice button did not dispatch"));
+            if (!Narrative->GetQuestManager()->HasRevision(Character, Choice)) return Fail(TEXT("Optimistic progress detected"));
+            ++Choice; return false;
+        }
+    private:
+        bool Fail(const FString& Error) { Test->AddError(Error); return true; }
+        static bool Click(URPGNarrativeDialogueWidget* Panel, const FString& Node, const FString& Option)
+        {
+            auto* List = Cast<UVerticalBox>(Panel->GetWidgetFromName(TEXT("NarrativeActions")));
+            if (!List) return false;
+            for (auto* Child : List->GetAllChildren())
+                if (auto* Row = Cast<URPGNarrativeActionWidget>(Child))
+                    if (Row->GetDialogueId() == Node && Row->GetChoiceId() == Option && Row->GetIsEnabled())
+                        if (auto* Button = Cast<UButton>(Row->GetWidgetFromName(TEXT("NarrativeActionButton"))))
+                        { Button->OnClicked.Broadcast(); return true; }
+            return false;
+        }
+        FAutomationTestBase* Test;
+        FGuid Character;
+        FString Steam, WorldName;
+        bool bRestore = false, bCheckedClose = false;
+        double Deadline = FPlatformTime::Seconds() + 90;
+        int32 Stage = 0, Choice = 0;
+        TStrongObjectPtr<UGameInstance> Instance;
+        TStrongObjectPtr<URPGOnlineLobbyWidget> Lobby;
+        UWorld* World = nullptr;
+        ULocalPlayer* Player = nullptr;
+        APlayerController* Controller = nullptr;
+        UHttpWebManager* Web = nullptr;
+        URPGDungeonSessionSubsystem* Flow = nullptr;
+        URPGNarrativeCoordinator* Narrative = nullptr;
+    };
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGNarrativeHttpDialoguePersistenceTest, "ProjectRPG.Narrative.HttpDialoguePersistence",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+bool FRPGNarrativeHttpDialoguePersistenceTest::RunTest(const FString&)
+{
+    FString Phase, Id, Steam, World;
+    if (!FParse::Value(FCommandLine::Get(), TEXT("RPGNarrativePhase="), Phase))
+    { AddInfo(TEXT("Skipped: use Run-NarrativeDialogueE2E.ps1 with disposable storage.")); return true; }
+    FGuid Character;
+    if (!FParse::Param(FCommandLine::Get(), TEXT("nosteam")) || !URPGOnlineLobbyWidget::IsDevelopmentUIEnabled()
+        || (Phase != TEXT("complete") && Phase != TEXT("restore"))
+        || !FParse::Value(FCommandLine::Get(), TEXT("RPGNarrativeCharacter="), Id) || !FGuid::Parse(Id, Character)
+        || !FParse::Value(FCommandLine::Get(), TEXT("RPGNarrativeSteam="), Steam)
+        || !FParse::Param(FCommandLine::Get(), TEXT("game"))
+        || !FParse::Value(FCommandLine::Get(), TEXT("RPGNarrativeWorld="), World) || World != TEXT("/Engine/Maps/Entry"))
+    { AddError(TEXT("Invalid isolated narrative context")); return false; }
+    ADD_LATENT_AUTOMATION_COMMAND(RPGNarrativeTests::FHttpDialogueCommand(this, Character, Steam, World, Phase == TEXT("restore")));
     return true;
 }
 #endif

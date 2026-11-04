@@ -12,6 +12,11 @@
 #include "UI/Lobby/RPGEquipmentGrowthWidget.h"
 #include "UI/Lobby/RPGOnlineLobbyLayout.h"
 #include "UI/Lobby/RPGTutorialEntryPolicy.h"
+#include "UI/Narrative/RPGNarrativeDialogueWidget.h"
+#include "Narrative/RPGNarrativeCoordinator.h"
+#include "Manager/UIManager.h"
+#include "Engine/LocalPlayer.h"
+#include "GameFramework/PlayerController.h"
 
 void URPGOnlineLobbyWidget::BuildMenuContent(UVerticalBox& Parent, bool bServerPage)
 {
@@ -42,6 +47,7 @@ void URPGOnlineLobbyWidget::BuildMenuContent(UVerticalBox& Parent, bool bServerP
 	Add(TEXT("OpenDungeonMenuButton"), NSLOCTEXT("RPGFrontend", "Dungeons", "던전 · 파티"));
 	Add(TEXT("OpenSkillMenuButton"), NSLOCTEXT("RPGFrontend", "Skills", "스킬 구성"));
 	Add(TEXT("OpenEquipmentMenuButton"), NSLOCTEXT("RPGFrontend", "Equipment", "장비 성장 · 제작"));
+	Add(TEXT("OpenStoryMenuButton"), NSLOCTEXT("RPGFrontend", "Story", "인물과 이야기"));
 	Add(TEXT("CloseLobbyDetailsButton"), NSLOCTEXT("RPGFrontend", "MenuHome", "로비 메뉴로 돌아가기"));
 	TutorialStatusText = RPGOnlineLobbyLayout::Text(*WidgetTree, *Rows, TEXT("TutorialEntryStatus"), FText::GetEmpty());
 }
@@ -113,6 +119,30 @@ void URPGOnlineLobbyWidget::OpenEquipmentMenu()
 	bEquipmentMenuOpen = true; bSkillMenuOpen = bDungeonMenuOpen = false;
 	RefreshPresentation();
 	if (EquipmentPanel) EquipmentPanel->OpenScreen();
+}
+
+bool URPGOnlineLobbyWidget::CanOpenNarrativeDialogues() const
+{
+	return bServerSelected && bPreparationOpen && !bTutorialEntryActive
+		&& CanUseCharacterConfiguration(false, false) && !HasUnfinishedDungeonSelection()
+		&& Flow && !Flow->HasUnresolvedDeparture() && !Flow->HasDepartureRecoveryError()
+		&& !Flow->HasUnresolvedDungeonAbandonment()
+		&& (!ConfigurationPanel || (!ConfigurationPanel->IsRequestInFlight() && !ConfigurationPanel->HasUnresolvedSave()))
+		&& (!EquipmentPanel || (!EquipmentPanel->IsBusy() && !EquipmentPanel->HasUnresolvedCommand()));
+}
+void URPGOnlineLobbyWidget::OpenStoryMenu() { OpenNarrativeDialogues(); }
+bool URPGOnlineLobbyWidget::OpenNarrativeDialogues()
+{
+	if (!CanOpenNarrativeDialogues()) return false;
+	if (NarrativePanel && NarrativePanel->IsInViewport()) return true;
+	FGuid Character;
+	if (!FGuid::Parse(Flow->GetSelectedCharacterId(), Character) || !Character.IsValid()) return false;
+	auto* Panel = CreateWidget<URPGNarrativeDialogueWidget>(GetOwningPlayer(), URPGNarrativeDialogueWidget::StaticClass());
+	if (!Panel || !Panel->OpenForCharacter(Character)) return false;
+	NarrativePanel = Panel;
+	UUIManager::Get(GetOwningLocalPlayer())->PushUI(Panel);
+	if (!Panel->IsInViewport()) { NarrativePanel = nullptr; return false; }
+	return true;
 }
 
 void URPGOnlineLobbyWidget::OpenDungeonMenu()
@@ -217,6 +247,10 @@ void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 				: NSLOCTEXT("RPGFrontend", "Tutorial", "튜토리얼 입장"));
 	Control(TEXT("OpenSkillMenuButton"), bHome && !bTutorialEntryActive, bHome);
 	Control(TEXT("OpenEquipmentMenuButton"), bHome && CanUseEquipmentGrowth(false, false), bHome);
+	Control(TEXT("OpenStoryMenuButton"), CanOpenNarrativeDialogues(), bHome);
+	if (NarrativePanel && NarrativePanel->IsInViewport()
+		&& (!CanOpenNarrativeDialogues() || NarrativePanel->GetCharacterId().ToString(EGuidFormats::DigitsWithHyphensLower) != Flow->GetSelectedCharacterId()))
+		NarrativePanel->CloseScreen();
 	Control(TEXT("OpenDungeonMenuButton"), bHome && !bTutorialEntryActive, bHome && !Profile.bTraining);
 	Control(TEXT("CloseLobbyDetailsButton"), bHome && !bTutorialEntryActive, bHome && (bSkillMenuOpen || bDungeonMenuOpen || bEquipmentMenuOpen));
 	if (TutorialStatusText)

@@ -20,6 +20,7 @@ class URPGSteamAuthSubsystem;
 class URPGDungeonDefinition;
 class URPGCharacterConfigurationWidget;
 class URPGEquipmentGrowthWidget;
+class URPGNarrativeDialogueWidget;
 
 struct PROJECT_RPG_API FRPGOnlineLobbyPresentation
 {
@@ -95,6 +96,10 @@ public:
 	URPGCharacterConfigurationWidget* GetCharacterConfigurationWidget() const { return ConfigurationPanel; }
 	UFUNCTION(BlueprintPure, Category = "RPG|Progression|Lobby")
 	URPGEquipmentGrowthWidget* GetEquipmentGrowthWidget() const { return EquipmentPanel; }
+	UFUNCTION(BlueprintCallable, Category = "RPG|Narrative")
+	bool OpenNarrativeDialogues();
+	UFUNCTION(BlueprintPure, Category = "RPG|Narrative")
+	URPGNarrativeDialogueWidget* GetNarrativeDialogueWidget() const { return NarrativePanel; }
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
@@ -123,6 +128,8 @@ private:
 	UFUNCTION() void ShowServerPage();
 	UFUNCTION() void OpenSkillMenu();
 	UFUNCTION() void OpenEquipmentMenu();
+	UFUNCTION() void OpenStoryMenu();
+	bool CanOpenNarrativeDialogues() const;
 	UFUNCTION() void OpenDungeonMenu();
 	UFUNCTION() void CloseLobbyDetails();
 	UFUNCTION() void StartTutorial();
@@ -242,6 +249,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UWidget> AccountSection;
 	UPROPERTY(Transient) TObjectPtr<URPGCharacterConfigurationWidget> ConfigurationPanel;
 	UPROPERTY(Transient) TObjectPtr<URPGEquipmentGrowthWidget> EquipmentPanel;
+	UPROPERTY(Transient) TObjectPtr<URPGNarrativeDialogueWidget> NarrativePanel;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> NextStepText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> SessionText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> PartyRosterHeader;

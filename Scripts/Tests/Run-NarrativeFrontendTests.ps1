@@ -1,14 +1,21 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [string]$ExpectedModuleSHA256='')
+param([string]$EngineRoot='D:/UE_5.8', [string]$ExpectedModuleSHA256='',
+    [ValidateSet('native','complete','restore')][string]$Phase='native',
+    [string]$BackendUrl='', [Guid]$CharacterId=[Guid]::Empty, [string]$SteamId='')
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$proof=Join-Path $workspace 'Saved/BuildChecks/NarrativeSubsystems-20261104'
+$proof=Join-Path $workspace 'Saved/BuildChecks/NarrativeDialogue-20261104'
 $run=Join-Path $proof ([Guid]::NewGuid().ToString('N'))
 $temp=Join-Path $run 'Temp'
 $runtime=Join-Path $temp 'Runtime'
 $process=$null; $loaded=$null; $copies=[Collections.Generic.List[object]]::new()
-$tests=@('ProjectRPG.Narrative.Codec','ProjectRPG.Narrative.Coordinator','ProjectRPG.Narrative.PlayerTransport','ProjectRPG.Narrative.SubsystemOwnership')
-$result=[ordered]@{Passed=$false;NativeTests=@();Exit=$null;LoadedModule=$null;SnapshotModuleSHA256=$null;Failure=$null;Cleanup=$null;RuntimeDeleted=$false;Gpu=$false;BackendHttpE2E=$false}
+$tests=@('ProjectRPG.Narrative.Codec','ProjectRPG.Narrative.Coordinator','ProjectRPG.Narrative.PlayerTransport','ProjectRPG.Narrative.SubsystemOwnership','ProjectRPG.Narrative.DialogueWidget')
+$tests+=@('ProjectRPG.Online.DungeonLobbyWidget','ProjectRPG.Online.DungeonLobbyNavigation.NativeConnection','ProjectRPG.Online.DungeonLobbyNavigation.OrderAndAvailability','ProjectRPG.Online.DungeonLobbyBackInput.Preparation')
+if($Phase -ne 'native'){
+    if($BackendUrl -notmatch '^http://127\.0\.0\.1:\d+/api$' -or $CharacterId -eq [Guid]::Empty -or $SteamId -notmatch '^7656119\d{10}$'){throw 'Invalid isolated HTTP probe context'}
+    $tests=@('ProjectRPG.Narrative.HttpDialoguePersistence')
+}
+$result=[ordered]@{Passed=$false;Phase=$Phase;NativeTests=@();Exit=$null;LoadedModule=$null;SnapshotModuleSHA256=$null;Failure=$null;Cleanup=$null;RuntimeDeleted=$false;Gpu=$false;BackendHttpE2E=($Phase -ne 'native')}
 $null=New-Item -ItemType Directory -Path $runtime -Force
 function Hash([string]$Path){(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash}
 function Copy-Fixed([string]$From,[string]$To){
@@ -27,7 +34,7 @@ function Copy-Tree([string]$From,[string]$To,[switch]$Binaries){
 }
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 try{
-    $rows=@(Get-Content -LiteralPath (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object {$_ -match '^\|[^|]*narrative-subsystems-20261104'})
+    $rows=@(Get-Content -LiteralPath (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object {$_ -match '^\|[^|]*narrative-dialogue-20261104'})
     if($rows.Count -ne 1){throw 'Own task reservation missing'}
     Copy-Fixed (Join-Path $workspace 'Project_RPG.uproject') (Join-Path $runtime 'Project_RPG.uproject')
     Copy-Tree (Join-Path $workspace 'Config') (Join-Path $runtime 'Config')
@@ -59,14 +66,26 @@ GameInstanceClass=/Script/Engine.GameInstance
 [/Script/Engine.Engine]
 AssetManagerClassName=/Script/Engine.AssetManager
 '@ | Add-Content -LiteralPath (Join-Path $runtime 'Config/DefaultEngine.ini') -Encoding UTF8
+    if($Phase -ne 'native'){
+        $world='/Engine/Maps/Entry'
+        @('','[/Script/Project_RPG.HttpWebManager]',('ApiUrl='+$BackendUrl),'BackendServiceToken=',
+          '','[/Script/Project_RPG.RPGOnlineLobbySubsystem]',('LobbyMapPackage='+$world),'bAutoShowOnlineLobby=False') |
+            Add-Content -LiteralPath (Join-Path $runtime 'Config/DefaultGame.ini') -Encoding UTF8
+    }
     $log=Join-Path $run 'Native.log'
     $arguments=@(('"'+(Join-Path $runtime 'Project_RPG.uproject')+'"'),('/Engine/Maps/Entry'),('-ExecCmds="Automation RunTests '+($tests -join '+')+'"'),'-TestExit="Automation Test Queue Empty"','-unattended','-nullrhi','-nosound','-nosteam','-nop4','-NoLiveCoding','-DisablePython','-NoLoadingScreen','-DDC=(InstalledEnginePak,Local)',('-UserDir="'+(Join-Path $temp 'User')+'"'),('-ShaderWorkingDir="'+(Join-Path $temp 'Shaders')+'"'),('-abslog="'+$log+'"'),'-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bAutoStartServer=False')
+    if($Phase -ne 'native'){
+        $arguments+=@('-game','-RPGDevelopmentLogin',('-RPGNarrativePhase='+$Phase),('-RPGNarrativeCharacter='+$CharacterId.ToString()),('-RPGNarrativeSteam='+$SteamId),('-RPGNarrativeWorld='+$world),
+            ('-ini:Game:[/Script/Project_RPG.HttpWebManager]:ApiUrl='+$BackendUrl),
+            ('-ini:Game:[/Script/Project_RPG.RPGOnlineLobbySubsystem]:LobbyMapPackage='+$world),
+            '-ini:Game:[/Script/Project_RPG.RPGOnlineLobbySubsystem]:bAutoShowOnlineLobby=False')
+    }
     $arguments | Set-Content -LiteralPath (Join-Path $run 'Command.txt') -Encoding UTF8
     $program=Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe'
     $process=Start-Process -FilePath $program -ArgumentList $arguments -PassThru -WindowStyle Hidden
     $null=$process.Handle
     @{Pid=$process.Id;Program=$program;StartUtc=$process.StartTime.ToUniversalTime().ToString('o')}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $run 'Process.json') -Encoding UTF8
-    $deadline=[DateTime]::UtcNow.AddMinutes(5)
+    $deadline=[DateTime]::UtcNow.AddMinutes(10)
     while(!$process.HasExited){
         if(!$loaded){
             try{
@@ -85,10 +104,10 @@ AssetManagerClassName=/Script/Engine.AssetManager
     $result.NativeTests=@($matches | ForEach-Object {@{Path=$_.Groups['path'].Value;Result=$_.Groups['result'].Value}})
     foreach($test in $tests){if(@($result.NativeTests | Where-Object {$_.Path -ceq $test -and $_.Result -ceq 'Success'}).Count -ne 1){throw ('Native test failed/missing: '+$test)}}
     if($body -match 'Fatal error:|Assertion failed:|Ensure condition failed:'){throw 'Native fatal/assert/ensure'}
-    $discovery=[regex]::Match($body,'(?m)^.*Found 4 automation tests.*$')
+    $discovery=[regex]::Match($body,('(?m)^.*Found '+$tests.Count+' automation tests.*$'))
     if(!$discovery.Success -or $body.Substring($discovery.Index) -match '(?m)^.*: Error:'){throw 'Native test-phase errors or missing discovery'}
     $result.Passed=$true
-    Write-Output 'PASS Narrative native4; engine-owned subsystem scopes and request flow'
+    Write-Output ('PASS Narrative '+$Phase+' '+$tests.Count+' tests')
 }catch{$result.Failure=$_.Exception.Message;throw}
 finally{
     if($process -and !$process.HasExited){
@@ -100,6 +119,8 @@ finally{
         $result.Cleanup=Remove-GuardianProbeArtifact -Path $temp -AllowedRoot $run
         $result.RuntimeDeleted=!(Test-Path -LiteralPath $temp)
     }catch{$result.Failure=([string]$result.Failure+'; cleanup: '+$_.Exception.Message).Trim(';',' ')}
+    if(!$result.RuntimeDeleted){$result.Passed=$false}
     $result|ConvertTo-Json -Depth 7|Set-Content -LiteralPath (Join-Path $run 'Result.json') -Encoding UTF8
     Write-Output ('Result: '+(Join-Path $run 'Result.json'))
+    if(!$result.RuntimeDeleted){throw 'Owned frontend cleanup incomplete; inspect Result.json'}
 }

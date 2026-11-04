@@ -1,6 +1,9 @@
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
 #include "UI/Lobby/RPGCharacterConfigurationWidget.h"
 #include "UI/Lobby/RPGEquipmentGrowthWidget.h"
+#include "UI/Narrative/RPGNarrativeDialogueWidget.h"
+#include "Narrative/RPGNarrativeCoordinator.h"
+#include "Engine/LocalPlayer.h"
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
@@ -338,6 +341,7 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 	BIND_ACTION("ReloadTutorialProgressButton", ReloadTutorialProgress);
 	BIND_ACTION("OpenSkillMenuButton", OpenSkillMenu);
 	BIND_ACTION("OpenEquipmentMenuButton", OpenEquipmentMenu);
+	BIND_ACTION("OpenStoryMenuButton", OpenStoryMenu);
 	BIND_ACTION("OpenDungeonMenuButton", OpenDungeonMenu);
 	BIND_ACTION("CloseLobbyDetailsButton", CloseLobbyDetails);
 	BIND_ACTION("LoginSteamButton", LoginSteam);
@@ -408,6 +412,8 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 
 void URPGOnlineLobbyWidget::NativeDestruct()
 {
+	if (NarrativePanel) NarrativePanel->CloseScreen();
+	NarrativePanel = nullptr;
 	bTutorialEntryActive = bTutorialResolvingSession = false;
 	TutorialAccount.Reset(); TutorialCharacter.Reset(); TutorialDungeonId.Reset();
 	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(PollTimer);
@@ -454,7 +460,9 @@ bool URPGOnlineLobbyWidget::HasOwnedSelection() const
 
 bool URPGOnlineLobbyWidget::IsFrontendRequestInFlight() const
 {
+	const auto* Narrative = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGNarrativeCoordinator>() : nullptr;
 	return bLoadingCharacters || bCreatingCharacter || bLoggingIn || bLoggingOut || bAbandonmentConfirmationOpen
+		|| (Narrative && (Narrative->IsBusy() || Narrative->HasPendingChoice()))
 		|| (Web && Web->IsPlayerProgressionRequestInFlight())
 		|| (ConfigurationPanel && (ConfigurationPanel->IsRequestInFlight() || ConfigurationPanel->HasUnresolvedSave()))
 		|| (EquipmentPanel && (EquipmentPanel->IsBusy() || EquipmentPanel->HasUnresolvedCommand()));
@@ -534,6 +542,11 @@ FRPGOnlineLobbyPresentation URPGOnlineLobbyWidget::CurrentPresentation() const
 	{
 		View.bCanCreateSession = View.bCanEnter = false;
 		if (Flow->HasUnresolvedDeparture()) View.bCanSelectCharacter = false;
+	}
+	const auto* Narrative = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGNarrativeCoordinator>() : nullptr;
+	if (Narrative && (Narrative->IsBusy() || Narrative->HasPendingChoice()))
+	{
+		View.bCanSelectCharacter = View.bCanCreateSession = View.bCanResume = View.bCanEnter = false;
 	}
 	return View;
 }

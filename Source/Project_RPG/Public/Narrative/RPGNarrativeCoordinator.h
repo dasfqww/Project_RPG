@@ -28,6 +28,7 @@ public:
     UFUNCTION(BlueprintCallable, Category="RPG|Narrative") bool Choose(const FString& ChoiceId);
     UFUNCTION(BlueprintCallable, Category="RPG|Narrative") bool RetryPendingChoice();
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") bool HasCurrentSnapshot() const;
+    UFUNCTION(BlueprintPure, Category="RPG|Narrative") FGuid GetSelectedCharacterId() const { return SelectedCharacter; }
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") bool IsBusy() const { return bBusy; }
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") bool HasPendingChoice() const { return PendingChoice.IsSet(); }
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") URPGQuestManager* GetQuestManager() const { return Quests; }
