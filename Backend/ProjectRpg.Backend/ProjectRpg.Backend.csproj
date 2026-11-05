@@ -49,4 +49,5 @@
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup><Content Include="../Database/Migrations/0007_operations_restrictions.sql" Link="Database/Migrations/0007_operations_restrictions.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><Content Include="../Database/Migrations/0008_trade_reservations.sql" Link="Database/Migrations/0008_trade_reservations.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
 </Project>

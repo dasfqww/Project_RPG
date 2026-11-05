@@ -11,6 +11,7 @@ public sealed class InMemoryEconomyRepository(
         _balances = [];
     private readonly Dictionary<Guid, CurrencyTransactionResult> _receipts = [];
     private readonly object _gate = transactionGate.SyncRoot;
+    internal object TransactionSyncRoot => _gate;
 
     internal sealed record Snapshot(
         Dictionary<(CurrencyScope, string, string), CurrencyBalance> Balances,
@@ -200,7 +201,7 @@ public sealed class InMemoryEconomyRepository(
                         committedAt));
                 }
 
-                if (next < 0)
+                if (next < 0 || change.Delta < 0 && next < transactionGate.ReservedCurrency(owner, change.CurrencyCode))
                 {
                     return Task.FromResult(Failure(
                         request,
@@ -352,7 +353,7 @@ public sealed class InMemoryEconomyRepository(
                                 committedAt)]);
                     }
 
-                    if (next < 0)
+                    if (next < 0 || change.Delta < 0 && next < transactionGate.ReservedCurrency(owner, change.CurrencyCode))
                     {
                         return Task.FromResult<IReadOnlyList<CurrencyTransactionResult>>(
                             [Failure(

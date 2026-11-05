@@ -112,6 +112,7 @@ if (string.Equals(storageProvider, "Postgres", StringComparison.OrdinalIgnoreCas
     builder.Services.AddSingleton<PostgresEconomyRepository>();
     builder.Services.AddSingleton<IEconomyRepository>(provider =>
         provider.GetRequiredService<PostgresEconomyRepository>());
+    builder.Services.AddSingleton<ITradeReservationRepository, PostgresTradeReservationRepository>();
     builder.Services.AddSingleton<
         IDungeonRewardCommitRepository,
         PostgresDungeonRewardCommitRepository>();
@@ -147,6 +148,7 @@ else if (string.Equals(storageProvider, "Memory", StringComparison.OrdinalIgnore
     builder.Services.AddSingleton<InMemoryEconomyRepository>();
     builder.Services.AddSingleton<IEconomyRepository>(provider =>
         provider.GetRequiredService<InMemoryEconomyRepository>());
+    builder.Services.AddSingleton<ITradeReservationRepository, InMemoryTradeReservationRepository>();
     builder.Services.AddSingleton<
         IDungeonRewardCommitRepository,
         InMemoryDungeonRewardCommitRepository>();
@@ -161,6 +163,8 @@ else
 }
 
 builder.Services.AddGameRepositoryContracts();
+// No production definitions are tradable until an explicitly authored allowlist is connected.
+builder.Services.AddSingleton(new ProjectRpg.Backend.Domain.Trading.TradeItemPolicy([]));
 builder.Services.AddSingleton<ItemTransactionService>();
 builder.Services.AddSingleton(narrativeCatalog);
 builder.Services.AddSingleton<INarrativeRepository>(provider =>

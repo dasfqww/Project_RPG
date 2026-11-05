@@ -133,6 +133,12 @@ public sealed partial class PostgresItemRepository(
                 };
             }
 
+            if ((await PostgresTradeReservationGuards.ReservedItems(connection, transaction,
+                request.Mutations.Select(mutation => mutation.NewRecord.ItemId), cancellationToken)).Count != 0)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt);
+            }
             Dictionary<Guid, ItemRecord?> storedRecords = [];
             foreach (ItemRecordMutation mutation in request.Mutations
                 .OrderBy(value => value.NewRecord.ItemId))
@@ -315,6 +321,9 @@ public sealed partial class PostgresItemRepository(
                     committedAt);
         }
 
+        if ((await PostgresTradeReservationGuards.ReservedItems(connection, transaction,
+            request.Mutations.Select(mutation => mutation.NewRecord.ItemId), cancellationToken)).Count != 0)
+            return Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt);
         Dictionary<Guid, ItemRecord?> storedRecords = [];
         foreach (ItemRecordMutation mutation in request.Mutations
             .OrderBy(value => value.NewRecord.ItemId))
@@ -480,7 +489,8 @@ public sealed partial class PostgresItemRepository(
             while (await reader.ReadAsync(cancellationToken)) inventory.Add(ReadItemRecord(reader));
         }
 
-        ItemRepositoryCommitRequest planned = DungeonRewardDeliveryPlanner.Plan(grant, maxStackSizes, inventory);
+        ItemRepositoryCommitRequest planned = DungeonRewardDeliveryPlanner.Plan(grant, maxStackSizes, inventory,
+            await PostgresTradeReservationGuards.ReservedItems(connection, transaction, inventory.Select(item => item.ItemId), cancellationToken));
         return await CommitInTransactionAsync(
             connection, transaction, planned, committedAt, cancellationToken, isReward: true);
     }
@@ -556,7 +566,7 @@ public sealed partial class PostgresItemRepository(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task<ItemRecord?> ReadItemForUpdateAsync(
+    internal static async Task<ItemRecord?> ReadItemForUpdateAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid itemId,

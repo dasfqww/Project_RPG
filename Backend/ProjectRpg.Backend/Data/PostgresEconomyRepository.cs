@@ -334,7 +334,8 @@ public sealed class PostgresEconomyRepository(NpgsqlDataSource dataSource)
                             committedAt)];
                     }
 
-                    if (next < 0)
+                    if (next < 0 || change.Delta < 0 && next < await PostgresTradeReservationGuards.ReservedCurrency(
+                        connection, transaction, owner, change.CurrencyCode, cancellationToken))
                     {
                         await transaction.RollbackAsync(cancellationToken);
                         return [Failure(
@@ -522,7 +523,8 @@ public sealed class PostgresEconomyRepository(NpgsqlDataSource dataSource)
                         committedAt)];
                 }
 
-                if (next < 0)
+                if (next < 0 || change.Delta < 0 && next < await PostgresTradeReservationGuards.ReservedCurrency(
+                    connection, transaction, owner, change.CurrencyCode, cancellationToken))
                 {
                     return [Failure(
                         request,
@@ -604,7 +606,7 @@ public sealed class PostgresEconomyRepository(NpgsqlDataSource dataSource)
             && delta == change.Delta);
     }
 
-    private static async Task<CurrencyDefinition?> ReadDefinitionAsync(
+    internal static async Task<CurrencyDefinition?> ReadDefinitionAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         string currencyCode,
@@ -625,7 +627,7 @@ public sealed class PostgresEconomyRepository(NpgsqlDataSource dataSource)
             : null;
     }
 
-    private static async Task EnsureBalanceRowAsync(
+    internal static async Task EnsureBalanceRowAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         CurrencyOwnerRef owner,
@@ -648,7 +650,7 @@ public sealed class PostgresEconomyRepository(NpgsqlDataSource dataSource)
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task<(long Balance, long Revision)> LockBalanceAsync(
+    internal static async Task<(long Balance, long Revision)> LockBalanceAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         CurrencyOwnerRef owner,

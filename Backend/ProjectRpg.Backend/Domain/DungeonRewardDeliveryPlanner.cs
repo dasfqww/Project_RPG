@@ -10,15 +10,17 @@ public static class DungeonRewardDeliveryPlanner
     public static ItemRepositoryCommitRequest Plan(
         ItemRepositoryCommitRequest grant,
         IReadOnlyList<int>? maxStackSizes,
-        IReadOnlyList<ItemRecord> inventory)
-        => PlanDelivery(grant, maxStackSizes, inventory, requireDungeonReward: true);
+        IReadOnlyList<ItemRecord> inventory,
+        IReadOnlySet<Guid>? reservedItemIds = null)
+        => PlanDelivery(grant, maxStackSizes, inventory, requireDungeonReward: true, reservedItemIds);
 
     internal static ItemRepositoryCommitRequest PlanEquipmentDelivery(ItemRepositoryCommitRequest grant,
         IReadOnlyList<int> maxStackSizes, IReadOnlyList<ItemRecord> inventory)
         => PlanDelivery(grant, maxStackSizes, inventory, requireDungeonReward: false);
 
     private static ItemRepositoryCommitRequest PlanDelivery(ItemRepositoryCommitRequest grant,
-        IReadOnlyList<int>? maxStackSizes, IReadOnlyList<ItemRecord> inventory, bool requireDungeonReward)
+        IReadOnlyList<int>? maxStackSizes, IReadOnlyList<ItemRecord> inventory, bool requireDungeonReward,
+        IReadOnlySet<Guid>? reservedItemIds = null)
     {
         if (!ItemRecordRules.TryValidateCommit(grant, out string error)
             || (requireDungeonReward && grant.Operation != "DungeonReward")
@@ -59,7 +61,7 @@ public static class DungeonRewardDeliveryPlanner
                 .OrderBy(record => record.Location.SlotIndex).ThenBy(record => record.ItemId).ToArray())
             {
                 if (remaining == 0) break;
-                if (!CanMerge(stack, reward) || stack.State.Quantity >= maxStackSize) continue;
+                if (reservedItemIds?.Contains(stack.ItemId) == true || !CanMerge(stack, reward) || stack.State.Quantity >= maxStackSize) continue;
                 int transferred = Math.Min(remaining, maxStackSize - stack.State.Quantity);
                 ItemRecord updated = stack with
                 {

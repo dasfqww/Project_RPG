@@ -158,7 +158,8 @@ public sealed class InMemoryItemRepository(
             {
                 return Task.FromResult(Failure(grant, ItemRepositoryCommitStatus.RevisionConflict, committedAt));
             }
-            ItemRepositoryCommitRequest planned = DungeonRewardDeliveryPlanner.Plan(grant, maxStackSizes, FindInventory(grant.Actor));
+            ItemRepositoryCommitRequest planned = DungeonRewardDeliveryPlanner.Plan(grant, maxStackSizes, FindInventory(grant.Actor),
+                FindInventory(grant.Actor).Where(item => transactionGate.IsItemReserved(item.ItemId)).Select(item => item.ItemId).ToHashSet());
             return CommitRewardAsync(planned, committedAt, cancellationToken);
         }
     }
@@ -192,6 +193,9 @@ public sealed class InMemoryItemRepository(
                         ItemRepositoryCommitStatus.InvalidRequest,
                         committedAt));
             }
+
+            if (request.Mutations.Any(mutation => transactionGate.IsItemReserved(mutation.NewRecord.ItemId)))
+                return Task.FromResult(Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt));
 
             foreach (ItemRecordMutation mutation in request.Mutations)
             {

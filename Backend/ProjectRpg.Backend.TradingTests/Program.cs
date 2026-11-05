@@ -2,6 +2,9 @@ using System.Text.Json;
 using ProjectRpg.Backend.Domain;
 using ProjectRpg.Backend.Domain.Trading;
 
+if (args is ["--reservations-memory"] or ["--reservations-postgres"])
+    return await ReservationCases.Run(args[0] == "--reservations-postgres");
+if (args.Length != 0) throw new ArgumentException("Unknown trading test mode.");
 return TradingCases.Run();
 
 internal static class TradingCases

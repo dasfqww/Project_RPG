@@ -75,8 +75,9 @@ UI는 소유자 변경 후 Record나 잔액 delta를 제출하지 않는다. API
 
 ## 5. 원자 저장·복구 계약
 
-추가 저장 개념: trade_sessions/offers, item_reservations, wallet_reservations,
-auction_listings, seller_payables, trading_receipts. 실제 스키마 이름/마이그레이션 번호는 T2 착수 시 확정한다.
+추가 저장 개념: trade_sessions/offers, 자산 예약, auction_listings, seller_payables, trading_receipts.
+T2a에서 자산 예약은 v8의 `trade_asset_reservations`와 `trade_reserved_items`로 구현했다.
+세션 동의/실제 교환 영수증 및 경매장 테이블은 후속 단계에서 추가한다.
 
 1. 인증/소유 범위를 확인한 후 요청 ID와 전체 명령 지문으로 기존 영수증을 찾는다.
 2. 거래/판매글과 관련 계정·캐릭터·리스·아이템 소유자·지갑을 일관된 순서로 잠근다.
@@ -121,7 +122,8 @@ T6에서 보상 생성 시 확정한 eligible character/account 목록, 원래 �
 |---|---|---|
 | T0 | 본 문서/조율 기록 | 현재 호출·계약 확인, 정책 기본값과 미결 분리 |
 | T1 | 서버 정의별 허용 정책, 불변 제안, 양측 동의 상태 전이 | 실제 Backend 빌드와 정책/위조 참여자/오래된 버전/변경 시 동의 해제/만료 회귀 |
-| T2 | 공통 예약/변경 계획, Memory/PG 원자 저장, 모든 소비 경로 연동 | 실제 PG의 병렬 지출·교환/취소·입장 경합, 주입 실패 전체 롤백, 재시작/영수증 복구 |
+| T2a | Memory/PG 자산 예약·해제·만료와 기존 변이/지출 차단 | 실제 PG 병렬 예약/지출/아이템 변경·취소 봉인·중간 실패 롤백·저장소 재생성 |
+| T2b | 세션 동의 영속화·예약과 준비의 원자 저장·양측 교환 계획/완료 영수증 | 실제 PG 양측 교환/취소·입장 경합, 주입 실패 전체 롤백, 재시작/응답 유실 복구 |
 | T3 | 인증된 직거래 API/조회/만료 처리 | 실제 HTTP 두 계정·세 번째 계정 거절·요청 충돌·응답 유실·재시작, 제한/감사 |
 | T4 | UE 로비 직거래 화면/복구/Projection | 실제 두 클라이언트 제안·준비·확정·취소·재접속, 기존 인벤토리 명령과 충돌 검사 |
 | T5 | 경매장 등록/검색/구매/취소/만료/대금 수령/API/UI | 동시 구매 1명 성공·취소 경합·오프라인 판매·포화/잔액 상한·재시작 실연결 |
@@ -133,10 +135,10 @@ Memory 테스트를 PG 동시성 증거로, 도메인 테스트를 실제 HTTP/U
 
 ## 9. 현재 진행과 재개 지점
 
-- T0/T1 구현·검증 완료. 서버 허용 목록·아이템 소유/상태/귀속/수량 검사, 불변 제안,
+- T0/T1과 T2a 구현·검증 완료. T1에서 서버 허용 목록·아이템 소유/상태/귀속/수량 검사, 불변 제안,
   초대 수락·준비/철회·양측 확인·제안 변경 시 동의 해제·취소/만료를 구현했다.
-  저장소 예약/영수증·실제 자산 이동·API·UE 화면은 아직 연결하지 않았다.
-- 게시 Backend 96081fe7+본인 거래 코드의 Release 빌드 경고0/오류0,
+  T2a의 예약 저장/소비 차단은 아래 10절에 기록한다. 동의와 예약의 원자 저장·교환 영수증·실제 자산 이동·API·UE 화면은 후속이다.
+- T1 당시 게시 Backend 96081fe7+본인 거래 코드의 Release 빌드 경고0/오류0,
   도메인 6그룹/105 assertion 통과. 첫 실행의 잘못된 귀속 enum 기대 오류 코드를 기존
   ItemRecordRules의 invalid_trade_item으로 보정했으며 제품 검증을 완화하지 않았다.
   러너의 Windows PowerShell stderr 처리는 종료 코드/전체 실패 로그를 보존하도록 수정했다.
@@ -146,5 +148,68 @@ Memory 테스트를 PG 동시성 증거로, 도메인 테스트를 실제 HTTP/U
 - T1 경로: Backend/ProjectRpg.Backend/Domain/Trading, Backend/ProjectRpg.Backend.TradingTests.
 - 검증: `powershell -NoProfile -File Scripts/Tests/Run-TradingTests.ps1`.
   게시된 Backend 사본에 자기 거래 코드만 덧씌워 빌드하며 Temp는 finally 폐기한다.
-- 다음 구현은 T2. 기존 모든 지출/아이템 변이의 실제 호출자 목록과 잠금 순서를 작성한 뒤
-  저장소 경계를 예약한다. 최신 조율 표와 UE 인벤토리 플러그인 인계를 재확인한다.
+- 다음 구현은 T2b. 아래 T2a 저장 경계와 최신 조율 표/UE 인벤토리 플러그인 인계를 재확인한다.
+
+## 10. T2a 자산 예약 저장·소비 차단 (2026-11-06)
+
+### 구현과 불변식
+
+- 내부 `ITradeReservationRepository`의 Reserve/Release/Find와 Memory/PG 구현을 추가했다.
+  `ReservationId`는 한 참여자의 한 제안 세대를 나타내며 같은 ID의 내용 변경은 충돌이다.
+  ID/TradeId/OfferRevision/참여자/통화/정렬된 아이템 ID·revision·수량/금액/UTC 만료를 지문에 포함한다.
+- Reserve는 서버 정의 정책·현재 아이템/지갑을 검사한 뒤 아이템 전체 스택과 해당 금액을 함께 예약한다.
+  한 캐릭터의 활성 예약은 하나이며 Account/Roster/Character 실제 지갑 범위별로 금액을 합산한다.
+  예약 자체는 소유권·아이템 리비전·실제 잔액·사용자 잠금을 바꾸지 않는다.
+- Release는 예약과 무관하게 새로운 아이템/금액 지급을 하지 않는다. 먼저 도착한 취소도 Released 기록으로
+  봉인하므로 늦은 Reserve나 동일 ID 재시도는 예약을 되살리지 못한다. 해제/만료 뒤 새 제안은 새 ID를 사용한다.
+- Memory는 기존 item/economy와 같은 InMemoryTransactionGate를 강제한다. PostgreSQL은
+  캐릭터 KEY SHARE → 예약 ID advisory → 아이템 owner advisory → 재화 정의 SHARE/지갑 UPDATE → 아이템 행 순서다.
+  기존 보상 정산이 owner를 지갑보다 먼저 잠그므로 이 순서를 따른다. 캐릭터 KEY SHARE는 이후 FK 검사와
+  장비의 character→owner 잠금 순서가 역전되지 않게 먼저 취득한다.
+- PG의 활성 판정은 잠금 이후 `clock_timestamp()`, Memory는 공유 gate의 서버 TimeProvider를 사용한다.
+  외부 명령의 committedAt을 미래로 바꿔도 예약을 우회하지 못한다. 만료 작업이 지연되어도 만료된 예약은 소비를 막지 않는다.
+- 기존 확정 아이템/재화 영수증 재생은 예약보다 먼저 처리한다. 이미 끝난 명령을 재실행하거나
+  새 예약 때문에 과거 성공을 실패로 바꾸지 않는다.
+- 새 예약 생성/해제에는 DB 트랜잭션을 사용한다. 임의 Operation 이름이나 ReservationId 문자열을
+  일반 Commit에 넣어도 예약 우회 권한은 생기지 않는다.
+
+### 현재 연결한 쓰기 경로
+
+| 경로 | 공통 검사/현재 동작 |
+|---|---|
+| 일반 아이템 Commit, 우편 수령/소비/이동/장착 | Memory CommitCore와 PG 일반 Commit에서 예약된 ID의 변이 전체 거절(기존 ValidationFailed) |
+| 제작/분해/강화/이전, 픽업, 운영 보상 | 기존 Memory 공통 Commit 및 PG CommitInTransactionAsync의 같은 검사 사용 |
+| 캐릭터 시작 장비 | 서버가 새 ID만 생성하는 기존 직접 삽입; 기존 예약 아이템 변경 경로 없음 |
+| 단일/배치 재화 변경과 정산 내부 배치 | 현재 실제 잔액-활성 예약까지만 지출 가능(기존 InsufficientBalance), 배치 실패 시 전체 롤백 |
+| 던전 보상 스택 합치기 | 예약 스택은 병합 후보에서 제외하지만 원래 칸은 점유 상태 유지; 가방 포화 시 기존 우편 정책 유지 |
+
+v1~v7 SQL은 수정하지 않고 `0008_trade_reservations.sql`을 카탈로그와 배포 출력에 추가했다.
+운영 DB 적용/서비스 재배포는 수행하지 않았다. 이 코드의 운영 기동에는 정식 마이그레이션 경로로 v8이 필요하다.
+
+### 확인한 범위
+
+- 최종 dbe7e392+본인 사본 Release 빌드 경고0/오류0, T1 105 / 예약 Memory 69 / 실제 PostgreSQL 81 assertion 통과.
+- PG v7→v8만 적용·반복 적용0·기존 캐릭터 보존, 동일 요청 경합·아이템/지출 경합·취소 봉인,
+  계정/원정대 부캐 지갑, 미래 committedAt 거절, 중간 삽입 실패 전체 롤백, 새 연결 풀의 복원,
+  실제 지갑 행 잠금 대기 중 만료, 가방 포화 우편/확정 보상 재생을 확인했다.
+- 기존 제작/분해 Memory·PG와 보상 Memory/실제 bearer HTTP·PG 28그룹 통과.
+  이후 변경은 Memory 외부 소유 아이템의 오류를 PG와 같은 NotFound로 통일한 부분과 신규 검사뿐이며,
+  이 변경과 포화 경계는 최종 예약 집중 검사에서 재검증했다. 기존 공통 저장소/계획/스키마 SHA는 동일하다.
+- 첫 확대 실행은 Docker 초기화용 임시 소켓 서버의 기동 완료 오인으로 중단됐다.
+  러너를 TCP 기동 확인으로 수정해 성공했고 실패분을 포함한 자기 임시4회 합계66,941,577 bytes/전용 PG를 폐기했다.
+  잔여 Temp·자기 DB·정리 예외0. 작은 명령/해시/로그만 유지하며 폐기 사본의 재실행 가능성을 주장하지 않는다.
+- 최종 proof: Saved/BuildChecks/TradeReservations-20261106/4ccd0490566f49cbbe2fe12e7e53495d/Result.json.
+  기존 기능 회귀 proof: 같은 루트/571cad88886a42809c992c2d2cb3c171/Result.json.
+- 실행: `powershell -NoProfile -File Scripts/Tests/Run-TradeReservationTests.ps1`.
+  `-SkipRegression`은 거래 집중 검사만 실행하며 기존 제작/보상 재검증으로 보고하지 않는다.
+
+### T2b 인계 조건
+
+T2a는 단독 예약 저장 기능이다. T1 Ready와 동일 트랜잭션 저장, 양측 자산 이전, 완료 영수증,
+제재/던전 입장과의 최종 경합 처리는 아직 구현하지 않았다. 현재 public HTTP/UE 거래 노출은 없고
+DI의 실제 물품 허용 목록도 비어 있다. T2b/T3는 인증/로비/제재/서버 TTL과 실제 콘텐츠 허용 목록을 연결해야 한다.
+
+T2b에서는 단독 ReserveAsync를 두 번 호출해 원자 교환으로 간주하지 않는다. 동일 connection/transaction에 참여하는
+내부 예약 연산과 상태 CAS를 추가하고, Memory도 예약 사전까지 포함한 snapshot/rollback을 사용한다.
+완료 영수증과 해제는 함께 저장하여 중간 Release 때문에 예약 자산을 먼저 소비하는 틈이 없게 해야 한다.
+기존 원정대/계정 지갑과 owner 잠금 순서를 유지하며 참여자 2명의 키를 정렬하고, lease 경합은 기존 NOWAIT 계약을 검토한다.
