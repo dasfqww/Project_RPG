@@ -23,8 +23,6 @@ public:
 	virtual void BeginPlay() override;
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual UPawnUIComponent* GetPawnUIComponent() const override;
-	virtual UPlayerUIComponent* GetPlayerUIComponent() const override { return nullptr; }
-	virtual UNPCUIComponent* GetNPCUIComponent() const override { return nullptr; }
 	URPGAbilitySystemComponent* ASC() const { return TestASC; }
 	URPGAttributeSet* Attributes() const { return TestAttributes; }
 private:

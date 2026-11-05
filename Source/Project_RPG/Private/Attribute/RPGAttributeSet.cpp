@@ -147,7 +147,7 @@ void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 				(Data.Target.GetAvatarActor(), RPGGameplayTags::Player_Status_Rage_None);
 		}
 
-		if (UPlayerUIComponent* PlayerUIComponent = CachedPawnUIInterface->GetPlayerUIComponent())
+		if (UPlayerUIComponent* PlayerUIComponent = Cast<UPlayerUIComponent>(CachedPawnUIInterface->GetPawnUIComponent()))
 		{
 			PlayerUIComponent->OnCurrentRageChanged.Broadcast(GetCurrentRage()/GetMaxRage());
 		}
@@ -176,7 +176,7 @@ void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		}
 
 		// UI 업데이트
-		if (UPlayerUIComponent* PlayerUIComponent = CachedPawnUIInterface->GetPlayerUIComponent())
+		if (UPlayerUIComponent* PlayerUIComponent = Cast<UPlayerUIComponent>(CachedPawnUIInterface->GetPawnUIComponent()))
 		{
 			PlayerUIComponent->OnCurrentIdentityGaugeChanged.Broadcast(GetCurrentIdentityGauge() / GetMaxIdentityGauge());
 		}
@@ -246,7 +246,7 @@ void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		{
 			if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(Owner))
 			{
-				if (UPlayerUIComponent* PlayerUIComponent = PawnUIInterface->GetPlayerUIComponent())
+				if (UPlayerUIComponent* PlayerUIComponent = Cast<UPlayerUIComponent>(PawnUIInterface->GetPawnUIComponent()))
 				{				
 					FString HealthText = FString::Printf(TEXT("%.0f/%.0f"), NewCurrentHealth, GetMaxHealth());
 					PlayerUIComponent->OnHealthTextChangedDelegate.Broadcast(HealthText);

@@ -75,16 +75,6 @@ UPawnUIComponent* ARPGBaseCharacter::GetPawnUIComponent() const
 	return nullptr;
 }
 
-UPlayerUIComponent* ARPGBaseCharacter::GetPlayerUIComponent() const
-{
-	return nullptr;
-}
-
-UNPCUIComponent* ARPGBaseCharacter::GetNPCUIComponent() const
-{
-	return nullptr;
-}
-
 void ARPGBaseCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);

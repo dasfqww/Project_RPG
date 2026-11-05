@@ -7,28 +7,19 @@
 #include "PawnUIInterface.generated.h"
 
 class UPawnUIComponent;
-class UPlayerUIComponent;
-class UNPCUIComponent;
 
-// This class does not need to be modified.
 UINTERFACE(MinimalAPI)
 class UPawnUIInterface : public UInterface
 {
 	GENERATED_BODY()
 };
 
-/**
- * 
- */
+/** Common UI capability; specialized views are selected by each consumer. */
 class PROJECT_RPG_API IPawnUIInterface
 {
 	GENERATED_BODY()
 
-	// Add interface functions to this class. This is the class that will be inherited to implement this interface.
+	// Every pawn exposes only its common UI component. Consumers select optional specialized views.
 public:
 	virtual UPawnUIComponent* GetPawnUIComponent() const = 0;
-
-	virtual UPlayerUIComponent* GetPlayerUIComponent() const=0;
-
-	virtual UNPCUIComponent* GetNPCUIComponent() const=0;
 };

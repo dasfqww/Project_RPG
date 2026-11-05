@@ -54,7 +54,7 @@ public:
 
 	virtual UPawnUIComponent* GetPawnUIComponent() const override;
 
-	virtual UPlayerUIComponent* GetPlayerUIComponent() const override;
+	virtual UPlayerUIComponent* GetPlayerUIComponent() const;
 
 protected:
 	//void SetupGASInputComponent();

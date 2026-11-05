@@ -37,8 +37,6 @@ public:
 	ARPGBossTestPawn();
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual UPawnUIComponent* GetPawnUIComponent() const override { return PawnUI; }
-	virtual UPlayerUIComponent* GetPlayerUIComponent() const override { return nullptr; }
-	virtual UNPCUIComponent* GetNPCUIComponent() const override { return nullptr; }
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	static URPGBossDefinition* MakeDefinition(UObject* Outer);

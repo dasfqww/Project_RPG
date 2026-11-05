@@ -7,6 +7,8 @@
 #include "UI/RPGWindowDragConstraints.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Interface/PawnUIInterface.h"
+#include "Component/UI/PlayerUIComponent.h"
+#include "Component/UI/NPCUIComponent.h"
 
 void URPGWidgetBase::NativeOnInitialized()
 {
@@ -14,7 +16,7 @@ void URPGWidgetBase::NativeOnInitialized()
 
 	if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(GetOwningPlayerPawn()))
 	{
-		if (UPlayerUIComponent* PlayerUIComponent = PawnUIInterface->GetPlayerUIComponent())
+		if (UPlayerUIComponent* PlayerUIComponent = Cast<UPlayerUIComponent>(PawnUIInterface->GetPawnUIComponent()))
 		{
 			BP_OnOwningPlayerUIComponentInitialized(PlayerUIComponent);
 		}
@@ -161,7 +163,7 @@ void URPGWidgetBase::InitNPCCreatedWidget(AActor* OwningEnemyActor)
 {
 	if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(OwningEnemyActor))
 	{
-		UNPCUIComponent* NPCUIComponent = PawnUIInterface->GetNPCUIComponent();
+		UNPCUIComponent* NPCUIComponent = Cast<UNPCUIComponent>(PawnUIInterface->GetPawnUIComponent());
 
 		checkf(NPCUIComponent, TEXT("Failed to extrac an NPCUIComponent from %s"), 
 			*OwningEnemyActor->GetActorNameOrLabel());

@@ -23,8 +23,6 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const override;
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual UPawnUIComponent* GetPawnUIComponent() const override;
-	virtual UPlayerUIComponent* GetPlayerUIComponent() const override { return nullptr; }
-	virtual UNPCUIComponent* GetNPCUIComponent() const override { return nullptr; }
 	float Health() const;
 	UPROPERTY(Replicated) int32 Peer = -1;
 	UPROPERTY(Replicated) bool bFinished = false;

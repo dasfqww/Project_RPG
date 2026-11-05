@@ -131,7 +131,7 @@ void UPlayerCombatComponent::RecoverMana()
             if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(GetOwner()))
             {
                 // UI 컴포넌트에 접근
-                if (UPlayerUIComponent* PlayerUIComponent = PawnUIInterface->GetPlayerUIComponent())
+                if (UPlayerUIComponent* PlayerUIComponent = Cast<UPlayerUIComponent>(PawnUIInterface->GetPawnUIComponent()))
                 {
                     // 프로그레스 바 UI를 보이도록 델리게이트 호출
                     PlayerUIComponent->OnCurrentManaChanged.Broadcast

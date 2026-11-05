@@ -166,7 +166,7 @@ void URPGInventoryComponent::Client_InventoryOperationRejected_Implementation(co
 	IPawnUIInterface* PawnUI = Controller ? Cast<IPawnUIInterface>(Controller->GetPawn()) : nullptr;
 	if (PawnUI)
 	{
-		if (UPlayerUIComponent* PlayerUI = PawnUI->GetPlayerUIComponent())
+		if (UPlayerUIComponent* PlayerUI = Cast<UPlayerUIComponent>(PawnUI->GetPawnUIComponent()))
 		{
 			PlayerUI->OnNoticeTextChanged.Broadcast(FText::FromString(Reason));
 		}

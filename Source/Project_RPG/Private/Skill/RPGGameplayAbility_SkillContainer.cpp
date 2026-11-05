@@ -299,7 +299,7 @@ bool URPGGameplayAbility_SkillContainer::CommitSkillAndNotifyCooldown()
 	if (!IsActive() || SkillDamageActivationSerial != ActivationSerial) return false;
 	if (!CurrentActorInfo || !CurrentActorInfo->IsLocallyControlled()) return true;
 	IPawnUIInterface* PawnUI = Cast<IPawnUIInterface>(CurrentActorInfo->AvatarActor.Get());
-	UPlayerUIComponent* UI = PawnUI ? PawnUI->GetPlayerUIComponent() : nullptr;
+	UPlayerUIComponent* UI = PawnUI ? Cast<UPlayerUIComponent>(PawnUI->GetPawnUIComponent()) : nullptr;
 	if (!UI) return true;
 
 	// Prefer this grant's slot mapping over a possibly stale Blueprint default.

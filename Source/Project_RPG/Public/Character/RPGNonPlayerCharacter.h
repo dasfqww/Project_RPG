@@ -59,7 +59,7 @@ public:
 
 	virtual UPawnUIComponent* GetPawnUIComponent() const override;
 
-	virtual UNPCUIComponent* GetNPCUIComponent()const override;
+	virtual UNPCUIComponent* GetNPCUIComponent()const;
 
 	
 

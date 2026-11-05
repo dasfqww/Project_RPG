@@ -26,8 +26,6 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual UPawnUIComponent* GetPawnUIComponent() const override;
-	virtual UPlayerUIComponent* GetPlayerUIComponent() const override { return nullptr; }
-	virtual UNPCUIComponent* GetNPCUIComponent() const override { return nullptr; }
 	URPGAbilitySystemComponent* ASC() const { return TargetASC; }
 	URPGAttributeSet* Attributes() const { return TargetAttributes; }
 	URPGCombatContributionComponent* Contributions() const { return TargetContributions; }

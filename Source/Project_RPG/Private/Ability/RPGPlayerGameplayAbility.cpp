@@ -804,7 +804,7 @@ bool URPGPlayerGameplayAbility::ApplyManaCost(const FGameplayAbilityActorInfo* A
 				if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(ActorInfo->OwnerActor))
 				{
 					// UI ������Ʈ�� ����
-					if (UPlayerUIComponent* PlayerUIComponent = PawnUIInterface->GetPlayerUIComponent())
+					if (UPlayerUIComponent* PlayerUIComponent = Cast<UPlayerUIComponent>(PawnUIInterface->GetPawnUIComponent()))
 					{
 						// ���α׷��� �� UI�� ���̵��� ��������Ʈ ȣ��
 						PlayerUIComponent->OnCurrentManaChanged.Broadcast
@@ -837,7 +837,7 @@ void URPGPlayerGameplayAbility::ShowProgressBar(const FGameplayAbilityActorInfo*
 		if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(ActorInfo->OwnerActor))
 		{
 			// UI ������Ʈ�� ����
-			if (UPlayerUIComponent* PlayerUIComponent = PawnUIInterface->GetPlayerUIComponent())
+			if (UPlayerUIComponent* PlayerUIComponent = Cast<UPlayerUIComponent>(PawnUIInterface->GetPawnUIComponent()))
 			{
 				// ���α׷��� �� UI�� ���̵��� ��������Ʈ ȣ��
 				PlayerUIComponent->OnProgressBarShow.Broadcast();  // ���α׷��� �� ǥ��
@@ -856,7 +856,7 @@ void URPGPlayerGameplayAbility::HiddenProgressBar(const FGameplayAbilityActorInf
 		if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(ActorInfo->OwnerActor))
 		{
 			// UI ������Ʈ�� ����
-			if (UPlayerUIComponent* PawnUIComponent = PawnUIInterface->GetPlayerUIComponent())
+			if (UPlayerUIComponent* PawnUIComponent = Cast<UPlayerUIComponent>(PawnUIInterface->GetPawnUIComponent()))
 			{
 				// ���α׷��� �� UI�� ���̵��� ��������Ʈ ȣ��
 				PawnUIComponent->OnProgressBarHidden.Broadcast();  // ���α׷��� �� ǥ��
@@ -872,7 +872,7 @@ void URPGPlayerGameplayAbility::ShowProcessBarFilling(FString& TimeText, float C
 	{
 		if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(CurrentActorInfo->OwnerActor))
 		{
-			UPlayerUIComponent* PlayerUIComponent = PawnUIInterface->GetPlayerUIComponent();
+			UPlayerUIComponent* PlayerUIComponent = Cast<UPlayerUIComponent>(PawnUIInterface->GetPawnUIComponent());
 			if (PlayerUIComponent)
 			{
 				PlayerUIComponent->OnCurrentProgressChanged.Broadcast(CurremtTime / RequireTime);
@@ -888,7 +888,7 @@ void URPGPlayerGameplayAbility::ProgessCompleted()
 	{
 		if (IPawnUIInterface* PawnUIInterface = Cast<IPawnUIInterface>(CurrentActorInfo->OwnerActor))
 		{
-			UPlayerUIComponent* PlayerUIComponent = PawnUIInterface->GetPlayerUIComponent();
+			UPlayerUIComponent* PlayerUIComponent = Cast<UPlayerUIComponent>(PawnUIInterface->GetPawnUIComponent());
 			if (PlayerUIComponent)
 			{
 				PlayerUIComponent->OnChargeCompleted.Broadcast();

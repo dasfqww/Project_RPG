@@ -42,9 +42,7 @@ public:
 
 	virtual UPawnUIComponent* GetPawnUIComponent() const override;
 
-	virtual UPlayerUIComponent* GetPlayerUIComponent()const override;
 
-	virtual UNPCUIComponent* GetNPCUIComponent()const override;
 
 	//~ Begin APawn Interface.
 	virtual void PossessedBy(AController* NewController) override;
