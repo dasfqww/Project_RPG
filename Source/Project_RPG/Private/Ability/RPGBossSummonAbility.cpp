@@ -5,20 +5,37 @@
 #include "Engine/World.h"
 #include "NavigationSystem.h"
 
-bool URPGBossSummonAbility::MakePlan(const APawn* Source, FRPGBossSummonPlan& OutPlan) const
+bool URPGBossSummonAbility::ValidatePatternSettings(const URPGBossPatternSettings* Settings, FText& OutError) const
+{
+	if (!Settings) return true;
+	const URPGBossSummonPatternSettings* Summon = Cast<URPGBossSummonPatternSettings>(Settings);
+	if (!Summon || Summon->LocalSpawnOffsets.IsEmpty() || Summon->LocalSpawnOffsets.Num() > 8 ||
+		Summon->LocalSpawnOffsets.Num() > MaximumOwnedSummons ||
+		!FMath::IsFinite(Summon->WindupSeconds) || Summon->WindupSeconds < .01f || Summon->WindupSeconds > 120.f ||
+		!FMath::IsFinite(Summon->Lifetime) || Summon->Lifetime < .1f || Summon->Lifetime > 300.f ||
+		Summon->LocalSpawnOffsets.ContainsByPredicate([](const FVector& Offset) { return Offset.ContainsNaN() || Offset.SizeSquared() > FMath::Square(2000.f); }))
+	{
+		OutError = FText::FromString(TEXT("Summon settings require 1..8 bounded offsets within the ownership cap, windup 0.01..120s and lifetime 0.1..300s."));
+		return false;
+	}
+	return true;
+}
+
+bool URPGBossSummonAbility::MakePlan(const APawn* Source, FRPGBossSummonPlan& OutPlan, const URPGBossSummonPatternSettings* Settings) const
 {
 	OutPlan = FRPGBossSummonPlan();
+	const TArray<FVector>& Offsets = Settings ? Settings->LocalSpawnOffsets : LocalSpawnOffsets;
 	if (!IsValid(Source) || Source->GetActorLocation().ContainsNaN() || Source->GetActorRotation().ContainsNaN() ||
-		LocalSpawnOffsets.IsEmpty() || LocalSpawnOffsets.Num() > 8 || !SummonClass) { return false; }
+		Offsets.IsEmpty() || Offsets.Num() > 8 || !SummonClass) { return false; }
 	OutPlan.PawnClass = SummonClass;
-	OutPlan.Lifetime = SummonLifetime;
+	OutPlan.Lifetime = Settings ? Settings->Lifetime : SummonLifetime;
 	OutPlan.StartupTimeout = StartupTimeout;
 	OutPlan.MaximumOwned = MaximumOwnedSummons;
 	const FTransform Anchor(FRotator(0.f, Source->GetActorRotation().Yaw, 0.f), Source->GetActorLocation());
 	UNavigationSystemV1* Navigation = bRequireNavigation ? FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld()) : nullptr;
 	if (bRequireNavigation && !Navigation) { return false; }
 	const float HalfHeight = SummonClass->GetDefaultObject<ARPGNonPlayerCharacter>()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	for (const FVector Offset : LocalSpawnOffsets)
+	for (const FVector Offset : Offsets)
 	{
 		if (Offset.ContainsNaN() || Offset.SizeSquared() > FMath::Square(2000.f)) { return false; }
 		FVector Location = Anchor.TransformPosition(Offset);
@@ -40,10 +57,15 @@ bool URPGBossSummonAbility::CanActivateAbility(FGameplayAbilitySpecHandle Handle
 	const AAIController* AI = Source ? Cast<AAIController>(Source->GetController()) : nullptr;
 	const URPGBossAIComponent* BossStateComponent = Source ? Source->FindComponentByClass<URPGBossAIComponent>() : nullptr;
 	const URPGBossSummonComponent* SummonRegistry = Source ? Source->FindComponentByClass<URPGBossSummonComponent>() : nullptr;
+	const URPGBossPatternSettings* PendingSettings = GetPendingPatternSettings(Handle, ActorInfo);
+	FText Error;
+	if (!ValidatePatternSettings(PendingSettings, Error)) return false;
+	const URPGBossSummonPatternSettings* Settings = Cast<URPGBossSummonPatternSettings>(PendingSettings);
+	const float CastSeconds = Settings ? Settings->WindupSeconds : WindupSeconds;
 	FRPGBossSummonPlan Plan;
 	return AI && AI->GetGenericTeamId() != FGenericTeamId::NoTeam && BossStateComponent && !BossStateComponent->GetTelegraphState().bActive &&
-		SummonRegistry && ActionTag.IsValid() && FMath::IsFinite(WindupSeconds) && WindupSeconds >= .01f && WindupSeconds <= 120.f &&
-		SummonRegistry->HasCapacity(LocalSpawnOffsets.Num(), MaximumOwnedSummons) && MakePlan(Source, Plan) &&
+		SummonRegistry && ActionTag.IsValid() && FMath::IsFinite(CastSeconds) && CastSeconds >= .01f && CastSeconds <= 120.f &&
+		MakePlan(Source, Plan, Settings) && SummonRegistry->HasCapacity(Plan.Transforms.Num(), MaximumOwnedSummons) &&
 		Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
 }
 
@@ -56,16 +78,18 @@ void URPGBossSummonAbility::ActivateAbility(FGameplayAbilitySpecHandle Handle, c
 	APawn* Source = Cast<APawn>(GetAvatarActorFromActorInfo());
 	Registry = Source ? Source->FindComponentByClass<URPGBossSummonComponent>() : nullptr;
 	bReleased = false;
-	const bool bCommitted = Registry.IsValid() && MakePlan(Source, LockedPlan) &&
+	const URPGBossSummonPatternSettings* Settings = Cast<URPGBossSummonPatternSettings>(GetBossPatternSettings());
+	const float CastSeconds = Settings ? Settings->WindupSeconds : WindupSeconds;
+	const bool bCommitted = Registry.IsValid() && MakePlan(Source, LockedPlan, Settings) &&
 		Registry->HasCapacity(LockedPlan.Transforms.Num(), LockedPlan.MaximumOwned) && CommitAbility(Handle, ActorInfo, ActivationInfo);
 	if (!IsActive() || GetBossExecutionSerial() != Serial) { return; }
 	if (!bCommitted || !IsBossExecutionValid()) { EndAbility(Handle, ActorInfo, ActivationInfo, true, true); return; }
 	LockedEncounter = GetBossExecutionEncounterId();
-	const int32 Sequence = StartBossTelegraph(ActionTag, Source->GetActorLocation(), WindupSeconds);
+	const int32 Sequence = StartBossTelegraph(ActionTag, Source->GetActorLocation(), CastSeconds);
 	if (!IsActive() || GetBossExecutionSerial() != Serial) { return; }
 	LockedSequence = Sequence;
 	if (Sequence == 0) { EndAbility(Handle, ActorInfo, ActivationInfo, true, true); return; }
-	GetWorld()->GetTimerManager().SetTimer(CastTimer, FTimerDelegate::CreateWeakLambda(this, [this, Serial]() { ReleaseSummons(Serial); }), WindupSeconds, false);
+	GetWorld()->GetTimerManager().SetTimer(CastTimer, FTimerDelegate::CreateWeakLambda(this, [this, Serial]() { ReleaseSummons(Serial); }), CastSeconds, false);
 }
 
 void URPGBossSummonAbility::ReleaseSummons(uint64 Serial)

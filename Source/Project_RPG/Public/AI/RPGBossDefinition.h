@@ -2,6 +2,7 @@
 
 #include "Engine/DataAsset.h"
 #include "GameplayTagContainer.h"
+#include "AI/RPGBossPatternDefinition.h"
 #include "RPGBossDefinition.generated.h"
 
 class URPGBossGameplayAbility;
@@ -27,6 +28,13 @@ struct PROJECT_RPG_API FRPGBossPhaseDefinition
 	 * Server only. False preserves the authored priority order; repeated choices are possible. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Patterns")
 	bool bRandomizePatterns = false;
+
+	/** Entry-based patterns. Mutually exclusive with the legacy class list. IDs are unique per phase. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Patterns")
+	TArray<FRPGBossPatternDefinition> Patterns;
+	/** Sequence waits for the next entry to become eligible and advances only on successful completion. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Patterns")
+	ERPGBossPatternSelection PatternSelection = ERPGBossPatternSelection::Priority;
 
 	/** Opt-in event gate for entering this phase. HP cannot cross this phase until
 	 * the server calls AdvanceToPhase; the threshold still defines phase ordering.
@@ -56,6 +64,9 @@ struct PROJECT_RPG_API FRPGBossPhaseDefinition
 	 * Does not cast a summon ability; BT or a server GAS mechanic still owns spawning. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Summon")
 	FGameplayTag SummonWaveCompletionPhase;
+	/** Zero requires the entire wave. Otherwise defeat any N distinct members (1..8). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Summon", meta = (ClampMin = "0", ClampMax = "8"))
+	int32 RequiredSummonDefeats = 0;
 
 	/** Optional one-shot server GAS mechanic on phase entry. Must already be
 	 * granted by NPC startup data. Requires suspended combat AI and a phase time limit.
@@ -63,6 +74,14 @@ struct PROJECT_RPG_API FRPGBossPhaseDefinition
 	 * Empty preserves existing BT-only phases. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Phase")
 	TSubclassOf<URPGBossGameplayAbility> PhaseEntryAbility;
+	/** Entry-based equivalent, including presentation and typed mechanic settings. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Phase")
+	FRPGBossPatternDefinition PhaseEntryPattern;
+
+	TSubclassOf<URPGBossGameplayAbility> GetPhaseEntryAbility() const
+	{
+		return PhaseEntryPattern.IsConfigured() ? PhaseEntryPattern.AbilityClass : PhaseEntryAbility;
+	}
 };
 
 /** Immutable encounter configuration. Runtime state belongs to RPGBossAIComponent. */
@@ -73,6 +92,9 @@ class PROJECT_RPG_API URPGBossDefinition : public UPrimaryDataAsset
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss")
 	TArray<FRPGBossPhaseDefinition> Phases;
+	/** Entries using Show/Hide override this default. Never changes windup or damage. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Telegraph")
+	bool bShowTelegraphsByDefault = true;
 
 	/** Server combat time until automatic enrage. Zero disables the timer. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Enrage", meta = (ClampMin = "0.0", ClampMax = "86400.0", Units = "s"))

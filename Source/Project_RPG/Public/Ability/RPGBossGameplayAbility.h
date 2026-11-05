@@ -56,9 +56,17 @@ public:
 	int32 GetBossExecutionEncounterId() const { return EncounterId; }
 
 	uint64 GetBossExecutionSerial() const { return ExecutionSerial; }
+	UFUNCTION(BlueprintPure, Category = "Boss|Ability")
+	FGameplayTag GetBossPatternId() const { return PatternExecution.PatternId; }
+	/** Only typed settings explicitly supported by the concrete mechanic are accepted. */
+	virtual bool ValidatePatternSettings(const URPGBossPatternSettings* Settings, FText& OutError) const;
 	virtual bool CanBeCanceled() const override final { return true; }
 
 protected:
+	UFUNCTION(BlueprintPure, Category = "Boss|Ability")
+	const URPGBossPatternSettings* GetBossPatternSettings() const { return PatternExecution.Settings; }
+	const URPGBossPatternSettings* GetPendingPatternSettings(FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo) const;
 	/** Native opt-in for self/encounter mechanics only. The decision is frozen at
 	 * activation; targeted damage helpers never acquire a replacement target. */
 	virtual bool RequiresExecutionTarget() const { return true; }
@@ -105,6 +113,7 @@ protected:
 		FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 
 private:
+	UPROPERTY(Transient) FRPGBossPatternExecution PatternExecution;
 	int32 StartBossTelegraphInternal(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds,
 		const FTransform* QueryTransform, const FRPGHitQueryShape* Shape);
 	bool IsBossEncounterExecutionValid() const;

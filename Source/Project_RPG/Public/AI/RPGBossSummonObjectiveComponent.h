@@ -50,6 +50,8 @@ private:
 	TWeakObjectPtr<AController> SourceController;
 	FGameplayTag CompletionPhase;
 	TSet<int32> DefeatedSlots;
+	int32 WaveMemberCount = 0;
+	int32 RequiredDefeats = 0;
 	FTimerHandle CompletionTimer;
 
 	bool IsContextCurrent() const;

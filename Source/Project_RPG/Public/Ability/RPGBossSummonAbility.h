@@ -5,12 +5,24 @@
 #include "TimerManager.h"
 #include "RPGBossSummonAbility.generated.h"
 
+/** A complete per-entry summon layout/timing override; actor class and ownership safety remain in the GA. */
+UCLASS(EditInlineNew, BlueprintType)
+class PROJECT_RPG_API URPGBossSummonPatternSettings : public URPGBossPatternSettings
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Summon") TArray<FVector> LocalSpawnOffsets;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Summon", meta = (ClampMin = "0.01", ClampMax = "120")) float WindupSeconds = 1.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss|Summon", meta = (ClampMin = "0.1", ClampMax = "300")) float Lifetime = 30.f;
+};
+
 /** Windup/commit hand off an atomic wave to the encounter-owned registry, then release the BT. */
 UCLASS(Blueprintable)
 class PROJECT_RPG_API URPGBossSummonAbility : public URPGBossGameplayAbility
 {
 	GENERATED_BODY()
 public:
+	virtual bool ValidatePatternSettings(const URPGBossPatternSettings* Settings, FText& OutError) const override;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Summon") FGameplayTag ActionTag;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Summon") TSubclassOf<ARPGNonPlayerCharacter> SummonClass;
 	/** Capsule-center offsets, relative to the boss's position/yaw captured when the cast commits. */
@@ -40,6 +52,6 @@ private:
 	int32 LockedSequence = 0;
 	int32 LockedEncounter = 0;
 	bool bReleased = false;
-	bool MakePlan(const APawn* Source, FRPGBossSummonPlan& OutPlan) const;
+	bool MakePlan(const APawn* Source, FRPGBossSummonPlan& OutPlan, const URPGBossSummonPatternSettings* Settings) const;
 	void ReleaseSummons(uint64 Serial);
 };

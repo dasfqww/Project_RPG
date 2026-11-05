@@ -24,6 +24,36 @@ bool URPGBossDefinition::ValidateDefinition(FText& OutError) const
 	for (int32 PhaseIndex = 0; PhaseIndex < Phases.Num(); ++PhaseIndex)
 	{
 		const FRPGBossPhaseDefinition& Phase = Phases[PhaseIndex];
+		if ((!Phase.Patterns.IsEmpty() && (!Phase.AbilityPatterns.IsEmpty() || Phase.bRandomizePatterns)) ||
+			static_cast<uint8>(Phase.PatternSelection) > static_cast<uint8>(ERPGBossPatternSelection::Sequence) ||
+			(Phase.Patterns.IsEmpty() && Phase.PatternSelection != ERPGBossPatternSelection::Priority) ||
+			(Phase.PhaseEntryPattern.IsConfigured() && Phase.PhaseEntryAbility) ||
+			Phase.RequiredSummonDefeats < 0 || Phase.RequiredSummonDefeats > 8 ||
+			(Phase.RequiredSummonDefeats > 0 && !Phase.SummonWaveCompletionPhase.IsValid()))
+		{
+			OutError = FText::FromString(TEXT("Use either legacy or entry-based patterns, a valid selection mode, and a summon objective for a defeat quota."));
+			return false;
+		}
+		TSet<FGameplayTag> PatternIds;
+		for (const FRPGBossPatternDefinition& Pattern : Phase.Patterns)
+		{
+			if (!Pattern.Validate(OutError)) return false;
+			if (PatternIds.Contains(Pattern.PatternId))
+			{
+				OutError = FText::FromString(TEXT("Pattern IDs must be unique within a phase, including its entry mechanic."));
+				return false;
+			}
+			PatternIds.Add(Pattern.PatternId);
+		}
+		if (Phase.PhaseEntryPattern.IsConfigured())
+		{
+			if (!Phase.PhaseEntryPattern.Validate(OutError)) return false;
+			if (PatternIds.Contains(Phase.PhaseEntryPattern.PatternId))
+			{
+				OutError = FText::FromString(TEXT("A phase entry mechanic must have its own pattern ID."));
+				return false;
+			}
+		}
 		if (!FMath::IsFinite(Phase.TimeLimitSeconds) || Phase.TimeLimitSeconds < 0.f || Phase.TimeLimitSeconds > 86400.f ||
 			(Phase.TimeLimitSeconds > 0.f && Phase.TimeLimitSeconds < .01f))
 		{
@@ -47,9 +77,9 @@ bool URPGBossDefinition::ValidateDefinition(FText& OutError) const
 		}
 		Tags.Add(Phase.PhaseTag);
 		PreviousThreshold = Phase.HealthThreshold;
-		if (Phase.PhaseEntryAbility)
+		if (Phase.GetPhaseEntryAbility())
 		{
-			const UClass* EntryClass = Phase.PhaseEntryAbility.Get();
+			const UClass* EntryClass = Phase.GetPhaseEntryAbility().Get();
 			if (!Phase.bSuspendCombatAI || Phase.TimeLimitSeconds <= 0.f ||
 				!EntryClass->IsChildOf(URPGBossGameplayAbility::StaticClass()) ||
 				EntryClass->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))

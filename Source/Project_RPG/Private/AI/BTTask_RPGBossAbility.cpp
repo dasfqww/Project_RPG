@@ -2,6 +2,7 @@
 
 #include "Ability/RPGBossGameplayAbility.h"
 #include "AI/RPGBossDefinition.h"
+#include "AI/RPGBossPatternExecutor.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "AIController.h"
@@ -35,6 +36,7 @@ EBTNodeResult::Type UBTTask_RPGBossAbility::ExecuteTask(UBehaviorTreeComponent& 
 	// Do not block the GAS base: the encounter may still launch a mechanic directly.
 	if (Phase && Phase->bSuspendCombatAI) { return EBTNodeResult::Failed; }
 	ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Pawn);
+	const int32 SelectionRevision = Boss ? Boss->GetBossState().Revision : INDEX_NONE;
 	const FGameplayAbilitySpecHandle SelectedHandle = SelectAbilityHandle(Pawn);
 	FGameplayAbilitySpec* Spec = ASC.IsValid() ? ASC->FindAbilitySpecFromHandle(SelectedHandle) : nullptr;
 	if (!Spec || Spec->IsActive()) { Cleanup(); return EBTNodeResult::Failed; }
@@ -49,7 +51,9 @@ EBTNodeResult::Type UBTTask_RPGBossAbility::ExecuteTask(UBehaviorTreeComponent& 
 	EndedDelegate = ASC->OnAbilityEnded.AddUObject(this, &ThisClass::OnAbilityEnded);
 	bOwnedExecution = true;
 	// End may be synchronous. The delegate only records a result, never reenters BT execution.
-	const bool bActivated = ASC->TryActivateAbility(Handle, false);
+	const bool bActivated = SelectedPatternId.IsValid() && Boss
+		? Boss->GetPatternExecutor()->TryActivate(SelectedPatternId, SelectionRevision)
+		: ASC->TryActivateAbility(Handle, false);
 	if (!bActivated || !Ability.IsValid() || (!bEnded && !Ability->IsBossExecutionValid()))
 	{
 		Cleanup(); return EBTNodeResult::Failed;
@@ -63,8 +67,9 @@ EBTNodeResult::Type UBTTask_RPGBossAbility::ExecuteTask(UBehaviorTreeComponent& 
 	return EBTNodeResult::InProgress;
 }
 
-FGameplayAbilitySpecHandle UBTTask_RPGBossAbility::SelectAbilityHandle(APawn* Pawn) const
+FGameplayAbilitySpecHandle UBTTask_RPGBossAbility::SelectAbilityHandle(APawn* Pawn)
 {
+	SelectedPatternId = {};
 	if (!ASC.IsValid()) { return FGameplayAbilitySpecHandle(); }
 	if (!bUsePhasePatterns)
 	{
@@ -74,6 +79,7 @@ FGameplayAbilitySpecHandle UBTTask_RPGBossAbility::SelectAbilityHandle(APawn* Pa
 	const URPGBossAIComponent* Boss = Pawn->FindComponentByClass<URPGBossAIComponent>();
 	const FRPGBossPhaseDefinition* Phase = Boss ? Boss->GetActivePhaseDefinition() : nullptr;
 	if (!Phase || !ASC->AbilityActorInfo.IsValid()) { return FGameplayAbilitySpecHandle(); }
+	if (!Phase->Patterns.IsEmpty()) return Boss->GetPatternExecutor()->Select(SelectedPatternId);
 	const FRPGBossState SelectionState = Boss->GetBossState();
 	const bool bRandomize = Phase->bRandomizePatterns;
 	FGameplayAbilitySpecHandle SelectedHandle;
@@ -152,6 +158,7 @@ void UBTTask_RPGBossAbility::Cleanup()
 	ASC.Reset();
 	Ability.Reset();
 	Handle = FGameplayAbilitySpecHandle();
+	SelectedPatternId = {};
 	if (bCancel && PreviousASC && PreviousASC->IsOwnerActorAuthoritative())
 	{
 		PreviousASC->CancelAbilityHandle(PreviousHandle);

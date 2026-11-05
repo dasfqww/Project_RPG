@@ -2,6 +2,7 @@
 
 #include "BehaviorTree/BTTaskNode.h"
 #include "GameplayAbilitySpecHandle.h"
+#include "GameplayTagContainer.h"
 #include "BTTask_RPGBossAbility.generated.h"
 
 class URPGBossGameplayAbility;
@@ -40,6 +41,7 @@ private:
 	TWeakObjectPtr<UAbilitySystemComponent> ASC;
 	TWeakObjectPtr<URPGBossGameplayAbility> Ability;
 	FGameplayAbilitySpecHandle Handle;
+	FGameplayTag SelectedPatternId;
 	FDelegateHandle EndedDelegate;
 	uint64 ExecutionSerial = 0;
 	double Deadline = 0.0;
@@ -48,5 +50,5 @@ private:
 	bool bCancelled = false;
 	void OnAbilityEnded(const FAbilityEndedData& Data);
 	void Cleanup();
-	FGameplayAbilitySpecHandle SelectAbilityHandle(APawn* Pawn) const;
+	FGameplayAbilitySpecHandle SelectAbilityHandle(APawn* Pawn);
 };

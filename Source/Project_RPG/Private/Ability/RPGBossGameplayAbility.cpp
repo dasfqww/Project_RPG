@@ -4,6 +4,7 @@
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
 #include "AI/RPGBossThreatComponent.h"
+#include "AI/RPGBossPatternExecutor.h"
 #include "Combat/HitQuery/RPGHitQuerySubsystem.h"
 #include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "GameFramework/Pawn.h"
@@ -17,6 +18,21 @@ URPGBossGameplayAbility::URPGBossGameplayAbility()
 	bRetriggerInstancedAbility = false;
 	AbilityActivationPolicy = ERPGAbilityActivationPolicy::OnTriggered;
 	ActivationPolicy = ERPGGladiatorAbilityActivationPolicy::Manual;
+}
+
+bool URPGBossGameplayAbility::ValidatePatternSettings(const URPGBossPatternSettings* Settings, FText& OutError) const
+{
+	if (!Settings) return true;
+	OutError = FText::FromString(TEXT("This boss ability does not support the supplied pattern settings."));
+	return false;
+}
+
+const URPGBossPatternSettings* URPGBossGameplayAbility::GetPendingPatternSettings(FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo) const
+{
+	const AActor* Avatar = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
+	const URPGBossAIComponent* Component = Avatar ? Avatar->FindComponentByClass<URPGBossAIComponent>() : nullptr;
+	return Component ? Component->GetPatternExecutor()->GetPendingSettings(Handle) : nullptr;
 }
 
 bool URPGBossGameplayAbility::IsPatternCooldownConfigurationValid() const
@@ -126,9 +142,10 @@ void URPGBossGameplayAbility::ActivateAbility(FGameplayAbilitySpecHandle Handle,
 	bAreaDamageResolvedThisExecution = false;
 	TelegraphEncounterId = 0;
 	TelegraphSequence = 0;
+	const bool bPatternCaptured = Boss.IsValid() && Boss->GetPatternExecutor()->CaptureExecution(Handle, this, PatternExecution);
 	// Recheck the captured target before Blueprint activation, costs or windup.
 	// Do not turn start-range rules into continuous cancellation rules during a dash.
-	if (!IsBossExecutionValid() || !PassesActivationTargetConditions(BossPawn.Get(), ExecutionTarget.Get(), bRequiresTargetThisExecution))
+	if (!bPatternCaptured || !IsBossExecutionValid() || !PassesActivationTargetConditions(BossPawn.Get(), ExecutionTarget.Get(), bRequiresTargetThisExecution))
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
@@ -156,9 +173,8 @@ int32 URPGBossGameplayAbility::StartBossTelegraphInternal(FGameplayTag ActionTag
 	const uint64 StartedSerial = ExecutionSerial;
 	const int32 StartedEncounter = EncounterId;
 	const TWeakObjectPtr<URPGBossAIComponent> StartedBoss = Boss;
-	const int32 Sequence = QueryTransform && Shape
-		? StartedBoss->BeginTelegraphWithShape(ActionTag, *QueryTransform, *Shape, WindupSeconds)
-		: StartedBoss->BeginTelegraph(ActionTag, AimLocation, WindupSeconds);
+	const int32 Sequence = StartedBoss->BeginExecutionTelegraph(ActionTag, AimLocation, WindupSeconds,
+		PatternExecution, QueryTransform, Shape);
 	if (Sequence != 0)
 	{
 		// A presentation listener may cancel the ability while BeginTelegraph broadcasts.
@@ -337,6 +353,7 @@ void URPGBossGameplayAbility::EndAbility(FGameplayAbilitySpecHandle Handle,
 {
 	FinishBossTelegraph();
 	bContextOpen = false;
+	PatternExecution = {};
 	if (Boss.IsValid()) { Boss->OnBossStateChanged.RemoveDynamic(this, &ThisClass::OnBossStateChanged); }
 	// No cleanup after Super: end observers may immediately start a new execution on this instance.
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);

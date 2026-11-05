@@ -1,5 +1,6 @@
 #pragma once
 #include "AI/RPGBossTelegraphShape.h"
+#include "AI/RPGBossPatternDefinition.h"
 
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
@@ -11,6 +12,8 @@ class UAbilitySystemComponent;
 class AController;
 class APawn;
 class URPGBossDefinition;
+class URPGBossEncounterProfiles;
+class URPGBossPatternExecutor;
 struct FRPGBossPhaseDefinition;
 struct FOnAttributeChangeData;
 
@@ -73,6 +76,13 @@ struct PROJECT_RPG_API FRPGBossTelegraphState
 
 	UPROPERTY(BlueprintReadOnly, Category = "Boss")
 	bool bActive = false;
+	/** Presentation only. Hidden casts retain their normal server lifetime and hit checks. */
+	UPROPERTY(BlueprintReadOnly, Category = "Boss")
+	bool bShowIndicator = true;
+	UPROPERTY(BlueprintReadOnly, Category = "Boss")
+	FGameplayTag PatternId;
+	UPROPERTY(BlueprintReadOnly, Category = "Boss")
+	int32 PhaseIndex = INDEX_NONE;
 	UPROPERTY(BlueprintReadOnly, Category = "Boss")
 	int32 EncounterId = 0;
 	UPROPERTY(BlueprintReadOnly, Category = "Boss")
@@ -105,6 +115,16 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss")
 	TObjectPtr<URPGBossDefinition> Definition;
+	/** Optional difficulty routing. Null preserves Definition and existing authored content. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss")
+	TObjectPtr<URPGBossEncounterProfiles> EncounterProfiles;
+
+	URPGBossPatternExecutor* GetPatternExecutor() const { return PatternExecutor; }
+	bool ShouldShowTelegraphsByDefault() const;
+	bool CanStartPattern(int32 ExpectedRevision) const;
+	/** Server mechanics can request a named entry without selecting a GA class themselves. */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Boss|Patterns")
+	bool TryActivatePattern(FGameplayTag PatternId, int32 ExpectedEncounterId, FGameplayTag ExpectedPhase);
 
 	UFUNCTION(BlueprintPure, Category = "Boss")
 	FRPGBossState GetBossState() const { return State; }
@@ -161,8 +181,12 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
+	friend class URPGBossGameplayAbility;
+	int32 BeginExecutionTelegraph(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds,
+		const FRPGBossPatternExecution& Execution, const FTransform* QueryTransform, const FRPGHitQueryShape* Shape);
 	int32 BeginTelegraphInternal(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds,
-		const FRPGBossTelegraphGeometry& Geometry);
+		const FRPGBossTelegraphGeometry& Geometry, const FRPGBossPatternExecution& Execution);
+	UPROPERTY(Transient) TObjectPtr<URPGBossPatternExecutor> PatternExecutor;
 	UPROPERTY(ReplicatedUsing = OnRep_State)
 	FRPGBossState State;
 	UPROPERTY(ReplicatedUsing = OnRep_Telegraph)

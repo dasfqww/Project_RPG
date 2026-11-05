@@ -6,6 +6,8 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "AI/RPGBossDefinition.h"
+#include "AI/RPGBossEncounterProfiles.h"
+#include "AI/RPGBossPatternExecutor.h"
 #include "Attribute/RPGAttributeSet.h"
 #include "Character/RPGNonPlayerCharacter.h"
 #include "Engine/World.h"
@@ -21,6 +23,7 @@ URPGBossAIComponent::URPGBossAIComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);
+	PatternExecutor = CreateDefaultSubobject<URPGBossPatternExecutor>(TEXT("PatternExecutor"));
 }
 
 void URPGBossAIComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -32,23 +35,37 @@ void URPGBossAIComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 
 int32 URPGBossAIComponent::BeginTelegraph(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds)
 {
-	return BeginTelegraphInternal(ActionTag, AimLocation, WindupSeconds, {});
+	FRPGBossPatternExecution Execution;
+	Execution.bShowTelegraph = ShouldShowTelegraphsByDefault();
+	return BeginExecutionTelegraph(ActionTag, AimLocation, WindupSeconds, Execution, nullptr, nullptr);
 }
 
 int32 URPGBossAIComponent::BeginTelegraphWithShape(FGameplayTag ActionTag, const FTransform& QueryTransform,
 	const FRPGHitQueryShape& Shape, float WindupSeconds)
 {
+	FRPGBossPatternExecution Execution;
+	Execution.bShowTelegraph = ShouldShowTelegraphsByDefault();
+	return BeginExecutionTelegraph(ActionTag, QueryTransform.GetLocation(), WindupSeconds, Execution, &QueryTransform, &Shape);
+}
+
+int32 URPGBossAIComponent::BeginExecutionTelegraph(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds,
+	const FRPGBossPatternExecution& Execution, const FTransform* QueryTransform, const FRPGHitQueryShape* Shape)
+{
 	FRPGBossTelegraphGeometry Geometry;
-	Geometry.bEnabled = true;
-	Geometry.QueryTransform = QueryTransform;
-	Geometry.Shape = Shape;
-	FRPGBossTelegraphFootprint Footprint;
-	if (!FRPGBossTelegraphFootprint::Build(Geometry, Footprint)) return 0;
-	return BeginTelegraphInternal(ActionTag, Footprint.Center, WindupSeconds, Geometry);
+	if (QueryTransform && Shape)
+	{
+		Geometry.bEnabled = true;
+		Geometry.QueryTransform = *QueryTransform;
+		Geometry.Shape = *Shape;
+		FRPGBossTelegraphFootprint Footprint;
+		if (!FRPGBossTelegraphFootprint::Build(Geometry, Footprint)) return 0;
+		AimLocation = Footprint.Center;
+	}
+	return BeginTelegraphInternal(ActionTag, AimLocation, WindupSeconds, Geometry, Execution);
 }
 
 int32 URPGBossAIComponent::BeginTelegraphInternal(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds,
-	const FRPGBossTelegraphGeometry& Geometry)
+	const FRPGBossTelegraphGeometry& Geometry, const FRPGBossPatternExecution& Execution)
 {
 	if (!CanMutate() || bPublishingTelegraph || State.EncounterState != ERPGBossEncounterState::InCombat ||
 		Telegraph.bActive || Telegraph.Sequence == MAX_int32 || !ActionTag.IsValid() ||
@@ -60,6 +77,9 @@ int32 URPGBossAIComponent::BeginTelegraphInternal(FGameplayTag ActionTag, FVecto
 	const FRPGBossTelegraphState Previous = Telegraph;
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	Telegraph.bActive = true;
+	Telegraph.bShowIndicator = Execution.bShowTelegraph;
+	Telegraph.PatternId = Execution.PatternId;
+	Telegraph.PhaseIndex = State.PhaseIndex;
 	Telegraph.EncounterId = State.EncounterId;
 	++Telegraph.Sequence;
 	Telegraph.ActionTag = ActionTag;
@@ -159,9 +179,26 @@ const FRPGBossPhaseDefinition* URPGBossAIComponent::GetActivePhaseDefinition() c
 		? &ActiveDefinition->Phases[State.PhaseIndex] : nullptr;
 }
 
+bool URPGBossAIComponent::ShouldShowTelegraphsByDefault() const
+{
+	return !ActiveDefinition || ActiveDefinition->bShowTelegraphsByDefault;
+}
+
+bool URPGBossAIComponent::CanStartPattern(int32 ExpectedRevision) const
+{
+	return CanMutate() && State.Revision == ExpectedRevision && GetActivePhaseDefinition();
+}
+
+bool URPGBossAIComponent::TryActivatePattern(FGameplayTag PatternId, int32 ExpectedEncounterId, FGameplayTag ExpectedPhase)
+{
+	return CanMutate() && State.EncounterState == ERPGBossEncounterState::InCombat &&
+		State.EncounterId == ExpectedEncounterId && State.PhaseTag == ExpectedPhase &&
+		PatternExecutor->TryActivate(PatternId, State.Revision);
+}
+
 bool URPGBossAIComponent::StartEncounter()
 {
-	if (!CanMutate() || State.EncounterState != ERPGBossEncounterState::Idle || !Definition)
+	if (!CanMutate() || State.EncounterState != ERPGBossEncounterState::Idle || (!Definition && !EncounterProfiles))
 	{
 		return false;
 	}
@@ -173,15 +210,16 @@ bool URPGBossAIComponent::StartEncounter()
 		}
 	}
 	FText Error;
+	const URPGBossDefinition* SelectedDefinition = EncounterProfiles ? EncounterProfiles->ResolveForWorld(GetWorld(), Error) : Definition.Get();
 	float Health = 0.0f;
 	float MaxHealth = 0.0f;
-	if (!Definition->ValidateDefinition(Error) || !BindAbilitySystem() || !ReadHealth(Health, MaxHealth) || Health <= 0.0f)
+	if (!SelectedDefinition || !SelectedDefinition->ValidateDefinition(Error) || !BindAbilitySystem() || !ReadHealth(Health, MaxHealth) || Health <= 0.0f)
 	{
 		UE_LOG(LogRPGBossAI, Warning, TEXT("Cannot start %s: valid phase data and an initialized, living ASC are required. %s"),
 			*GetNameSafe(GetOwner()), *Error.ToString());
 		return false;
 	}
-	ActiveDefinition = DuplicateObject<URPGBossDefinition>(Definition, this);
+	ActiveDefinition = DuplicateObject<URPGBossDefinition>(SelectedDefinition, this);
 	const int32 InitialPhase = ActiveDefinition->ResolvePhase(FMath::Clamp(Health, 0.0f, MaxHealth) / MaxHealth, 0);
 	if (!EnsurePhaseInvulnerability(ActiveDefinition->Phases[InitialPhase].bInvulnerable))
 	{
@@ -545,7 +583,7 @@ void URPGBossAIComponent::StartPhaseEntryAbility()
 	ClearPhaseEntryAbility();
 	const FRPGBossPhaseDefinition* Phase = GetActivePhaseDefinition();
 	APawn* Pawn = Cast<APawn>(GetOwner());
-	if (!Phase || !Phase->PhaseEntryAbility || !Pawn || !IsValid(Pawn->GetController()) || !BoundASC.IsValid() || !GetWorld()) { return; }
+	if (!Phase || !Phase->GetPhaseEntryAbility() || !Pawn || !IsValid(Pawn->GetController()) || !BoundASC.IsValid() || !GetWorld()) { return; }
 	PhaseEntryController = Pawn->GetController();
 	PhaseEntryASC = BoundASC;
 	const int32 Encounter = State.EncounterId;
@@ -582,19 +620,22 @@ void URPGBossAIComponent::TryPhaseEntryAbility(int32 ExpectedEncounterId, int32 
 	if (!ReadHealth(Health, MaxHealth) || Health <= 0.f) { EvaluateHealth(); return; }
 	if (HasPhaseTimeExpired()) { TryPhaseTimeout(ExpectedEncounterId, ExpectedPhaseIndex); return; }
 	const FRPGBossPhaseDefinition* Phase = GetActivePhaseDefinition();
-	if (!Phase || !Phase->PhaseEntryAbility || !Phase->bSuspendCombatAI) { ClearPhaseEntryAbility(); return; }
-	const FGameplayAbilitySpec* Spec = ASC->FindAbilitySpecFromClass(Phase->PhaseEntryAbility);
+	if (!Phase || !Phase->GetPhaseEntryAbility() || !Phase->bSuspendCombatAI) { ClearPhaseEntryAbility(); return; }
+	const FGameplayAbilitySpec* Spec = ASC->FindAbilitySpecFromClass(Phase->GetPhaseEntryAbility());
 	// Use the public GAS base interface; the boss override narrows access.
 	UGameplayAbility* Ability = Spec ? Spec->GetPrimaryInstance() : nullptr;
 	if (!Cast<URPGBossGameplayAbility>(Ability) || Spec->IsActive() || !ASC->AbilityActorInfo.IsValid())
 	{
 		UE_LOG(LogRPGBossAI, Warning, TEXT("Cannot launch phase entry for %s: %s must be granted, instanced and inactive."),
-			*GetNameSafe(Pawn), *GetNameSafe(Phase->PhaseEntryAbility.Get()));
+			*GetNameSafe(Pawn), *GetNameSafe(Phase->GetPhaseEntryAbility().Get()));
 		ClearPhaseEntryAbility();
 		return;
 	}
 	const FGameplayAbilitySpecHandle Handle = Spec->Handle;
-	const bool bCanActivate = Ability->CanActivateAbility(Handle, ASC->AbilityActorInfo.Get());
+	const FGameplayTag EntryId = Phase->PhaseEntryPattern.PatternId;
+	const int32 ExpectedRevision = State.Revision;
+	const bool bCanActivate = EntryId.IsValid() ? PatternExecutor->CanActivate(EntryId, ExpectedRevision) :
+		Ability->CanActivateAbility(Handle, ASC->AbilityActorInfo.Get());
 	// Authored GAS checks can synchronously reset the encounter or replace its
 	// controller/ASC. A canceled reservation must not be rescheduled by this stack.
 	if (!IsCurrent()) { return; }
@@ -604,12 +645,13 @@ void URPGBossAIComponent::TryPhaseEntryAbility(int32 ExpectedEncounterId, int32 
 	// Consume before GAS callbacks. A synchronous cancellation/failure must not
 	// cause another summon, another cost payment or a cooldown refund/recast.
 	ClearPhaseEntryAbility();
-	ASC->TryActivateAbility(Handle, false);
+	if (EntryId.IsValid()) PatternExecutor->TryActivate(EntryId, ExpectedRevision);
+	else ASC->TryActivateAbility(Handle, false);
 }
 
 void URPGBossAIComponent::OnBossControllerChanged(APawn* Pawn, AController* Previous, AController* Current)
 {
-	if (Previous != Current) { ClearPhaseEntryAbility(); }
+	if (Previous != Current) { ClearPhaseEntryAbility(); PatternExecutor->Reset(); }
 }
 
 void URPGBossAIComponent::PublishState(const FRPGBossState& PreviousState)
@@ -625,6 +667,7 @@ void URPGBossAIComponent::PublishState(const FRPGBossState& PreviousState)
 	if (State.EncounterState != PreviousState.EncounterState || State.EncounterId != PreviousState.EncounterId ||
 		State.PhaseIndex != PreviousState.PhaseIndex)
 	{
+		PatternExecutor->Reset();
 		StartPhaseEntryAbility();
 	}
 	TGuardValue<bool> Guard(bPublishingState, true);
@@ -643,6 +686,8 @@ void URPGBossAIComponent::ClearTelegraph()
 	if (GetWorld()) { GetWorld()->GetTimerManager().ClearTimer(TelegraphTimeout); }
 	const FRPGBossTelegraphState Previous = Telegraph;
 	Telegraph.bActive = false;
+	Telegraph.bShowIndicator = false;
+	Telegraph.PatternId = {};
 	Telegraph.ActionTag = FGameplayTag();
 	Telegraph.Geometry = {};
 	PublishTelegraph(Previous);
@@ -664,6 +709,7 @@ void URPGBossAIComponent::OnRep_Telegraph(FRPGBossTelegraphState PreviousState)
 
 void URPGBossAIComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	PatternExecutor->Reset();
 	if (GetWorld()) { GetWorld()->GetTimerManager().ClearTimer(TelegraphTimeout); }
 	UnbindAbilitySystem();
 	Super::EndPlay(EndPlayReason);

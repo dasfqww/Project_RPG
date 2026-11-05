@@ -21,8 +21,9 @@ bool URPGBossTelegraphPresentationComponent::EvaluateProgress(const FRPGBossStat
 	OutProgress = 0.f;
 	FRPGBossTelegraphFootprint Footprint;
 	const double Duration = Telegraph.EndServerTime - Telegraph.StartServerTime;
-	if (BossState.EncounterState != ERPGBossEncounterState::InCombat || !Telegraph.bActive ||
+	if (BossState.EncounterState != ERPGBossEncounterState::InCombat || !Telegraph.bActive || !Telegraph.bShowIndicator ||
 		Telegraph.EncounterId <= 0 || Telegraph.EncounterId != BossState.EncounterId || Telegraph.Sequence <= 0 ||
+		Telegraph.PhaseIndex != BossState.PhaseIndex ||
 		!Telegraph.ActionTag.IsValid() || Telegraph.AimLocation.ContainsNaN() ||
 		!FMath::IsFinite(ServerNow) || !FMath::IsFinite(Telegraph.StartServerTime) ||
 		!FMath::IsFinite(Telegraph.EndServerTime) || !FMath::IsFinite(Duration) || Duration <= 0.0 ||
@@ -69,7 +70,8 @@ void URPGBossTelegraphPresentationComponent::RefreshPresentation()
 	const FRPGBossTelegraphState Telegraph = Boss->GetTelegraphState();
 	const FRPGBossState BossState = Boss->GetBossState();
 	// State and telegraph are separate properties and may arrive in either order.
-	SetComponentTickEnabled(Telegraph.bActive);
+	SetComponentTickEnabled(Telegraph.bActive && Telegraph.bShowIndicator);
+	if (!Telegraph.bShowIndicator) { HideIndicator(); return; }
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	if (GetNetMode() == NM_Client && !GameState) { HideIndicator(); return; }
 	const double ServerNow = GameState ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();

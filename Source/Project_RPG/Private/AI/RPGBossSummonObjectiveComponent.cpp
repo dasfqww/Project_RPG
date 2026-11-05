@@ -58,6 +58,7 @@ void URPGBossSummonObjectiveComponent::CancelObjective()
 	Progress.DefeatedCount = 0;
 	CompletionPhase = FGameplayTag();
 	DefeatedSlots.Reset();
+	WaveMemberCount = RequiredDefeats = 0;
 	SourceController.Reset();
 }
 
@@ -78,6 +79,7 @@ void URPGBossSummonObjectiveComponent::SynchronizePhase()
 	if (Phase && Phase->SummonWaveCompletionPhase.IsValid() && BoundSummons.IsValid() && Pawn && IsValid(Pawn->GetController()))
 	{
 		CompletionPhase = Phase->SummonWaveCompletionPhase;
+		RequiredDefeats = Phase->RequiredSummonDefeats;
 		SourceController = Pawn->GetController();
 		Progress.bActive = true;
 	}
@@ -90,14 +92,17 @@ void URPGBossSummonObjectiveComponent::OnWaveSpawned(int32 EncounterId, int32 Ph
 	if (!IsContextCurrent() || Progress.Sequence != 0 || Sequence <= 0 || MemberCount < 1 || MemberCount > 8 ||
 		Progress.EncounterId != EncounterId || Progress.PhaseIndex != PhaseIndex) { return; }
 	Progress.Sequence = Sequence;
-	Progress.RequiredCount = MemberCount;
+	WaveMemberCount = MemberCount;
+	// Never silently lower a misconfigured quota. The existing phase deadline fails it.
+	Progress.RequiredCount = RequiredDefeats > 0 ? RequiredDefeats : MemberCount;
 	Publish();
 }
 
 void URPGBossSummonObjectiveComponent::OnSummonDefeated(int32 EncounterId, int32 PhaseIndex, int32 Sequence, int32 Slot)
 {
 	if (!IsContextCurrent() || Progress.EncounterId != EncounterId || Progress.PhaseIndex != PhaseIndex ||
-		Progress.Sequence <= 0 || Progress.Sequence != Sequence || Slot < 0 || Slot >= Progress.RequiredCount || DefeatedSlots.Contains(Slot)) { return; }
+		Progress.Sequence <= 0 || Progress.Sequence != Sequence || Slot < 0 || Slot >= WaveMemberCount ||
+		Progress.DefeatedCount >= Progress.RequiredCount || DefeatedSlots.Contains(Slot)) { return; }
 	DefeatedSlots.Add(Slot);
 	Progress.DefeatedCount = DefeatedSlots.Num();
 	if (Progress.DefeatedCount == Progress.RequiredCount) { ScheduleCompletion(); }

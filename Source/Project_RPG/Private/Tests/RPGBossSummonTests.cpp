@@ -31,7 +31,7 @@ UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_BossSummonTestAction, "Tests.RaidBoss.Summon.A
 class FRPGBossSummonCommand : public IAutomationLatentCommand
 {
 public:
-	explicit FRPGBossSummonCommand(FAutomationTestBase* InTest) : Test(InTest) {}
+	explicit FRPGBossSummonCommand(FAutomationTestBase* InTest, bool bInProfile = false) : Test(InTest), bProfile(bInProfile) {}
 	virtual ~FRPGBossSummonCommand() override
 	{
 		if (World)
@@ -89,6 +89,7 @@ public:
 	}
 private:
 	FAutomationTestBase* Test;
+	bool bProfile = false;
 	UWorld* World = nullptr;
 	ARPGBossStartupTestCharacter* Source = nullptr;
 	ARPGBossTestPawn* Target = nullptr;
@@ -128,6 +129,21 @@ private:
 		// is not a proof of authored Guardian navigation or multiplayer combat.
 		Ability->SummonClass = ARPGBossStartupTestCharacter::StaticClass();
 		Ability->bRequireNavigation = false; Ability->WindupSeconds = .1f;
+		if (bProfile)
+		{
+			auto& Phase = Source->BossAIComponent->Definition->Phases[1];
+			Phase.PhaseEntryAbility = nullptr;
+			Phase.PhaseEntryPattern.PatternId = TAG_BossSummonTestAction;
+			Phase.PhaseEntryPattern.AbilityClass = EntryClass;
+			Phase.PhaseEntryPattern.TelegraphPolicy = ERPGBossTelegraphPolicy::Hide;
+			auto* Settings = NewObject<URPGBossSummonPatternSettings>(Source->BossAIComponent->Definition);
+			Settings->LocalSpawnOffsets = {FVector(200.f, 0.f, 0.f), FVector(200.f, 200.f, 0.f)};
+			Settings->WindupSeconds = .1f; Settings->Lifetime = 40.f;
+			Phase.PhaseEntryPattern.Settings = Settings;
+			Phase.RequiredSummonDefeats = 1;
+			// The entry's layout must drive both eligibility and spawning, even if the reusable GA has no layout.
+			Ability->LocalSpawnOffsets.Reset();
+		}
 		Test->TestFalse(TEXT("Saved mechanic summon is target independent"), Ability->bRequireThreatTarget);
 		Source->GetCharacterMovement()->SetMovementMode(MOVE_Flying);
 		// Disabling sight does not erase already queued/cached perceptions. Make
@@ -146,6 +162,13 @@ private:
 		Test->TestTrue(TEXT("Mechanic disables movement"), Source->GetCharacterMovement()->MovementMode == MOVE_None);
 		Advance(.04f);
 		Test->TestTrue(TEXT("Phase entry casts without a threat target"), Ability->IsActive() && Ability->IsBossExecutionValid());
+		if (bProfile)
+		{
+			Test->TestFalse(TEXT("Entry mechanic can hide its range"), Source->BossAIComponent->GetTelegraphState().bShowIndicator);
+			Test->TestEqual(TEXT("Entry mechanic captures its ID"), Ability->GetBossPatternId(), TAG_BossSummonTestAction.GetTag());
+			auto* Authored = CastChecked<URPGBossSummonPatternSettings>(Source->BossAIComponent->Definition->Phases[1].PhaseEntryPattern.Settings);
+			Authored->LocalSpawnOffsets.SetNum(1);
+		}
 		Test->TestNull(TEXT("Target-independent cast does not capture a target"), Ability->GetBossExecutionTarget());
 		Test->TestNull(TEXT("Activation scenario really has no threat target"), Source->BossThreatComponent->GetCurrentTarget());
 		TargetAI->SetGenericTeamId(FGenericTeamId(0));
@@ -176,9 +199,17 @@ private:
 			Test->AddError(TEXT("Mechanic phase entry wave did not become ready")); return true;
 		}
 		URPGBossSummonObjectiveComponent* Objective = Source->BossSummonObjectiveComponent;
-		Test->TestEqual(TEXT("Wave arms objective with two members"), Objective->GetObjectiveState().RequiredCount, 2);
+		Test->TestEqual(TEXT("Wave arms the configured defeat quota"), Objective->GetObjectiveState().RequiredCount, bProfile ? 1 : 2);
 		if (Stage == 3)
 		{
+			if (bProfile)
+			{
+				// Slot 1 is valid even though the quota is 1; quota is not a slot-index bound.
+				Records[1].Pawn->GetAbilitySystemComponent()->SetNumericAttributeBase(URPGAttributeSet::GetCurrentHealthAttribute(), 0.f);
+				Advance(.06f);
+			}
+			else
+			{
 			Records[0].Pawn->GetAbilitySystemComponent()->SetNumericAttributeBase(URPGAttributeSet::GetCurrentHealthAttribute(), 0.f);
 			Test->TestEqual(TEXT("First real defeat counts once"), Objective->GetObjectiveState().DefeatedCount, 1);
 			Advance(.12f);
@@ -186,6 +217,7 @@ private:
 			Test->TestEqual(TEXT("Partial defeat cannot advance phase"), Source->BossAIComponent->GetBossState().PhaseIndex, 1);
 			Records[1].Pawn->GetAbilitySystemComponent()->SetNumericAttributeBase(URPGAttributeSet::GetCurrentHealthAttribute(), 0.f);
 			Advance(.06f);
+			}
 			Test->TestEqual(TEXT("All defeats advance to explicit combat phase"), Source->BossAIComponent->GetBossState().PhaseIndex, 2);
 			Test->TestFalse(TEXT("Successful mechanic removes owned invincibility"), ASC->HasMatchingGameplayTag(RPGGameplayTags::Shared_Status_Invincible));
 			Test->TestTrue(TEXT("Successful mechanic restarts stopped BT"), SourceAI->GetBrainComponent()->IsRunning());
@@ -193,6 +225,11 @@ private:
 			Test->TestFalse(TEXT("Completed objective is inactive"), Objective->GetObjectiveState().bActive);
 			CheckRemoved(Records, TEXT("Successful phase transition retires its summons"));
 			const int32 PreviousEncounter = Source->BossAIComponent->GetBossState().EncounterId;
+			if (bProfile)
+			{
+				auto* Authored = CastChecked<URPGBossSummonPatternSettings>(Source->BossAIComponent->Definition->Phases[1].PhaseEntryPattern.Settings);
+				Authored->LocalSpawnOffsets = {FVector(200.f, 0.f, 0.f), FVector(200.f, 200.f, 0.f)};
+			}
 			if (!Test->TestTrue(TEXT("Mechanic can begin reset"), Source->BossAIComponent->BeginReset())) { return true; }
 			ASC->SetNumericAttributeBase(URPGAttributeSet::GetCurrentHealthAttribute(), 100.f);
 			if (!Test->TestTrue(TEXT("Mechanic reset completes"), Source->BossAIComponent->CompleteReset()) ||
@@ -434,6 +471,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGBossSummonTest, "ProjectRPG.Boss.Summon",
 bool FRPGBossSummonTest::RunTest(const FString& Parameters)
 {
 	ADD_LATENT_AUTOMATION_COMMAND(FRPGBossSummonCommand(this));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGBossProfileSummonTest, "ProjectRPG.Boss.Profiles.SummonMechanicSettings",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGBossProfileSummonTest::RunTest(const FString& Parameters)
+{
+	ADD_LATENT_AUTOMATION_COMMAND(FRPGBossSummonCommand(this, true));
 	return true;
 }
 #endif
