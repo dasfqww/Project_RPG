@@ -1,5 +1,4 @@
 using ProjectRpg.Backend.Authentication;
-using ProjectRpg.Backend.Application;
 using ProjectRpg.Backend.Data;
 using ProjectRpg.Backend.Domain;
 
@@ -43,7 +42,7 @@ public static class DungeonRewardSnapshotApiEndpoints
                 int? deliveredItemQuantity = null;
                 if (rewardVersion is not null)
                 {
-                    Guid requestId = DungeonRewardSettlementWorker.BuildItemRewardRequestId(dungeonSessionId, characterId, rewardVersion);
+                    Guid requestId = DungeonRewardIdentity.ItemRequestId(dungeonSessionId, characterId, rewardVersion);
                     ItemRepositoryCommitResult? receipt = await itemRepository.TryGetCommitResultAsync(requestId, cancellationToken);
                     if (receipt is not null && (receipt.Actor != owner || receipt.Operation != "DungeonReward"
                         || receipt.AffectedQuantity < 0

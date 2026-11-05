@@ -5,6 +5,19 @@
 목록과 `Rewards delivered: Inventory N, Mail M` 안내를 갱신한다.
 N/M은 슬롯이나 첨부 개수가 아니라 아이템 수량이며, 영문 UI 문자열은 지역화 키를 제공한다.
 
+## 보상 명령 생성과 영수증 ID
+
+보상 명령 생성은 `DungeonRewardCommitPlanner`가 맡고, 필요한 캐릭터 정보는
+`ICharacterEconomyRepository`로 조회한다. 정산 워커는 큐 임대·재시도·실패 분류와
+원자 Commit 호출을 담당한다. 후보 명령 생성은 가방의 빈칸이나 스택을 미리 조회하지
+않으며, 실제 인벤토리/초과 우편 배치는 기존 저장소 트랜잭션 안에서 수행한다.
+
+정산과 조회 API는 `DungeonRewardIdentity`의 영수증 ID 규칙을 공유한다. 조회 API는
+백그라운드 워커를 참조하지 않는다. 기존 해시 입력·GUID 바이트 순서·아이템 seed와
+원래 보상 인덱스는 저장 호환 계약이므로 바꾸지 않는다. 회귀 검사는
+`Scripts/Tests/Run-RewardPlanningTests.ps1`에서 고정 ID·재시도 명령 및 기존
+Memory/PostgreSQL/HTTP 보상 흐름을 함께 확인한다.
+
 ## 읽기 전용 API와 권한
 
 `GET /api/dungeon-sessions/{sessionId}/reward-snapshot/{characterId}`

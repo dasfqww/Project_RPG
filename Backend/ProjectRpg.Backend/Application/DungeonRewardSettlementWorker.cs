@@ -1,6 +1,3 @@
-using System.Buffers.Binary;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Extensions.Options;
 using ProjectRpg.Backend.Configuration;
 using ProjectRpg.Backend.Data;
@@ -74,8 +71,9 @@ public sealed class DungeonRewardSettlementWorker(
         Observe(new(settlement.DungeonSessionId, settlement.AttemptCount, DungeonSettlementPhase.Started));
         try
         {
-            DungeonRewardCommitBatch batch = await BuildCommitBatchAsync(
+            DungeonRewardCommitBatch batch = await DungeonRewardCommitPlanner.BuildAsync(
                 settlement,
+                gameRepository,
                 cancellationToken);
             DungeonRewardCommitResult commitResult =
                 await rewardCommitRepository.CommitAsync(
@@ -120,7 +118,7 @@ public sealed class DungeonRewardSettlementWorker(
         {
             throw;
         }
-        catch (PermanentSettlementException exception)
+        catch (DungeonRewardPlanningException exception)
         {
             await gameRepository.FailDungeonRewardSettlementAsync(
                 settlement.DungeonSessionId,
@@ -189,149 +187,7 @@ public sealed class DungeonRewardSettlementWorker(
         catch (Exception) { logger.LogWarning("Settlement observation unavailable; reward processing continues."); }
     }
 
-    private async Task<DungeonRewardCommitBatch> BuildCommitBatchAsync(
-        DungeonRewardSettlement settlement,
-        CancellationToken cancellationToken)
-    {
-        List<CurrencyBatchEntry> currencyEntries = [];
-        List<ItemRepositoryCommitRequest> itemRequests = [];
-        Dictionary<Guid, IReadOnlyList<int>> stackSizesByRequest = [];
-        foreach (Guid characterId in settlement.CharacterIds.Order())
-        {
-            CharacterEconomyContext? context =
-                await gameRepository.GetCharacterEconomyContextAsync(
-                    characterId,
-                    cancellationToken);
-            if (context is null)
-            {
-                throw new PermanentSettlementException(
-                    $"Settlement member '{characterId}' no longer exists.");
-            }
-
-            if (settlement.Changes.Count > 0)
-            {
-                string commandFingerprint =
-                    $"{settlement.CommandFingerprint}:{characterId:D}";
-                CurrencyTransactionRequest request = new(
-                    BuildDeterministicId(
-                        "dungeon_reward",
-                        settlement,
-                        characterId),
-                    characterId,
-                    settlement.DungeonSessionId,
-                    "dungeon_reward",
-                    commandFingerprint,
-                    $"DungeonClear.{settlement.RewardVersion}",
-                    settlement.Changes);
-                currencyEntries.Add(new CurrencyBatchEntry(request, context));
-            }
-
-            if (settlement.ItemRewards.Count > 0)
-            {
-                int[] indices;
-                try { indices = DungeonPersonalLootSelection.SelectIndices(settlement.DungeonSessionId,
-                    characterId, settlement.RewardVersion, settlement.ItemRewards); }
-                catch (Exception error) when (error is InvalidDataException or ArgumentException)
-                { throw new PermanentSettlementException("Invalid frozen personal loot selection."); }
-                if (indices.Length > 0)
-                {
-                    ItemRepositoryCommitRequest request = BuildItemRequest(settlement, characterId, indices);
-                    itemRequests.Add(request);
-                    stackSizesByRequest.Add(request.RequestId, indices.Select(index => settlement.ItemRewards[index].MaxStackSize).ToArray());
-                }
-            }
-        }
-
-        return new DungeonRewardCommitBatch(
-            currencyEntries,
-            itemRequests,
-            ItemMaxStackSizesByRequest: stackSizesByRequest);
-    }
-
-    private static ItemRepositoryCommitRequest BuildItemRequest(
-        DungeonRewardSettlement settlement,
-        Guid characterId,
-        IReadOnlyList<int> indices)
-    {
-        ItemOwnerRef owner = new(
-            ItemOwnerType.Character,
-            characterId.ToString("D"));
-        string containerId = $"DungeonReward.{settlement.DungeonSessionId:N}";
-        List<ItemRecordMutation> mutations = [];
-        int affectedQuantity = 0;
-        foreach (int index in indices)
-        {
-            DungeonItemReward reward = settlement.ItemRewards[index];
-            affectedQuantity = checked(affectedQuantity + reward.Quantity);
-            byte[] itemHash = BuildHash(
-                $"dungeon_reward_item|{settlement.DungeonSessionId:D}|{characterId:D}|{settlement.RewardVersion}|{index}");
-            Guid itemId = GuidFromHash(itemHash);
-            int generationSeed =
-                BinaryPrimitives.ReadInt32LittleEndian(itemHash.AsSpan(16, 4))
-                & int.MaxValue;
-            ItemRecord record = new(
-                reward.DefinitionType,
-                reward.DefinitionName,
-                reward.DefinitionVersion,
-                owner,
-                new ItemLocation(ItemContainerType.Mail, containerId, index),
-                new ItemInstanceState(
-                    itemId,
-                    generationSeed,
-                    reward.Quantity,
-                    reward.InstanceTags.ToArray(),
-                    reward.StatValues.ToArray(),
-                    reward.EquipmentProgression),
-                0,
-                ItemLifecycleState.Active,
-                new ItemRecordMetadata(
-                    reward.BindState,
-                    new ItemDurability(
-                        reward.DurabilityCurrent,
-                        reward.DurabilityMaximum),
-                    null,
-                    $"DungeonClear.{settlement.RewardVersion}",
-                    false));
-            mutations.Add(new ItemRecordMutation(0, record));
-        }
-
-        return new ItemRepositoryCommitRequest(
-            BuildItemRewardRequestId(settlement.DungeonSessionId, characterId, settlement.RewardVersion),
-            "DungeonReward",
-            $"{settlement.CommandFingerprint}:{characterId:D}:items",
-            owner,
-            affectedQuantity,
-            mutations);
-    }
-
-    // Shared with the read-only snapshot API: the receipt quantity is the
-    // actual personal grant, not the sum of every candidate in the loot pool.
+    // Compatibility facade. Reward readers use the shared domain identity directly.
     public static Guid BuildItemRewardRequestId(Guid dungeonSessionId, Guid characterId, string rewardVersion)
-        => GuidFromHash(BuildHash($"dungeon_item_reward|{dungeonSessionId:D}|{characterId:D}|{rewardVersion}"));
-
-    private static Guid BuildDeterministicId(
-        string kind,
-        DungeonRewardSettlement settlement,
-        Guid characterId)
-    {
-        string source =
-            $"{kind}|{settlement.DungeonSessionId:D}|{characterId:D}|{settlement.RewardVersion}";
-        return GuidFromHash(BuildHash(source));
-    }
-
-    private static byte[] BuildHash(string source)
-    {
-        return SHA256.HashData(Encoding.UTF8.GetBytes(source));
-    }
-
-    private static Guid GuidFromHash(byte[] hash)
-    {
-        Span<byte> bytes = stackalloc byte[16];
-        hash.AsSpan(0, 16).CopyTo(bytes);
-        bytes[0] |= 1;
-        return new Guid(bytes);
-    }
-
-    private sealed class PermanentSettlementException(string message)
-        : Exception(message);
+        => DungeonRewardIdentity.ItemRequestId(dungeonSessionId, characterId, rewardVersion);
 }
