@@ -35,95 +35,95 @@ struct FRPGDungeonDisconnectionOrderingTestAccess
 		const FString& Session, const FString& Server)
 	{
 		Web.ConfiguredDungeonSessionId = Session; Web.GameServerId = Server;
-		Web.BackendServiceToken = TEXT("ordering-server-fixture"); Web.DungeonDisconnectionJournal = Journal;
-		if (!Web.DungeonConsumeJournal)
-			Web.InitializeDungeonConsumeRecoveries(FPaths::Combine(Journal->GetDirectory(), TEXT("ConsumeRecoveries")));
+		Web.BackendServiceToken = TEXT("ordering-server-fixture"); Web.DungeonRecovery->DungeonDisconnectionJournal = Journal;
+		if (!Web.DungeonRecovery->DungeonConsumeJournal)
+			Web.DungeonRecovery->InitializeDungeonConsumeRecoveries(FPaths::Combine(Journal->GetDirectory(), TEXT("ConsumeRecoveries")));
 	}
 	static FHttpRequestPtr Consume(UHttpWebManager& Web, const FString& Ticket = TEXT("unconsumed-ticket-fixture"),
 		const FString& Steam = FString())
-	{ return Web.CreateConsumeJoinTicketRequest(Ticket, Steam); }
+	{ return Web.DungeonRecovery->CreateConsumeJoinTicketRequest(Ticket, Steam); }
 	static FHttpRequestPtr Settle(UHttpWebManager& Web)
 	{ return Web.CreateDungeonRewardSettlementRequest(TEXT("ordering_reward_v1"), {}, {}); }
 	static FHttpRequestPtr Report(UHttpWebManager& Web, const FRPGDungeonDisconnectionRecord& Record)
 	{
-		auto* Found = Web.DungeonDisconnectionReports.Find(Record.Key());
+		auto* Found = Web.DungeonRecovery->DungeonDisconnectionReports.Find(Record.Key());
 		if (!Found)
 		{
-			auto Report = MakeShared<UHttpWebManager::FDungeonDisconnectionReport>();
+			auto Report = MakeShared<FRPGDungeonConnectionRecovery::FDungeonDisconnectionReport>();
 			Report->DungeonSessionId = Web.ConfiguredDungeonSessionId;
 			Report->CharacterId = Record.CharacterId; Report->SteamId = Record.SteamId;
 			Report->ConnectionGeneration = Record.ConnectionGeneration;
 			Report->ObservedAtUtc = Record.ObservedAtUtc; Report->Body = Record.Body;
-			Web.DungeonDisconnectionReports.Add(Record.Key(), Report);
-			Found = Web.DungeonDisconnectionReports.Find(Record.Key());
+			Web.DungeonRecovery->DungeonDisconnectionReports.Add(Record.Key(), Report);
+			Found = Web.DungeonRecovery->DungeonDisconnectionReports.Find(Record.Key());
 		}
-		return Web.CreateDungeonDisconnectionAttempt(Found->ToSharedRef());
+		return Web.DungeonRecovery->CreateDungeonDisconnectionAttempt(Found->ToSharedRef());
 	}
 	static FHttpRequestPtr Membership(UHttpWebManager& Web)
 	{ return Web.CreateConfiguredDungeonMembershipRequest([](auto) {}); }
 	static void CancelMembership(UHttpWebManager& Web) { Web.CancelDungeonMembershipRequest(); }
-	static void Shutdown(UHttpWebManager& Web) { Web.bDungeonDisconnectionReportShutdown = true; }
+	static void Shutdown(UHttpWebManager& Web) { Web.DungeonRecovery->bDungeonDisconnectionReportShutdown = true; }
 	static void ReplaceJournal(UHttpWebManager& Web, const TSharedPtr<FRPGDungeonDisconnectionJournal>& Journal)
-	{ Web.DungeonDisconnectionJournal = Journal; }
+	{ Web.DungeonRecovery->DungeonDisconnectionJournal = Journal; }
 	static void CancelMutations(UHttpWebManager& Web) { Web.CancelDungeonConnectionMutations(); }
 	static FHttpRequestPtr ActiveConsume(UHttpWebManager& Web, const FString& Ticket)
-	{ return Web.ActiveDungeonConsumeRequests.FindRef(Ticket); }
+	{ return Web.DungeonRecovery->ActiveDungeonConsumeRequests.FindRef(Ticket); }
 	static FHttpRequestPtr ActiveSettlement(UHttpWebManager& Web) { return Web.ActiveDungeonSettlementRequest; }
-	static auto Recovery(UHttpWebManager& Web, const FString& Ticket) { return Web.DungeonConsumeRecoveries.FindRef(Ticket); }
+	static auto Recovery(UHttpWebManager& Web, const FString& Ticket) { return Web.DungeonRecovery->DungeonConsumeRecoveries.FindRef(Ticket); }
 	static FHttpRequestPtr Retry(UHttpWebManager& Web, const FString& Ticket)
 	{
 		if (auto State = Recovery(Web, Ticket)) State->NextAttemptAt = 0.0;
-		return Web.TakeDueDungeonConsumeRetry(Ticket, FPlatformTime::Seconds());
+		return Web.DungeonRecovery->TakeDueDungeonConsumeRetry(Ticket, FPlatformTime::Seconds());
 	}
 	static void ExpireRecovery(UHttpWebManager& Web, const FString& Ticket)
 	{
 		if (auto State = Recovery(Web, Ticket)) State->Deadline = FPlatformTime::Seconds() - 1.0;
-		Web.TakeDueDungeonConsumeRetry(Ticket, FPlatformTime::Seconds());
+		Web.DungeonRecovery->TakeDueDungeonConsumeRetry(Ticket, FPlatformTime::Seconds());
 	}
 	static FHttpRequestPtr Evidence(UHttpWebManager& Web, const FString& Ticket)
 	{
 		if (auto State = Recovery(Web, Ticket)) State->NextAttemptAt = 0.0;
-		return Web.TakeDueDungeonConsumeEvidence(Ticket, FPlatformTime::Seconds());
+		return Web.DungeonRecovery->TakeDueDungeonConsumeEvidence(Ticket, FPlatformTime::Seconds());
 	}
-	static auto ConsumeJournal(UHttpWebManager& Web) { return Web.DungeonConsumeJournal; }
+	static auto ConsumeJournal(UHttpWebManager& Web) { return Web.DungeonRecovery->DungeonConsumeJournal; }
 	static FHttpRequestPtr EvidenceAt(UHttpWebManager& Web, const FString& Ticket, double Now)
-	{ return Web.TakeDueDungeonConsumeEvidence(Ticket, Now); }
-	static void MarkConsumePersistenceFailed(UHttpWebManager& Web) { Web.bDungeonConsumePersistenceFailed = true; }
-	static int32 PendingObservationWrites(UHttpWebManager& Web) { return Web.PendingDungeonConsumeObservationWrites.Num(); }
-	static double ObservationWriteDue(UHttpWebManager& Web) { return Web.NextDungeonConsumeObservationWriteAt; }
-	static void RetryObservationWrites(UHttpWebManager& Web, double Now) { Web.RetryDungeonConsumeObservationWrites(Now); }
-	static int32 PendingDisconnectionWrites(UHttpWebManager& Web) { return Web.PendingDungeonDisconnectionWrites.Num(); }
-	static double DisconnectionWriteDue(UHttpWebManager& Web) { return Web.NextDungeonDisconnectionWriteAt; }
-	static void RetryDisconnectionWrites(UHttpWebManager& Web, double Now) { Web.RetryDungeonDisconnectionWrites(Now); }
-	static auto StoredReport(UHttpWebManager& Web, const FString& Key) { return Web.DungeonDisconnectionReports.FindRef(Key); }
+	{ return Web.DungeonRecovery->TakeDueDungeonConsumeEvidence(Ticket, Now); }
+	static void MarkConsumePersistenceFailed(UHttpWebManager& Web) { Web.DungeonRecovery->bDungeonConsumePersistenceFailed = true; }
+	static int32 PendingObservationWrites(UHttpWebManager& Web) { return Web.DungeonRecovery->PendingDungeonConsumeObservationWrites.Num(); }
+	static double ObservationWriteDue(UHttpWebManager& Web) { return Web.DungeonRecovery->NextDungeonConsumeObservationWriteAt; }
+	static void RetryObservationWrites(UHttpWebManager& Web, double Now) { Web.DungeonRecovery->RetryDungeonConsumeObservationWrites(Now); }
+	static int32 PendingDisconnectionWrites(UHttpWebManager& Web) { return Web.DungeonRecovery->PendingDungeonDisconnectionWrites.Num(); }
+	static double DisconnectionWriteDue(UHttpWebManager& Web) { return Web.DungeonRecovery->NextDungeonDisconnectionWriteAt; }
+	static void RetryDisconnectionWrites(UHttpWebManager& Web, double Now) { Web.DungeonRecovery->RetryDungeonDisconnectionWrites(Now); }
+	static auto StoredReport(UHttpWebManager& Web, const FString& Key) { return Web.DungeonRecovery->DungeonDisconnectionReports.FindRef(Key); }
 	static void ServiceToken(UHttpWebManager& Web, const FString& Token) { Web.BackendServiceToken = Token; }
-	static void MarkDisconnectionPersistenceFailed(UHttpWebManager& Web) { Web.bDungeonDisconnectionPersistenceFailed = true; }
-	static void BindRestoredWorld(UHttpWebManager& Web) { Web.BindRestoredDungeonConsumeWorld(); }
+	static void MarkDisconnectionPersistenceFailed(UHttpWebManager& Web) { Web.DungeonRecovery->bDungeonDisconnectionPersistenceFailed = true; }
+	static void BindRestoredWorld(UHttpWebManager& Web) { Web.DungeonRecovery->BindRestoredDungeonConsumeWorld(); }
 	static void InitializeJournals(UHttpWebManager& Web, const FString& Directory, const FString& Session, const FString& Server)
 	{
 		Web.ConfiguredDungeonSessionId = Session; Web.GameServerId = Server;
 		Web.BackendServiceToken = TEXT("ordering-server-fixture");
-		Web.InitializeDungeonDisconnectionReports(Directory);
+		Web.DungeonRecovery->InitializeDungeonDisconnectionReports(Directory);
 	}
-	static auto DisconnectionJournal(UHttpWebManager& Web) { return Web.DungeonDisconnectionJournal; }
-	static bool ParentRestorePending(UHttpWebManager& Web) { return Web.bDungeonDisconnectionRestorePending; }
-	static bool ConsumeRestorePending(UHttpWebManager& Web) { return Web.bDungeonConsumeRestorePending; }
-	static double RestoreDue(UHttpWebManager& Web) { return Web.NextDungeonJournalRestoreAt; }
-	static void RetryRestores(UHttpWebManager& Web, double Now) { Web.RetryDungeonJournalRestores(Now); }
-	static bool TickerArmed(UHttpWebManager& Web) { return Web.DungeonDisconnectionTicker.IsValid(); }
+	static auto DisconnectionJournal(UHttpWebManager& Web) { return Web.DungeonRecovery->DungeonDisconnectionJournal; }
+	static bool ParentRestorePending(UHttpWebManager& Web) { return Web.DungeonRecovery->bDungeonDisconnectionRestorePending; }
+	static bool ConsumeRestorePending(UHttpWebManager& Web) { return Web.DungeonRecovery->bDungeonConsumeRestorePending; }
+	static double RestoreDue(UHttpWebManager& Web) { return Web.DungeonRecovery->NextDungeonJournalRestoreAt; }
+	static void RetryRestores(UHttpWebManager& Web, double Now) { Web.DungeonRecovery->RetryDungeonJournalRestores(Now); }
+	static bool TickerArmed(UHttpWebManager& Web) { return Web.DungeonRecovery->DungeonDisconnectionTicker.IsValid(); }
 	static void StopTicker(UHttpWebManager& Web)
 	{
-		FTSTicker::GetCoreTicker().RemoveTicker(Web.DungeonDisconnectionTicker);
-		Web.DungeonDisconnectionTicker.Reset();
+		FTSTicker::GetCoreTicker().RemoveTicker(Web.DungeonRecovery->DungeonDisconnectionTicker);
+		Web.DungeonRecovery->DungeonDisconnectionTicker.Reset();
 	}
-	static int32 ReportCount(UHttpWebManager& Web) { return Web.DungeonDisconnectionReports.Num(); }
-	static int32 RecoveryCount(UHttpWebManager& Web) { return Web.DungeonConsumeRecoveries.Num(); }
+	static int32 ReportCount(UHttpWebManager& Web) { return Web.DungeonRecovery->DungeonDisconnectionReports.Num(); }
+	static int32 RecoveryCount(UHttpWebManager& Web) { return Web.DungeonRecovery->DungeonConsumeRecoveries.Num(); }
 	static void TickRestore(UHttpWebManager& Web)
-	{ Web.NextDungeonJournalRestoreAt = 0.0; Web.TickDungeonDisconnectionReports(0.f); }
+	{ Web.DungeonRecovery->NextDungeonJournalRestoreAt = 0.0; Web.DungeonRecovery->TickDungeonDisconnectionReports(0.f); }
 	static void ConfigureHttp(UHttpWebManager& Web, const FString& Backend, const FString& Token)
 	{ Web.ApiUrl = Backend; Web.BackendServiceToken = Token; }
 	static void DispatchConsume(UHttpWebManager& Web, const FString& Ticket, const FHttpRequestPtr& Request)
-	{ Web.DispatchDungeonConsumeAttempt(Ticket, Request); }
+	{ Web.DungeonRecovery->DispatchDungeonConsumeAttempt(Ticket, Request); }
 };
 
 namespace RPGDisconnectionOrderingTests
