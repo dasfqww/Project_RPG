@@ -11,6 +11,7 @@
 #include "GameState/RPGBossBattleGameState.h"
 #include "InputMappingContext.h"
 #include "UObject/StrongObjectPtr.h"
+#include "Input/RPGInputBindingTransactions.h"
 #include "RPGPlayerController.generated.h"
 
 USTRUCT()
@@ -59,7 +60,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FRPGBossBattleRetryRequestChanged);
  * 
  */
 UCLASS()
-class PROJECT_RPG_API ARPGPlayerController : public APlayerController, public IGenericTeamAgentInterface
+class PROJECT_RPG_API ARPGPlayerController : public APlayerController, public IGenericTeamAgentInterface, public IRPGInputBindingHost
 {
 	GENERATED_BODY()
 public:
@@ -122,7 +123,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	FKey GetCurrentKeyForTag(FGameplayTag InTag) const;
 	const UDataAsset_InputConfig* GetInputConfig() const { return InputConfigDataAsset; }
-	const UDataAsset_InputConfig* GetSourceInputConfig() const
+	virtual const UDataAsset_InputConfig* GetSourceInputConfig() const override
 	{
 		return SourceInputConfig ? SourceInputConfig.Get() : InputConfigDataAsset;
 	}
@@ -368,13 +369,12 @@ private:
 		UDataAsset_InputConfig* InputConfigDataAsset;
 	UPROPERTY(Transient)
 	TObjectPtr<UDataAsset_InputConfig> SourceInputConfig;
-	bool bApplyingKeyBinding = false;
-
-	bool RestoreDefaultKeyBindingsInternal(const TArray<FRPGKeyMapping>& ExpectedBindings,
-		TFunctionRef<bool(const FRPGInputBindingRestoreView&, FText&)> ValidatePolicy,
-		const FRPGInputBindingRestoreExtension* Additional, FText& OutError);
-	bool ApplyKeyBindingInternal(FGameplayTag InTag, FKey DefaultKey, FKey NewKey,
-		FText& OutError, bool bSaveSettings, TFunctionRef<bool(FText&)>* ValidatePolicy = nullptr);
+	TSharedPtr<FRPGInputBindingTransactions> InputBindingTransactions;
+	virtual APlayerController& GetInputBindingController() const override;
+	virtual UDataAsset_InputConfig* GetInputBindingConfig() const override;
+	virtual UInputMappingContext* GetRebuiltInputContext() const override;
+	virtual UQuickSlotComponent* GetInputQuickSlots() const override;
+	virtual URPGSkillWindowComponent* GetInputSkillWindow() const override;
 	TStrongObjectPtr<UInputMappingContext> SkillQuickSlotInputContext;
 
 	FVector2D SwitchDirection = FVector2D::ZeroVector;
