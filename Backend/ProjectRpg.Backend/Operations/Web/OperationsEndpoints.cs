@@ -10,6 +10,8 @@ public static class OperationsEndpoints
     public static void Map(WebApplication app)
     {
         OperationsCompensationEndpoints.Map(app);
+        OperationsRestrictionEndpoints.Map(app);
+        OperationsActionEndpoints.Map(app);
         app.MapPost("/ops/auth/login", async (HttpContext context, IAntiforgery antiforgery) =>
         {
             await antiforgery.ValidateRequestAsync(context);

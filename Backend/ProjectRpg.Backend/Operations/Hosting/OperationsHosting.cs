@@ -16,6 +16,8 @@ using ProjectRpg.Operations.Core.Sessions;
 using ProjectRpg.Operations.Core.Wallets;
 using ProjectRpg.Operations.Core.Compensation;
 using ProjectRpg.Backend.Operations.Infrastructure.Compensation;
+using ProjectRpg.Backend.Operations.Restrictions;
+using ProjectRpg.Operations.Core.Restrictions;
 
 namespace ProjectRpg.Backend.Operations.Hosting;
 
@@ -51,6 +53,9 @@ public static class OperationsHosting
             services.AddSingleton<ISessionEvidenceReadStore, PostgresSessionEvidenceReadStore>();
             services.AddSingleton<IEvidenceReadStore, PostgresEvidenceReadStore>();
             services.AddSingleton<PostgresCompensationStore>();
+            services.AddSingleton<PostgresRestrictionStore>();
+            services.AddSingleton<IAccountRestrictionReader>(p=>p.GetRequiredService<PostgresRestrictionStore>());
+            services.AddSingleton<IAccountRestrictionCommitter>(p=>p.GetRequiredService<PostgresRestrictionStore>());
             services.AddSingleton<ICompensationCommitter>(p => p.GetRequiredService<PostgresCompensationStore>());
             services.AddSingleton<IOperationActionReader>(p => p.GetRequiredService<PostgresCompensationStore>());
         }
@@ -66,6 +71,9 @@ public static class OperationsHosting
             services.AddSingleton<ISessionEvidenceReadStore, MemorySessionEvidenceReadStore>();
             services.AddSingleton<IEvidenceReadStore, MemoryEvidenceReadStore>();
             services.AddSingleton<MemoryCompensationStore>();
+            services.AddSingleton<MemoryRestrictionStore>();
+            services.AddSingleton<IAccountRestrictionReader>(p=>p.GetRequiredService<MemoryRestrictionStore>());
+            services.AddSingleton<IAccountRestrictionCommitter>(p=>p.GetRequiredService<MemoryRestrictionStore>());
             services.AddSingleton<ICompensationCommitter>(p => p.GetRequiredService<MemoryCompensationStore>());
             services.AddSingleton<IOperationActionReader>(p => p.GetRequiredService<MemoryCompensationStore>());
         }
@@ -85,6 +93,9 @@ public static class OperationsHosting
         services.AddScoped<ReadOperationActions>();
         services.AddSingleton<CompensationPreviewTokens>();
         services.AddScoped<OperationsCompensationFacade>();
+        services.AddScoped<ChangeAccountRestriction>();
+        services.AddScoped<ReadAccountRestriction>();
+        services.AddScoped<OperationsRestrictionFacade>();
         services.AddSingleton<OperationsCursor>();
         services.AddScoped<OperationsReadFacade>();
         services.AddSingleton<OperationsRequestLimits>();

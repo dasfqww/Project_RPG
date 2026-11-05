@@ -1,6 +1,6 @@
 # 운영툴 실행과 유지보수
 
-2026-11-05 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 영수증·정산 조사, S3 개별 아이템 보상과 S4 런타임 감시·알림 구현. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md)의 기간 제재/해제·공지/점검·백업 수집/복구는 후속 구현 범위다.
+2026-11-05 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 영수증·정산 조사, S3 개별 보상·기간 제재/해제의 Backend/운영 화면과 S4 런타임 감시·알림 구현. 제재의 최신 UE 통합 검증은 인계 대기다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md)의 공지/점검·백업 수집/복구는 후속 구현 범위다.
 
 ## 구현 경계
 
@@ -35,6 +35,7 @@
 | `Operations__Compensation__AllowedDefinitions__0` 등 | 기본 빈 목록으로 지급 불가. 지원하는 서버 정의/버전의 정확한 key만 허용 |
 | `Operations__Monitor__Enabled` | 기본 false. 별도 기계 상태 조회 활성화 |
 | `Operations__Monitor__Token` | 기계 인증 전용 32~256자 영문/숫자/`-`/`_` 비밀값. 게임 관리자/OAuth 자격과 분리 |
+| `Operations__RestrictionsEnabled` | 기본 false. 계정 제재/해제 API·화면 활성화. 기존에 저장된 제재의 게임 경로 검사는 이 설정과 무관하게 유지 |
 
 Windows에서 키 보호 인증서를 생략하면 서비스 계정의 DPAPI로 암호화한다. 해당 계정과 키 디렉터리를 함께 유지한다. Windows 디렉터리 ACL은 서비스 계정과 필요한 관리자만 접근하도록 배포 때 설정한다. Linux에서는 디렉터리 권한을 0700으로 설정한다. reparse point/junction 경로는 거절한다. 운영 호스트 시간대는 UTC가 필요하며 시작 시 검사한다.
 
@@ -45,8 +46,8 @@ GitHub 앱 callback은 정확히 `<ManagementOrigin>/ops/auth/github-callback`�
 ## 스키마와 시작 순서
 
 1. 같은 릴리스의 Backend와 `ProjectRpg.Operations.Core.dll`, 컴파일된 Razor, `Database` SQL을 함께 publish한다. Backend의 ProjectReference가 Core를 포함한다. NuGet 전이 의존성은 [packages.lock.json](../Backend/ProjectRpg.Backend/packages.lock.json)으로 고정한다.
-2. 기존 배포 절차대로 별도 DDL 역할에서 `dotnet ProjectRpg.Backend.dll --migrate-schema`를 실행한다. [0004_operations_sessions.sql](../Backend/Database/Migrations/0004_operations_sessions.sql)은 운영 세션, [0005_operations_evidence.sql](../Backend/Database/Migrations/0005_operations_evidence.sql)은 영수증/정산 조회 인덱스, [0006_operations_compensation.sql](../Backend/Database/Migrations/0006_operations_compensation.sql)은 확정 조치와 사건 키를 추가한다. 기존 v1~v5 SQL은 변경하지 않았다. 운영툴이 비활성이어도 새 릴리스의 migration catalog는 v6다.
-3. 런타임 역할에 기존 게임 권한과 `ops_operator_sessions`의 SELECT/INSERT/UPDATE/DELETE, `ops_actions`와 `ops_compensation_cases`의 SELECT/INSERT 권한을 부여한다. 감사/사건 테이블의 UPDATE/DELETE는 런타임 역할에 부여하지 않는다. 스키마 초기화가 권한을 자동 부여하지는 않는다. 일반 운영 기동은 기존 계약대로 migration 이력을 검증한다.
+2. 기존 배포 절차대로 별도 DDL 역할에서 `dotnet ProjectRpg.Backend.dll --migrate-schema`를 실행한다. v4는 운영 세션, v5는 조회 인덱스, v6는 확정 조치와 사건 키다. [0007_operations_restrictions.sql](../Backend/Database/Migrations/0007_operations_restrictions.sql)은 계정 제재와 계정 조치 대상을 추가한다. 기존 v1~v6 SQL은 변경하지 않았다. 운영툴이 비활성이어도 새 릴리스의 migration catalog는 v7이다.
+3. 런타임 역할에 기존 게임 권한과 `ops_operator_sessions`의 SELECT/INSERT/UPDATE/DELETE, `ops_actions`와 `ops_compensation_cases`의 SELECT/INSERT, `ops_account_restrictions`의 SELECT/INSERT/UPDATE 권한을 부여한다. 제재 변경 화면을 꺼도 인증/입장 경로에는 `ops_account_restrictions` SELECT가 필요하다. 감사/사건 테이블의 UPDATE/DELETE는 런타임 역할에 부여하지 않는다. 스키마 초기화가 권한을 자동 부여하지는 않는다. 일반 운영 기동은 기존 계약대로 migration 이력을 검증한다.
 4. 운영 설정을 주입하고 기존 백엔드를 기동한다. 관리망에서 `/ops/login` → GitHub 로그인 → `/ops` 검색을 확인한다. 조회는 게임 상태를 바꾸지 않지만 운영 세션의 last_seen/revoke/purge는 기록한다.
 
 서버 세션의 원문 키는 DB에 저장하지 않는다. SHA-256 키 해시와 Data Protection으로 보호한 ticket만 저장한다. 로그아웃 때 서버 세션을 취소하며, 세션 저장소 장애를 인증 성공으로 처리하지 않는다. 키·세대 변경/복원 이후에는 기존 로그인 유지 여부를 별도로 확인한다.
@@ -87,6 +88,20 @@ PostgreSQL에서 운영 요청 → 캐릭터 → 기존 아이템 owner/request 
 
 `ops.command.started/committed/replayed/rejected/unknown`은 HTTP trace와 운영 요청·아이템 거래·사건·아이템 ID를 연결한다. 감사 원장은 기술 로그 유실과 무관하게 DB에 보존된다. UI의 성공 표시는 지급 확정이며 UE의 즉시 갱신을 보장하지 않는다. 다음 로비·우편 재조회 반영이 계약이다. 기간 제재/해제는 이 범위에 포함하지 않았다.
 
+## 기간 제재·해제(S3 Backend/운영 화면)
+
+캐릭터 상세의 **계정 기간 제재·해제**에서 현재 상태와 최근 조치를 확인한다. 제재는 기본 24시간/최대 30일이며 영구 제재는 제공하지 않는다. `None/revision=0`, `Active`, `Expired`, `Released`를 구분한다. 만료는 조회 시각으로 계산하고 상태/revision을 조회 과정에서 바꾸지 않는다. 해제도 별도 요청·사유·revision 증가·감사를 남긴다. 이미 만료/해제된 기록도 기대 revision이 맞으면 해제 영수증을 보존한다. 기록이 없는 계정의 해제는 404다.
+
+[순수 Core 계약](../Backend/ProjectRpg.Operations.Core/Restrictions/AccountRestrictions.cs), [저장 어댑터](../Backend/ProjectRpg.Backend/Operations/Restrictions/), [계정 잠금](../Backend/ProjectRpg.Backend/Data/PostgresAccountAccess.cs)을 분리했다. 제재 성공은 `ops_actions`와 `ops_account_restrictions` 갱신·기존 `auth_sessions` 폐기가 같은 트랜잭션이다. 요청 ID → 계정 advisory gate → 계정/제재 행 순서로 잠근다. 로그인 계정 갱신/인증 발급, 방 생성/참가, 티켓 발급/소비/입장 확인도 같은 계정 gate를 게임 행보다 먼저 획득한다. 제재 이전에 발급한 미사용 티켓·소비 재시도도 이후 입장을 허용하지 않는다. 입장 근거 조회·기존 전투 heartbeat·정산은 보존한다. Memory도 같은 dungeon gate 아래 상태·감사·인증을 함께 반영한다.
+
+새 제재의 만료/기대 revision 검사는 기존 성공 재생 뒤에 수행한다. 같은 요청/같은 정규화 입력은 만료·해제 후에도 원래 결과를 돌려준다. 다른 입력이나 다른 종류의 운영 조치에서 사용한 요청 번호는 409다. 제재와 로그인 경합은 새 인증을 거절하거나 먼저 발급된 인증을 제재 트랜잭션이 폐기한다. 해제·만료는 폐기한 옛 인증을 되살리지 않는다. 만료 이후 정상 재로그인한 새 인증은 해제 때문에 다시 폐기하지 않는다.
+
+`POST /ops/api/account-restrictions`, `POST /ops/api/account-restrictions/{account}/release`, `GET /ops/api/account-restrictions/{account}`를 제공한다. 변경 요청은 공통 CSRF/32KiB/30회·분/10초 제한, int64 revision 문자열 계약을 따른다. 공통 `GET /ops/api/actions/{requestId}`는 보상/제재 영수증을 판별해 반환하고 `targetScope=Account&targetId=<SteamID>`로 계정 조치 이력을 조회한다. 계정 조치에는 `target_account_id`를 사용하고 캐릭터 보상의 `target_id`와 사건 키는 유지한다. 전체 이력의 일괄 편집/삭제 기능은 없다.
+
+화면은 내용 확인 후 보내며, 전송 전에 환경/운영자별 최근 요청 최대 20개를 localStorage와 작업 intent를 sessionStorage에 저장한다. 응답 유실 후 원래 번호 조회/재전송을 제공한다. 저장소 실패는 전송을 거절한다. 로그아웃은 미전송 intent를 지우고 요청 번호는 보존한다. 과거 영수증을 복구해도 현재 상태는 다시 조회한다. revision 충돌 등 확정 거절 후에는 기록을 보존한 채 새로고침해 새 조치를 준비한다. 요청 결과가 404/불명확하다고 자동으로 새 번호를 만들지 않는다. 같은 `ops.command.*` 이벤트와 원래 요청/HTTP trace로 추적하며 사유는 감사에만 저장한다.
+
+실제 HTTPS/Memory/PG에서 인증 폐기·로그인/모든 입장 경계 차단, 이미 입장한 2인 파티 heartbeat·실제 worker 지급 보존, 만료/해제·재시작·요청 충돌·감사 실패 롤백·로그인 경합을 검증했다. 실제 페이지 스크립트도 응답 유실/재시도/int64/저장소 실패/로그아웃을 검사했다. **최신 UE 인증·복구 소스는 다른 담당의 쓰기/검증 중이므로 수정하지 않았으며, 실제 최신 UE 실행에서 401 처리와 전투 보존을 확인하는 통합 검증은 남아 있다.** 이 Backend/운영 화면 완료를 S3 전체 UE 검증 완료로 표시하지 않는다.
+
 ## 런타임 감시·알림(S4 독립 범위)
 
 외부 관리 호스트에서 [Operations.Monitor](../Backend/ProjectRpg.Operations.Monitor/)를 실행한다. 게임 backend와 다른 프로세스/호스트여야 backend 종료도 감지한다. [Core 감시 정책](../Backend/ProjectRpg.Operations.Core/Monitoring/MonitorCycle.cs)은 HTTP/파일 구현에 의존하지 않으며 probe·상태 저장·알림 전달 포트를 사용한다. 백엔드 [기계 상태 경계](../Backend/ProjectRpg.Backend/Operations/Monitoring/OperationsMonitoring.cs)는 기존 인증/입장 API와 독립적이다.
@@ -111,7 +126,7 @@ PostgreSQL에서 운영 요청 → 캐릭터 → 기존 아이템 owner/request 
 
 상태 디렉터리의 `monitor.lock`을 단독 소유하고 `state.json`에 환경·서비스·incident 상태와 미전송 event를 보관한다. 전송 전에 eventId를 저장하고 파일 flush/원자 교체 후 HTTP를 보낸다. 성공하지 못하면 같은 eventId로 1/5/15분 간격 최대 3회 재전송하며 지속 장애 요약은 별도 event다. 수신자는 eventId로 중복을 제거해야 한다. 손상/다른 환경의 상태는 자동 초기화하지 않고 오류로 멈춘다. 상태 디렉터리를 삭제하면 알림 중복이 생길 수 있으므로 배포 때 유지한다. 링크/reparse 경로와 64KiB 초과 상태를 거절한다. 전체 원문 개인정보 대신 고정 summary와 빈 referenceIds를 보낸다.
 
-이번 범위는 런타임/정산/로그 감시다. pgBackRest 상태 수집·백업 실패/보존 경보, Drain 장기 지속 경보는 각각 백업 및 서비스 제어 구현에 연결할 후속 범위다. 실제 외부 관리 호스트·알림 수신 서비스 배포와 장애 주입 리허설은 별도로 수행한다. 제재·해제는 공통 입장 API와 UE 검증 자원 인계 후 진행한다.
+이번 감시 범위는 런타임/정산/로그다. pgBackRest 상태 수집·백업 실패/보존 경보, Drain 장기 지속 경보는 각각 백업 및 서비스 제어 구현에 연결할 후속 범위다. 실제 외부 관리 호스트·알림 수신 서비스 배포와 장애 주입 리허설은 별도로 수행한다. 제재의 실제 최신 UE 통합은 해당 소스/검증 자원 인계 후 진행한다.
 
 ## 검사 실행
 
@@ -125,7 +140,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Test-Inventory
 
 운영툴 러너는 게시 HEAD의 Backend에 해당 운영툴 소스만 덮은 닫힌 입력을 만들고 별도 bin/obj로 빌드한다. 실제 loopback HTTPS, 실제 ASP.NET OAuth/cookie/antiforgery handler, 모의 GitHub backchannel을 사용한다. PostgreSQL은 실행별 라벨·동적 loopback 포트·tmpfs 컨테이너다. 후속 구현에서 입력 경로를 추가하면 러너의 소유 overlay 목록도 갱신한다.
 
-검증 범위는 Core 의존 방향/권한·입력, 잘못된 OAuth state/비허용 계정/공급자 실패, CSRF·게임 인증 분리, int64 정밀도·페이지, 리스 조회 무변경, 로그 child span·커서·손상/회전, 유휴/절대 만료·로그아웃, PostgreSQL 세션/키 재시작 복원·AuthEpoch, v5→v6 단일 migration이다. S2는 실제 worker의 재화/아이템 원자 commit·관측기 예외 이후 처리, 동시각 출처 병합/페이지·actor/result 중복 제거·소비 후 영수증·소유 범위·정산 상태 구분·단일 조회의 연결 검증을 포함한다. 실제 게임 테이블 전체의 조회 전후 지문도 비교한다. 스냅샷 러너는 Core·Razor·SQL 의존성을 함께 포착하고 무관한 외부 참조는 계속 거절한다.
+검증 범위는 Core 의존 방향/권한·입력, 잘못된 OAuth state/비허용 계정/공급자 실패, CSRF·게임 인증 분리, int64 정밀도·페이지, 리스 조회 무변경, 로그 child span·커서·손상/회전, 유휴/절대 만료·로그아웃, PostgreSQL 세션/키 재시작 복원·AuthEpoch, v6→v7 단일 migration이다. S2는 실제 worker의 재화/아이템 원자 commit·관측기 예외 이후 처리, 동시각 출처 병합/페이지·actor/result 중복 제거·소비 후 영수증·소유 범위·정산 상태 구분·단일 조회의 연결 검증을 포함한다. 실제 게임 테이블 전체의 조회 전후 지문도 비교한다. 스냅샷 러너는 Core·Razor·SQL 의존성을 함께 포착하고 무관한 외부 참조는 계속 거절한다.
 
 보상 검사는 실제 HTTPS/CSRF·기본 거절·정의 검증·body/rate 한도, 만료 뒤 동일 영수증·정책 변경/재시작, 동시 요청/사건 중복, PostgreSQL 감사 실패 후 전체 롤백·리스/세션 NOWAIT·부재 리스 FK 경합·독립 Pending/Processing 차단·영수증 불일치를 포함한다. 실제 페이지 스크립트를 DOM/storage/fetch 어댑터에서 실행해 응답 유실/새로고침/같은 ID 미리보기 갱신/저장소 실패/로그아웃도 검증한다.
 

@@ -63,6 +63,17 @@ public sealed class OperationsEventRecorder(OperationsLogStore store, Operations
         }
         catch (Exception) { /* Optional technical log failure must not alter the atomic audit/receipt result. */ }
     }
+    public void RecordRestriction(HttpContext context,ProjectRpg.Operations.Core.Restrictions.RestrictionIntent intent,string outcome,string? error)
+    {
+        try
+        {
+            Write(new(1,Guid.NewGuid(),"ops.command."+outcome.ToLowerInvariant(),clock.GetUtcNow(),error is null?"Information":"Warning",
+                options.EnvironmentId,"ProjectRpg.Backend",store.BootId,BuildVersion,OperationsHttp.RequestId(context),
+                Activity.Current?.TraceId.ToString(),Activity.Current?.SpanId.ToString(),null,intent.Operation,null,options.OperatorId,
+                null,null,null,intent.RequestId,null,null,null,outcome,error,null,"OperationsRestriction"));
+        }
+        catch(Exception) { /* The immutable database receipt is authoritative even when technical logging is unavailable. */ }
+    }
     private void Write(LogEvent value)
     {
         // Only these typed, server-owned fields cross the logger boundary. Never attach request/body/exception objects.

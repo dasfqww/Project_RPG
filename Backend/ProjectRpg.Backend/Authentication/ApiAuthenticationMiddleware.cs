@@ -8,6 +8,16 @@ public sealed class ApiAuthenticationMiddleware(RequestDelegate next)
 
     public async Task InvokeAsync(HttpContext context, BearerAuthenticator authenticator)
     {
+        try { await InvokeCoreAsync(context, authenticator); }
+        catch (AccountRestrictedException) when (!context.Response.HasStarted)
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            context.Response.StatusCode = 403;
+            await context.Response.WriteAsJsonAsync(new { error = "account_restricted" }, context.RequestAborted);
+        }
+    }
+    private async Task InvokeCoreAsync(HttpContext context, BearerAuthenticator authenticator)
+    {
         if (!context.Request.Path.StartsWithSegments("/api")
             || context.Request.Path.Equals("/api/auth/steam-ticket", StringComparison.OrdinalIgnoreCase))
         {

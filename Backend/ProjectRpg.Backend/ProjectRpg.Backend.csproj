@@ -48,4 +48,5 @@
     <Content Include="../Database/Migrations/0006_operations_compensation.sql" Link="Database/Migrations/0006_operations_compensation.sql"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup><Content Include="../Database/Migrations/0007_operations_restrictions.sql" Link="Database/Migrations/0007_operations_restrictions.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
 </Project>

@@ -47,7 +47,7 @@ internal sealed class HostFixture : IAsyncDisposable
 
     internal static async Task<HostFixture> StartAsync(string root, string? postgres = null, int port = 0,
         CookieContainer? cookies = null, MutableClock? clock = null, string epoch = "operations-test-epoch-0001", bool enabled = true, bool compensation = false, string[]? allowedDefinitions = null,
-        bool monitoring = false, Action<Microsoft.Extensions.DependencyInjection.IServiceCollection>? customize = null,
+        bool monitoring = false, bool restrictions = false, Action<Microsoft.Extensions.DependencyInjection.IServiceCollection>? customize = null,
         Action<WebApplication>? customizeRoutes = null)
     {
         Directory.CreateDirectory(root);
@@ -79,6 +79,7 @@ internal sealed class HostFixture : IAsyncDisposable
             ["Operations:KeyDirectory"]=Path.Combine(root,"keys"), ["Operations:LogRoot"]=Path.Combine(root,"logs"),
             ["Operations:AllowUnencryptedDevelopmentKeys"]="true",
             ["Operations:Compensation:Enabled"]=compensation.ToString(),
+            ["Operations:RestrictionsEnabled"]=restrictions.ToString(),
             ["Operations:Monitor:Enabled"]=monitoring.ToString(), ["Operations:Monitor:Token"]=new string('m',48)
         });
         if (compensation) builder.Configuration.AddInMemoryCollection((allowedDefinitions ?? [
@@ -98,7 +99,7 @@ internal sealed class HostFixture : IAsyncDisposable
             builder.Services.AddSingleton<IEconomyRepository>(p => p.GetRequiredService<InMemoryEconomyRepository>());
             builder.Services.AddSingleton<IItemRepository>(p => p.GetRequiredService<InMemoryItemRepository>());
             builder.Services.AddSingleton<IGameRepository>(p => new InMemoryGameRepository(
-                p.GetRequiredService<InMemoryTransactionGate>(), p.GetRequiredService<InMemoryItemRepository>()));
+                p.GetRequiredService<InMemoryTransactionGate>(), p.GetRequiredService<InMemoryItemRepository>(), clock));
             builder.Services.AddSingleton<IDungeonRewardCommitRepository,InMemoryDungeonRewardCommitRepository>();
         }
         else

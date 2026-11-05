@@ -2,7 +2,7 @@
 
 작성일: 2026-11-05 · 상태: v1 설계 확정, S1·S2 구현/격리 검증 완료. 실제 운영 배포 미수행
 
-S1·S2·S3 개별 보상·S4 런타임 감시의 소스 경계·설정·기동/검증 방법은 [운영툴 실행 문서](OPERATIONS_TOOL_RUNTIME.md)에 기록한다. S3 기간 제재/해제와 S4 공지/점검·백업 감시/복구는 아래 계약을 따른 후속 구현 범위이며 현재 완료를 v1 전체 구현 완료로 취급하지 않는다.
+S1·S2·S3 보상/제재 Backend·S4 런타임 감시의 소스 경계·설정·기동/검증 방법은 [운영툴 실행 문서](OPERATIONS_TOOL_RUNTIME.md)에 기록한다. S3 제재의 실제 최신 UE 통합 검증과 S4 공지/점검·백업 감시/복구는 후속 범위이며 현재 완료를 v1 전체 구현 완료로 취급하지 않는다.
 
 사용자 요청은 SOLID·유지보수성·로그 추적을 갖춘 운영툴의 설계를 끝내는 것이다. 이 문서는 [아키텍처](OPERATIONS_TOOL_ARCHITECTURE.md)의 상세 계약을 확정한다. [제작 계획](SOLO_OPERATIONS_TOOL_PLAN.md)은 범위/순서, [추적 계약](OPERATIONS_LOG_TRACING.md)은 공통 사건 의미를 관리한다. 값·DTO·오류·동시성 정책의 최종 기준은 본 문서이며, 변경할 때 관련 요약도 함께 갱신한다.
 
@@ -252,6 +252,8 @@ v1 템플릿은 `Ops.Compensation.Item.v1`: Character 소유, 아이템 1종·1�
 
 ### 8.2 기간 제재/해제
 
+Backend/운영 화면과 Memory/PG/HTTPS 검증은 구현했다. [실행 및 남은 UE 검증](OPERATIONS_TOOL_RUNTIME.md#기간-제재해제s3-backend운영-화면)을 따른다. v7은 기존 캐릭터 target_id/사건 키를 보존하고 Account 조치용 target_account_id를 추가하며 대상 모양을 제약한다. 계정 조치에서 사건/템플릿은 해당하지 않는다.
+
 `POST /ops/api/account-restrictions`는 `{requestId,accountId,expectedRevision,expiresAtUtc,reason}`를 받고 기본 24시간/최대 30일이다. 영구 제재는 v1에서 제외한다. `POST /ops/api/account-restrictions/{accountId}/release`는 `{requestId,expectedRevision,reason}`를 받는다. 결과/재시도는 ops_actions와 동일 규칙이며 해제도 별도 영수증을 남긴다.
 
 `GET /ops/api/account-restrictions/{accountId}`는 RestrictionSnapshot={accountId,state:None/Active/Released/Expired,revision,startsAtUtc?,expiresAtUtc?,reason?,actionRequestId?,observedAtUtc}를 반환한다. 계정은 있지만 기록이 없으면 None/revision=0이다. 새 제한은 expectedRevision=0, 저장 revision=1이다. 기존 제한 갱신/해제는 현재 revision 일치를 요구하며 +1한다. startsAt은 서버 now, expiresAt 생략 시 hash에는 Default24Hours 표식을 넣고 첫 commit에서만 now+24시간을 계산한다. 명시한 만료는 now보다 이후/30일 이하다. 이미 해제/만료된 제한의 해제도 기대 revision이 맞으면 감사가 있는 Released 상태로 기록한다. 없는 계정/없는 해제 대상은 404이며 reason 규칙은 보상과 같다.
@@ -331,4 +333,4 @@ Ops 활성 상태에서 인증·키 보호·DB 세션·영속 로그 root가 잘
 - **구현 때 검증할 사실:** 실제 라이브러리 버전/호스트 호환성, 기존 코드와 잠금 경합, 실제 DB/UE 연결·성능·복구 목표. 검증이 설계 가정을 반증하면 해당 결정과 영향을 문서화해 수정한다.
 - **v1 밖:** S5 대량/예약·직원 권한 UI·자유 편집/회수·전체 경제 대시보드. 별도 기능 요청 시 설계한다.
 
-설계 단계의 남은 미결 항목은 없다. S1 기본 조회·인증·추적과 S2 보상 근거 조사·worker 원래 요청/세션 ID 계측을 구현하고 격리 환경에서 검증했다. S3 개별 아이템 보상은 미리보기·원자 지급/감사·복구 UI와 함께 구현했다. [실행/검증 범위](OPERATIONS_TOOL_RUNTIME.md#개별-아이템-보상s3-첫-범위)를 따른다. 게임 서버/UE 전체 사건 계측과 실제 운영 배포는 미검증 범위다. S4 런타임 감시/알림도 독립 구현했다. S3 기간 제재/해제와 S4 공지/점검·백업 상태 수집/복구는 후속 구현이다.
+설계 단계의 남은 미결 항목은 없다. S1 기본 조회·인증·추적과 S2 보상 근거 조사·worker 원래 요청/세션 ID 계측을 구현하고 격리 환경에서 검증했다. S3 개별 아이템 보상은 미리보기·원자 지급/감사·복구 UI와 함께 구현했다. [실행/검증 범위](OPERATIONS_TOOL_RUNTIME.md#개별-아이템-보상s3-첫-범위)를 따른다. 게임 서버/UE 전체 사건 계측과 실제 운영 배포는 미검증 범위다. S4 런타임 감시/알림도 독립 구현했다. S3 기간 제재/해제의 Backend/운영 화면도 구현했다. 최신 UE 인증/전투 통합 검증과 S4 공지/점검·백업 상태 수집/복구는 후속이다.

@@ -1,0 +1,65 @@
+@page "/ops/accounts/{account}/restrictions"
+@model ProjectRpg.Backend.Pages.Ops.RestrictionsModel
+<h1>계정 기간 제재·해제</h1>
+@if(Model.Error is not null){<p class="error">@Model.Error.Code · 상태를 확인한 뒤 다시 시도하세요.</p>}
+@if(Model.Status is not null && Model.History is not null)
+{
+<div id="restriction" data-account="@Model.Status.AccountId" data-revision="@Model.Status.Revision" data-storage="@Model.StorageKey">
+<p>계정 <code>@Model.Status.AccountId</code> · <strong id="current-state">@Model.Status.State · revision @Model.Status.Revision · @Model.Status.ExpiresAtUtc?.ToString("u")</strong></p>
+<p>제재하면 기존 플레이어 인증을 폐기하고 신규 로그인·입장을 차단합니다. 이미 확정 입장한 전투와 정산은 유지합니다. 해제·만료 후에는 재로그인해야 합니다.</p>
+<form id="restriction-form">@Html.AntiForgeryToken()
+<label>조치 <select name="operation"><option value="set">기간 제재</option><option value="release">제재 해제</option></select></label>
+<label>만료 UTC(제재만, 비우면 24시간) <input name="expires" placeholder="2026-11-06T12:00:00Z" /></label>
+<label>사유 <input name="reason" required minlength="10" maxlength="512" size="50" /></label>
+<button type="submit">조치 내용 확인</button></form>
+<pre id="intent" style="white-space:pre-wrap"></pre>
+<button id="send" type="button" disabled>확인한 조치 실행</button><button id="reset" type="button" disabled>확정 결과 확인 후 새 조치</button>
+<p id="status" role="status" aria-live="polite"></p>
+<form id="lookup"><label>원래 요청 UUID <input name="requestId" maxlength="36" size="38" required /></label><button>확정 결과 조회</button></form>
+<ul id="requests"></ul>
+<h2>최근 확정 조치</h2><table><thead><tr><th>시각·요청</th><th>조치</th><th>만료</th><th>사유</th></tr></thead><tbody>
+@foreach(var r in Model.History.Items){<tr><td>@r.CommittedAtUtc.ToString("u")<br /><a href="/ops/api/actions/@r.RequestId">@r.RequestId</a><br /><a href="@ProjectRpg.Backend.Pages.Ops.RestrictionsModel.LogLink(r)">추적 로그</a></td><td>@r.Result.State · @r.Result.Revision</td><td>@r.Result.ExpiresAtUtc.ToString("u")</td><td>@r.Reason</td></tr>}
+</tbody></table>
+@if(Model.History.NextCursor is not null){<a href="?cursor=@Uri.EscapeDataString(Model.History.NextCursor)&limit=@(Request.Query["limit"].FirstOrDefault()??"50")">이전 조치</a>}
+</div>
+<script nonce="@HttpContext.Items["Ops.ScriptNonce"]">
+(()=>{
+ 'use strict';
+ const root=document.getElementById('restriction'),form=document.getElementById('restriction-form'),send=document.getElementById('send'),reset=document.getElementById('reset');
+ const status=document.getElementById('status'),detail=document.getElementById('intent'),lookup=document.getElementById('lookup');
+ const key=root.dataset.storage, pendingKey=key+'.intent.'+root.dataset.account;
+ let pending=null,busy=false;
+ function history(){const rows=JSON.parse(localStorage.getItem(key+'.requests')||'[]');if(!Array.isArray(rows))throw new Error('요청 저장소 형식 오류');
+  const list=document.getElementById('requests');list.replaceChildren();for(const row of rows.slice(0,20)){if(!/^[a-f0-9-]{36}$/.test(row.id))continue;
+   const li=document.createElement('li'),button=document.createElement('button');button.type='button';button.textContent=row.id;button.onclick=()=>{lookup.elements.requestId.value=row.id;lookup.requestSubmit();};li.append(button);list.append(li);}return rows;}
+ async function api(path,body){const response=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json','X-Ops-CSRF':form.elements.__RequestVerificationToken.value},body:JSON.stringify(body)}:{});
+  const result=await response.json();if(!response.ok){const error=new Error((result.code||'조회 실패')+' · 추적 '+(result.httpRequestId||''));error.code=result.code;throw error;}return result.data;}
+ async function confirmed(receipt){detail.textContent=JSON.stringify(receipt,null,2);status.textContent='확정된 조치 · 요청 '+receipt.requestId;
+  if(pending?.requestId===receipt.requestId){sessionStorage.removeItem(pendingKey);pending=null;send.disabled=true;reset.disabled=false;
+   try{const current=await api('/ops/api/account-restrictions/'+encodeURIComponent(root.dataset.account));root.dataset.revision=String(current.revision);
+    document.getElementById('current-state').textContent=current.state+' · revision '+current.revision+' · '+current.expiresAtUtc;}
+   catch{status.textContent='조치는 확정됐습니다. 현재 상태를 다시 읽지 못해 새로고침이 필요합니다.';form.querySelector('button').disabled=true;}}}
+ form.onsubmit=event=>{event.preventDefault();if(busy)return;if(pending?.requestId){status.textContent='원래 요청 결과를 조회하거나 같은 요청으로 재시도하세요.';return;}
+  try{const release=form.elements.operation.value==='release';let expires=form.elements.expires.value.trim();if(!release&&expires&&!expires.endsWith('Z'))throw new Error('만료는 명시적 UTC Z 형식이어야 합니다.');
+   pending={release,accountId:root.dataset.account,expectedRevision:root.dataset.revision,reason:form.elements.reason.value.trim(),expiresAtUtc:release?null:expires||null};
+   sessionStorage.setItem(pendingKey,JSON.stringify(pending));detail.textContent=JSON.stringify(pending,null,2);send.disabled=false;reset.disabled=true;status.textContent='계정·조치·사유·만료를 확인한 뒤 실행하세요.';
+  }catch(error){status.textContent=error.message;}};
+ send.onclick=async()=>{if(busy||!pending)return;busy=true;send.disabled=true;
+  try{if(!pending.requestId)pending.requestId=crypto.randomUUID();sessionStorage.setItem(pendingKey,JSON.stringify(pending));
+   localStorage.setItem(key+'.requests',JSON.stringify([{id:pending.requestId},...history().filter(r=>r.id!==pending.requestId)].slice(0,20)));history();lookup.elements.requestId.value=pending.requestId;
+   const path='/ops/api/account-restrictions'+(pending.release?'/'+encodeURIComponent(pending.accountId)+'/release':'');
+   const body=pending.release?{requestId:pending.requestId,expectedRevision:pending.expectedRevision,reason:pending.reason}:
+    {requestId:pending.requestId,accountId:pending.accountId,expectedRevision:pending.expectedRevision,reason:pending.reason,expiresAtUtc:pending.expiresAtUtc};
+   await confirmed((await api(path,body)).receipt);
+  }catch(error){status.textContent=error.message+' · 새 번호를 만들지 말고 원래 요청을 조회/재시도하세요.';
+   if(['ops.revision_conflict','ops.invalid_restriction','ops.restriction_not_found','ops.account_not_found'].includes(error.code)){reset.disabled=false;reset.textContent='거절 확인 · 요청 기록 보존 후 현재 상태 새로고침';}}
+  finally{busy=false;send.disabled=!pending;if(pending?.requestId)send.textContent='같은 요청으로 재시도';}};
+ lookup.onsubmit=async event=>{event.preventDefault();if(busy)return;busy=true;try{await confirmed(await api('/ops/api/actions/'+encodeURIComponent(lookup.elements.requestId.value)));}
+  catch(error){status.textContent=error.message+' · 404는 아직 처리 중인 요청의 영구 실패 증거가 아닙니다.';}finally{busy=false;}};
+ reset.onclick=()=>{if(busy)return;try{sessionStorage.removeItem(pendingKey);location.assign(location.pathname);}catch(error){status.textContent=error.message;}};
+ try{history();pending=JSON.parse(sessionStorage.getItem(pendingKey)||'null');if(pending){detail.textContent=JSON.stringify(pending,null,2);send.disabled=false;
+  if(pending.requestId){lookup.elements.requestId.value=pending.requestId;send.textContent='같은 요청으로 재시도';}status.textContent='저장한 조치를 복구했습니다. 원래 번호로 결과를 확인하세요.';}}
+ catch{send.disabled=true;status.textContent='저장소를 사용할 수 없어 조치를 중단했습니다.';}
+})();
+</script>
+}

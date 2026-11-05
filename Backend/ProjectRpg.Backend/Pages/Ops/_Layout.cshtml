@@ -17,7 +17,7 @@ body{font:16px/1.6 system-ui,sans-serif;background:#101923;color:#e1eaf3;margin:
 </header>
 <script nonce="@Context.Items["Ops.ScriptNonce"]">
 document.querySelector('form[action="/ops/auth/logout"]')?.addEventListener('submit', () => {
-  try { for (const key of Object.keys(sessionStorage)) if (key.startsWith('ops.compensation.') && key.includes('.token.')) sessionStorage.removeItem(key); } catch { }
+  try { for (const key of Object.keys(sessionStorage)) if (key.startsWith('ops.compensation.') && key.includes('.token.') || key.startsWith('ops.restrictions.') && key.includes('.intent.')) sessionStorage.removeItem(key); } catch { }
 });
 </script>
 <main>@RenderBody()<p class="muted">관측 시각: @DateTimeOffset.UtcNow.ToString("u") · 추적 번호: <a href="/ops/diagnostics?httpRequestId=@OperationsHttp.RequestId(Context)"><code>@OperationsHttp.RequestId(Context)</code></a><br />빌드: <code>@ProjectRpg.Backend.Operations.Infrastructure.Diagnostics.OperationsEventRecorder.BuildVersion</code></p></main>

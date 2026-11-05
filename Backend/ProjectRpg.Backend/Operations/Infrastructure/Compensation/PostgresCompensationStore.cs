@@ -22,7 +22,7 @@ public sealed class PostgresCompensationStore(NpgsqlDataSource source, PostgresI
             reader.GetGuid(9), reader.IsDBNull(10) ? null : reader.GetString(10)));
     private static async Task<Stored?> FindStored(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid id, CancellationToken ct)
     {
-        await using NpgsqlCommand query = new($"SELECT {Columns} FROM ops_actions WHERE request_id=@id", connection, transaction);
+        await using NpgsqlCommand query = new($"SELECT {Columns} FROM ops_actions WHERE request_id=@id AND target_scope='Character'", connection, transaction);
         query.Parameters.AddWithValue("id", id);
         await using var reader = await query.ExecuteReaderAsync(ct);
         return await reader.ReadAsync(ct) ? Read(reader) : null;
@@ -44,6 +44,11 @@ public sealed class PostgresCompensationStore(NpgsqlDataSource source, PostgresI
             {
                 gate.Parameters.AddWithValue("key", "ops_action:" + command.RequestId.ToString("D"));
                 await gate.ExecuteNonQueryAsync(ct);
+            }
+            await using (NpgsqlCommand kind = new("SELECT target_scope FROM ops_actions WHERE request_id=@id", connection, transaction))
+            {
+                kind.Parameters.AddWithValue("id",command.RequestId);
+                if (await kind.ExecuteScalarAsync(ct) is string scope && scope != "Character") return Fail(CompensationFailures.RequestConflict);
             }
             Stored? existing = await FindStored(connection, transaction, command.RequestId, ct);
             if (existing is not null)
