@@ -228,7 +228,7 @@ async function main() {
       '-ExecCmds=t.MaxFPS 30',
       '-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bAutoStartServer=False',
       '-ini:Game:[/Script/Project_RPG.HttpWebManager]:RequestTimeoutSeconds=30',
-      '-ini:Game:[/Script/Project_RPG.RPGItemBackendSubsystem]:ApiUrl=' + base + '/api',
+      '-ini:Game:[/Script/RPGInventoryRuntime.RPGItemBackendSubsystem]:ApiUrl=' + base + '/api',
       '-ini:Game:[/Script/Project_RPG.RPGEconomyBackendSubsystem]:ApiUrl=' + base + '/api'];
     function unreal(name, destination, args, webBase, server = false) {
       const log = path.join(taskRoot, name + '.log'); logs.push(log);

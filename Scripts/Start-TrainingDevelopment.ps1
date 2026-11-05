@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [string]$EngineRoot='D:\UE_5.8',
     [ValidateSet('Training','Intro1')][string]$DungeonProfile='Training',
@@ -209,7 +209,7 @@ try{
         ('-UserDir="'+(Join-Path $users 'c')+'"'),('-abslog="'+(Join-Path $temp 'client.log')+'"'),'-ExecCmds="t.MaxFPS 60"',
         '-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bAutoStartServer=False',
         "-ini:Game:[/Script/Project_RPG.HttpWebManager]:ApiUrl=$url/api",
-        "-ini:Game:[/Script/Project_RPG.RPGItemBackendSubsystem]:ApiUrl=$url/api",
+        "-ini:Game:[/Script/RPGInventoryRuntime.RPGItemBackendSubsystem]:ApiUrl=$url/api",
         "-ini:Game:[/Script/Project_RPG.RPGEconomyBackendSubsystem]:ApiUrl=$url/api")
     $clientBaseArguments=@($args)
     if($SmokeTest){$args=Get-SmokeArguments}

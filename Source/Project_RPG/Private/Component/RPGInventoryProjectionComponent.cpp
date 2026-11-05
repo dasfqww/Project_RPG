@@ -14,8 +14,8 @@
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RPGInventoryProjectionComponent)
 
 URPGInventoryProjectionComponent::URPGInventoryProjectionComponent()
-	: Projection(this)
-	, MailProjection(this)
+	: Projection(FSimpleDelegate::CreateUObject(this, &ThisClass::HandleProjectionReplicated))
+	, MailProjection(FSimpleDelegate::CreateUObject(this, &ThisClass::HandleProjectionReplicated))
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);

@@ -1,0 +1,17 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0",
+  "FriendlyName": "RPG Inventory",
+  "Description": "Item definitions, inventory transactions, replicated read models and persistent item transport. Game-specific actors, equipment effects and UI consume its contracts.",
+  "Category": "Gameplay",
+  "CanContainContent": false,
+  "EnabledByDefault": false,
+  "Modules": [
+    {
+      "Name": "RPGInventoryRuntime",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ]
+}

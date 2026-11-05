@@ -13,7 +13,7 @@ public class Project_RPG : ModuleRules
 		// Keep clean builds deterministic after adaptive working-set exclusions disappear.
 		bUseUnity = false;
 	
-        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreOnline", "NetCore", "StructUtils",
+        PublicDependencyModuleNames.AddRange(new string[] { "Core", "RPGInventoryRuntime", "CoreOnline", "NetCore", "StructUtils",
             "CoreUObject", "Engine", "InputCore",
             "Slate", "SlateCore","GameplayTags", "EnhancedInput", "GameplayAbilities",
             "UMG", "GameplayTasks", "AnimGraphRuntime",

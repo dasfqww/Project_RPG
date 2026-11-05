@@ -358,7 +358,7 @@ function Start-Unreal {
         ('-UserDir="'+$runtimeUser+'"'),('-abslog="'+$log+'"'),'-ExecCmds="t.MaxFPS 30"',
         '-PktLagMin=80','-PktLagMax=160','-PktLoss=5',"-RPGMembershipE2ETimeout=$TimeoutSeconds",
         "-ini:Game:[/Script/Project_RPG.HttpWebManager]:ApiUrl=$WebApiBase/api",
-        "-ini:Game:[/Script/Project_RPG.RPGItemBackendSubsystem]:ApiUrl=$baseUrl/api",
+        "-ini:Game:[/Script/RPGInventoryRuntime.RPGItemBackendSubsystem]:ApiUrl=$baseUrl/api",
         "-ini:Game:[/Script/Project_RPG.RPGEconomyBackendSubsystem]:ApiUrl=$baseUrl/api")
     if ($hudClient) {
         $script:PartyHudNextMcpPort++

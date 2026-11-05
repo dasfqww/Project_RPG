@@ -225,7 +225,7 @@ function Start-Unreal {
         '-unattended','-nop4','-nosplash','-nosound','-nullrhi','-nosteam','-NoLiveCoding','-NoLoadingScreen','-DisablePython',
         '-DDC=(EnginePak,Local)',('-UserDir="'+$userDirectory+'"'),('-abslog="'+$log+'"'),'-ExecCmds="t.MaxFPS 30"',
         "-ini:Game:[/Script/Project_RPG.HttpWebManager]:ApiUrl=$baseUrl/api",
-        "-ini:Game:[/Script/Project_RPG.RPGItemBackendSubsystem]:ApiUrl=$itemApiUrl/api",
+        "-ini:Game:[/Script/RPGInventoryRuntime.RPGItemBackendSubsystem]:ApiUrl=$itemApiUrl/api",
         "-ini:Game:[/Script/Project_RPG.RPGEconomyBackendSubsystem]:ApiUrl=$baseUrl/api")
     $runtimeArgs += "-RPGNPCPickupTimeoutSeconds=$TimeoutSeconds"
     if (-not $LegacyProtocol) { $runtimeArgs += '-RPGNPCPickupPreparedE2E' }

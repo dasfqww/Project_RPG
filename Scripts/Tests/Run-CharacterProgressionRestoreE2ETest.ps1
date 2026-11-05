@@ -189,7 +189,7 @@ function Start-Unreal {
         ('-abslog="'+(Join-Path $runRoot "$Name.log")+'"'),'-ExecCmds="t.MaxFPS 60"',
         '-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bAutoStartServer=False',
         "-ini:Game:[/Script/Project_RPG.HttpWebManager]:ApiUrl=$baseUrl/api",
-        "-ini:Game:[/Script/Project_RPG.RPGItemBackendSubsystem]:ApiUrl=$baseUrl/api",
+        "-ini:Game:[/Script/RPGInventoryRuntime.RPGItemBackendSubsystem]:ApiUrl=$baseUrl/api",
         "-ini:Game:[/Script/Project_RPG.RPGEconomyBackendSubsystem]:ApiUrl=$baseUrl/api")
     if ($VerifyCombat) {$arguments+='-RPGProgressionCombatE2E'}
     if ($VerifyContributionHUD) {$arguments+='-RPGProgressionContributionHUD'}

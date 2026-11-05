@@ -23,10 +23,12 @@ $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $editorPath = Join-Path $EngineRoot 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
 $projectPath = Join-Path $projectRoot 'Project_RPG.uproject'
 $modulePath = Join-Path $projectRoot 'Binaries\Win64\UnrealEditor-Project_RPG.dll'
-if (-not (Test-Path -LiteralPath $editorPath) -or -not (Test-Path -LiteralPath $modulePath)) {
+$inventoryModulePath = Join-Path $projectRoot 'Plugins/RPGInventory/Binaries/Win64/UnrealEditor-RPGInventoryRuntime.dll'
+if (-not (Test-Path -LiteralPath $editorPath) -or -not (Test-Path -LiteralPath $modulePath) -or -not (Test-Path -LiteralPath $inventoryModulePath)) {
     throw 'Build Project_RPGEditor Win64 Development before running item automation.'
 }
 $testFiles = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'Source\Project_RPG\Private\Tests') -Filter '*.cpp')
+$testFiles += @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Tests') -Filter '*.cpp')
 if ($PickupJournalOnly) {
     $testFiles = @($testFiles | Where-Object { $_.Name -in @('RPGPickupGrantJournalTests.cpp','RPGItemBackendGatewayTests.cpp','RPGPickupGrantRuntimeTests.cpp') })
 }
@@ -93,19 +95,19 @@ $sourcePaths = @(
     'Source/Project_RPG/Private/Item/PickUp/RPGPickUpBase.cpp',
     'Source/Project_RPG/Public/Component/RPGInventoryProjectionComponent.h',
     'Source/Project_RPG/Private/Component/RPGInventoryProjectionComponent.cpp',
-    'Source/Project_RPG/Public/Item/Transaction/RPGPickupGrantJournal.h',
-    'Source/Project_RPG/Private/Item/Transaction/RPGPickupGrantJournal.cpp',
-    'Source/Project_RPG/Public/Item/Backend/RPGItemBackendSubsystem.h',
-    'Source/Project_RPG/Private/Item/Backend/RPGItemBackendSubsystem.cpp',
-    'Source/Project_RPG/Public/Item/Backend/RPGItemBackendGateway.h',
-    'Source/Project_RPG/Private/Item/Backend/RPGItemBackendGateway.cpp',
-    'Source/Project_RPG/Private/Item/Backend/RPGItemBackendGatewayPickup.cpp',
-    'Source/Project_RPG/Public/Item/Backend/RPGItemBackendJsonCodec.h',
-    'Source/Project_RPG/Private/Item/Backend/RPGItemBackendJsonCodec.cpp',
-    'Source/Project_RPG/Private/Item/Transaction/RPGPickupGrantReceiptPolicy.cpp',
-    'Source/Project_RPG/Public/Item/Transaction/RPGPickupGrantReceiptPolicy.h',
-    'Source/Project_RPG/Public/Item/Backend/RPGItemBackendTransport.h',
-    'Source/Project_RPG/Private/Item/Backend/RPGItemBackendTransport.cpp',
+    'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGPickupGrantJournal.h',
+    'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGPickupGrantJournal.cpp',
+    'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Backend/RPGItemBackendSubsystem.h',
+    'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Backend/RPGItemBackendSubsystem.cpp',
+    'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Backend/RPGItemBackendGateway.h',
+    'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Backend/RPGItemBackendGateway.cpp',
+    'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Backend/RPGItemBackendGatewayPickup.cpp',
+    'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Backend/RPGItemBackendJsonCodec.h',
+    'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Backend/RPGItemBackendJsonCodec.cpp',
+    'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGPickupGrantReceiptPolicy.cpp',
+    'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGPickupGrantReceiptPolicy.h',
+    'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Backend/RPGItemBackendTransport.h',
+    'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Backend/RPGItemBackendTransport.cpp',
     'Scripts/Tests/Run-ItemAutomationTest.ps1'
 )
 $sourcePaths += @($testFiles | ForEach-Object { $_.FullName.Substring($projectRoot.Length + 1) })
@@ -145,10 +147,10 @@ if ($PresentationOnly -or $StackMergeOnly -or $StackSplitOnly -or $SplitQuantity
         'Source/Project_RPG/Private/UI/MVVM/RPGInventoryProjectionViewModel.cpp',
         'Source/Project_RPG/Private/UI/Inventory/Projection/RPGInventoryProjectionWidget.cpp',
         'Source/Project_RPG/Private/UI/Inventory/Projection/RPGInventoryProjectionItemSlotWidget.cpp',
-        'Source/Project_RPG/Public/Item/Definition/RPGItemDefinitionCatalog.h',
-        'Source/Project_RPG/Private/Item/Definition/RPGItemDefinitionCatalog.cpp',
-        'Source/Project_RPG/Public/Item/Projection/RPGInventoryProjectionMapper.h',
-        'Source/Project_RPG/Private/Item/Projection/RPGInventoryProjectionMapper.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Definition/RPGItemDefinitionCatalog.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Definition/RPGItemDefinitionCatalog.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Projection/RPGInventoryProjectionMapper.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Projection/RPGInventoryProjectionMapper.cpp',
         'Source/Project_RPG/Public/Component/RPGInventoryProjectionComponent.h',
         'Source/Project_RPG/Private/Component/RPGInventoryProjectionComponent.cpp',
         'Source/Project_RPG/Public/Component/RPGItemCommandComponent.h',
@@ -158,18 +160,18 @@ if ($PresentationOnly -or $StackMergeOnly -or $StackSplitOnly -or $SplitQuantity
 }
 if ($StackMergeOnly -or $StackSplitOnly -or $SplitQuantityOnly -or $InventoryRecoveryOnly -or $ConsumeRecoveryOnly) {
     $sourcePaths += @(
-        'Source/Project_RPG/Public/Item/Policy/RPGItemStackPolicy.h',
-        'Source/Project_RPG/Private/Item/Policy/RPGItemStackPolicy.cpp',
-        'Source/Project_RPG/Public/Item/Transaction/RPGItemActionCommandPlanner.h',
-        'Source/Project_RPG/Private/Item/Transaction/RPGItemActionCommandPlanner.cpp',
-        'Source/Project_RPG/Public/Item/Transaction/RPGItemAsyncCommandOrchestrator.h',
-        'Source/Project_RPG/Private/Item/Transaction/RPGItemAsyncCommandOrchestrator.cpp',
-        'Source/Project_RPG/Public/Item/Transaction/RPGItemTransactionTypes.h',
-        'Source/Project_RPG/Public/Item/Persistence/RPGItemRecord.h',
-        'Source/Project_RPG/Private/Item/Persistence/RPGItemRecord.cpp',
-        'Source/Project_RPG/Private/Item/Persistence/RPGInMemoryItemRepository.cpp',
-        'Source/Project_RPG/Public/Item/Projection/RPGInventoryProjectionStore.h',
-        'Source/Project_RPG/Private/Item/Projection/RPGInventoryProjectionStore.cpp'
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Policy/RPGItemStackPolicy.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Policy/RPGItemStackPolicy.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemActionCommandPlanner.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGItemActionCommandPlanner.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemAsyncCommandOrchestrator.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGItemAsyncCommandOrchestrator.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemTransactionTypes.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Persistence/RPGItemRecord.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Persistence/RPGItemRecord.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Persistence/RPGInMemoryItemRepository.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Projection/RPGInventoryProjectionStore.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Projection/RPGInventoryProjectionStore.cpp'
     )
 }
 if ($StackSplitOnly -or $SplitQuantityOnly -or $InventoryRecoveryOnly -or $ConsumeRecoveryOnly) {
@@ -188,18 +190,18 @@ if ($SplitQuantityOnly) {
     $sourcePaths += 'Content/Blueprints/UI/Inventory/Projection/WBP_InventoryProjection.uasset'
 }
 if ($InventoryRecoveryOnly -or $ConsumeRecoveryOnly) {
-    $sourcePaths += @('Source/Project_RPG/Public/Item/Backend/RPGItemBackendJsonCodec.h',
-        'Source/Project_RPG/Private/Item/Backend/RPGItemBackendJsonCodec.cpp',
-        'Source/Project_RPG/Public/Item/Backend/RPGItemBackendGateway.h',
-        'Source/Project_RPG/Private/Item/Backend/RPGItemBackendGateway.cpp',
-        'Source/Project_RPG/Public/Item/Backend/RPGItemBackendTypes.h',
-        'Source/Project_RPG/Public/Item/Backend/RPGItemBackendTransport.h',
+    $sourcePaths += @('Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Backend/RPGItemBackendJsonCodec.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Backend/RPGItemBackendJsonCodec.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Backend/RPGItemBackendGateway.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Backend/RPGItemBackendGateway.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Backend/RPGItemBackendTypes.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Backend/RPGItemBackendTransport.h',
         'Source/Project_RPG/Public/Player/RPGPlayerState.h',
         'Source/Project_RPG/Private/Player/RPGPlayerState.cpp')
-	$sourcePaths += @('Source/Project_RPG/Public/Item/Transaction/RPGInventoryCommandJournal.h',
-		'Source/Project_RPG/Private/Item/Transaction/RPGInventoryCommandJournal.cpp',
-		'Source/Project_RPG/Public/Item/Backend/RPGItemBackendSubsystem.h',
-		'Source/Project_RPG/Private/Item/Backend/RPGItemBackendSubsystem.cpp')
+	$sourcePaths += @('Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGInventoryCommandJournal.h',
+		'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGInventoryCommandJournal.cpp',
+		'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Backend/RPGItemBackendSubsystem.h',
+		'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Backend/RPGItemBackendSubsystem.cpp')
     $sourcePaths += @('Source/Project_RPG/Private/Tests/RPGConsumeRecoveryTestEffect.h',
         'Source/Project_RPG/Private/Tests/RPGConsumeRecoveryTestEffect.cpp',
         'Source/Project_RPG/Private/Tests/RPGSkillDamageSecurityTestFixture.h',
@@ -221,28 +223,33 @@ if ($PickupRuntimeOnly -or $PickupJournalOnly) {
         'Source/Project_RPG/Private/UI/MVVM/RPGInventoryProjectionViewModel.cpp')
 }
 if ($PickupRuntimeOnly) {
-    $sourcePaths += @('Source/Project_RPG/Public/Item/Transaction/RPGItemPickupGrantPlanner.h',
-        'Source/Project_RPG/Private/Item/Transaction/RPGItemPickupGrantPlanner.cpp',
-        'Source/Project_RPG/Public/Item/Definition/RPGItemDefinition.h',
-        'Source/Project_RPG/Private/Item/Definition/RPGItemDefinition.cpp',
-        'Source/Project_RPG/Public/Item/Definition/RPGItemDefinitionCatalog.h',
-        'Source/Project_RPG/Private/Item/Definition/RPGItemDefinitionCatalog.cpp',
-        'Source/Project_RPG/Public/Item/Persistence/RPGInMemoryItemRepository.h',
-        'Source/Project_RPG/Private/Item/Persistence/RPGInMemoryItemRepository.cpp',
+    $sourcePaths += @('Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemPickupGrantPlanner.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGItemPickupGrantPlanner.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Definition/RPGItemDefinition.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Definition/RPGItemDefinition.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Definition/RPGItemDefinitionCatalog.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Definition/RPGItemDefinitionCatalog.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Persistence/RPGInMemoryItemRepository.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Persistence/RPGInMemoryItemRepository.cpp',
         'Source/Project_RPG/Public/Item/Policy/RPGItemActionPolicy.h',
         'Source/Project_RPG/Private/Item/Policy/RPGItemActionPolicy.cpp',
-        'Source/Project_RPG/Public/Item/Transaction/RPGItemAsyncCommandOrchestrator.h',
-        'Source/Project_RPG/Private/Item/Transaction/RPGItemAsyncCommandOrchestrator.cpp',
-        'Source/Project_RPG/Public/Item/Transaction/RPGItemActionCommandPlanner.h',
-        'Source/Project_RPG/Private/Item/Transaction/RPGItemActionCommandPlanner.cpp',
-        'Source/Project_RPG/Public/Item/Transaction/RPGInventoryCommandJournal.h',
-        'Source/Project_RPG/Private/Item/Transaction/RPGInventoryCommandJournal.cpp',
-        'Source/Project_RPG/Public/Item/Policy/RPGItemInventoryPolicy.h')
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemAsyncCommandOrchestrator.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGItemAsyncCommandOrchestrator.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemActionCommandPlanner.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGItemActionCommandPlanner.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGInventoryCommandJournal.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGInventoryCommandJournal.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Policy/RPGItemInventoryPolicy.h')
 }
+$sourcePaths += 'Plugins/RPGInventory/RPGInventory.uplugin'
+$sourcePaths += @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'Plugins/RPGInventory/Source') -File -Recurse |
+    ForEach-Object { $_.FullName.Substring($projectRoot.Length + 1).Replace('\', '/') })
+$sourcePaths = @($sourcePaths | Sort-Object -Unique)
 $sourceHashes = @($sourcePaths | ForEach-Object {
     [ordered]@{path=$_; sha256=(Get-FileHash -LiteralPath (Join-Path $projectRoot $_) -Algorithm SHA256).Hash}
 })
 $moduleHash = (Get-FileHash -LiteralPath $modulePath -Algorithm SHA256).Hash
+$inventoryModuleHash = (Get-FileHash -LiteralPath $inventoryModulePath -Algorithm SHA256).Hash
 $runRoot = Join-Path $projectRoot ('Saved\Tests\Item\Automation-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $runRoot -Force | Out-Null
 $logPath = Join-Path $runRoot 'automation.log'
@@ -289,13 +296,14 @@ try {
         throw 'Unexpected/missing item test results.'
     }
     if ($moduleHash -ne (Get-FileHash -LiteralPath $modulePath -Algorithm SHA256).Hash) { throw 'Editor module changed during item automation.' }
+    if ($inventoryModuleHash -ne (Get-FileHash -LiteralPath $inventoryModulePath -Algorithm SHA256).Hash) { throw 'Inventory module changed during item automation.' }
     foreach ($entry in $sourceHashes) {
         if ($entry.sha256 -ne (Get-FileHash -LiteralPath (Join-Path $projectRoot $entry.path) -Algorithm SHA256).Hash) {
             throw "Source changed during item automation: $($entry.path)"
         }
     }
     $proofPath = Join-Path $runRoot 'Item.proof.json'
-    [ordered]@{schemaVersion=1; editorModuleSHA256=$moduleHash; requiredTests=$requiredTests;
+    [ordered]@{schemaVersion=1; editorModuleSHA256=$moduleHash; inventoryModuleSHA256=$inventoryModuleHash; requiredTests=$requiredTests;
         passedTests=@($results | ForEach-Object { $_.Groups['path'].Value }); sourceHashes=$sourceHashes;
         logPath=$logPath; logSHA256=(Get-FileHash -LiteralPath $logPath -Algorithm SHA256).Hash;
         scope=[ordered]@{nativeItemFixtures=$true; localAbilityStartupMock=[bool]$LocalAbilityStartupOnly;
@@ -316,7 +324,7 @@ try {
 }
 catch {
     [ordered]@{schemaVersion=1; passed=$false; reason=$_.Exception.Message;
-        editorModuleSHA256=$moduleHash; requiredTests=$requiredTests; sourceHashes=$sourceHashes;
+        editorModuleSHA256=$moduleHash; inventoryModuleSHA256=$inventoryModuleHash; requiredTests=$requiredTests; sourceHashes=$sourceHashes;
         logPath=$logPath; ownedLogFrozen=($null -ne $process -and $process.HasExited)
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $runRoot 'Failure.proof.json') -Encoding UTF8
     throw

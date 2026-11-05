@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Item/Definition/RPGItemDefinition.h"
+#include "Type/RPGEnumTypes.h"
 #include "RPGItemDefinitionFragments.generated.h"
 
 class UGameplayEffect;

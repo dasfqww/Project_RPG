@@ -262,10 +262,10 @@ $resultSourcePaths = @(
 if ($VerifyResultAbandonmentResponseLoss) { $resultSourcePaths += 'Scripts/Network/Fixtures/DungeonAbandonmentHttpFaultProxy.mjs' }
 if ($inventoryFixtureMode -or $InventoryConcurrency) {
     $resultSourcePaths += @(
-        'Source/Project_RPG/Private/Item/Policy/RPGItemStackPolicy.cpp',
-        'Source/Project_RPG/Public/Item/Policy/RPGItemStackPolicy.h',
-        'Source/Project_RPG/Private/Item/Transaction/RPGItemActionCommandPlanner.cpp',
-        'Source/Project_RPG/Private/Item/Transaction/RPGItemAsyncCommandOrchestrator.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Policy/RPGItemStackPolicy.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Policy/RPGItemStackPolicy.h',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGItemActionCommandPlanner.cpp',
+        'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGItemAsyncCommandOrchestrator.cpp',
         'Source/Project_RPG/Private/Component/RPGItemCommandComponent.cpp',
         'Source/Project_RPG/Public/Component/RPGItemCommandComponent.h',
         'Source/Project_RPG/Private/Component/RPGInventoryProjectionComponent.cpp',
@@ -292,18 +292,18 @@ if ($inventoryFixtureMode -or $InventoryConcurrency) {
             'Scripts/Network/Fixtures/InventoryRecoveryHttpProxy.mjs', 'Scripts/Network/Fixtures/InventoryRecoveryHttpProxy.test.mjs',
             'Source/Project_RPG/Private/Tests/RPGInventoryRecoveryE2E.h', 'Source/Project_RPG/Private/Tests/RPGInventoryRecoveryE2E.cpp',
             'Source/Project_RPG/Private/Tests/RPGInventoryStackSplitE2E.h', 'Source/Project_RPG/Private/Tests/RPGInventoryStackSplitE2E.cpp',
-            'Source/Project_RPG/Public/Item/Transaction/RPGItemAsyncCommandOrchestrator.h',
-            'Source/Project_RPG/Public/Item/Backend/RPGItemBackendTypes.h',
-            'Source/Project_RPG/Private/Item/Backend/RPGItemBackendGateway.cpp',
+            'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemAsyncCommandOrchestrator.h',
+            'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Backend/RPGItemBackendTypes.h',
+            'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Backend/RPGItemBackendGateway.cpp',
             'Source/Project_RPG/Public/UI/Inventory/Projection/RPGInventoryProjectionWidget.h',
             'Content/Blueprints/GameData/Item/V2/DA_Item_Potion_Red_Large.uasset',
             'Content/Blueprints/GameData/Item/V2/DA_Item_Helm_Leather.uasset')
         if ($InventoryRecoveryRestart) { $resultSourcePaths += @('Scripts/Network/Fixtures/InventoryRecoveryRestart.ps1',
-            'Source/Project_RPG/Public/Item/Transaction/RPGInventoryCommandJournal.h',
-            'Source/Project_RPG/Private/Item/Transaction/RPGInventoryCommandJournal.cpp',
-            'Source/Project_RPG/Public/Item/Backend/RPGItemBackendSubsystem.h',
-            'Source/Project_RPG/Private/Item/Backend/RPGItemBackendSubsystem.cpp') }
-        if ($inventoryRecoveryIsSplit) { $resultSourcePaths += 'Source/Project_RPG/Public/Item/Transaction/RPGItemActionCommandPlanner.h' }
+            'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGInventoryCommandJournal.h',
+            'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGInventoryCommandJournal.cpp',
+            'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Backend/RPGItemBackendSubsystem.h',
+            'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Backend/RPGItemBackendSubsystem.cpp') }
+        if ($inventoryRecoveryIsSplit) { $resultSourcePaths += 'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemActionCommandPlanner.h' }
         if ($inventoryRecoveryIsEquipment) { $resultSourcePaths += @(
             'Source/Project_RPG/Public/Component/Equipment/RPGAuthoritativeEquipmentComponent.h',
             'Source/Project_RPG/Private/Component/Equipment/RPGAuthoritativeEquipmentComponent.cpp',
@@ -329,10 +329,10 @@ if ($inventoryFixtureMode -or $InventoryConcurrency) {
             'Source/Project_RPG/Private/UI/Inventory/Projection/RPGRewardMailWidget.cpp')
             if (-not $InventoryRecoveryRestart) { $resultSourcePaths += @(
                 'Scripts/Network/Fixtures/InventoryRecoveryRestart.ps1',
-                'Source/Project_RPG/Public/Item/Transaction/RPGInventoryCommandJournal.h',
-                'Source/Project_RPG/Private/Item/Transaction/RPGInventoryCommandJournal.cpp',
-                'Source/Project_RPG/Public/Item/Backend/RPGItemBackendSubsystem.h',
-                'Source/Project_RPG/Private/Item/Backend/RPGItemBackendSubsystem.cpp') }
+                'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGInventoryCommandJournal.h',
+                'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGInventoryCommandJournal.cpp',
+                'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Backend/RPGItemBackendSubsystem.h',
+                'Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Backend/RPGItemBackendSubsystem.cpp') }
         }
         if ($InventoryRecoveryCredentialExpiry) { $resultSourcePaths += @('Scripts/Network/Fixtures/InventoryRecoveryExpiry.ps1',
             'Backend/ProjectRpg.Backend/Authentication/BearerAuthenticator.cs',
@@ -352,8 +352,8 @@ if ($inventoryFixtureMode -or $InventoryConcurrency) {
         . (Join-Path $PSScriptRoot 'Fixtures\InventoryMoveSwap.ps1')
         $resultSourcePaths += @('Scripts/Network/Fixtures/InventoryMoveSwap.ps1',
             'Source/Project_RPG/Private/Tests/RPGInventoryStackSplitE2E.h', 'Source/Project_RPG/Private/Tests/RPGInventoryStackSplitE2E.cpp',
-            'Source/Project_RPG/Public/Item/Transaction/RPGItemActionCommandPlanner.h',
-            'Source/Project_RPG/Public/Item/Transaction/RPGItemTransactionTypes.h',
+            'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemActionCommandPlanner.h',
+            'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemTransactionTypes.h',
             'Source/Project_RPG/Public/UI/Inventory/Projection/RPGItemIdDragDropOperation.h',
             'Source/Project_RPG/Private/UI/RPGQuickSlotWidget.cpp',
             'Content/Blueprints/GameData/Item/V2/DA_Item_Potion_Red_Large.uasset',
@@ -363,16 +363,16 @@ if ($inventoryFixtureMode -or $InventoryConcurrency) {
         $resultSourcePaths += @('Scripts/Network/Fixtures/InventoryConcurrency.ps1',
             'Source/Project_RPG/Private/Tests/RPGInventoryConcurrencyE2E.h', 'Source/Project_RPG/Private/Tests/RPGInventoryConcurrencyE2E.cpp',
             'Source/Project_RPG/Private/Tests/RPGInventoryStackSplitE2E.h', 'Source/Project_RPG/Private/Tests/RPGInventoryStackSplitE2E.cpp',
-            'Source/Project_RPG/Public/Item/Transaction/RPGItemActionCommandPlanner.h',
-            'Source/Project_RPG/Public/Item/Transaction/RPGItemTransactionTypes.h',
+            'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemActionCommandPlanner.h',
+            'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemTransactionTypes.h',
             'Content/Blueprints/GameData/Item/V2/DA_Item_Potion_Red_Large.uasset',
             'Content/Blueprints/GameData/Item/V2/DA_Item_Helm_Leather.uasset')
     } else {
         . (Join-Path $PSScriptRoot 'Fixtures\InventoryStackSplit.ps1')
         $resultSourcePaths += @('Scripts/Network/Fixtures/InventoryStackSplit.ps1',
             'Source/Project_RPG/Private/Tests/RPGInventoryStackSplitE2E.h', 'Source/Project_RPG/Private/Tests/RPGInventoryStackSplitE2E.cpp',
-            'Source/Project_RPG/Public/Item/Transaction/RPGItemActionCommandPlanner.h',
-            'Source/Project_RPG/Public/Item/Transaction/RPGItemTransactionTypes.h',
+            'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemActionCommandPlanner.h',
+            'Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemTransactionTypes.h',
             'Source/Project_RPG/Public/UI/Inventory/Projection/RPGItemIdDragDropOperation.h',
             'Source/Project_RPG/Private/UI/RPGQuickSlotWidget.cpp')
     }
@@ -540,7 +540,7 @@ function Start-Unreal {
         if ($InventoryRecoveryConsumeDeath) { $Extra += @('-RPGInventoryRecoveryConsumeDeathE2E',
             ('-RPGConsumeDeathFile="' + (Join-Path $runRoot 'consume-death.gate') + '"')) }
         if ($InventoryRecoveryRestart -or $inventoryRecoveryIsClaimMail) {
-            $Extra += ('-ini:Game:[/Script/Project_RPG.RPGItemBackendSubsystem]:InventoryJournalDirectory="' + $inventoryJournalDirectory + '"')
+            $Extra += ('-ini:Game:[/Script/RPGInventoryRuntime.RPGItemBackendSubsystem]:InventoryJournalDirectory="' + $inventoryJournalDirectory + '"')
         }
         if ($InventoryRecoveryRevocation) {
             $Extra += @('-RPGInventoryRecoveryRevocationE2E', '-RPGDungeonAbandonmentSettlementE2E', '-RPGDungeonMembershipBackendE2E',
@@ -560,7 +560,7 @@ function Start-Unreal {
         ('-UserDir="' + (Join-Path $runtimeRoot $runtimeName) + '"'), ('-abslog="' + $log + '"'),
         '-ExecCmds="t.MaxFPS 30"',
         "-ini:Game:[/Script/Project_RPG.HttpWebManager]:ApiUrl=$webApiBase/api",
-        "-ini:Game:[/Script/Project_RPG.RPGItemBackendSubsystem]:ApiUrl=$itemApiBase/api",
+        "-ini:Game:[/Script/RPGInventoryRuntime.RPGItemBackendSubsystem]:ApiUrl=$itemApiBase/api",
         "-ini:Game:[/Script/Project_RPG.RPGEconomyBackendSubsystem]:ApiUrl=$baseUrl/api")
     if (($SlatePointerInput -or ($inventoryFixtureMode -and (-not $InventoryRecoveryRevocation -or $Name -ceq 'client1'))) -and $Name -cne 'server') {
         $arguments += @('-RenderOffscreen', '-windowed', '-ResX=1600', '-ResY=1000')

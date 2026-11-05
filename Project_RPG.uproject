@@ -26,6 +26,7 @@
 		}
 	],
 	"Plugins": [
+		{ "Name": "RPGInventory", "Enabled": true },
 		{
 			"Name": "ModelingToolsEditorMode",
 			"Enabled": true

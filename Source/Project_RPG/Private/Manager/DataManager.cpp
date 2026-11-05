@@ -7,6 +7,7 @@
 #include "Item/Definition/RPGItemDefinition.h"
 #include "Item/Legacy/RPGLegacyItemDefinitionAdapter.h"
 #include "Item/PickUp/RPGPickUpBase.h"
+#include "UObject/CoreRedirects.h"
 
 UDataManager* UDataManager::Instance = nullptr;
 
@@ -104,6 +105,17 @@ void UDataManager::RefreshItemCache()
 	FARFilter DefinitionFilter;
 	DefinitionFilter.ClassPaths.Add(
 		URPGItemDefinition::StaticClass()->GetClassPathName());
+	// Unresaved assets retain their original class path in registry metadata.
+	// Include redirect sources so moving the native class does not hide them.
+	TArray<FCoreRedirectObjectName> PreviousClassNames;
+	FCoreRedirects::FindPreviousNames(ECoreRedirectFlags::Type_Class,
+		FCoreRedirectObjectName(URPGItemDefinition::StaticClass()->GetPathName()),
+		PreviousClassNames);
+	for (const FCoreRedirectObjectName& PreviousName : PreviousClassNames)
+	{
+		DefinitionFilter.ClassPaths.AddUnique(
+			FTopLevelAssetPath(PreviousName.PackageName, PreviousName.ObjectName));
+	}
 	DefinitionFilter.bRecursiveClasses = true;
 	DefinitionFilter.bRecursivePaths = true;
 	DefinitionFilter.PackagePaths.Add(TEXT("/Game"));

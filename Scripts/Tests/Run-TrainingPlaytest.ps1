@@ -101,7 +101,7 @@ function Start-Peer([string]$Name,[string]$Map,[string[]]$Extra,[hashtable]$Envi
         ('-abslog="'+(Join-Path $temp ($Name+'.log'))+'"'),'-ExecCmds="t.MaxFPS 60"',
         '-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bAutoStartServer=False',
         "-ini:Game:[/Script/Project_RPG.HttpWebManager]:ApiUrl=$url/api",
-        "-ini:Game:[/Script/Project_RPG.RPGItemBackendSubsystem]:ApiUrl=$url/api",
+        "-ini:Game:[/Script/RPGInventoryRuntime.RPGItemBackendSubsystem]:ApiUrl=$url/api",
         "-ini:Game:[/Script/Project_RPG.RPGEconomyBackendSubsystem]:ApiUrl=$url/api")
     if($CancelChargePIE -and $Name -eq 'server'){$args+='-RPGActionProgressCancelPIE'}
     if($ObserveHUDChangesPIE){$args+='-RPGHUDChangesPIE'}

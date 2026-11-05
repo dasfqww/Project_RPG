@@ -321,7 +321,7 @@ function Start-DedicatedFixture {
             '-DDC-ForceMemoryCache',
             "-abslog=`"$LogPath`"",
             "-ini:Game:[/Script/Project_RPG.HttpWebManager]:ApiUrl=$script:apiUrl",
-            "-ini:Game:[/Script/Project_RPG.RPGItemBackendSubsystem]:ApiUrl=$script:apiUrl",
+            "-ini:Game:[/Script/RPGInventoryRuntime.RPGItemBackendSubsystem]:ApiUrl=$script:apiUrl",
             "-ini:Game:[/Script/Project_RPG.RPGEconomyBackendSubsystem]:ApiUrl=$script:apiUrl")
         if ($Recover) {
             $expectedRewards = @($Members | ForEach-Object {
@@ -386,7 +386,7 @@ function Start-HeadlessClient {
         '-DDC-ForceMemoryCache',
         "-abslog=`"$LogPath`"",
         "-ini:Game:[/Script/Project_RPG.HttpWebManager]:ApiUrl=$script:apiUrl",
-        "-ini:Game:[/Script/Project_RPG.RPGItemBackendSubsystem]:ApiUrl=$script:apiUrl",
+        "-ini:Game:[/Script/RPGInventoryRuntime.RPGItemBackendSubsystem]:ApiUrl=$script:apiUrl",
         "-ini:Game:[/Script/Project_RPG.RPGEconomyBackendSubsystem]:ApiUrl=$script:apiUrl")
     if ($Recover) {
         $arguments += @(

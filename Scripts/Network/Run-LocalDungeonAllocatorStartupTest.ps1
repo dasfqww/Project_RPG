@@ -176,7 +176,7 @@ function Start-LobbyClient($Member, [int]$Index, [switch]$Restart) {
         '-nosteam', '-NoLiveCoding', '-NoLoadingScreen', '-DisablePython', '-nullrhi', '-DDC=(EnginePak,Local)',
         ('-UserDir="' + $runtime + '"'), ('-abslog="' + $log + '"'), '-ExecCmds="t.MaxFPS 30"',
         "-ini:Game:[/Script/Project_RPG.HttpWebManager]:ApiUrl=$webApiBase/api",
-        "-ini:Game:[/Script/Project_RPG.RPGItemBackendSubsystem]:ApiUrl=$baseUrl/api",
+        "-ini:Game:[/Script/RPGInventoryRuntime.RPGItemBackendSubsystem]:ApiUrl=$baseUrl/api",
         "-ini:Game:[/Script/Project_RPG.RPGEconomyBackendSubsystem]:ApiUrl=$baseUrl/api")
     if ($Index -eq 1) { $arguments += '-RPGFlowE2ELobbyLeader' }
     if ($DepartureResponseLoss -and $Index -eq 1) {
