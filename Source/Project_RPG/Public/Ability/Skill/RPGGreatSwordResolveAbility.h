@@ -2,6 +2,7 @@
 
 #include "Ability/RPGGameplayAbility.h"
 #include "GameplayEffect.h"
+#include "Skill/RPGClassSkillPolicy.h"
 #include "RPGGreatSwordResolveAbility.generated.h"
 
 class URPGGameplayAbility_SkillContainer;
@@ -27,11 +28,15 @@ public:
 
 /** First-slice greatsword identity. Native confirmations only; no gauge/empower RPC. */
 UCLASS(NotBlueprintable)
-class PROJECT_RPG_API URPGGreatSwordResolveAbility final : public URPGGameplayAbility
+class PROJECT_RPG_API URPGGreatSwordResolveAbility final : public URPGGameplayAbility, public IRPGClassSkillPolicy
 {
 	GENERATED_BODY()
 public:
 	URPGGreatSwordResolveAbility();
+	virtual bool CanCommitClassSkill(const URPGGameplayAbility_SkillContainer& Skill) const override;
+	virtual bool CommitClassSkill(URPGGameplayAbility_SkillContainer& Skill,
+		float& OutDamageMultiplier, bool& OutSuppressHitGain) const override;
+	virtual void OnClassSkillHitConfirmed(URPGGameplayAbility_SkillContainer& Skill) const override;
 	virtual bool CanActivateAbility(FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr,
 		FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;

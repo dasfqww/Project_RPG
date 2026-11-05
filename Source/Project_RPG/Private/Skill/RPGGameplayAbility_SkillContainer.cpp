@@ -2,7 +2,8 @@
 #include "Skill/RPGApprovedSkillHitEvent.h"
 #include "Component/Equipment/RPGAuthoritativeEquipmentComponent.h"
 #include "UObject/StrongObjectPtr.h"
-#include "Ability/Skill/RPGGreatSwordResolveAbility.h"
+#include "Skill/RPGClassSkillPolicy.h"
+#include "PlayerClass/RPGPlayerClassDefinition.h"
 #if !UE_BUILD_SHIPPING
 #include "Tests/RPGSkillNetworkE2EProbeComponent.h"
 #include "Tests/RPGSkillDamageNetworkProbe.h"
@@ -97,12 +98,19 @@ void URPGGameplayAbility_SkillContainer::ActivateAbility(
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
+	// Resolve once from the verified class catalog; optional identities need no policy.
+	ActiveClassSkillPolicy = nullptr;
+	const AActor* PolicyAvatar = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
+	const auto* Growth = PolicyAvatar ? PolicyAvatar->FindComponentByClass<URPGPlayerSkillComponent>() : nullptr;
+	const auto* Class = Growth ? Growth->GetPlayerClassDefinition() : nullptr;
+	UObject* Policy = Class && Class->IdentityAbility ? Class->IdentityAbility->GetDefaultObject() : nullptr;
+	if (Cast<IRPGClassSkillPolicy>(Policy)) ActiveClassSkillPolicy = Policy;
 	const uint64 ActivationSerial = ++SkillDamageActivationSerial;
 	ServerAppliedHitCount = 0;
-	CommittedResolveDamageMultiplier = 1.f;
-	bCommittedDuringBerserk = false;
+	CommittedClassDamageMultiplier = 1.f;
+	bSuppressClassHitGain = false;
 	bSkillCommitted = false;
-	bResolveHitAwarded = false;
+	bClassHitNotified = false;
 	bFinisherHitAttempted = false;
 	SkillMontageAnimInstance.Reset();
 	SkillMontageInstanceId = INDEX_NONE;
@@ -280,7 +288,9 @@ bool URPGGameplayAbility_SkillContainer::CommitSkillAndNotifyCooldown()
 {
 	const uint64 ActivationSerial = SkillDamageActivationSerial;
 	if (bSkillCommitted) return IsActive();
-	if (!URPGGreatSwordResolveAbility::CanCommitSkill(*this)) return false;
+	const auto* ClassPolicy = Cast<IRPGClassSkillPolicy>(ActiveClassSkillPolicy);
+	if (ClassPolicy && !ClassPolicy->CanCommitClassSkill(*this)) return false;
+	if (!IsActive() || SkillDamageActivationSerial != ActivationSerial) return false;
 	// Reserve before GAS delegates can reenter this same commit.
 	bSkillCommitted = true;
 	// Do not call the legacy CoolDown(): it commits again before broadcasting.
@@ -290,7 +300,7 @@ bool URPGGameplayAbility_SkillContainer::CommitSkillAndNotifyCooldown()
 	}
 	if (!IsActive() || SkillDamageActivationSerial != ActivationSerial) return false;
 	// Freeze cost, damage and gain suppression immediately after the accepted commit.
-	if (!URPGGreatSwordResolveAbility::ConsumeForCommittedSkill(*this, CommittedResolveDamageMultiplier, bCommittedDuringBerserk)) return false;
+	if (ClassPolicy && !ClassPolicy->CommitClassSkill(*this, CommittedClassDamageMultiplier, bSuppressClassHitGain)) return false;
 	if (!IsActive() || SkillDamageActivationSerial != ActivationSerial) return false;
 	if (!StartActivationImmunity(ActiveSkillSpec.ActivationImmunities)
 		|| !IsActive() || SkillDamageActivationSerial != ActivationSerial) return false;
@@ -408,11 +418,12 @@ void URPGGameplayAbility_SkillContainer::EndAbility(
 	ActiveMontageTask = nullptr;
 	ActiveTargetResult.Reset();
 	ActiveSkillSpec.Reset();
+	ActiveClassSkillPolicy = nullptr;
 	ServerAppliedHitCount = 0;
-	CommittedResolveDamageMultiplier = 1.f;
-	bCommittedDuringBerserk = false;
+	CommittedClassDamageMultiplier = 1.f;
+	bSuppressClassHitGain = false;
 	bSkillCommitted = false;
-	bResolveHitAwarded = false;
+	bClassHitNotified = false;
 	bSkillInputPressed = false;
 
 	Super::EndAbility(
@@ -1335,8 +1346,8 @@ bool URPGGameplayAbility_SkillContainer::ExecuteAuthorizedSkillDamageInternal(
 	const float DamageScalar = DamageScalarTag.IsValid()
 		? ActiveSkillSpec.GetStatScalar(DamageScalarTag)
 		: 1.0f;
-	const float ResolveMultiplier = CommittedResolveDamageMultiplier;
-	const float FinalDamage = BaseDamage * DamageScalar * ResolveMultiplier;
+	const float ClassMultiplier = CommittedClassDamageMultiplier;
+	const float FinalDamage = BaseDamage * DamageScalar * ClassMultiplier;
 	if (!FMath::IsFinite(FinalDamage) || FinalDamage <= 0.0f ||
 		FinalDamage > ActiveSkillSpec.SecurityProfile.MaximumDamagePerHit)
 	{
@@ -1391,10 +1402,11 @@ bool URPGGameplayAbility_SkillContainer::ExecuteAuthorizedSkillDamageInternal(
 			++OutAppliedTargetCount;
 			if (bDeliverContributions && ContributionReceiver.IsValid() && IsActive() && !bIsAbilityEnding && SkillDamageActivationSerial == ActivationSerial)
 				ContributionReceiver->AcceptApprovedSkillHit(*this, ActivationSerial, ReceiverGeneration, SourceActor, ReactionContext, Contributions);
-			if (!bResolveHitAwarded && IsActive() && SkillDamageActivationSerial == ActivationSerial)
+			if (!bClassHitNotified && IsActive() && SkillDamageActivationSerial == ActivationSerial)
 			{
-				bResolveHitAwarded = true; // Reserve before gauge/UI callbacks; never award per target/tick.
-				URPGGreatSwordResolveAbility::AwardConfirmedSkillHit(*this);
+				bClassHitNotified = true; // Reserve before gauge/UI callbacks; never award per target/tick.
+				if (const auto* ClassPolicy = Cast<IRPGClassSkillPolicy>(ActiveClassSkillPolicy))
+					ClassPolicy->OnClassSkillHitConfirmed(*this);
 			}
 		}
 		else if (IsActive() && SkillDamageActivationSerial == ActivationSerial)

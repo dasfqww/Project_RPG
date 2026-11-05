@@ -103,12 +103,14 @@ bool FRPGGreatSwordBerserkTest::RunTest(const FString&)
     if (!TestNotNull(TEXT("Charge instance"), Ability)) return false;
     Slots->BeginUseSkillSlot(0);
     if (!TestTrue(TEXT("Charge starts"), Ability->IsActive())) return false;
+    TestTrue(TEXT("Configured identity supplies the frozen class policy"), Ability->ActiveClassSkillPolicy == Class->IdentityAbility->GetDefaultObject());
     TestEqual(TEXT("Cost once at commit"), ASC->GetNumericAttribute(URPGAttributeSet::GetCurrentIdentityGaugeAttribute()),50.f);
     TestTrue(TEXT("No duplicate commit"), Ability->CommitSkillAndNotifyCooldown());
     TestEqual(TEXT("Duplicate commit preserves gauge"), ASC->GetNumericAttribute(URPGAttributeSet::GetCurrentIdentityGaugeAttribute()),50.f);
-    TestEqual(TEXT("Damage boost frozen"), Ability->CommittedResolveDamageMultiplier,1.15f);
+    TestEqual(TEXT("Damage boost frozen"), Ability->CommittedClassDamageMultiplier,1.15f);
     ASC->CancelAbilityHandle(ChargeSpec->Handle);
     Slots->EndUseSkillSlot(0);
+    TestNull(TEXT("Cancellation releases the class policy"), Ability->ActiveClassSkillPolicy.Get());
     TestEqual(TEXT("Cancellation does not refund"), ASC->GetNumericAttribute(URPGAttributeSet::GetCurrentIdentityGaugeAttribute()),50.f);
     for (int i=0;i<780;++i) { ++GFrameCounter; World->Tick(LEVELTICK_All,1.f/60.f); }
     TestTrue(TEXT("Normal cooldown expires"), Cooldowns(Charge).IsEmpty());
@@ -116,9 +118,9 @@ bool FRPGGreatSwordBerserkTest::RunTest(const FString&)
     if (!TestTrue(TEXT("Same skill can be reused"), Ability->IsActive())) return false;
     TestEqual(TEXT("Second cast exhausts gauge"), ASC->GetNumericAttribute(URPGAttributeSet::GetCurrentIdentityGaugeAttribute()),0.f);
     TestFalse(TEXT("Exhaustion ends state"), URPGGreatSwordResolveAbility::IsBerserk(Player));
-    TestEqual(TEXT("Last cast still boosted"), Ability->CommittedResolveDamageMultiplier,1.15f);
+    TestEqual(TEXT("Last cast still boosted"), Ability->CommittedClassDamageMultiplier,1.15f);
     TestTrue(TEXT("Last cast forbids gain"), Ability->SuppressesResolveGain());
-    URPGGreatSwordResolveAbility::AwardConfirmedSkillHit(*Ability);
+    CastChecked<IRPGClassSkillPolicy>(Ability->ActiveClassSkillPolicy)->OnClassSkillHitConfirmed(*Ability);
     TestEqual(TEXT("Late hit cannot replenish final cast"), ASC->GetNumericAttribute(URPGAttributeSet::GetCurrentIdentityGaugeAttribute()),0.f);
     ASC->CancelAbilityHandle(ChargeSpec->Handle);
     Slots->EndUseSkillSlot(0);
@@ -142,7 +144,7 @@ bool FRPGGreatSwordBerserkTest::RunTest(const FString&)
     TestEqual(TEXT("Spin costs once"), ASC->GetNumericAttribute(URPGAttributeSet::GetCurrentIdentityGaugeAttribute()),50.f);
     for (int i=0;i<60;++i) { ++GFrameCounter; World->Tick(LEVELTICK_All,1.f/60.f); }
     TestEqual(TEXT("Spin duration does not spend again"), ASC->GetNumericAttribute(URPGAttributeSet::GetCurrentIdentityGaugeAttribute()),50.f);
-    URPGGreatSwordResolveAbility::AwardConfirmedSkillHit(*SpinAbility);
+    CastChecked<IRPGClassSkillPolicy>(SpinAbility->ActiveClassSkillPolicy)->OnClassSkillHitConfirmed(*SpinAbility);
     TestEqual(TEXT("Spin hit does not gain"), ASC->GetNumericAttribute(URPGAttributeSet::GetCurrentIdentityGaugeAttribute()),50.f);
     ASC->SetNumericAttributeBase(URPGAttributeSet::GetCurrentHealthAttribute(),0.f);
     TestFalse(TEXT("Death clears mode"), URPGGreatSwordResolveAbility::IsBerserk(Player));

@@ -79,7 +79,9 @@ public:
 	/** Native task ownership survives spec reset, but changes before a later activation. */
 	uint64 GetSkillActivationSerial() const { return SkillDamageActivationSerial; }
 	const URPGSkillDefinition* GetSkillDefinition() const { return SkillDefinition; }
-	bool SuppressesResolveGain() const { return bCommittedDuringBerserk; }
+	bool SuppressesClassHitGain() const { return bSuppressClassHitGain; }
+	/** Compatibility for existing native observers. */
+	bool SuppressesResolveGain() const { return SuppressesClassHitGain(); }
 	/** Activation-owned strategy; observers must retain activation identity and their own weak reference. */
 	const URPGSkillExecutionPolicy* GetActiveExecutionPolicy() const { return ActiveExecutionPolicy.Get(); }
 
@@ -254,11 +256,14 @@ protected:
 		meta = (ClampMin = "0.05", ClampMax = "1.0", Units = "s"))
 	float RemotePolicyEventSyncTolerance = 0.35f;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UObject> ActiveClassSkillPolicy;
+
 	bool bSkillInputPressed = false;
-	float CommittedResolveDamageMultiplier = 1.f;
-	bool bCommittedDuringBerserk = false;
+	float CommittedClassDamageMultiplier = 1.f;
+	bool bSuppressClassHitGain = false;
 	bool bSkillCommitted = false;
-	bool bResolveHitAwarded = false;
+	bool bClassHitNotified = false;
 	FRPGEquipmentEffectContext CastEquipmentEffectContext;
 	FRPGApprovedHitContext CastEquipmentEffectLifetime;
 	bool bFinisherHitAttempted = false;

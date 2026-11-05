@@ -289,6 +289,22 @@ void URPGGreatSwordResolveAbility::RevokeFor(AActor* Avatar)
 	ASC->SetNumericAttributeBase(URPGAttributeSet::GetCurrentIdentityGaugeAttribute(), 0.f);
 }
 
+bool URPGGreatSwordResolveAbility::CanCommitClassSkill(const URPGGameplayAbility_SkillContainer& Skill) const
+{
+	return CanCommitSkill(Skill);
+}
+
+bool URPGGreatSwordResolveAbility::CommitClassSkill(URPGGameplayAbility_SkillContainer& Skill,
+	float& OutDamageMultiplier, bool& OutSuppressHitGain) const
+{
+	return ConsumeForCommittedSkill(Skill, OutDamageMultiplier, OutSuppressHitGain);
+}
+
+void URPGGreatSwordResolveAbility::OnClassSkillHitConfirmed(URPGGameplayAbility_SkillContainer& Skill) const
+{
+	AwardConfirmedSkillHit(Skill);
+}
+
 bool URPGGreatSwordResolveAbility::CanCommitSkill(const URPGGameplayAbility_SkillContainer& Skill)
 {
 	if (!IsBerserk(Skill.GetAvatarActorFromActorInfo())) return true;
