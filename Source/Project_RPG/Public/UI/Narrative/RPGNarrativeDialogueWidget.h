@@ -9,6 +9,9 @@ class UButton;
 class UTextBlock;
 class UVerticalBox;
 class URPGNarrativeCoordinator;
+class ARPGNarrativeNPC;
+class APawn;
+class FRPGWindowInputState;
 
 DECLARE_DELEGATE_TwoParams(FRPGNarrativeAction, const FString&, const FString&);
 
@@ -38,7 +41,9 @@ class PROJECT_RPG_API URPGNarrativeDialogueWidget final : public URPGWidgetBase
     GENERATED_BODY()
 public:
     UFUNCTION(BlueprintCallable, Category="RPG|Narrative") bool OpenForCharacter(FGuid CharacterId);
+    UFUNCTION(BlueprintCallable, Category="RPG|Narrative") bool OpenForNPC(FGuid CharacterId, ARPGNarrativeNPC* NPC);
     UFUNCTION(BlueprintCallable, Category="RPG|Narrative") void CloseScreen();
+    void FocusNPCInput();
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") FGuid GetCharacterId() const { return Character; }
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") FText GetDisplayedStatus() const;
 protected:
@@ -46,7 +51,12 @@ protected:
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
     virtual void NativeTick(const FGeometry& Geometry, float DeltaTime) override;
+    virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event) override;
 private:
+    friend struct FRPGNarrativeTestAccess;
+    bool OpenContext(FGuid CharacterId);
+    bool EnsureNPCContext();
+    void ReleaseNPCInput();
     UFUNCTION() void RefreshStory();
     UFUNCTION() void RetryChoice();
     UFUNCTION() void HandleChanged();
@@ -69,4 +79,9 @@ private:
     FText FailureText;
     FString OwnedDialogue;
     bool bLastReadable = false, bLastBusy = false, bLastPending = false;
+    bool bNPCContext = false;
+    TWeakObjectPtr<ARPGNarrativeNPC> SourceNPC;
+    TWeakObjectPtr<APawn> SourcePawn;
+    FString NPCAccount, NPCEndpoint;
+    TSharedPtr<FRPGWindowInputState> NPCInput;
 };

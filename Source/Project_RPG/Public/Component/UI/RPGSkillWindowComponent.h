@@ -28,6 +28,7 @@ public:
 	TArray<FKey> GetToggleKeys() const;
 	void RefreshCloseKeys();
 	void SetWindowInputState(const TSharedRef<FRPGWindowInputState>& State);
+	TSharedPtr<FRPGWindowInputState> GetWindowInputState() const { return WindowInputState; }
 	URPGSkillWindow* GetWindow() const { return Window; }
 
 	UFUNCTION(BlueprintCallable, Category = "RPG|Skill|UI")

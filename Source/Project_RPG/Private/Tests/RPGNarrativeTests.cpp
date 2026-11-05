@@ -26,6 +26,16 @@
 #include "Misc/Parse.h"
 #include "Online/RPGDungeonSessionSubsystem.h"
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
+#include "Actor/Narrative/RPGNarrativeNPC.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/DefaultPawn.h"
+#include "Components/SphereComponent.h"
+#include "Manager/UIManager.h"
+#include "Component/UI/RPGSkillWindowComponent.h"
+#include "UI/RPGWindowInputState.h"
+#include "Slate/SGameLayerManager.h"
+#include "Widgets/SOverlay.h"
+#include "Widgets/SVirtualWindow.h"
 
 struct FRPGNarrativeTestAccess
 {
@@ -42,6 +52,11 @@ struct FRPGNarrativeTestAccess
             TEXT("2200-01-01T00:10:00Z"), TEXT("2200-01-01T00:00:00Z"), Now, Now);
     }
     static void Logout(UHttpWebManager* Web) { Web->PlayerAuth.Reset(); }
+    static void ConfigureNPC(ARPGNarrativeNPC* NPC, TArray<FString> Entries) { NPC->DialogueEntryIds = MoveTemp(Entries); }
+    static void TickNPC(URPGNarrativeDialogueWidget* Panel) { Panel->NativeTick(FGeometry(), 0.f); }
+    static bool BackNPC(URPGNarrativeDialogueWidget* Panel)
+    { return Panel->NativeOnPreviewKeyDown(FGeometry(), FKeyEvent(EKeys::Escape, FModifierKeysState(), 0, false, 0, 0)).IsEventHandled(); }
+    static void NPCAction(URPGNarrativeDialogueWidget* Panel, const FString& Node) { Panel->Act(Node, FString()); }
 };
 
 namespace RPGNarrativeTests
@@ -102,7 +117,8 @@ namespace RPGNarrativeTests
         UGameViewportClient* Viewport = nullptr;
         ULocalPlayer* Player = nullptr;
         UWorld* World = nullptr;
-        bool Init()
+        TSharedPtr<SVirtualWindow> VirtualWindow;
+        bool Init(bool bViewport = false)
         {
             Instance->InitializeForMinimalNetRPC(FName(*FString::Printf(TEXT("/Temp/Narrative_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits))));
             World = Instance->GetWorld();
@@ -110,6 +126,17 @@ namespace RPGNarrativeTests
             Viewport = NewObject<UGameViewportClient>(GEngine);
             Instance->GetWorldContext()->GameViewport = Viewport;
             Viewport->Init(*Instance->GetWorldContext(), Instance.Get(), false);
+            if (bViewport)
+            {
+                VirtualWindow = SNew(SVirtualWindow).Size(FVector2D(1280, 720));
+                auto Overlay = SNew(SOverlay); auto Layers = SNew(SGameLayerManager);
+                Overlay->AddSlot()[Layers]; VirtualWindow->SetContent(Overlay);
+                FSlateApplication::Get().RegisterVirtualWindow(VirtualWindow.ToSharedRef());
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+                Viewport->SetViewportOverlayWidget(VirtualWindow, Overlay);
+                Viewport->SetGameLayerManager(Layers);
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
+            }
             FString Error; Player = Instance->CreateLocalPlayer(0, Error, false);
             auto* Web = Instance->GetSubsystem<UHttpWebManager>();
             if (!Player || !Web) return false;
@@ -120,6 +147,8 @@ namespace RPGNarrativeTests
         ~FGameFixture()
         {
             if (!World) return;
+            if (Viewport) Viewport->RemoveAllViewportWidgets();
+            if (VirtualWindow && FSlateApplication::IsInitialized()) FSlateApplication::Get().UnregisterVirtualWindow(VirtualWindow.ToSharedRef());
             while (Instance->GetLocalPlayers().Num()) Instance->RemoveLocalPlayer(Instance->GetLocalPlayers()[0]);
             Instance->Shutdown();
             if (Viewport) Viewport->DetachViewportClient();
@@ -130,10 +159,10 @@ namespace RPGNarrativeTests
 
 namespace RPGNarrativeTests
 {
-    FString InformationSnapshot(bool bBrokenLink = false)
+    FString InformationSnapshot(bool bBrokenLink = false, int32 Revision = 0)
     {
         TSharedPtr<FJsonObject> Root, Information;
-        FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Snapshot(0)), Root);
+        FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Snapshot(Revision)), Root);
         FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(FString(TEXT(R"json({"nodes":[
           {"id":"INFO.Start","speaker":"Guide","text":"Choose a topic.","informational":true,"choices":[{"id":"ask","text":"Ask","nextDialogueId":"INFO.Topic"},{"id":"close","text":"Close"}]},
           {"id":"INFO.Topic","speaker":"Guide","text":"Character progress.","informational":true,"entryPoint":false,"choices":[{"id":"more","text":"More","nextDialogueId":"INFO.Detail"},{"id":"back","text":"Back","nextDialogueId":"INFO.Start"}]},
@@ -426,6 +455,124 @@ bool FRPGNarrativeDialogueWidgetTest::RunTest(const FString&)
     Panel->CloseScreen();
     return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGNarrativeNPCTest, "ProjectRPG.Narrative.NPCInteraction",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGNarrativeNPCTest::RunTest(const FString&)
+{
+    using namespace RPGNarrativeTests;
+    FGameFixture Fixture;
+    if (!TestTrue(TEXT("NPC fixture"), Fixture.Init(true))) return false;
+#if UE_SUPPORT_FOR_ACTOR_TICK_DISABLE
+    Fixture.World->EnableActorTickAndUserCallbacks(true);
+#endif
+    Fixture.World->InitializeActorsForPlay(FURL());
+    auto* Controller = Fixture.World->SpawnActor<APlayerController>();
+    auto* Pawn = Fixture.World->SpawnActor<ADefaultPawn>();
+    auto* Contact = Fixture.World->SpawnActor<ARPGNarrativeNPC>();
+    auto* Instructor = Fixture.World->SpawnActor<ARPGNarrativeNPC>();
+    if (!Controller || !Pawn || !Contact || !Instructor) return false;
+    Controller->SetPlayer(Fixture.Player); Fixture.World->AddController(Controller); Controller->Possess(Pawn);
+    auto* Skills = NewObject<URPGSkillWindowComponent>(Controller);
+    Controller->AddInstanceComponent(Skills); Skills->RegisterComponent();
+    auto SharedInput = MakeShared<FRPGWindowInputState>(); Skills->SetWindowInputState(SharedInput);
+    Controller->SetIgnoreMoveInput(true); // An unrelated counted lock must survive NPC close.
+    FRPGNarrativeTestAccess::ConfigureNPC(Contact, {TEXT("DEV.Contact.Offer"), TEXT("DEV.Contact.Explain"), TEXT("DEV.Contact.Report")});
+    FRPGNarrativeTestAccess::ConfigureNPC(Instructor, {TEXT("DEV.Instructor.Explain")});
+    auto* Dungeon = Fixture.Instance->GetSubsystem<URPGDungeonSessionSubsystem>();
+    if (!TestTrue(TEXT("Selected character for NPC"), Dungeon->SelectCharacter(Character.ToString(EGuidFormats::DigitsWithHyphensLower)))) return false;
+    auto* Flow = Fixture.Player->GetSubsystem<URPGNarrativeCoordinator>();
+    auto Transport = MakeShared<FTransport>(); FRPGNarrativeTestAccess::Attach(Flow, Transport);
+    TestTrue(TEXT("Native NPC implements existing interaction interface"), Contact->GetClass()->ImplementsInterface(UInteractionInterface::StaticClass()));
+    auto* Bounds = Cast<USphereComponent>(Contact->GetRootComponent());
+    TestTrue(TEXT("Existing controller WorldDynamic query can discover NPC"), Bounds && Bounds->GetCollisionObjectType() == ECC_WorldDynamic
+        && Bounds->GetCollisionEnabled() == ECollisionEnabled::QueryOnly);
+    static_cast<IInteractionInterface*>(Contact)->Interact(Controller);
+    auto* Panel = Contact->GetOpenDialogue(Controller);
+    if (!TestNotNull(TEXT("Interface opens LocalPlayer viewport panel"), Panel)) return false;
+    TestTrue(TEXT("NPC uses the controller's existing window input state"), SharedInput->ContainsWindow(*Panel));
+    TestTrue(TEXT("NPC exposes mouse cursor"), Controller->bShowMouseCursor);
+    if (!TestTrue(TEXT("NPC refresh callback"), Transport->Complete(Snapshot(0)))) return false;
+    const int32 Sends = Transport->Sends;
+    TestTrue(TEXT("Repeated interaction reuses panel"), Contact->OpenDialogue(Controller));
+    TestEqual(TEXT("No duplicate query on repeated interaction"), Transport->Sends, Sends);
+    auto Click = [&](const FString& Node, const FString& Choice) -> bool
+    {
+        auto* List = Cast<UVerticalBox>(Panel->GetWidgetFromName(TEXT("NarrativeActions")));
+        if (!List) return false;
+        for (auto* Child : List->GetAllChildren())
+            if (auto* Row = Cast<URPGNarrativeActionWidget>(Child))
+                if (Row->GetDialogueId() == Node && Row->GetChoiceId() == Choice && Row->GetIsEnabled())
+                    if (auto* Button = Cast<UButton>(Row->GetWidgetFromName(TEXT("NarrativeActionButton"))))
+                    { Button->OnClicked.Broadcast(); return true; }
+        return false;
+    };
+    TestTrue(TEXT("NPC offer opens"), Click(TEXT("DEV.Contact.Offer"), FString()));
+    TestTrue(TEXT("NPC accept dispatches"), Click(TEXT("DEV.Contact.Offer"), TEXT("accept")));
+    if (!TestTrue(TEXT("Server accepts NPC quest"), Transport->Complete(Snapshot(1)))) return false;
+    TestFalse(TEXT("Other NPC entry is absent"), Click(TEXT("DEV.Instructor.Explain"), FString()));
+    FRPGNarrativeTestAccess::NPCAction(Panel, TEXT("DEV.Instructor.Explain"));
+    FRPGDialogueNode Active;
+    TestFalse(TEXT("Direct widget action cannot select another NPC's entry"), Flow->GetDialogueManager()->GetActiveDialogue(Active));
+    TestTrue(TEXT("Owned objective entry opens"), Click(TEXT("DEV.Contact.Explain"), FString()));
+    TestTrue(TEXT("Owned objective dispatches"), Click(TEXT("DEV.Contact.Explain"), TEXT("confirm")));
+    const FString Intent = Transport->LastBody;
+    Transport->Complete(FString(), 0);
+    Pawn->SetActorLocation(FVector(5000, 0, 0)); FRPGNarrativeTestAccess::TickNPC(Panel);
+    TestFalse(TEXT("Distance exit closes NPC viewport"), Panel->IsInViewport());
+    TestFalse(TEXT("NPC releases its shared window entry"), SharedInput->HasOpenWindows());
+    TestTrue(TEXT("Unrelated counted movement lock retained"), Controller->IsMoveInputIgnored());
+    Controller->SetIgnoreMoveInput(false); TestFalse(TEXT("NPC added no stale movement lock"), Controller->IsMoveInputIgnored());
+    TestFalse(TEXT("Distance exit clears owned local conversation"), Flow->GetDialogueManager()->GetActiveDialogue(Active));
+    TestTrue(TEXT("Distance exit preserves uncertain command"), Flow->HasPendingChoice());
+    TestFalse(TEXT("Out-of-range interaction denied"), Contact->OpenDialogue(Controller));
+    Pawn->SetActorLocation(FVector::ZeroVector);
+    TestFalse(TEXT("Different NPC cannot recover another entry's command"), Instructor->OpenDialogue(Controller));
+    if (!TestTrue(TEXT("Same NPC can reopen pending result"), Contact->OpenDialogue(Controller))) return false;
+    Panel = Contact->GetOpenDialogue(Controller);
+    auto* Retry = Panel ? Cast<UButton>(Panel->GetWidgetFromName(TEXT("NarrativeRetry"))) : nullptr;
+    if (!TestNotNull(TEXT("NPC retry control"), Retry)) return false;
+    Retry->OnClicked.Broadcast(); TestEqual(TEXT("NPC retry keeps exact command"), Transport->LastBody, Intent);
+    if (!TestTrue(TEXT("NPC retry confirms"), Transport->Complete(Snapshot(2)))) return false;
+    Dungeon->SelectCharacter(FGuid(9, 8, 7, 6).ToString(EGuidFormats::DigitsWithHyphensLower));
+    FRPGNarrativeTestAccess::TickNPC(Panel); TestFalse(TEXT("Character switch closes NPC panel"), Panel->IsInViewport());
+    Dungeon->SelectCharacter(Character.ToString(EGuidFormats::DigitsWithHyphensLower));
+    if (!TestTrue(TEXT("NPC reopens after selection restored"), Contact->OpenDialogue(Controller))) return false;
+    Panel = Contact->GetOpenDialogue(Controller); Transport->Complete(Snapshot(2));
+    Controller->UnPossess(); FRPGNarrativeTestAccess::TickNPC(Panel);
+    TestFalse(TEXT("Unpossession closes NPC panel"), Panel->IsInViewport()); Controller->Possess(Pawn);
+    if (!TestTrue(TEXT("NPC reopens after possession restored"), Contact->OpenDialogue(Controller))) return false;
+    Panel = Contact->GetOpenDialogue(Controller); Transport->Complete(Snapshot(2));
+    Contact->Destroy(); FRPGNarrativeTestAccess::TickNPC(Panel);
+    TestFalse(TEXT("NPC destruction closes viewport"), Panel->IsInViewport());
+    TestFalse(TEXT("NPC destruction leaves no owned conversation"), Flow->GetDialogueManager()->GetActiveDialogue(Active));
+    TestFalse(TEXT("No new progress from lifetime changes"), Flow->HasPendingChoice());
+    TestTrue(TEXT("Only confirmed objective persisted"), Flow->GetQuestManager()->HasRevision(Character, 2));
+    TestTrue(TEXT("LocalPlayer UI stack released"), !UUIManager::Get(Fixture.Player)->HasUIOpen());
+    Skills->DestroyComponent(); // Exercise the generic-controller fallback after the shared-controller path.
+    auto* Guide = Fixture.World->SpawnActor<ARPGNarrativeNPC>();
+    FRPGNarrativeTestAccess::ConfigureNPC(Guide, {TEXT("INFO.Start")});
+    if (!TestTrue(TEXT("Information NPC opens"), Guide->OpenDialogue(Controller))) return false;
+    Panel = Guide->GetOpenDialogue(Controller); Transport->Complete(InformationSnapshot(false, 2));
+    const int32 BeforeInformation = Transport->Sends;
+    TestTrue(TEXT("NPC information root"), Click(TEXT("INFO.Start"), FString()));
+    TestTrue(TEXT("NPC linked hidden topic"), Click(TEXT("INFO.Start"), TEXT("ask")));
+    TestTrue(TEXT("NPC information back"), Click(TEXT("INFO.Topic"), TEXT("back")));
+    TestTrue(TEXT("NPC information close"), Click(TEXT("INFO.Start"), TEXT("close")));
+    TestEqual(TEXT("NPC information navigation sends no command"), Transport->Sends, BeforeInformation);
+    TestTrue(TEXT("Fallback NPC widget can rebind without duplicating input locks"), Panel->OpenForNPC(Character, Guide));
+    Transport->Complete(InformationSnapshot(false, 2)); Panel->FocusNPCInput();
+    TestTrue(TEXT("Escape is handled by NPC window"), FRPGNarrativeTestAccess::BackNPC(Panel));
+    TestFalse(TEXT("Escape closes viewport"), Panel->IsInViewport());
+    TestFalse(TEXT("Rebinding/close releases fallback movement lock"), Controller->IsMoveInputIgnored());
+    if (!TestTrue(TEXT("NPC reopens after Escape"), Guide->OpenDialogue(Controller))) return false;
+    Panel = Guide->GetOpenDialogue(Controller); Transport->Complete(InformationSnapshot(false, 2));
+    FRPGNarrativeTestAccess::Logout(Fixture.Instance->GetSubsystem<UHttpWebManager>());
+    FRPGNarrativeTestAccess::TickNPC(Panel); TestFalse(TEXT("Logout closes NPC panel"), Panel->IsInViewport());
+    TestFalse(TEXT("Logout releases fallback input"), Controller->IsMoveInputIgnored());
+    Guide->Destroy();
+    Instructor->Destroy(); Controller->Destroy(); Pawn->Destroy();
+    return true;
+}
 namespace RPGNarrativeTests
 {
     // Opt-in real HTTP test. The runner supplies only nonsecret IDs and a private
@@ -438,6 +585,9 @@ namespace RPGNarrativeTests
             : Test(InTest), Character(InCharacter), Steam(MoveTemp(InSteam)), WorldName(MoveTemp(InWorld)), bRestore(bInRestore) {}
         ~FHttpDialogueCommand()
         {
+            if (ContactNPC.IsValid()) ContactNPC->Destroy();
+            if (InstructorNPC.IsValid()) InstructorNPC->Destroy();
+            if (SpawnedPawn.IsValid()) SpawnedPawn->Destroy();
             if (Lobby.IsValid()) Lobby->RemoveFromParent();
         }
         bool Update() override
@@ -473,6 +623,22 @@ namespace RPGNarrativeTests
                         Player->GetPlayerController(World) == Controller, Controller->GetLocalPlayer() == Player,
                         Controller->IsActorBeingDestroyed(), World->bIsTearingDown));
                 if (!Flow->SelectCharacter(Character.ToString(EGuidFormats::DigitsWithHyphensLower))) return Fail(TEXT("Character selection failed"));
+                if (bNPC)
+                {
+                    if (!Controller->GetPawn())
+                    {
+                        SpawnedPawn = World->SpawnActor<ADefaultPawn>();
+                        if (!SpawnedPawn.IsValid()) return Fail(TEXT("NPC interaction pawn missing"));
+                        Controller->Possess(SpawnedPawn.Get());
+                    }
+                    ContactNPC = World->SpawnActor<ARPGNarrativeNPC>(); InstructorNPC = World->SpawnActor<ARPGNarrativeNPC>();
+                    if (!ContactNPC.IsValid() || !InstructorNPC.IsValid()) return Fail(TEXT("World NPC spawn failed"));
+                    const FVector Position = Controller->GetPawn()->GetActorLocation();
+                    ContactNPC->SetActorLocation(Position); InstructorNPC->SetActorLocation(Position + FVector(60, 0, 0));
+                    FRPGNarrativeTestAccess::ConfigureNPC(ContactNPC.Get(), {TEXT("DEV.Contact.Offer"), TEXT("DEV.Contact.Explain"), TEXT("DEV.Contact.Report")});
+                    FRPGNarrativeTestAccess::ConfigureNPC(InstructorNPC.Get(), {TEXT("DEV.Instructor.Explain")});
+                    Stage = 2; return false;
+                }
                 Lobby.Reset(CreateWidget<URPGOnlineLobbyWidget>(Controller));
                 if (!Lobby.IsValid() || Lobby->GetOwningLocalPlayer() != Player)
                     return Fail(FString::Printf(TEXT("Created lobby context mismatch: exists=%d initialized=%d valid=%d"),
@@ -482,6 +648,11 @@ namespace RPGNarrativeTests
             }
             if (Stage == 2)
             {
+                if (bNPC)
+                {
+                    if (!OpenNPC()) return Fail(TEXT("Actual NPC interface failed to open viewport"));
+                    Stage = 3; return false;
+                }
                 if (Lobby->GetCharacterOption(Character.ToString(EGuidFormats::DigitsWithHyphensLower)).IsEmpty()
                     || Lobby->IsFrontendRequestInFlight()) return false;
                 auto* Button = Cast<UButton>(Lobby->GetWidgetFromName(TEXT("OpenStoryMenuButton")));
@@ -493,8 +664,15 @@ namespace RPGNarrativeTests
             }
             if (Narrative->IsBusy()) return false;
             if (Narrative->HasPendingChoice() || !Narrative->HasCurrentSnapshot()) return Fail(TEXT("HTTP response not confirmed"));
-            auto* Panel = Lobby->GetNarrativeDialogueWidget();
+            if (bNPC && CurrentNPC.Get() != DesiredNPC())
+            {
+                if (!OpenNPC()) return Fail(TEXT("NPC switch failed"));
+                return false;
+            }
+            auto* Panel = bNPC ? CurrentNPC->GetOpenDialogue(Controller) : Lobby->GetNarrativeDialogueWidget();
             if (!Panel || !Panel->IsInViewport()) return Fail(TEXT("Story panel closed unexpectedly"));
+            if (bNPC && (!Controller->bShowMouseCursor || !Controller->IsMoveInputIgnored()))
+                return Fail(TEXT("World NPC cursor/movement input lifetime missing"));
             if (!bInformationChecked && FParse::Param(FCommandLine::Get(), TEXT("RPGNarrativeInformation")))
             {
                 if (!Click(Panel, TEXT("INFO.Start"), FString()) || !Click(Panel, TEXT("INFO.Start"), TEXT("ask"))
@@ -527,7 +705,7 @@ namespace RPGNarrativeTests
                     || !Narrative->GetScenarioManager()->IsStoryUnlocked(Character, TEXT("DEV.Story.Next"))
                     || Narrative->GetDialogueManager()->GetAvailableDialogues().ContainsByPredicate([](const auto& D) { return !D.bInformational; }))
                     return Fail(TEXT("Completion or fresh-process restoration mismatch"));
-                Test->AddInfo(FString(TEXT("Narrative HTTP persistence verified: ")) + (bRestore ? TEXT("restore") : TEXT("complete")));
+                Test->AddInfo(FString(bNPC ? TEXT("World NPC HTTP persistence verified: ") : TEXT("Narrative HTTP persistence verified: ")) + (bRestore ? TEXT("restore") : TEXT("complete")));
                 Panel->CloseScreen(); return true;
             }
             if (!Narrative->GetQuestManager()->HasRevision(Character, Choice)) return Fail(TEXT("Unexpected server revision"));
@@ -548,6 +726,15 @@ namespace RPGNarrativeTests
             ++Choice; return false;
         }
     private:
+        ARPGNarrativeNPC* DesiredNPC() const { return Choice == 2 ? InstructorNPC.Get() : ContactNPC.Get(); }
+        bool OpenNPC()
+        {
+            if (CurrentNPC.IsValid()) if (auto* Panel = CurrentNPC->GetOpenDialogue(Controller)) Panel->CloseScreen();
+            CurrentNPC = DesiredNPC();
+            if (!CurrentNPC.IsValid()) return false;
+            static_cast<IInteractionInterface*>(CurrentNPC.Get())->Interact(Controller);
+            return CurrentNPC->GetOpenDialogue(Controller) != nullptr;
+        }
         bool Fail(const FString& Error) { Test->AddError(Error); return true; }
         static bool Click(URPGNarrativeDialogueWidget* Panel, const FString& Node, const FString& Option)
         {
@@ -564,6 +751,9 @@ namespace RPGNarrativeTests
         FGuid Character;
         FString Steam, WorldName;
         bool bRestore = false, bCheckedClose = false, bInformationChecked = false;
+        const bool bNPC = FParse::Param(FCommandLine::Get(), TEXT("RPGNarrativeNPC"));
+        TWeakObjectPtr<ARPGNarrativeNPC> ContactNPC, InstructorNPC, CurrentNPC;
+        TWeakObjectPtr<APawn> SpawnedPawn;
         double Deadline = FPlatformTime::Seconds() + 90;
         int32 Stage = 0, Choice = 0;
         TStrongObjectPtr<UGameInstance> Instance;

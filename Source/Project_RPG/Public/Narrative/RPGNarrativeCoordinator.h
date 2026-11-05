@@ -31,6 +31,7 @@ public:
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") FGuid GetSelectedCharacterId() const { return SelectedCharacter; }
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") bool IsBusy() const { return bBusy; }
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") bool HasPendingChoice() const { return PendingChoice.IsSet(); }
+    UFUNCTION(BlueprintPure, Category="RPG|Narrative") FString GetPendingDialogueId() const { return PendingChoice ? PendingChoice->DialogueId : FString(); }
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") URPGQuestManager* GetQuestManager() const { return Quests; }
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") URPGScenarioManager* GetScenarioManager() const { return Scenarios; }
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") URPGDialogueManager* GetDialogueManager() const { return Dialogues; }

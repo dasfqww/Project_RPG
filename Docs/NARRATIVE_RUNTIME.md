@@ -60,6 +60,18 @@ GameInstance 캐시는 현재 엔드포인트/계정에 묶고 캐릭터 ID로 �
 
 전체 Editor 타깃 시도는 다른 사설 UBT의 전역 잠금 대기 중 자기 프로세스만 종료했으며, 위 결과를 전체 타깃 성공으로 표시하지 않는다. 기존 공유 출력의 0-byte probe OBJ1·누락 의존 import6을 복구한 뒤 집중 링크했다. 원본 제품 소스와 검증 사본을 구분하며, 사본 취득 직후 공유 입력/출력 예약을 해제했다. 자기 런타임/DLL/UserDir·캐시와 연결11개를 안전하게 정리했고 원본 `Binaries`/`Intermediate`와 유지할 소스/검사는 보존했다.
 
+## 월드 NPC 대화 연결
+
+`ARPGNarrativeNPC`는 기존 `IInteractionInterface`와 WorldDynamic 주변 조회를 사용하는 정적 배치 NPC다. 공통 Controller/HttpWebManager/WidgetBase 원본을 바꾸지 않고 소유 LocalPlayer의 UIManager에 기존 대화창을 연다. NPC별 `DialogueEntryIds`와 서버의 현재 가능한 진입점을 교차해 표시하며, 선택된 정보 분기의 승인된 링크는 계속 탐색한다. [배치·저작·권위 경계](NARRATIVE_CONTENT_AUTHORING.md#월드-npc-대화-진입점).
+
+NPC 대화창은 원래 Pawn/캐릭터/계정/엔드포인트·거리·월드를 확인하며 문맥이 바뀌면 자기 창/자기가 연 로컬 대화만 정리한다. SkillWindowComponent의 공유 `FRPGWindowInputState`에 창을 등록해 커서/포커스·이동/시선 잠금·Esc 닫기를 연결하고, 해제 시 외부 입력 잠금을 보존한다. 일반 Controller의 단독 창도 같은 수명 규칙을 사용한다. 결과 미확정 명령은 보존하고 같은 NPC의 진입점에서 원래 요청을 재전송할 수 있다. 다른 NPC/다른 창의 선택·명령으로 바꾸지 않는다. 기존 로비 창과 전역 서버 대화의 권한·진도·저장 계약을 유지한다. NPC의 로컬 거리 판정을 서버 전투/조사 증명으로 사용하지 않는다.
+
+`Run-NarrativeFrontendTests.ps1`과 `Run-NarrativeDialogueE2E.ps1`은 `RuntimeProjectRoot`로 사설 모듈/설정/플러그인 입력을 선택하고 `IncludeNPC`로 NPC native 및 실제 HTTP의 월드 NPC 인터페이스 경로를 검사한다. 기본 호출은 기존 로비 경로를 유지한다. 기존 맵/에셋과 공유 DLL은 이 기능의 원본 변경 대상에서 제외한다.
+
+2026-11-06 확인: Gitd0c0cc2+본인 UE7파일의 사설 UHT/전체 Editor 타깃 빌드가 성공했다. 이후 검사 전용 가상 뷰포트와 최신 위젯 본문을 집중 컴파일/재링크한 최종 `2915F1AE…72336C2`에서 native11 모두 Success·UE0·검사 발견 뒤 오류0이다. NPC 인터페이스/인물별 진입점·반복 열기/다른 NPC 선택 차단·거리/캐릭터/소유 Pawn/소멸/로그아웃 정리·동일 요청 복구·정보형 링크·공유/일반 Controller 입력·재바인딩/외부 잠금 보존/Esc를 확인했다. 같은 모듈의 실제 게임 프로세스2/HTTP/PG에서 월드 NPC→UMG 수락/확인/보고→리비전4·챕터/해금과 새 백엔드/게임 복원·영수증4·부캐 진도0·성장 불변도 통과했다. 기존 로비 경로 회귀를 함께 유지했다.
+
+검증 중의 UE5.8 TObjectPtr 추론·가상 화면 없는 fixture·SDK UBT 대기·복사 시각으로 남은 이전 객체·NPC/로비 로그 표식 차이를 보완했고, 동일 모듈의 성공한 native는 HTTP 표식 보완 때 재사용했다. SDK 확인은 이미 빌드된 모듈의 검증 자식 프로세스에서만 엔진 지원 `UE_SKIP_UBT_SDK_SETUP=1`로 생략하고 부모 값을 즉시 복원한다. 초기/빌드 경고와 검사 발견 전 콘텐츠 로드 로그는 성공 구간과 구분해 보존했다. 마지막으로 자기 사본/OBJ/PCH/DLL/PDB·UserDir·DB·자식과 연결84개, 총7,024,255,873 bytes를 정리했고 Temp/대형 예외0이다. 근거: `Saved/BuildChecks/NarrativeNPC-20261105/8537e8310e684d54bb068d079d47e380/Result.json`, `35a35fb26b4142aeb9bbafcd3d9bbeff/Result.json`, `6c715f41b783495fa13e7c56d3c9b38e/Result.json`, `CleanupSummary.json`. 폐기한 바이너리의 해시는 당시 근거다. 실제 키/마우스·GPU 외형·Steam/다인 네트워크·최신 다른 담당의 미완료 플러그인 통합과 구분하며, 정적 NPC 배치/메시/진입점 설정은 저작 안내를 따른다.
+
 ## 목표의 선행 조건
 
 2026-11-05: `QuestDefinition.ObjectivePrerequisites`로 같은 의뢰 안의 순차/동시 목표 연결을 작성한다. 생략/null/빈 매핑은 기존 동시 진행이며, 지정된 선행은 모두 확인해야 한다. 카탈로그는 잘못된 참조·중복·자기 참조/순환·null 배열을 거절한다. `QuestManager.CanRecordObjective`를 선택지 조회/선택 승인·실제 전이에서 사용하고 Coordinator의 저장 검사에도 선행 일관성을 적용한다. 가능한 선택지가 없는 노드는 응답에서 빠지며, 저널/UE 응답과 저장 스키마는 유지한다. [작성 규칙](NARRATIVE_CONTENT_AUTHORING.md#순차-목표와-동시-목표).

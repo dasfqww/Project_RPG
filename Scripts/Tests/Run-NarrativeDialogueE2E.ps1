@@ -2,11 +2,12 @@
 param([string]$EngineRoot='D:/UE_5.8', [string]$ExpectedModuleSHA256='',
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$TaskId='narrative-dialogue-20261104',
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$ProofName='NarrativeDialogue-20261104',
-    [string]$BackendRoot='', [switch]$IncludeInformation)
+    [string]$BackendRoot='', [switch]$IncludeInformation, [string]$RuntimeProjectRoot='', [switch]$IncludeNPC)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if(!$BackendRoot){$BackendRoot=Join-Path $workspace 'Backend'}
-if(!$ExpectedModuleSHA256){$ExpectedModuleSHA256=(Get-FileHash -LiteralPath (Join-Path $workspace 'Binaries/Win64/UnrealEditor-Project_RPG.dll') -Algorithm SHA256).Hash}
+if(!$RuntimeProjectRoot){$RuntimeProjectRoot=$workspace}
+if(!$ExpectedModuleSHA256){$ExpectedModuleSHA256=(Get-FileHash -LiteralPath (Join-Path $RuntimeProjectRoot 'Binaries/Win64/UnrealEditor-Project_RPG.dll') -Algorithm SHA256).Hash}
 $owner=$TaskId
 $runId=[Guid]::NewGuid().ToString('N')
 $run=Join-Path $workspace ('Saved/BuildChecks/'+$ProofName+'/'+$runId)
@@ -16,7 +17,7 @@ $artifacts=Join-Path $temp 'artifacts'
 $containerName='rpg-narrative-ui-'+$runId
 $containerId=$null; $backend=$null; $backendOut=$null; $backendErr=$null
 $copies=[Collections.Generic.List[object]]::new()
-$result=[ordered]@{Passed=$false;Run=$runId;ModuleSHA256=$ExpectedModuleSHA256;Phases=@();Revision=$null;Receipts=$null;AltIsolated=$false;GrowthUnchanged=$false;FreshBackend=$false;ContainerRemoved=$false;Cleanup=$null;TempDeleted=$false;Failure=$null}
+$result=[ordered]@{Passed=$false;Run=$runId;ModuleSHA256=$ExpectedModuleSHA256;NPC=[bool]$IncludeNPC;Phases=@();Revision=$null;Receipts=$null;AltIsolated=$false;GrowthUnchanged=$false;FreshBackend=$false;ContainerRemoved=$false;Cleanup=$null;TempDeleted=$false;Failure=$null}
 $null=New-Item -ItemType Directory -Path $inputs -Force
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Assert-Reservation {
@@ -83,13 +84,14 @@ function Sql([string]$Query) {
     return ([string]::Join("`n",$answer)).Trim()
 }
 function Run-Frontend([string]$Phase) {
-    $output=@(& (Join-Path $PSScriptRoot 'Run-NarrativeFrontendTests.ps1') -EngineRoot $EngineRoot -ExpectedModuleSHA256 $ExpectedModuleSHA256 -Phase $Phase -BackendUrl ($url+'/api') -CharacterId $character.characterId -SteamId $steam -TaskId $TaskId -ProofName $ProofName -IncludeInformation:$IncludeInformation)
+    $output=@(& (Join-Path $PSScriptRoot 'Run-NarrativeFrontendTests.ps1') -EngineRoot $EngineRoot -ExpectedModuleSHA256 $ExpectedModuleSHA256 -Phase $Phase -BackendUrl ($url+'/api') -CharacterId $character.characterId -SteamId $steam -TaskId $TaskId -ProofName $ProofName -IncludeInformation:$IncludeInformation -RuntimeProjectRoot $RuntimeProjectRoot -IncludeNPC:$IncludeNPC)
     $line=@($output | Where-Object {$_ -like 'Result: *'})
     if($line.Count -ne 1){throw 'Missing native proof result'}
     $path=$line[0].Substring(8); $proof=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
     if(!$proof.Passed -or !$proof.RuntimeDeleted){throw 'HTTP frontend proof failed/unclean'}
     $native=Get-Content -LiteralPath (Join-Path (Split-Path -Parent $path) 'Native.log') -Raw -Encoding UTF8
-    if(!$native.Contains('Narrative HTTP persistence verified: '+$Phase)){throw 'Real HTTP completion marker missing'}
+    $marker=if($IncludeNPC){'World NPC HTTP persistence verified: '}else{'Narrative HTTP persistence verified: '}
+    if(!$native.Contains($marker+$Phase)){throw 'Real HTTP completion marker missing'}
     $result.Phases+=@{Phase=$Phase;Proof=$path;ModuleSHA256=$proof.SnapshotModuleSHA256}
     Write-Output ('PASS UE HTTP '+$Phase)
 }

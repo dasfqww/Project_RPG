@@ -10,9 +10,17 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/GameInstance.h"
 #include "Narrative/RPGNarrativeCoordinator.h"
 #include "Narrative/RPGDialogueManager.h"
 #include "Narrative/RPGQuestManager.h"
+#include "Actor/Narrative/RPGNarrativeNPC.h"
+#include "GameFramework/PlayerController.h"
+#include "Online/RPGDungeonSessionSubsystem.h"
+#include "Manager/HttpWebManager.h"
+#include "Component/UI/RPGSkillWindowComponent.h"
+#include "UI/RPGWindowInputState.h"
+#include "InputCoreTypes.h"
 
 void URPGNarrativeActionWidget::Configure(const FText& Label, const FString& DialogueId,
     const FString& ChoiceId, FRPGNarrativeAction Action)
@@ -76,24 +84,86 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
 }
 bool URPGNarrativeDialogueWidget::MatchesSelection() const
 {
-    return IsValid(Coordinator) && Character.IsValid() && Coordinator->GetSelectedCharacterId() == Character;
+    if (!IsValid(Coordinator) || !Character.IsValid() || Coordinator->GetSelectedCharacterId() != Character) return false;
+    if (!bNPCContext) return true;
+    const auto* Dungeon = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGDungeonSessionSubsystem>() : nullptr;
+    const auto* Web = GetGameInstance() ? GetGameInstance()->GetSubsystem<UHttpWebManager>() : nullptr;
+    FGuid Selected;
+    return SourceNPC.IsValid() && GetOwningPlayer() && SourcePawn.IsValid() && GetOwningPlayer()->GetPawn() == SourcePawn.Get()
+        && SourceNPC->CanInteractWith(GetOwningPlayer()) && Dungeon && Web && Web->HasAccessToken()
+        && Web->GetAuthenticatedSteamId() == NPCAccount && Web->GetApiUrl() == NPCEndpoint
+        && FGuid::Parse(Dungeon->GetSelectedCharacterId(), Selected) && Selected == Character;
 }
 bool URPGNarrativeDialogueWidget::OpenForCharacter(const FGuid CharacterId)
+{
+    ReleaseNPCInput();
+    bNPCContext = false; SourceNPC.Reset(); SourcePawn.Reset();
+    return OpenContext(CharacterId);
+}
+bool URPGNarrativeDialogueWidget::OpenForNPC(const FGuid CharacterId, ARPGNarrativeNPC* NPC)
+{
+    if (!IsValid(NPC) || !NPC->CanInteractWith(GetOwningPlayer())) return false;
+    auto* Dungeon = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGDungeonSessionSubsystem>() : nullptr;
+    auto* Web = GetGameInstance() ? GetGameInstance()->GetSubsystem<UHttpWebManager>() : nullptr;
+    FGuid Selected;
+    if (!Dungeon || !Web || !Web->HasAccessToken() || Web->GetAuthenticatedSteamId().IsEmpty()
+        || !FGuid::Parse(Dungeon->GetSelectedCharacterId(), Selected) || Selected != CharacterId) return false;
+    auto* Player = GetOwningLocalPlayer();
+    auto* Flow = Player ? Player->GetSubsystem<URPGNarrativeCoordinator>() : nullptr;
+    if (!Flow || (Flow->HasPendingChoice() && !NPC->HasEntry(Flow->GetPendingDialogueId()))) return false;
+    ReleaseNPCInput();
+    bNPCContext = true; SourceNPC = NPC; SourcePawn = GetOwningPlayer()->GetPawn();
+    NPCAccount = Web->GetAuthenticatedSteamId(); NPCEndpoint = Web->GetApiUrl();
+    return OpenContext(CharacterId);
+}
+bool URPGNarrativeDialogueWidget::OpenContext(const FGuid CharacterId)
 {
     auto* Player = GetOwningLocalPlayer();
     auto* Flow = Player ? Player->GetSubsystem<URPGNarrativeCoordinator>() : nullptr;
     if (!CharacterId.IsValid() || !Flow) return false;
     if (Flow->GetSelectedCharacterId() != CharacterId && !Flow->SelectCharacter(CharacterId)) return false;
-    Unbind(); Coordinator = Flow; Character = CharacterId; FailureText = FText::GetEmpty();
+    Unbind(); Coordinator = Flow; Character = CharacterId; FailureText = FText::GetEmpty(); OwnedDialogue.Reset();
+    if (bNPCContext && !Flow->HasPendingChoice()) Flow->CloseDialogue();
     Coordinator->OnChanged.AddUniqueDynamic(this, &ThisClass::HandleChanged);
     Coordinator->OnRequestFinished.AddUniqueDynamic(this, &ThisClass::HandleFinished);
+    if (bNPCContext)
+    {
+        const auto* Skills = GetOwningPlayer()->FindComponentByClass<URPGSkillWindowComponent>();
+        NPCInput = Skills ? Skills->GetWindowInputState() : nullptr;
+        if (!NPCInput) NPCInput = MakeShared<FRPGWindowInputState>();
+        SetIsFocusable(true);
+        const auto Input = NPCInput;
+        if (!Input->BeginWindow(*GetOwningPlayer(), *this, 100) || !EnsureNPCContext())
+        { Unbind(); ReleaseNPCInput(); return false; }
+    }
     if (!Flow->IsBusy() && !Flow->HasPendingChoice()) Flow->Refresh();
     Render(); return true;
+}
+bool URPGNarrativeDialogueWidget::EnsureNPCContext()
+{
+    if (bNPCContext && !MatchesSelection()) { CloseScreen(); return false; }
+    return true;
+}
+void URPGNarrativeDialogueWidget::FocusNPCInput()
+{
+    const auto Input = NPCInput;
+    if (Input && IsInViewport() && EnsureNPCContext()) Input->FocusWindow(*this);
+}
+void URPGNarrativeDialogueWidget::ReleaseNPCInput()
+{
+    auto Input = MoveTemp(NPCInput);
+    if (Input) Input->EndWindow(*this);
+}
+FReply URPGNarrativeDialogueWidget::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)
+{
+    if (bNPCContext && Event.GetKey() == EKeys::Escape) { CloseScreen(); return FReply::Handled(); }
+    return Super::NativeOnPreviewKeyDown(Geometry, Event);
 }
 void URPGNarrativeDialogueWidget::NativeConstruct() { Super::NativeConstruct(); Render(); }
 void URPGNarrativeDialogueWidget::NativeTick(const FGeometry& Geometry, const float DeltaTime)
 {
     Super::NativeTick(Geometry, DeltaTime);
+    if (!EnsureNPCContext()) return;
     const bool bReadable = MatchesSelection() && Coordinator->HasCurrentSnapshot();
     const bool bBusy = MatchesSelection() && Coordinator->IsBusy();
     const bool bPending = MatchesSelection() && Coordinator->HasPendingChoice();
@@ -111,26 +181,29 @@ void URPGNarrativeDialogueWidget::NativeDestruct()
 {
     Unbind();
     FRPGDialogueNode Active;
-    auto* Dialogue = MatchesSelection() ? Coordinator->GetDialogueManager() : nullptr;
+    auto* Dialogue = IsValid(Coordinator) && Coordinator->GetSelectedCharacterId() == Character ? Coordinator->GetDialogueManager() : nullptr;
     if (Dialogue && Dialogue->GetActiveDialogue(Active) && Active.Id == OwnedDialogue)
         Coordinator->CloseDialogue();
+    ReleaseNPCInput();
     Coordinator = nullptr; OwnedDialogue.Reset(); Super::NativeDestruct();
 }
 void URPGNarrativeDialogueWidget::CloseScreen()
 {
     Unbind();
     FRPGDialogueNode Active;
-    auto* Dialogue = MatchesSelection() ? Coordinator->GetDialogueManager() : nullptr;
+    auto* Dialogue = IsValid(Coordinator) && Coordinator->GetSelectedCharacterId() == Character ? Coordinator->GetDialogueManager() : nullptr;
     if (Dialogue && Dialogue->GetActiveDialogue(Active) && Active.Id == OwnedDialogue) Coordinator->CloseDialogue();
-    OwnedDialogue.Reset(); RemoveFromParent();
+    OwnedDialogue.Reset(); ReleaseNPCInput(); RemoveFromParent();
 }
 FText URPGNarrativeDialogueWidget::GetDisplayedStatus() const { return Status ? Status->GetText() : FText::GetEmpty(); }
 void URPGNarrativeDialogueWidget::RefreshStory()
 {
+    if (!EnsureNPCContext()) return;
     if (MatchesSelection()) { FailureText = FText::GetEmpty(); Coordinator->Refresh(); Render(); }
 }
 void URPGNarrativeDialogueWidget::RetryChoice()
 {
+    if (!EnsureNPCContext() || (bNPCContext && Coordinator->HasPendingChoice() && !SourceNPC->HasEntry(Coordinator->GetPendingDialogueId()))) return;
     if (MatchesSelection()) { FailureText = FText::GetEmpty(); Coordinator->RetryPendingChoice(); Render(); }
 }
 void URPGNarrativeDialogueWidget::HandleChanged() { Render(); }
@@ -143,15 +216,18 @@ void URPGNarrativeDialogueWidget::HandleFinished(bool bSuccess, const FString&, 
 }
 void URPGNarrativeDialogueWidget::Act(const FString& DialogueId, const FString& ChoiceId)
 {
+    if (!EnsureNPCContext()) return;
     if (!GetIsEnabled() || !MatchesSelection() || !Coordinator->HasCurrentSnapshot() || Coordinator->IsBusy() || Coordinator->HasPendingChoice()) return;
     if (ChoiceId.IsEmpty())
     {
+        if (bNPCContext && !SourceNPC->HasEntry(DialogueId)) return;
         if (Coordinator->BeginDialogue(DialogueId)) OwnedDialogue = DialogueId;
     }
     else
     {
         FRPGDialogueNode Active;
-        if (Coordinator->GetDialogueManager()->GetActiveDialogue(Active) && Active.Id == DialogueId)
+        if (Coordinator->GetDialogueManager()->GetActiveDialogue(Active) && Active.Id == DialogueId
+            && (!bNPCContext || Active.Id == OwnedDialogue))
         {
             if (Coordinator->Choose(ChoiceId))
             {
@@ -206,7 +282,7 @@ void URPGNarrativeDialogueWidget::Render()
         }
         Journal->SetText(Lines.IsEmpty() ? NSLOCTEXT("RPGNarrative", "NoQuests", "수락한 의뢰가 없습니다.") : FText::Join(FText::FromString(TEXT("\n")), Lines));
         FRPGDialogueNode Active;
-        if (Coordinator->GetDialogueManager()->GetActiveDialogue(Active))
+        if (Coordinator->GetDialogueManager()->GetActiveDialogue(Active) && (!bNPCContext || Active.Id == OwnedDialogue))
         {
             Speaker->SetText(Active.Speaker); Body->SetText(Active.Text);
             for (const auto& Choice : Active.Choices) AddAction(Choice.Text, Active.Id, Choice.Id, !bLastBusy && !bLastPending);
@@ -214,10 +290,14 @@ void URPGNarrativeDialogueWidget::Render()
         else
         {
             const auto Nodes = Coordinator->GetDialogueManager()->GetAvailableDialogues();
+            int32 Entries = 0;
             for (const auto& Node : Nodes)
-                if (Node.bEntryPoint)
+                if (Node.bEntryPoint && (!bNPCContext || SourceNPC->HasEntry(Node.Id)))
+                {
                     AddAction(FText::Format(NSLOCTEXT("RPGNarrative", "Node", "{0}: {1}"), Node.Speaker, Node.Text), Node.Id, FString(), !bLastBusy && !bLastPending);
-            if (Nodes.IsEmpty()) Body->SetText(NSLOCTEXT("RPGNarrative", "Empty", "지금 진행할 수 있는 대화가 없습니다."));
+                    ++Entries;
+                }
+            if (Entries == 0) Body->SetText(NSLOCTEXT("RPGNarrative", "Empty", "지금 진행할 수 있는 대화가 없습니다."));
         }
     }
     Status->SetText(bLastBusy ? NSLOCTEXT("RPGNarrative", "Busy", "이야기를 확인하고 있습니다…") : !FailureText.IsEmpty() ? FailureText
