@@ -15,9 +15,13 @@ public sealed class TradeOffer
 {
     public const int MaximumItemCount = 8;
     public static TradeOffer Empty { get; } = new([], 0);
-    public ReadOnlyCollection<TradeOfferedItem> Items { get; }
+    public IReadOnlyList<TradeOfferedItem> Items { get; }
     public long CurrencyAmount { get; }
     public bool IsEmpty => Items.Count == 0 && CurrencyAmount == 0;
+
+    [System.Text.Json.Serialization.JsonConstructor]
+    private TradeOffer(IReadOnlyList<TradeOfferedItem> items, long currencyAmount)
+        : this((IEnumerable<TradeOfferedItem>)items, currencyAmount) { }
 
     public TradeOffer(IEnumerable<TradeOfferedItem> items, long currencyAmount)
     {

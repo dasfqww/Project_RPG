@@ -13,7 +13,7 @@ public sealed partial class PostgresItemRepository(
     NpgsqlDataSource dataSource,
     ILogger<PostgresItemRepository> logger) : IItemRepository
 {
-    private const string ItemColumns = """
+    internal const string ItemColumns = """
         item_id, definition_type, definition_name, definition_version,
         owner_type, owner_id, container_type, container_id, slot_index,
         generation_seed, quantity, instance_tags, stat_values, revision,
@@ -590,7 +590,7 @@ public sealed partial class PostgresItemRepository(
             : null;
     }
 
-    private static async Task StageExistingRecordAsync(
+    internal static async Task StageExistingRecordAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid itemId,
@@ -841,7 +841,7 @@ public sealed partial class PostgresItemRepository(
             reader.GetFieldValue<DateTimeOffset>(6));
     }
 
-    private static ItemRecord ReadItemRecord(NpgsqlDataReader reader)
+    internal static ItemRecord ReadItemRecord(NpgsqlDataReader reader)
     {
         string[] instanceTags =
             JsonSerializer.Deserialize<string[]>(

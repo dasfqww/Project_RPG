@@ -11,8 +11,8 @@ public sealed record TradeSplitOrigin(Guid SourceItemId, Guid SplitItemId, int Q
 public sealed record TradeCurrencyMovement(CurrencyOwnerRef Owner, string CurrencyCode, long ExpectedRevision,
     long PreviousBalance, long NewBalance);
 public sealed record TradeExchangePlan(Guid TradeId, long SessionRevision, long OfferRevision,
-    ReadOnlyCollection<ItemRecordMutation> Items, ReadOnlyCollection<TradeCurrencyMovement> Currency,
-    ReadOnlyCollection<TradeSplitOrigin> Splits);
+    IReadOnlyList<ItemRecordMutation> Items, IReadOnlyList<TradeCurrencyMovement> Currency,
+    IReadOnlyList<TradeSplitOrigin> Splits);
 
 /// <summary>
 /// Pure bilateral plan, never an authorization or a committed receipt. The store must lock/revalidate both

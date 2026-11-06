@@ -23,6 +23,7 @@ public sealed class TradeNegotiation
     public bool InitiatorConfirmed { get; }
     public bool InviteeConfirmed { get; }
 
+    [System.Text.Json.Serialization.JsonConstructor]
     private TradeNegotiation(Guid tradeId, TradeParticipant initiator, TradeParticipant invitee,
         string currencyCode, DateTimeOffset expiresAt, long revision, long offerRevision,
         TradeNegotiationStatus status, TradeOffer initiatorOffer, TradeOffer inviteeOffer,

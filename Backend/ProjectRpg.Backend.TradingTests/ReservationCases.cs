@@ -306,9 +306,9 @@ internal static class ReservationCases
                     Store = new PostgresTradeReservationRepository(data, Policy()),
                     Rewards = new PostgresDungeonRewardCommitRepository(data, economy, items, NullLogger<PostgresDungeonRewardCommitRepository>.Instance) };
                 var catalog = await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory, default);
-                Check(await PostgresSchemaMigrations.ApplyAsync(data, catalog.Take(7).ToArray(), default) == 7, "Create old v7 database.");
+                Check(await PostgresSchemaMigrations.ApplyAsync(data, catalog.Take(catalog.Count - 1).ToArray(), default) == catalog.Count - 1, "Create previous deployment schema.");
                 var old = await f.Character();
-                Check(await PostgresSchemaMigrations.ApplyAsync(data, catalog, default) == 1, "Only v8 applies to v7.");
+                Check(await PostgresSchemaMigrations.ApplyAsync(data, catalog, default) == 1, "Only newest migration applies; existing assets remain.");
                 Check(await PostgresSchemaMigrations.ApplyAsync(data, catalog, default) == 0, "Migration replay is empty.");
                 Check((await f.Context(old)).SteamId == old.AccountId, "Migration preserves existing character.");
             }

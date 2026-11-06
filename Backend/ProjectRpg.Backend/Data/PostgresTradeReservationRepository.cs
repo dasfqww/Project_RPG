@@ -13,10 +13,17 @@ public sealed class PostgresTradeReservationRepository(NpgsqlDataSource dataSour
 {
     public async Task<TradeAssetReservation> ReserveAsync(TradeReservationCommand command, CancellationToken ct)
     {
-        command = TradeReservationRules.Validate(command);
-        string fingerprint = TradeReservationRules.Fingerprint(command);
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
+        var result = await ReserveInTransactionAsync(connection, transaction, command, ct);
+        await transaction.CommitAsync(ct);
+        return result;
+    }
+
+    internal async Task<TradeAssetReservation> ReserveInTransactionAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, TradeReservationCommand command, CancellationToken ct)
+    {
+        command = TradeReservationRules.Validate(command);
+        string fingerprint = TradeReservationRules.Fingerprint(command);
         var context = await Context(connection, transaction, command.Participant, ct);
         await LockReservation(connection, transaction, command.ReservationId, ct);
         var existing = await Read(connection, transaction, command.ReservationId, ct);
@@ -66,16 +73,22 @@ public sealed class PostgresTradeReservationRepository(NpgsqlDataSource dataSour
             insert.Parameters.AddWithValue("item", offered.ItemId);
             await insert.ExecuteNonQueryAsync(ct);
         }
-        await transaction.CommitAsync(ct);
         return result;
     }
 
     public async Task<TradeAssetReservation> ReleaseAsync(TradeReservationCommand command, CancellationToken ct)
     {
-        command = TradeReservationRules.Validate(command);
-        string fingerprint = TradeReservationRules.Fingerprint(command);
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
+        var result = await ReleaseInTransactionAsync(connection, transaction, command, ct);
+        await transaction.CommitAsync(ct);
+        return result;
+    }
+
+    internal async Task<TradeAssetReservation> ReleaseInTransactionAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, TradeReservationCommand command, CancellationToken ct)
+    {
+        command = TradeReservationRules.Validate(command);
+        string fingerprint = TradeReservationRules.Fingerprint(command);
         await Context(connection, transaction, command.Participant, ct);
         await LockReservation(connection, transaction, command.ReservationId, ct);
         var existing = await Read(connection, transaction, command.ReservationId, ct);
@@ -92,7 +105,6 @@ public sealed class PostgresTradeReservationRepository(NpgsqlDataSource dataSour
             result = new(command, fingerprint, null, TradeReservationStatus.Released);
             await Insert(connection, transaction, result, ct);
         }
-        await transaction.CommitAsync(ct);
         return result;
     }
 
@@ -103,7 +115,7 @@ public sealed class PostgresTradeReservationRepository(NpgsqlDataSource dataSour
         return result?.Command.Participant == participant ? result.At(await Now(connection, null, ct)) : null;
     }
 
-    private static async Task<CharacterEconomyContext> Context(NpgsqlConnection connection, NpgsqlTransaction transaction,
+    internal static async Task<CharacterEconomyContext> Context(NpgsqlConnection connection, NpgsqlTransaction transaction,
         TradeParticipant participant, CancellationToken ct)
     {
         // Acquire before wallet/item locks: later FK checks must not invert equipment's character -> item order.
@@ -114,7 +126,7 @@ public sealed class PostgresTradeReservationRepository(NpgsqlDataSource dataSour
         return new(participant.CharacterId, roster, participant.AccountId);
     }
 
-    private static async Task LockReservation(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid id, CancellationToken ct)
+    internal static async Task LockReservation(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid id, CancellationToken ct)
     {
         long key = BinaryPrimitives.ReadInt64LittleEndian(SHA256.HashData(Encoding.UTF8.GetBytes("trade_reservation|" + id.ToString("D"))));
         await using NpgsqlCommand query = new("SELECT pg_advisory_xact_lock(@key);", connection, transaction);
@@ -122,13 +134,13 @@ public sealed class PostgresTradeReservationRepository(NpgsqlDataSource dataSour
         await query.ExecuteNonQueryAsync(ct);
     }
 
-    private static async Task<DateTimeOffset> Now(NpgsqlConnection connection, NpgsqlTransaction? transaction, CancellationToken ct)
+    internal static async Task<DateTimeOffset> Now(NpgsqlConnection connection, NpgsqlTransaction? transaction, CancellationToken ct)
     {
         await using NpgsqlCommand query = new("SELECT clock_timestamp();", connection, transaction);
         return new DateTimeOffset((DateTime)(await query.ExecuteScalarAsync(ct))!);
     }
 
-    private static async Task<TradeAssetReservation?> Read(NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid id, CancellationToken ct)
+    internal static async Task<TradeAssetReservation?> Read(NpgsqlConnection connection, NpgsqlTransaction? transaction, Guid id, CancellationToken ct)
     {
         await using NpgsqlCommand query = new("""
             SELECT command_payload::text, fingerprint, wallet_owner_type, wallet_owner_id, state
