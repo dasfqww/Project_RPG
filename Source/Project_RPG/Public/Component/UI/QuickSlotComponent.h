@@ -10,6 +10,7 @@
 #include "Security/RPGServerRequestBudget.h"
 #include "QuickSlotComponent.generated.h"
 
+class URPGActionBarContext;
 class URPGItemBase;
 class URPGInventoryProjectionComponent;
 class IRPGItemActionPolicyCatalog;
@@ -47,7 +48,9 @@ public:
 
 	void BeginUseSkillSlot(int32 Index);
 	void EndUseSkillSlot(int32 Index);
-	void ReleaseAllSkillInputs();
+	void ReleaseAllSkillInputs(bool bKeepPhysicalState = false);
+	UFUNCTION(BlueprintPure, Category="ActionBar")
+	URPGActionBarContext* GetActionBarContext();
 	bool CanAssignSkillSlot(int32 Index, FGameplayTag SkillTag) const;
 	bool IsSkillEquipped(FGameplayTag SkillTag) const;
 	/** Trusted server restore, once per Pawn. Empty records stay empty; defaults are chosen only by an explicit creation caller. */
@@ -140,6 +143,8 @@ private:
 
 	/** Keeps Release routed to the exact spec that received Press. */
 	TMap<int32, FGameplayAbilitySpecHandle> PressedSkillSpecHandles;
+	TSet<int32> HeldSkillInputs;
+	UPROPERTY(Transient) TObjectPtr<URPGActionBarContext> ActionBarContext;
 
 	UFUNCTION(Server, Reliable)
 	void Server_SetSkillSlot(int32 Index, FGameplayTag AbilityTag);

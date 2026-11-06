@@ -38,6 +38,7 @@
 #include "Components/TextBlock.h"
 #include "Components/Button.h"
 #include "Component/UI/QuickSlotComponent.h"
+#include "UI/ActionBar/RPGActionBarContext.h"
 #include "Skill/QuickSlot/RPGQuickSlotInputBindings.h"
 #include "Component/UI/RPGSkillWindowComponent.h"
 #include "UI/Skill/RPGSkillWindow.h"
@@ -936,12 +937,14 @@ void ARPGPlayerController::Input_AbilityInputPressed(FGameplayTag InInputTag)
 {
 	if (WindowInputState->HasOpenWindows()) return;
 	if (FRPGQuickSlotInputBindings::OwnsAbilityInput(InputConfigDataAsset, InInputTag)) return;
+	if (QuickSlotComponent && QuickSlotComponent->GetActionBarContext()->PressTag(InInputTag)) return;
 	if (PlayerCharacter) PlayerCharacter->GetRPGAbilitySystemComponent()->OnAbilityInputPressed(InInputTag);
 }
 
 void ARPGPlayerController::Input_AbilityInputReleased(FGameplayTag InInputTag)
 {
 	if (FRPGQuickSlotInputBindings::OwnsAbilityInput(InputConfigDataAsset, InInputTag)) return;
+	if (QuickSlotComponent) QuickSlotComponent->GetActionBarContext()->ReleaseTag(InInputTag);
 	if (PlayerCharacter) PlayerCharacter->GetRPGAbilitySystemComponent()->OnAbilityInputReleased(InInputTag);
 }
 

@@ -2,6 +2,7 @@
 
 
 #include "Component/UI/QuickSlotComponent.h"
+#include "UI/ActionBar/RPGActionBarContext.h"
 #include "HAL/PlatformTime.h"
 #include "Net/UnrealNetwork.h"
 #include "Item/RPGItemBase.h"
@@ -69,7 +70,7 @@ void UQuickSlotComponent::OnRep_ItemSlots()
 void UQuickSlotComponent::SetSkillSlot(int32 Index, FGameplayTag AbilityTag)
 {
 	AActor* Owner = GetOwner();
-	if (!Owner || !bSkillSlotsInitialized || !SkillSlots.IsValidIndex(Index))
+	if (!Owner || (ActionBarContext && ActionBarContext->HasOverride()) || !bSkillSlotsInitialized || !SkillSlots.IsValidIndex(Index))
 	{
 		return;
 	}
@@ -207,6 +208,7 @@ void UQuickSlotComponent::BeginPlay()
 void UQuickSlotComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	ReleaseAllSkillInputs();
+	if (ActionBarContext) ActionBarContext->Shutdown();
 	UnbindInventoryProjection();
 	Super::EndPlay(EndPlayReason);
 }
@@ -305,8 +307,21 @@ void UQuickSlotComponent::UseSkillSlot(int32 Index)
 	EndUseSkillSlot(Index);
 }
 
+URPGActionBarContext* UQuickSlotComponent::GetActionBarContext()
+{
+	if (!ActionBarContext) ActionBarContext = NewObject<URPGActionBarContext>(this);
+	return ActionBarContext;
+}
+
 void UQuickSlotComponent::BeginUseSkillSlot(const int32 Index)
 {
+	if (Index < 0 || Index >= MaxSkillSlots || HeldSkillInputs.Contains(Index)) return;
+	HeldSkillInputs.Add(Index);
+	if (ActionBarContext && ActionBarContext->ConsumesCombatInput())
+	{
+		ActionBarContext->PressSlot(Index);
+		return;
+	}
 	if (!SkillSlots.IsValidIndex(Index) || SkillSlots[Index].AbilityTag.IsValid() == false) return;
 	FRPGGASSkillQuickSlotAccess Access(GetQuickSlotASC(*this));
 	FRPGSkillQuickSlotInputRouter::Press(PressedSkillSpecHandles, Index,
@@ -315,19 +330,23 @@ void UQuickSlotComponent::BeginUseSkillSlot(const int32 Index)
 
 void UQuickSlotComponent::EndUseSkillSlot(const int32 Index)
 {
+	HeldSkillInputs.Remove(Index);
+	if (ActionBarContext) ActionBarContext->ReleaseSlot(Index);
 	FRPGGASSkillQuickSlotAccess Access(GetQuickSlotASC(*this));
 	FRPGSkillQuickSlotInputRouter::Release(PressedSkillSpecHandles, Index, Access);
 }
 
-void UQuickSlotComponent::ReleaseAllSkillInputs()
+void UQuickSlotComponent::ReleaseAllSkillInputs(bool bKeepPhysicalState)
 {
+	if (!bKeepPhysicalState) HeldSkillInputs.Reset();
+	if (ActionBarContext) ActionBarContext->ReleaseAll(bKeepPhysicalState);
 	FRPGGASSkillQuickSlotAccess Access(GetQuickSlotASC(*this));
 	FRPGSkillQuickSlotInputRouter::ReleaseAll(PressedSkillSpecHandles, Access);
 }
 
 bool UQuickSlotComponent::CanAssignSkillSlot(const int32 Index, const FGameplayTag SkillTag) const
 {
-	return bSkillSlotsInitialized && SkillSlots.IsValidIndex(Index) && SkillTag.IsValid() &&
+	return !(ActionBarContext && ActionBarContext->HasOverride()) && bSkillSlotsInitialized && SkillSlots.IsValidIndex(Index) && SkillTag.IsValid() &&
 		FRPGGASSkillQuickSlotAccess(GetQuickSlotASC(*this)).Resolve(SkillTag).IsValid();
 }
 
@@ -420,6 +439,7 @@ void UQuickSlotComponent::ClearSlot(bool bIsSkillSlot, int32 Index)
 	{
 		if (bIsSkillSlot)
 		{
+			if (ActionBarContext && ActionBarContext->HasOverride()) return;
 			if (!bSkillSlotsInitialized) return;
 			if (!SkillSlots.IsValidIndex(Index)) return;
 			if (SkillSlots[Index].IsEmpty()) return;

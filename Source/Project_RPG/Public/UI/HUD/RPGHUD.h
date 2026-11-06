@@ -7,6 +7,7 @@
 #include <Interface/InteractionInterface.h>
 #include "RPGHUD.generated.h"
 
+class URPGActionBarHUDPresenter;
 class URPGInteractionWidget;
 class URPGMainMenuWidget;
 class URPGOptionMenu;
@@ -108,6 +109,7 @@ protected:
 
 private:
 	UPROPERTY(Transient) TObjectPtr<UUserWidget> PlayerHUDWidget;
+	UPROPERTY(Transient) TObjectPtr<URPGActionBarHUDPresenter> ActionBarPresenter;
 	TWeakObjectPtr<APlayerController> PlayerHUDController;
 	TWeakObjectPtr<APawn> PlayerHUDPawn;
 	uint64 PlayerHUDRevision = 0;

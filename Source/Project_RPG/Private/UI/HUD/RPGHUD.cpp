@@ -2,6 +2,9 @@
 
 
 #include "UI/HUD/RPGHUD.h"
+#include "UI/ActionBar/RPGActionBarHUDPresenter.h"
+#include "Component/UI/QuickSlotComponent.h"
+#include "GameFramework/Pawn.h"
 #include "UI/RPGMainMenuWidget.h"
 #include "UI/RPGInteractionWidget.h"
 #include "UI/Option/RPGOptionMenu.h"
@@ -136,9 +139,12 @@ void ARPGHUD::OnPlayerHUDPawnChanged(APawn* OldPawn, APawn* NewPawn)
 void ARPGHUD::RemovePlayerHUD()
 {
     ++PlayerHUDRevision;
+    TStrongObjectPtr<URPGActionBarHUDPresenter> PreviousPresenter(ActionBarPresenter);
+    ActionBarPresenter = nullptr;
     TStrongObjectPtr<UUserWidget> Previous(PlayerHUDWidget);
     PlayerHUDWidget = nullptr;
     PlayerHUDPawn.Reset();
+    if (PreviousPresenter.IsValid()) PreviousPresenter->Unbind();
     if (Previous.IsValid()) Previous->RemoveFromParent();
 }
 
@@ -167,9 +173,12 @@ void ARPGHUD::RefreshPlayerHUD()
     // Legacy visual modules capture their Pawn during OnInitialized. Recreate the
     // visual tree on possession, rather than leaving their old bindings on screen.
     const uint64 Revision = ++PlayerHUDRevision;
+    TStrongObjectPtr<URPGActionBarHUDPresenter> PreviousPresenter(ActionBarPresenter);
+    ActionBarPresenter = nullptr;
     TStrongObjectPtr<UUserWidget> Previous(PlayerHUDWidget);
     PlayerHUDWidget = nullptr;
     PlayerHUDPawn.Reset();
+    if (PreviousPresenter.IsValid()) PreviousPresenter->Unbind();
     if (Previous.IsValid()) Previous->RemoveFromParent();
     if (Revision != PlayerHUDRevision || !ValidOwner() || !PlayerHUDWidgetClass) return;
 
@@ -189,6 +198,15 @@ void ARPGHUD::RefreshPlayerHUD()
     {
         return Revision == PlayerHUDRevision && PlayerHUDWidget == Widget.Get() && ValidOwner();
     };
+    if (StillCurrent())
+    {
+        if (auto* Slots = Pawn->FindComponentByClass<UQuickSlotComponent>())
+        {
+            TStrongObjectPtr<URPGActionBarHUDPresenter> Presenter(NewObject<URPGActionBarHUDPresenter>(this));
+            ActionBarPresenter = Presenter.Get();
+            Presenter->Bind(Widget.Get(), Slots->GetActionBarContext());
+        }
+    }
     if (!StillCurrent() || !Widget->AddToPlayerScreen(PlayerHUDZOrder) || !StillCurrent())
     {
         if (PlayerHUDWidget == Widget.Get()) RemovePlayerHUD();
