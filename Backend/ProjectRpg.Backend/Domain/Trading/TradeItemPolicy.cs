@@ -53,6 +53,11 @@ public sealed class TradeItemPolicy
             throw new TradeRuleException("invalid_trade_quantity");
     }
 
+    internal int MaximumStackSize(ItemRecord item) =>
+        definitions.TryGetValue((item.DefinitionType, item.DefinitionName, item.DefinitionVersion), out var definition)
+            && definition.AllowDirect ? definition.MaximumStackSize
+            : throw new TradeRuleException("item_trade_not_allowed");
+
     private static bool ValidText(string value) => !string.IsNullOrWhiteSpace(value)
         && value.Length <= 128 && !value.Any(char.IsControl);
 }
