@@ -297,6 +297,7 @@ v1 Dash 쿨타임의 상한도 10초로 검증한다. 따라서 어느 시점에
 - 보관함/호출 입력은 플레이 가능 시 활성. Mounted 전용 입력 context는 현재 LocalPlayer/World에서만 활성화한다.
 - 기본 이동/시점 키는 유지한다. 로아의 클릭 이동을 새로 구현하는 작업은 포함하지 않는다.
 - 탑승 확정 시 기존 눌린 스킬 입력을 ReleaseAllSkillInputs로 종료한다.
+- 하단 HUD 좌측 퀵슬롯 전환 담당의 공통 입력 라우터에 Riding 동작을 연결한다. 같은 키/클릭을 공용 슬롯과 Riding이 각각 처리하지 않으며, 키를 누른 뒤 표시 문맥이 바뀌면 옛 입력을 취소하고 새 동작을 자동 실행하지 않는다.
 - 기본 전투 입력 dispatch는 Mounted에서 거절하고, UI 포커스/채팅을 먼저 존중한다. 두 context가 동시에 동일 키로 능력을 실행하지 않는다.
 - 서버에서도 전투/소모 명령의 Mounted 조건을 검사한다. 클라이언트 IMC/HUD만 막는 것으로 끝내지 않는다.
 - 하차·Pawn 교체·World 종료 시 자기 context/binding만 제거한다. 키 설정은 현재 값으로 다시 조회하며 탑승 전 스냅샷으로 전체 설정을 되돌리지 않는다.
@@ -305,7 +306,7 @@ v1 Dash 쿨타임의 상한도 10초로 검증한다. 따라서 어느 시점에
 ### 7.2 v1 전용 퀵슬롯
 
 기존 UQuickSlotComponent의 스킬/아이템 저장 형식을 탈것으로 재해석하지 않는다.
-기존 HUD 유틸리티 영역에 **RidingShortcut 슬롯 1개**를 추가한다. 보관함에서 드래그하거나 선택 메뉴로 배정한다.
+**RidingShortcut은 논리 슬롯 1개**이며, 화면 위치·셀·페이지 전환은 다른 담당의 하단 HUD 좌측 퀵슬롯 호스트에 연결한다. 기존의 별도 유틸리티 슬롯 추가안은 이 연결 방식으로 대체한다. 보관함에서 드래그하거나 선택 메뉴로 배정하며, 공용 슬롯의 최종 배치/드롭 인터페이스에 맞춘다.
 타입은 `Selected | Specific(MountId) | RandomFavorites`, 설정은 캐릭터 RidingPreferences에 저장한다.
 슬롯 클릭/F8은 같은 명령이다. 탑승 중 호출 키를 누르면 하차, 보관함의 다른 탈것 “탑승” 버튼은 명시적 교체다.
 
@@ -317,8 +318,9 @@ v1 Dash 쿨타임의 상한도 10초로 검증한다. 따라서 어느 시점에
 ### 7.3 화면 상태와 저장
 
 보관함: 보유/미보유, 검색, 즐겨찾기만 보기, 선택 표시, 현재 구역 사용 가능 여부, 탑승 버튼, 퀵슬롯 배정.
-탑승 중 스킬바의 표시를 RidingActionBar로 전환한다. 기존 스킬 편성·서버 저장·직업 스킬 grant는 유지한다.
-RidingActionBar는 이동기/모션/하차와 현재 키/쿨타임을 표시하고 상태를 직접 변경하지 않는다.
+탑승 승인 상태를 하단 HUD 좌측 퀵슬롯 호스트에 제공하고, 호스트가 자신의 전환 규칙에 따라 Riding 콘텐츠를 표시한다. 기존 스킬 편성·서버 저장·직업 스킬 grant는 유지한다.
+RidingActionBar는 이동기/모션/하차와 현재 키/쿨타임을 제공하는 논리 콘텐츠다. Riding 쪽에서 별도 공용 스킬바/전환기를 만들거나 부모 HUD를 직접 교체하지 않는다. 구체적인 페이지/셀 위젯 소유는 HUD 담당 계약에 맞추고, 표시 전환 자체로 탑승/하차·서버 상태가 바뀌지는 않는다.
+사용자의 2026-11-06 담당 분리에 따른 [제공/소비·입력·수명 인계 계약](RIDING_SYSTEM_ARCHITECTURE.md#하단-hud-좌측-퀵슬롯-전환-연계--2026-11-06)을 따른다. 현재 신규 공용 인터페이스의 구현/합의가 완료됐다는 뜻은 아니다.
 
 UI 상태는 Loading / Ready / Saving / ResultUnknown / Error다.
 영속 등록·선택·즐겨찾기·슬롯 편집은 로비에서만 허용한다. 던전에서는 보관함 조회와 이미 보유한 탈것 탑승/교체만 가능하다.
@@ -470,7 +472,7 @@ HTTP 완료 시 동일 PlayerState/신원/세대인지 재검사한다. 오래�
 | Pawn/신원 | Character/RPGPlayer, Player/RPGPlayerState | 컴포넌트 생성, ASC ready/인증 세대/새 Pawn·권한 폐기 구독 |
 | 액션 | Public/Private/Riding/Abilities | Dash/Emote AbilitySet, 취소·예측·자기 핸들 정리 |
 | 표시 | Riding/RPGRidingPresentationComponent 및 Anim/Riding layer | 공통 placeholder, Saddle/IK, 비동기 세대, FX·카메라 수명 |
-| UI/입력 | UI/Riding, Input의 추가 provider, HUD 모듈 배치 | 보관함/전용 슬롯·바, 키 설정·상태별 dispatch와 포커스 |
+| UI/입력 | UI/Riding, Input의 추가 provider, 공용 좌측 퀵슬롯 호스트 어댑터 | Riding 상태/액션/슬롯 데이터·보관함 담당. 공용 HUD 배치/전환/입력 dispatch는 별도 HUD 담당과 인계 후 연결 |
 | 백엔드 | Riding/**, Api/RidingApiEndpoints, Data의 Memory/PG 어댑터, 새 migration | 정의 manifest, typed port, 원자 등록·설정·영수증·입장용 snapshot |
 | 유지 검사 | Private/Tests/RPGRiding*Tests, Backend/ProjectRpg.Backend.RidingTests, Scripts/Tests/Run-RidingTests.ps1 | 단위/native, HTTP/PG 및 별도 네트워크 실행 |
 | 에셋/저작 | Content/Blueprints/Riding/**, 기존 HUD에 Riding 모듈 인스턴스 | 두 탈것, 몽타주/소켓·등록 아이템·아이콘, cook 참조, JSON export/검사 |
@@ -497,7 +499,7 @@ Riding 태그를 이유로 시스템 초기화·기존 지속 버프·서버 피
 |---|---|---|
 | M0 — 상세 설계 | 본 문서의 규칙/상태/소유/API/DB/검증 계약 | 이번 문서 작업으로 완료. 게임 기능 완료와 구분 |
 | M1 — 상태·일반 이동 | 정의/정책, Session/Pawn 컴포넌트, 탑승/하차/복제, 이동 프로필/기본 외형 | R01~R03, R06 통과. 개발 fixture는 제품 보유 권한 경로와 분리 |
-| M2 — 이동기·입력/HUD | 예측 Dash/공통 쿨타임, Emote, 서버 전투 차단, 전용 입력/바/슬롯 | R04~R09 통과. 재탑승·교체·키 변경에 기존 편성 유지 |
+| M2 — 이동기·입력/HUD | 예측 Dash/공통 쿨타임, Emote, 서버 전투 차단, Riding 콘텐츠/입력 어댑터와 별도 담당의 공용 좌측 퀵슬롯 연결 | R04~R09 통과. 재탑승·교체·키 변경에 기존 편성 유지. Riding 제공자만 검사한 결과와 실제 공용 호스트 통합 결과를 구분 |
 | M3 — 영속 등록·보관함 | 실제 인증·PG/Memory·등록/설정/영수증·UI/입장 snapshot | R10~R14 통과. 실제 획득→등록→탑승→재로그인 |
 | M4 — 두 번째 탈것·저작/구역 | exporter, 두 에셋, 즐겨찾기/무작위·금지 볼륨·콘텐츠 배치 | R06/R08/R15 통과. 실행 코드 수정 없이 두 번째 외형 연결 |
 | M5 — 전체 통합·배포 검증 | 실제 로비/던전/보스 경계/사망/재접속, 대상 패키지 | R01~R16 중 해당 검사 전부와 실제 입력/GPU 확인. 결과/미검증 범위 기록 |
@@ -546,7 +548,7 @@ M1 완료를 전체 탈것 기능 완료로 표현하지 않는다. 구조를 �
 | 쿨타임 소유/재접속 | PlayerState 단일 권위, Pawn 교체 유지·새 접속10초 보호 |
 | 보유 공유·설정 | 기존 RosterId 공유, CharacterId별 설정/즐겨찾기·전용 슬롯1개 |
 | 등록·영수증 | 로비 전용 typed API, 아이템1소비+해금+부모/자식 영수증 단일 트랜잭션 |
-| 입력/HUD | 기존 스킬 편성 보존, 추가 provider·전용 액션바·서버 사용 가드 |
+| 입력/HUD | 기존 스킬 편성 보존, 추가 provider·공용 좌측 퀵슬롯에 Riding 콘텐츠 제공·서버 사용 가드 |
 | 네이밍 | 기능/동작=Riding, 개별 탈것 정의=Mount |
 
 구현 착수 시 [AGENTS.md](../AGENTS.md)와 [로드맵 12절/작업 조율](Online_RPG_Development_Roadmap.md)을 재조회한다.

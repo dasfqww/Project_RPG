@@ -18,12 +18,12 @@
 | 상태 확정은 RidingComponent 한 곳 | GAS 태그, UI, 모델 로드 콜백은 상태의 소비자다. |
 | 실제 이동은 기존 CMC | 위치 전송 RPC, BP Tick 위치 변경, 별도 탈것 Pawn 빙의를 추가하지 않는다. |
 | 영속 등록은 백엔드 단일 트랜잭션 | 아이템 소비·해금·영수증을 함께 확정한다. UE에서 순서대로 HTTP 두 번 호출해 구현하지 않는다. |
-| UIManager는 LocalPlayerSubsystem | 계정/캐릭터·World 교체와 화면 수명을 구분하고, 서버 권위나 DB 상태를 소유하지 않는다. |
+| UIManager는 LocalPlayerSubsystem | 계정/캐릭터·World 교체와 화면 수명을 구분하고, 서버 권위나 DB 상태를 소유하지 않는다. 공용 좌측 퀵슬롯에는 데이터/명령 어댑터로 연결한다. |
 
 ```mermaid
 flowchart TB
     subgraph Client[소유 클라이언트]
-        UI[보관함 / 전용 슬롯 / 액션바]
+        UI[보관함 / 공용 좌측 퀵슬롯 호스트]
         UIM[RidingUIManager]
         Input[Riding 입력 어댑터]
         View[PresentationComponent]
@@ -77,6 +77,8 @@ flowchart TB
 | 요청 중 표시·영속 명령 저널 | RidingUIManager | LocalPlayer 인증 문맥. 토큰을 저널에 기록하지 않음 |
 | IMC/binding·키 설정 제공자 | 로컬 Riding 입력 어댑터 | LocalPlayer+World+현재 Pawn. 다른 입력/창의 소유권 보존 |
 
+공용 좌측 퀵슬롯의 현재 페이지·셀 배치·표시 전환 상태는 HUD 담당 호스트가 소유한다. `Mounted`와 UI 페이지는 별도 상태이며, 화면을 숨기거나 페이지를 바꿔도 서버 탑승/쿨타임은 유지한다.
+
 `RiderEpoch`는 정렬할 수 없는 GUID다. 새 Epoch의 채택은 현재 Pawn/PlayerState 바인딩에서만 허용한다. 다른 Epoch가 담긴 늦은 RPC 결과가 새 세션을 설치할 수 없다.
 동일 Epoch 안에서 `(StateRevision, ActionSequence)`를 비교하고, 동일한 버전은 멱등 적용한다. 카운터 overflow 전 새 Epoch로 바인딩한다.
 연결 세대, Pawn Epoch, 영속 revision, 이동 prediction key는 다른 목적의 값이며 하나로 합치지 않는다.
@@ -118,6 +120,44 @@ flowchart TB
 | [추가 입력 계약](../Source/Project_RPG/Public/Input/RPGAdditionalInputProvider.h) / [HUD](../Source/Project_RPG/Public/UI/HUD/RPGHUD.h) | 현재 LocalPlayer/World 키 설정과 HUD 모듈 수명 재사용. 기존 스킬 grant/편성 유지 |
 
 승인 피해 알림은 공격자/피격자, 기존 승인 식별자, 실제 HP/보호막 피해 및 제어 성공을 전달한다. 서버 내부 결과만 소비하며 클라이언트 이벤트와 UI 수치를 경유하지 않는다. 한 적중에서 피해/제어 알림이 중복돼도 하차/타이머 처리는 멱등이며, 후속 DoT 유효 틱은 별도 전투 사건이다.
+
+### 하단 HUD 좌측 퀵슬롯 전환 연계 — 2026-11-06
+
+사용자가 공용 좌측 퀵슬롯 전환을 다른 에이전트에게 맡겼다. **Riding은 공용 호스트에 붙는 기능 제공자**로 구현한다. 최신 조율 표의 `actionbar-context-20261106` 담당은 `UI/ActionBar/**`와 QuickSlotComponent·RPGHUD·PlayerController의 공용 연결을 예약했고, Riding 상태/이동/저장과 문서는 별도 담당으로 구분했다. 인계 문서 예정 경로는 `Docs/ACTION_BAR_CONTEXT.md`이며 이번 확인 시 아직 생성 전이다. 아래는 Riding 측 요구/제공 계약으로, 상대 담당의 상세 배치·완료 상태나 최종 API 합의를 가정하지 않는다.
+
+| 담당 | 소유 범위 |
+|---|---|
+| 좌측 퀵슬롯/HUD 담당 | 부모 HUD·슬롯 호스트/페이지 전환·공통 셀·공통 ViewModel/입력 라우팅·기존 편성 표시·공용 드래그/드롭 |
+| Riding 담당 | 서버 탑승/액션/쿨타임·보유/설정·탈것별 표시 데이터·사용 불가 사유·명령 수신 어댑터·보관함·Riding 키 설정 제공 |
+| 인계 후 순차 연결 | 공용 provider 등록/해제, 표시 문맥 요청, 액션 전달, 눌린 입력 취소, 슬롯 배정 요청 연결, 실제 통합 검사 |
+
+현재 공통 `QuickSlotComponent`, `RPGQuickSlotWidget`, `RPGQuickSlotViewModel`, PlayerHUD/SkillBar 에셋 및 입력 dispatch를 Riding 담당이 병행 수정하지 않는다. 공용 인터페이스 선언/파일 경로는 HUD 담당이 정한 계약을 소비한다. 다음 포트 이름은 **설명용 가칭**이며 다른 버전의 공용 인터페이스를 별도로 만들지 않는다.
+
+| Riding이 제공할 포트/값 | 내용과 검증 경계 |
+|---|---|
+| `ReadRidingContext` | LocalPlayer/World/Pawn 바인딩 token, RiderEpoch, StateRevision/ActionSequence, 준비 상태, 서버 승인 Mounted, 현재 MountId/표시명 |
+| `ReadRidingActions` | 안정 ActionId(dash/emote/dismount), 아이콘·문구·현재 키, 활성 여부/차단 사유, 서버 기반 쿨타임 표시값. 물리 슬롯 번호와 분리 |
+| `ReadRidingShortcut` | Selected/Specific/RandomFavorites와 설정 revision·조회/저장 상태. 기존 SkillSlots/ItemSlots 배열에 탈것 데이터를 쓰지 않음 |
+| `RequestRidingAction` | 호스트가 한 번 전달한 ActionId+예상 바인딩/상태를 현재 상태로 재검사해 기존 GAS/명령 경로로 전달. UI의 활성 bool은 서버 권한이 아님 |
+| `RequestRidingShortcutAssignment` | 공용 드롭/선택 결과를 RidingPreferences 명령으로 전달. 로비 쓰기 조건·서버 확정/미확정 복구 유지 |
+| `OnRidingContextChanged` / 등록 handle | 호스트의 표시 재조회 알림과 소유 등록 수명. 새로 붙을 때 현재 snapshot을 읽어 초기 이벤트 누락 복구 |
+
+쿨타임 값에는 기준 서버 시각과 표시 종료시각을 포함한다. 호스트는 남은 시간을 그리기만 하며, 위젯 생성 시 새 타이머를 시작하거나 탈것 교체마다 초기화하지 않는다. 서버 내부 단조 ReadyAt를 클라이언트 로컬 시계와 직접 비교하지 않는다.
+특정 탈것의 표시 데이터와 ActionId는 제공자가 소유한다. 셀 개수·위치·전환 우선순위·실제 함수명은 공용 호스트 계약에서 정하며, 필요 이상의 새 페이지/단축키를 Riding이 독자적으로 추가하지 않는다.
+
+연결 순서:
+
+1. 현재 LocalPlayer/World/Pawn에 Riding provider를 한 번 등록한다. 같은 바인딩의 재호출은 중복 셀/입력을 만들지 않는다.
+2. 탑승 요청 대기는 대기 표시로만 전달한다. 서버 승인 후 Mounted snapshot을 제공하고, 호스트가 현재 문맥의 전환을 수행한다. 실패는 기존 표시 문맥을 유지한다.
+3. 클릭과 키 입력은 호스트의 단일 dispatch에서 같은 ActionId 명령으로 합류한다. 별도 Riding 클릭 handler/IMC가 같은 동작을 다시 발행하지 않는다. Space 등 호스트 밖 입력도 동일 명령 경계로 합류한다.
+4. 공용 전환 경계에서 기존 `ReleaseAllSkillInputs`와 눌린 클릭 취소를 한 경로로 수행한다. 누른 때의 바인딩/페이지/동작 token을 보관하고, 전환 뒤 release가 새 페이지 동작을 실행하지 못하게 한다. 채팅/옵션 포커스를 우선한다.
+5. 하차·사망·권한 폐기는 Riding 상태에서 호스트로 알린다. 호스트는 현재 도보 편성을 다시 읽는다. Riding이 탑승 전 슬롯/페이지 스냅샷으로 덮어쓰지 않는다.
+6. HUD 재생성 시 현재 상태/남은 쿨타임을 다시 제공한다. Pawn/World/계정 종료 시 자기 등록 handle·delegate만 해제하고 늦은 콜백/아이콘 로드는 token 불일치로 폐기한다.
+
+화면 전환 중에도 서버의 수동 전투/소모 가드는 유지한다. 호스트 미준비/등록 실패는 UI 연결 미완료로 보고하며, 임시로 두 번째 스킬바를 만드는 우회는 하지 않는다. 독립 상태·이동·액션·저장 기능은 이 UI 인계와 분리해 진행할 수 있다.
+
+공용 호스트 인계 때 확인할 항목은 **계약 파일/타입명, 등록/해제 API, 표시 문맥 요청·복귀 규칙, ActionId와 물리 셀/키 연결, 입력 취소 소유자, 드롭 배정 API, 예약 해제된 수정 경로**다. 이를 문서/실제 호출과 대조한 후 어댑터만 맞춘다.
+R08/R09 통합 검사에는 탑승 거절 시 전환 없음, 승인/하차/강제 하차, 누른 상태의 페이지 교체, 클릭+키 중복, HUD 재생성, 쿨타임 연속성, 캐릭터/World 교체, 기존 슬롯 편성 보존을 포함한다. 제공자 단위 검사로 공용 HUD 통합 완료를 대신하지 않는다.
 
 ## 4. 초기화·전이·종료 순서
 
@@ -239,7 +279,7 @@ Source/Project_RPG/{Public,Private}/
     Abilities/RPGRidingDashAbility, RPGRidingEmoteAbility
   UI/Riding/
     RPGRidingUIManager, RPGRidingViewModel
-    RPGRidingCollectionWidget, RPGRidingActionBarWidget, RPGRidingShortcutWidget
+    RPGRidingCollectionWidget, RPGRidingQuickSlotAdapter
   Input/RPGRidingInputProvider
 Source/Project_RPG/Private/Tests/RPGRiding*Tests.cpp
 Backend/ProjectRpg.Backend/
@@ -255,6 +295,7 @@ Scripts/Tests/Run-RidingTests.ps1
 ```
 
 UE 타입은 원칙적으로 h/cpp 쌍이며 순수 값 헤더 등은 필요에 맞춘다. 공통 Player/PlayerState/CMC/ASC/입력 dispatch/HUD에는 연결 코드만 추가한다.
+공통 HUD/입력 연결 파일은 좌측 퀵슬롯 담당의 인계 후 순차 수정한다. `RPGRidingQuickSlotAdapter`는 해당 공용 계약의 구현 예정 어댑터다. 별도 ActionBar/Shortcut 위젯을 필수 신규 산출물로 두지 않으며, 공용 호스트가 기능 콘텐츠 위젯을 요구할 때만 Riding 전용 자식 표현을 제공한다.
 `RPGMountUnlockFragment`는 게임 모듈에 둔다. [RPGInventoryRuntime](INVENTORY_PLUGIN.md)에서 Project_RPG/GAS/Riding을 역참조하지 않는다.
 에셋의 PrimaryAsset cook 포함·Saddle/AnimLayer·서버 정책 manifest hash를 함께 검사한다. 두 번째 탈것은 같은 실행 타입의 정의/표현 에셋 추가로 연결한다.
 
@@ -267,7 +308,7 @@ UE 타입은 원칙적으로 h/cpp 쌍이며 순수 값 헤더 등은 필요에 
 | M1a 계약 기반 | Types·Definition·Policy·순수 상태 판정·Session 수명 | 잘못된 정의/세대/중복 명령·쿨타임 보존 검사. 제품 기능 flag 꺼짐 |
 | M1b Pawn/이동 | Component·Player/PlayerState 바인딩·복제·CMC profile/prediction·기본 표현 | R01~R03/R06. 도보/NPC 회귀·보정 후 옛 상태 복원 없음 |
 | M2a 액션/전투 | Dash/Emote·단일 승인 창 연계·피해/제어/수동 행동 가드 | R04~R07. 모든 종료 경로에서 자기 RMS/승인 잔존 없음 |
-| M2b 입력/표현 | 추가 provider·명령 dispatch·HUD/슬롯·async 외형 수명 | R08/R09. 기존 편성·키/포커스·원격 표시 보존 |
+| M2b 입력/표현 | Riding provider/QuickSlotAdapter·보관함 데이터·async 외형 수명, 별도 HUD 담당의 좌측 퀵슬롯/단일 dispatch 연결 | R08/R09. 기존 편성·키/포커스·원격 표시 보존. 제공자 단위 완료와 호스트 통합 완료 별도 기록 |
 | M3a 백엔드 | 원자 등록/설정/영수증·Memory/PG·API·서버 snapshot | R10~R14. 실제 PG 경합/응답 유실/복원, 기존 거래/입장 검사 유지 |
 | M3b UI/실제 권한 | 보관함/등록 진입·저널 복구·입장 snapshot 소비 | 실제 획득→로비 등록→입장 탑승→재로그인. 테스트 해금 대체 경로 제거 |
 | M4 저작 | manifest exporter·두 탈것/구역 정책·즐겨찾기/무작위 | R06/R08/R15. 코드 수정 없는 두 번째 외형 |
