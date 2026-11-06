@@ -42,6 +42,28 @@ public sealed class InMemoryTradeSessionRepository : ITradeSessionRepository
         }));
     }
 
+    public Task<TradeStoredSession?> FindActiveAsync(TradeParticipant actor, CancellationToken ct) =>
+        Task.FromResult(game.WithTradeLocks(gate, () =>
+        {
+            ct.ThrowIfCancellationRequested();
+            var now = gate.UtcNow;
+            return gate.TradeSessions.Keys.Select(id => Load(id)!).FirstOrDefault(s => Open(s)
+                && s.State.ExpiresAt > now && Participant(s.State, actor));
+        }));
+
+    public Task<IReadOnlyList<TradeStoredSession>> FindExpiredAsync(int limit, CancellationToken ct) =>
+        Task.FromResult(game.WithTradeLocks<IReadOnlyList<TradeStoredSession>>(gate, () =>
+        {
+            ct.ThrowIfCancellationRequested();
+            if (limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+            var now = gate.UtcNow;
+            return gate.TradeSessions.Keys.Select(id => Load(id)!).Where(s => Open(s) && s.State.ExpiresAt <= now)
+                .OrderBy(s => s.State.ExpiresAt).ThenBy(s => s.State.TradeId).Take(limit).ToArray();
+        }));
+
+    private static bool Open(TradeStoredSession s) => !s.Completed
+        && s.State.Status is not (TradeNegotiationStatus.Cancelled or TradeNegotiationStatus.Expired);
+
     private TradeSessionResult Execute(TradeSessionCommand command, CancellationToken ct)
     {
         var session = Load(command.TradeId);

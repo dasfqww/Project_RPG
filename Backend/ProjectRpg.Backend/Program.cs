@@ -171,6 +171,12 @@ else
 builder.Services.AddGameRepositoryContracts();
 // No production definitions are tradable until an explicitly authored allowlist is connected.
 builder.Services.AddSingleton(new ProjectRpg.Backend.Domain.Trading.TradeItemPolicy([]));
+var tradingOptions = builder.Configuration.GetSection("Trading").Get<TradingOptions>() ?? new();
+tradingOptions.Validate();
+builder.Services.AddSingleton<IOptions<TradingOptions>>(Options.Create(tradingOptions));
+builder.Services.AddSingleton<TradeRequestLimiter>();
+builder.Services.AddSingleton<TradeApplication>();
+builder.Services.AddHostedService<TradeExpiryWorker>();
 builder.Services.AddSingleton<ItemTransactionService>();
 builder.Services.AddSingleton(narrativeCatalog);
 builder.Services.AddSingleton<INarrativeRepository>(provider =>
@@ -1235,6 +1241,7 @@ app.MapDungeonRewardSnapshotApi();
 app.MapCharacterProgressionApi();
 app.MapNarrativeApi();
 app.MapEquipmentProgressionApi();
+app.MapTradeApi();
 app.MapDungeonAbandonmentApi();
 app.MapDungeonMembershipSnapshotApi();
 app.MapDungeonAdmissionApi();
