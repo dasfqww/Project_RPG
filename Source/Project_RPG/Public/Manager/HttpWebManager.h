@@ -24,6 +24,7 @@ struct FRPGEquipmentMutationHttpResult;
 struct FRPGNarrativeHttpResult;
 class FRPGDungeonDisconnectionJournal;
 class FRPGDungeonConsumeJournal;
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnBackendServiceDraining, const FString&);
 
 USTRUCT(BlueprintType)
 struct PROJECT_RPG_API FRPGCharacterCreationOption
@@ -183,6 +184,7 @@ class PROJECT_RPG_API UHttpWebManager : public UGameInstanceSubsystem, public IR
 	GENERATED_BODY()
 
 public:
+	FOnBackendServiceDraining OnBackendServiceDraining;
 	UHttpWebManager();
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
@@ -427,6 +429,8 @@ public:
 	FOnDungeonRewardSettlementRequested OnDungeonRewardSettlementRequested;
 
 private:
+	friend struct FRPGServiceStatusTestAccess;
+	void NotifyServiceDraining(const FHttpRequestPtr& Request, const FHttpResponsePtr& Response);
 	void OnCharacterCreationOptionsResponse(FHttpRequestPtr Request, FHttpResponsePtr Response,
 		bool bWasSuccessful, uint64 Generation);
 	uint64 CharacterCreationOptionsGeneration = 0;

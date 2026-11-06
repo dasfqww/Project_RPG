@@ -22,6 +22,7 @@ FText FRPGOnlineLobbyActionAvailability::Text(ERPGOnlineLobbyBlockReason Reason)
 	switch (Reason)
 	{
 	case Block::None: return FText::GetEmpty();
+	case Block::ServiceDraining: return NSLOCTEXT("RPGServiceStatus", "AdmissionBlocked", "점검 준비 중입니다. 신규 입장은 잠시 기다려 주세요.");
 	case Block::Unavailable: return NSLOCTEXT("RPGOnlineLobby", "BlockUnavailable", "온라인 서비스를 사용할 수 있는 로비에서만 가능합니다.");
 	case Block::ConfirmationOpen: return NSLOCTEXT("RPGOnlineLobby", "BlockConfirmation", "열린 확인창에서 확인하거나 취소한 뒤 이용하세요.");
 	case Block::Busy: return NSLOCTEXT("RPGOnlineLobby", "BlockBusy", "현재 요청 또는 이동이 끝난 뒤 이용하세요.");

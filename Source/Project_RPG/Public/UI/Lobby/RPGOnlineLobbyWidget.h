@@ -21,6 +21,7 @@ class URPGDungeonDefinition;
 class URPGCharacterConfigurationWidget;
 class URPGEquipmentGrowthWidget;
 class URPGNarrativeDialogueWidget;
+class URPGServiceStatusSubsystem;
 
 struct PROJECT_RPG_API FRPGOnlineLobbyPresentation
 {
@@ -107,6 +108,18 @@ protected:
 	virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 private:
+	friend struct FRPGServiceStatusTestAccess;
+	void BindServiceStatus();
+	void UnbindServiceStatus();
+	void PollServiceStatus();
+	void HandleServiceStatusChanged();
+	void HandleServiceDraining(const FString& ApiUrl);
+	void RefreshServicePresentation();
+	void BuildServiceStatusContent(UVerticalBox& Header);
+	bool IsServiceAdmissionBlocked(FName Name) const;
+	UPROPERTY(Transient) TObjectPtr<URPGServiceStatusSubsystem> ServiceStatus;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> ServiceStatusText;
+	UPROPERTY(Transient) TObjectPtr<UWidget> ServiceStatusContainer;
 	friend class URPGCharacterConfigurationWidget;
 	friend class URPGEquipmentGrowthWidget;
 	friend class FRPGEquipmentGrowthWidgetTest;

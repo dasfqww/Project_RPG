@@ -1,4 +1,5 @@
 #include "Manager/HttpWebManager.h"
+#include "Online/RPGServiceStatus.h"
 #include "HAL/PlatformTime.h"
 #include "Economy/RPGDungeonRewardSnapshot.h"
 #include "Online/RPGDungeonMembershipSnapshot.h"
@@ -256,6 +257,7 @@ void UHttpWebManager::Deinitialize()
 	OnInventorySaved.Clear();
 	OnCharacterInventorySaved.Clear();
 	OnBackendAuthenticationCompleted.Clear();
+	OnBackendServiceDraining.Clear();
 	OnCharactersLoaded.Clear();
 	OnCharacterCreated.Clear();
 	++CharacterCreationOptionsGeneration;
@@ -1162,6 +1164,7 @@ void UHttpWebManager::OnAuthenticateResponseReceived(
 	bool bWasSuccessful)
 {
 	if (!Request.IsValid() || Request != ActiveAuthenticationRequest) return;
+	NotifyServiceDraining(Request, Response);
 	const double RequestStartedSeconds = ActiveAuthenticationRequestStartedSeconds;
 	ActiveAuthenticationRequest.Reset();
 	ActiveAuthenticationRequestStartedSeconds = -1.0;
@@ -1215,6 +1218,7 @@ bool UHttpWebManager::AcceptPlayerResponse(const FHttpRequestPtr& Request,
 		}
 		return false;
 	}
+	NotifyServiceDraining(Request, Response);
 	PlayerAuth.InvalidateIfUnauthorized(Authorization,
 		Response.IsValid() ? Response->GetResponseCode() : 0);
 	// Concurrent requests must finish (releasing busy UI), but cannot apply data after expiry/401.
@@ -1464,4 +1468,15 @@ void UHttpWebManager::OnRequestJoinTicketResponseReceived(
 		JoinTicket,
 		ExpiresAt,
 		bSuccess, ErrorCode);
+}
+
+void UHttpWebManager::NotifyServiceDraining(const FHttpRequestPtr& Request, const FHttpResponsePtr& Response)
+{
+	FString Prefix = ApiUrl; Prefix.RemoveFromEnd(TEXT("/")); Prefix += TEXT("/");
+	if (Request && Response && Request->GetURL().StartsWith(Prefix)
+		&& FRPGServiceStatusSnapshot::IsDrainResponse(Response->GetResponseCode(), Response->GetContentAsString()))
+	{
+		UE_LOG(LogTemp, Log, TEXT("Backend service_draining refusal received for current backend scope."));
+		OnBackendServiceDraining.Broadcast(ApiUrl);
+	}
 }

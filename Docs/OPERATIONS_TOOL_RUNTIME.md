@@ -1,8 +1,10 @@
 # 운영툴 실행과 유지보수
 
-2026-11-06 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 조사, S3 개별 보상·기간 제재/해제, S4 런타임 감시·알림과 공지·Open/Drain의 Backend/운영 화면을 구현했다. 공지·점검의 UE 화면 연결, Drain 장기 지속 경보와 백업 수집/복구·실제 운영 배포는 후속 범위다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md).
+2026-11-06 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 조사, S3 개별 보상·기간 제재/해제, S4 런타임 감시·알림과 공지·Open/Drain의 Backend/운영 화면, UE 로비 공지·점검 연결을 구현했다. Drain 장기 지속 경보와 백업 수집/복구·실제 운영 배포는 후속 범위다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md).
 
 ## 공지·Open/Drain 서비스 제어
+
+UE 로비의 공지/점검 연결과 캐시·실패·주소 전환·인증 보존 계약은 [온라인 로비 서비스 안내](ONLINE_LOBBY_UI.md#서비스-공지와-점검-안내)를 따른다. 신규 익명 조회 subsystem을 사용하며 운영자 자격을 게임 클라이언트에 전달하지 않는다.
 
 `Operations:ServiceControlEnabled=true`와 기존 운영 인증/관리 HTTPS 설정을 적용하면 `/ops/service-control` 및 `GET/PUT /ops/api/service-control`을 제공한다. 기본 쓰기는 비활성이다. 배포 전 기존 스키마 이력을 유지한 채 `--migrate-schema`로 v9 `operations_service_control`을 적용한다. UI에서 모드·공지·시각·사유를 확인한 뒤 실행하며, 화면은 배포/프로세스 종료/DB 복원을 수행하지 않는다.
 

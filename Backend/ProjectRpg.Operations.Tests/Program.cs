@@ -1,3 +1,4 @@
+if (args.SequenceEqual(["--service-status-ue-host"])) { await ServiceStatusUEHost.RunAsync(); return; }
 await CoreTests.RunAsync();
 await EvidenceCoreTests.RunAsync();
 await HostTests.RunAsync();

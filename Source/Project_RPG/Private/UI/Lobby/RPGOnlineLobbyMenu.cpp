@@ -77,7 +77,7 @@ bool URPGOnlineLobbyWidget::CanStartTutorial() const
 	const auto* Lobby = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr;
 	const auto* Progress = ConfigurationPanel ? ConfigurationPanel->GetConfirmedProgression() : nullptr;
 	const bool bIntro1 = Profile.bIntro1 && Progress && (Progress->Milestones & 1) != 0;
-	return Profile.bTraining && Profile.Error.IsEmpty() && (!HasCompletedTutorial() || bIntro1) && Lobby && Lobby->IsLobbyController(GetOwningPlayer())
+	return !IsServiceAdmissionBlocked(TEXT("StartTutorialButton")) && Profile.bTraining && Profile.Error.IsEmpty() && (!HasCompletedTutorial() || bIntro1) && Lobby && Lobby->IsLobbyController(GetOwningPlayer())
 		&& ConfigurationPanel && ConfigurationPanel->GetConfirmedProgression()
 		&& bServerSelected && bPreparationOpen && Web && Web->HasAccessToken() && !Web->GetAuthenticatedSteamId().IsEmpty()
 		&& Flow && HasOwnedSelection() && !Flow->IsRequestInFlight() && !Flow->HasUnresolvedDungeonAbandonment()

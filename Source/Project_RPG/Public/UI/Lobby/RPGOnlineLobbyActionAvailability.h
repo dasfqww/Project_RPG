@@ -6,7 +6,7 @@
 /** Explanations only; none of these values grants permission to run an action. */
 enum class ERPGOnlineLobbyBlockReason : uint8
 {
-	None, Unavailable, ConfirmationOpen, Busy, LoginRequired, ReauthenticationRequired,
+	None, Unavailable, ServiceDraining, ConfirmationOpen, Busy, LoginRequired, ReauthenticationRequired,
 	AlreadyAuthenticated, LogoutCredentialRequired, CharacterRequired, ActiveSession,
 	MemberSessionRequired, SteamPartyActive, SteamPartyRequired, WaitingRequired,
 	LeaderRequired, LobbyProtocolRequired, DepartureQueued, DepartureNotQueued,

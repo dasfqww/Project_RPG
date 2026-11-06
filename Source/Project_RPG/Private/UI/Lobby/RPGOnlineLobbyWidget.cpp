@@ -198,6 +198,7 @@ TSharedRef<SWidget> URPGOnlineLobbyWidget::RebuildWidget()
 		Page->AddChildToVerticalBox(Header);
 		TitleText = RPGOnlineLobbyLayout::Text(*WidgetTree, *Header, TEXT("OnlineLobbyTitle"), NSLOCTEXT("RPGOnlineLobby", "GameTitle", "PROJECT RPG"), 26);
 		StatusText = RPGOnlineLobbyLayout::Text(*WidgetTree, *Header, TEXT("OnlineLobbyStatus"), FText::GetEmpty());
+		BuildServiceStatusContent(*Header);
 		NextStepText = RPGOnlineLobbyLayout::Text(*WidgetTree, *Header, TEXT("OnlineLobbyNextStep"), FText::GetEmpty());
 		NextStepText->SetColorAndOpacity(FSlateColor(FLinearColor(1.f, .84f, .48f)));
 		auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass(), TEXT("OnlineLobbyContentScroll"));
@@ -402,6 +403,7 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 	PollUntil = FPlatformTime::Seconds() + 120.0;
 	if (GetWorld()) GetWorld()->GetTimerManager().SetTimer(PollTimer, this, &ThisClass::PollSession, 2.f, true);
 	LoadDungeonDefinitions();
+	BindServiceStatus();
 	// Arrival may overlap the queued abandonment POST. Retain this initial GET
 	// until existing local-lobby/authentication/busy guards allow it.
 	bInitialCharacterLoadPending = true;
@@ -412,6 +414,7 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 
 void URPGOnlineLobbyWidget::NativeDestruct()
 {
+	UnbindServiceStatus();
 	if (NarrativePanel) NarrativePanel->CloseScreen();
 	NarrativePanel = nullptr;
 	bTutorialEntryActive = bTutorialResolvingSession = false;
@@ -548,11 +551,13 @@ FRPGOnlineLobbyPresentation URPGOnlineLobbyWidget::CurrentPresentation() const
 	{
 		View.bCanSelectCharacter = View.bCanCreateSession = View.bCanResume = View.bCanEnter = false;
 	}
+	if (IsServiceAdmissionBlocked(TEXT("EnterDungeonButton"))) View.bCanLogin = View.bCanCreateSession = View.bCanEnter = false;
 	return View;
 }
 
 void URPGOnlineLobbyWidget::RefreshPresentation()
 {
+	RefreshServicePresentation();
 	if (ConfigurationPanel) ConfigurationPanel->RefreshContext();
 	if (EquipmentPanel) EquipmentPanel->RefreshContext();
 	if (bAbandonmentConfirmationOpen && !CanConfirmAbandonment()) CloseAbandonmentConfirmation();
@@ -599,8 +604,9 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 	{
 		if (auto* Button = Buttons.FindRef(Name).Get())
 		{
-			Button->SetIsEnabled(bEnabled);
-			ActionBlockReasons.Add(Name, FRPGOnlineLobbyActionAvailability::Explain(bEnabled, CommonReason, Requirements));
+			const bool bDraining = IsServiceAdmissionBlocked(Name);
+			Button->SetIsEnabled(bEnabled && !bDraining);
+			ActionBlockReasons.Add(Name, bDraining ? Block::ServiceDraining : FRPGOnlineLobbyActionAvailability::Explain(bEnabled, CommonReason, Requirements));
 		}
 	};
 	const bool bSteamEnabled = !FParse::Param(FCommandLine::Get(), TEXT("nosteam"));
@@ -829,7 +835,7 @@ bool URPGOnlineLobbyWidget::CanUse(FName Name)
 {
 	RefreshPresentation();
 	const UButton* Button = Buttons.FindRef(Name);
-	return Button && Button->GetIsEnabled();
+	return Button && Button->GetIsEnabled() && !IsServiceAdmissionBlocked(Name);
 }
 
 bool URPGOnlineLobbyWidget::CanConfirmAbandonment() const
@@ -914,6 +920,7 @@ void URPGOnlineLobbyWidget::ConfirmAbandonment()
 
 void URPGOnlineLobbyWidget::PollSession()
 {
+	PollServiceStatus();
 	AdvanceTutorialEntry();
 	if (bInitialCharacterLoadPending) BeginCharacterLoad();
 	RefreshPresentation();
