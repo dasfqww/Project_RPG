@@ -1,13 +1,16 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8')
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
-$proofRoot = Join-Path $workspace ('Saved/BuildChecks/RidingFoundation-20261106/' + $id)
+$suite = if ($IncludeSession) { 'RidingSession' } else { 'RidingFoundation' }
+$reservation = if ($IncludeSession) { 'riding-session-20261106' } else { 'riding-foundation-20261106' }
+$testFilter = if ($IncludeSession) { 'ProjectRPG.Riding' } else { 'ProjectRPG.Riding.Foundation' }
+$proofRoot = Join-Path $workspace ('Saved/BuildChecks/' + $suite + '-20261106/' + $id)
 $tempRoot = Join-Path $workspace 'Saved/RF'
 $temp = Join-Path $tempRoot $id.Substring(0,8)
 $project = Join-Path $temp 'Project'
-$proof = [ordered]@{Passed=$false; Scope='Isolated foundation module, not full game integration'; Head=''; Inputs=@(); Tests=@(); Cleanup=$null; Failure=$null}
+$proof = [ordered]@{Passed=$false; Scope=('Isolated '+$suite+' module, not full game integration'); Head=''; Inputs=@(); Tests=@(); Cleanup=$null; Failure=$null}
 $process = $null
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Write-Utf8([string]$Path, [string]$Text) {
@@ -16,8 +19,8 @@ function Write-Utf8([string]$Path, [string]$Text) {
 }
 function Save-Proof { Write-Utf8 (Join-Path $proofRoot 'Result.json') ($proof | ConvertTo-Json -Depth 10) }
 function Assert-Reservation {
-    $rows = @(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') | Where-Object {$_ -match '^\|[^|]* / riding-foundation-20261106 \|'})
-    if ($rows.Count -ne 1) { throw 'Riding foundation reservation missing' }
+    $rows = @(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') | Where-Object {$_ -match ('^\|[^|]* / '+[regex]::Escape($reservation)+' \|')})
+    if ($rows.Count -ne 1) { throw 'Riding validation reservation missing' }
 }
 try {
     Assert-Reservation
@@ -28,6 +31,14 @@ try {
     foreach ($name in @('RPGRidingTypes','RPGRidingPolicy','RPGMountDefinition','RPGRidingStatePolicy')) {
         $files += 'Source/Project_RPG/Public/Riding/' + $name + '.h'
         $files += 'Source/Project_RPG/Private/Riding/' + $name + '.cpp'
+    }
+    if ($IncludeSession) {
+        $files += 'Source/Project_RPG/Private/Tests/RPGRidingSessionTests.cpp'
+        $files += 'Source/Project_RPG/Public/Security/RPGServerRequestBudget.h'
+        foreach ($name in @('RPGRidingRequestLedger','RPGRidingSession')) {
+            $files += 'Source/Project_RPG/Private/Riding/' + $name + '.h'
+            $files += 'Source/Project_RPG/Private/Riding/' + $name + '.cpp'
+        }
     }
     foreach ($relative in $files) {
         $source = Join-Path $workspace $relative
@@ -90,7 +101,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingFounda
     if ($LASTEXITCODE -ne 0) { throw 'Isolated target query failed' }
     $report = Join-Path $temp 'Report'
     $editor = Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe'
-    $editorArgs = @(('"'+$uproject+'"'),'/Engine/Maps/Entry','-ExecCmds="Automation RunTests ProjectRPG.Riding.Foundation"','-TestExit="Automation Test Queue Empty"','-unattended','-nullrhi','-nosound','-nosteam','-nop4','-nosplash','-NoLiveCoding','-DisablePython','-NoLoadingScreen','-Multiprocess','-DDC=(InstalledEnginePak,Local)',('-LocalDataCachePath="'+(Join-Path $temp 'Cache')+'"'),('-ShaderWorkingDir="'+(Join-Path $temp 'Shaders')+'"'),('-UserDir="'+(Join-Path $temp 'User')+'"'),('-abslog="'+(Join-Path $proofRoot 'Native.log')+'"'),('-ReportExportPath="'+$report+'"'))
+    $editorArgs = @(('"'+$uproject+'"'),'/Engine/Maps/Entry',('-ExecCmds="Automation RunTests '+$testFilter+'"'),'-TestExit="Automation Test Queue Empty"','-unattended','-nullrhi','-nosound','-nosteam','-nop4','-nosplash','-NoLiveCoding','-DisablePython','-NoLoadingScreen','-Multiprocess','-DDC=(InstalledEnginePak,Local)',('-LocalDataCachePath="'+(Join-Path $temp 'Cache')+'"'),('-ShaderWorkingDir="'+(Join-Path $temp 'Shaders')+'"'),('-UserDir="'+(Join-Path $temp 'User')+'"'),('-abslog="'+(Join-Path $proofRoot 'Native.log')+'"'),('-ReportExportPath="'+$report+'"'))
     $proof.NativeCommand = @($editor) + $editorArgs
     Save-Proof
     $process = Start-Process $editor -ArgumentList $editorArgs -WindowStyle Hidden -PassThru
@@ -106,7 +117,10 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingFounda
     $result = Get-Content -LiteralPath (Join-Path $report 'index.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $proof.Tests = @($result.tests | Select-Object fullTestPath,state,errors,warnings)
     $expected = @('Values','CanonicalState','AdmissionGuards','Transitions','Authoring') | ForEach-Object {'ProjectRPG.Riding.Foundation.'+$_}
-    if ((Compare-Object $expected @($proof.Tests.fullTestPath)) -or @($proof.Tests | Where-Object state -ne 'Success').Count) { throw 'Missing or failing native cases' }
+    if ($IncludeSession) {
+        $expected += @('LedgerReplay','LedgerBounds','Admission','SnapshotValidation','Requests','Lifetime') | ForEach-Object {'ProjectRPG.Riding.Session.'+$_}
+    }
+    if ((Compare-Object $expected @($proof.Tests.fullTestPath)) -or @($proof.Tests | Where-Object {$_.state -ne 'Success' -or $_.errors -ne 0 -or $_.warnings -ne 0}).Count) { throw 'Missing or failing native cases' }
     foreach ($inputFile in $proof.Inputs) {
         if ((Get-FileHash -LiteralPath (Join-Path $workspace $inputFile.Path)).Hash -ne $inputFile.SHA256) { throw 'Original source changed during validation' }
     }
