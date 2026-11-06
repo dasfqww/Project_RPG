@@ -13,6 +13,7 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
         CancellationToken cancellationToken)
     {
         command.Validate();
+        DateTimeOffset now = clock.GetUtcNow();
         NarrativeState committed = await repository.CommitNarrativeAsync(characterId, steamId, command, state =>
         {
             ValidateState(state, catalog);
@@ -20,13 +21,13 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
             if (command.ExpectedRevision != state.Revision) throw new NarrativeConflictException("narrative_revision_conflict");
             (DialogueDefinition dialogue, DialogueChoice choice) = dialogues.Resolve(state, catalog, command);
             if (dialogue.Informational) throw new NarrativeConflictException("informational_dialogue_not_mutable");
-            NarrativeState updated = quests.Apply(state, catalog.Quests[dialogue.QuestId!], choice);
+            NarrativeState updated = quests.Apply(state, catalog.Quests[dialogue.QuestId!], choice, clock.GetUtcNow());
             return scenarios.Project(updated, catalog) with { Revision = checked(state.Revision + 1) };
-        }, clock.GetUtcNow(), cancellationToken);
+        }, now, cancellationToken);
         return View(committed);
     }
 
-    private NarrativeView View(NarrativeState state)
+    internal NarrativeView View(NarrativeState state)
     {
         ValidateState(state, catalog);
         return new(catalog.Version, state, dialogues.GetAvailable(state, catalog),
@@ -51,6 +52,21 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
                 || (progress.Status == QuestStatus.Active) == (progress.CompletedObjectives.Length == definition.Objectives.Length)
                 || !definition.Prerequisites.All(id => state.Quests.Any(q => q.QuestId == id && q.Status == QuestStatus.Completed)))
                 throw new NarrativeConflictException("incompatible_narrative_state");
+            var dungeonProgress = progress.DungeonObjectives;
+            var dungeonDefinitions = definition.DungeonObjectives;
+            if (dungeonProgress is not null && dungeonProgress.Any(pair => pair.Value is null
+                    || dungeonDefinitions?.ContainsKey(pair.Key) != true
+                    || !definition.RequiredObjectives(pair.Key).All(progress.CompletedObjectives.Contains)
+                    || pair.Value.ActivatedAt == default
+                    || pair.Value.DungeonSessionId == Guid.Empty
+                    || progress.CompletedObjectives.Contains(pair.Key) != pair.Value.DungeonSessionId.HasValue)
+                || dungeonDefinitions is not null && dungeonDefinitions.Keys.Any(id =>
+                    definition.RequiredObjectives(id).All(progress.CompletedObjectives.Contains)
+                    && dungeonProgress?.ContainsKey(id) != true)
+                || dungeonProgress is not null && dungeonProgress.Values.Where(p => p.DungeonSessionId.HasValue)
+                    .Select(p => p.DungeonSessionId).Distinct().Count()
+                        != dungeonProgress.Values.Count(p => p.DungeonSessionId.HasValue))
+                throw new NarrativeConflictException("incompatible_dungeon_objective_state");
         }
         NarrativeState projected = new ScenarioManager().Project(state, catalog);
         if (!state.CompletedChapters.SequenceEqual(projected.CompletedChapters)

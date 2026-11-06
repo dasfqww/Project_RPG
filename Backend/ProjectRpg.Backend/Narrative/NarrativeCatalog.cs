@@ -38,6 +38,11 @@ public sealed class NarrativeCatalog
                     && pair.Value.Length == pair.Value.Distinct().Count()
                     && pair.Value.All(id => q.Objectives.Contains(id) && id != pair.Key)),
                 "invalid_objective_prerequisites");
+            Require(q.DungeonObjectives is null || q.DungeonObjectives.Count <= q.Objectives.Length
+                && q.DungeonObjectives.All(pair => q.Objectives.Contains(pair.Key) && pair.Value is not null
+                    && NarrativeCommand.ValidId(pair.Value.DungeonId) && pair.Value.DungeonId.Length <= 64
+                    && pair.Value.Difficulty is "Easy" or "Normal" or "Hard" or "Hell"),
+                "invalid_dungeon_objective");
             HashSet<string> objectiveVisiting = new(StringComparer.Ordinal), objectiveVisited = new(StringComparer.Ordinal);
             void VisitObjective(string id)
             {
@@ -92,6 +97,7 @@ public sealed class NarrativeCatalog
                     && (c.Effect == DialogueEffect.RecordObjective
                         ? d.RequiredStatus == QuestStatus.Active && c.ObjectiveId is not null
                             && Quests[d.QuestId!].Objectives.Contains(c.ObjectiveId)
+                            && Quests[d.QuestId!].DungeonObjectives?.ContainsKey(c.ObjectiveId) != true
                         : c.ObjectiveId is null && (c.Effect == DialogueEffect.AcceptQuest
                             ? d.RequiredStatus is null : d.RequiredStatus == QuestStatus.ReadyToReport)),
                     "invalid_dialogue_choice");
@@ -115,7 +121,8 @@ public sealed class NarrativeCatalog
             DialogueChoice[] actions = [.. Dialogues.Values.Where(d => d.QuestId == q.Id).SelectMany(d => d.Choices)];
             Require(actions.Any(c => c.Effect == DialogueEffect.AcceptQuest)
                 && actions.Any(c => c.Effect == DialogueEffect.ReportQuest)
-                && q.Objectives.All(id => actions.Any(c => c.Effect == DialogueEffect.RecordObjective && c.ObjectiveId == id)),
+                && q.Objectives.All(id => q.DungeonObjectives?.ContainsKey(id) == true
+                    || actions.Any(c => c.Effect == DialogueEffect.RecordObjective && c.ObjectiveId == id)),
                 "unreachable_quest_definition");
         }
     }

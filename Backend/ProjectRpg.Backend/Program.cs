@@ -59,6 +59,7 @@ ValidateAuthConfiguration(
 var dungeonContentCatalog = DungeonDevelopmentProfiles.Resolve(
     builder.Configuration, builder.Environment, AppContext.BaseDirectory);
 builder.Services.AddSingleton(dungeonContentCatalog);
+ProjectRpg.Backend.Narrative.DungeonObjectiveCoordinator.ValidateTargets(narrativeCatalog, dungeonContentCatalog);
 builder.Services.AddSingleton(new ProjectRpg.Backend.Narrative.DungeonStoryAdmission(dungeonContentCatalog, narrativeCatalog));
 
 builder.Services.Configure<AuthOptions>(
@@ -173,6 +174,9 @@ builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.QuestManager>();
 builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.ScenarioManager>();
 builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.DialogueManager>();
 builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.NarrativeCoordinator>();
+builder.Services.AddSingleton<INarrativeDungeonEvidenceRepository>(provider =>
+    (INarrativeDungeonEvidenceRepository)provider.GetRequiredService<IGameRepository>());
+builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.DungeonObjectiveCoordinator>();
 builder.Services.AddSingleton<ICharacterProgressionRepository>(provider =>
     (ICharacterProgressionRepository)provider.GetRequiredService<IGameRepository>());
 builder.Services.AddSingleton<IEquipmentProgressionRepository>(provider =>

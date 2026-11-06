@@ -10,11 +10,14 @@ public enum DialogueEffect { AcceptQuest, RecordObjective, ReportQuest, None }
 
 public sealed record QuestDefinition(string Id, int Version, ImmutableArray<string> Prerequisites,
     ImmutableArray<string> Objectives, string? Title = null, ImmutableDictionary<string, string>? ObjectiveTexts = null,
-    ImmutableDictionary<string, ImmutableArray<string>>? ObjectivePrerequisites = null)
+    ImmutableDictionary<string, ImmutableArray<string>>? ObjectivePrerequisites = null,
+    ImmutableDictionary<string, DungeonClearObjective>? DungeonObjectives = null)
 {
     internal ImmutableArray<string> RequiredObjectives(string objectiveId) =>
         ObjectivePrerequisites?.GetValueOrDefault(objectiveId, []) ?? [];
 }
+public sealed record DungeonClearObjective(string DungeonId, string Difficulty);
+public sealed record DungeonObjectiveProgress(DateTimeOffset ActivatedAt, Guid? DungeonSessionId = null);
 public sealed record ChapterDefinition(string Id, ImmutableArray<string> RequiredQuests,
     ImmutableArray<string> StoryUnlocks);
 public sealed record DialogueChoice(string Id, string Text, DialogueEffect Effect, string? ObjectiveId = null,
@@ -26,7 +29,8 @@ public sealed record DialogueDefinition(string Id, string Speaker, string Text, 
     internal ImmutableArray<string> CompletionRequirements => RequiredCompletedQuests.IsDefault ? [] : RequiredCompletedQuests;
 }
 public sealed record QuestProgress(string QuestId, int DefinitionVersion, QuestStatus Status,
-    ImmutableArray<string> CompletedObjectives);
+    ImmutableArray<string> CompletedObjectives,
+    ImmutableDictionary<string, DungeonObjectiveProgress>? DungeonObjectives = null);
 public sealed record NarrativeState(Guid CharacterId, int SchemaVersion, long Revision,
     ImmutableArray<QuestProgress> Quests, ImmutableArray<string> CompletedChapters,
     ImmutableArray<string> StoryUnlocks)
@@ -34,11 +38,11 @@ public sealed record NarrativeState(Guid CharacterId, int SchemaVersion, long Re
     public static NarrativeState Create(Guid characterId) => new(characterId, 1, 0, [], [], []);
 }
 
-// Only authored dialogue actions are accepted. Clients cannot submit objective counts,
-// completion flags, unlock IDs, XP or item grants.
+// Player commands name authored choices. Server evidence uses a separate fingerprint domain.
 public sealed record NarrativeCommand(Guid RequestId, long ExpectedRevision, int CatalogVersion,
     string DialogueId, string ChoiceId)
 {
+    internal Guid? DungeonEvidenceSessionId { get; init; }
     public void Validate()
     {
         if (RequestId == Guid.Empty || ExpectedRevision < 0 || CatalogVersion < 1
@@ -49,8 +53,12 @@ public sealed record NarrativeCommand(Guid RequestId, long ExpectedRevision, int
     public string Fingerprint()
     {
         Validate();
-        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
-            JsonSerializer.Serialize(new { ExpectedRevision, CatalogVersion, DialogueId, ChoiceId }))));
+        // Keep the legacy choice fingerprint byte-for-byte compatible with stored receipts.
+        string payload = DungeonEvidenceSessionId is { } sessionId
+            ? JsonSerializer.Serialize(new { Kind = "dungeon_objective_v1", ExpectedRevision, CatalogVersion,
+                QuestId = DialogueId, ObjectiveId = ChoiceId, DungeonSessionId = sessionId })
+            : JsonSerializer.Serialize(new { ExpectedRevision, CatalogVersion, DialogueId, ChoiceId });
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
     }
 
     internal static bool ValidId(string? value) => !string.IsNullOrWhiteSpace(value)

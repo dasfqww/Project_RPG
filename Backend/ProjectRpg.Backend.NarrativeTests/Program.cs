@@ -23,6 +23,7 @@ try
     await NarrativeObjectiveOrderTests.RunAsync();
     InMemoryTransactionGate gate = new();
     InMemoryGameRepository memory = new(gate, new InMemoryItemRepository(gate));
+    await DungeonObjectiveCases.RunAsync(memory, () => memory, "Memory");
     await NarrativeStoryAdmissionTests.RunAsync(memory, "Memory");
     await RepositoryCases(memory, () => memory, "Memory");
     await HttpCases();
@@ -198,6 +199,7 @@ static async Task PostgresCases()
     Require(await PostgresSchemaMigrations.ApplyAsync(source, catalog, default) == 0, "Migration reapplied.");
     await PostgresSchemaMigrations.ValidateAsync(source, catalog, default);
     PostgresGameRepository Repo() => new(source, NullLogger<PostgresGameRepository>.Instance);
+    await DungeonObjectiveCases.RunAsync(Repo(), () => Repo(), "PostgreSQL");
     await RepositoryCases(Repo(), Repo, "PostgreSQL");
     await NarrativeStoryAdmissionTests.RunAsync(Repo(), "PostgreSQL");
     await using NpgsqlDataSource reopened = NpgsqlDataSource.Create(config.ConnectionString);
