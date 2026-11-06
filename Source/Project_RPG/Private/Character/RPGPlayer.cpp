@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Character/RPGPlayer.h"
+#include "Riding/RPGRidingComponent.h"
 #include "Component/Combat/RPGCombatControlComponent.h"
 #include "Component/Combat/RPGShieldComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -67,6 +68,7 @@ ARPGPlayer::ARPGPlayer(const FObjectInitializer& ObjectInitializer):
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
 
 	PlayerCombatComponent = CreateDefaultSubobject<UPlayerCombatComponent>(TEXT("PlayerCombatComp"));
+    CreateDefaultSubobject<URPGRidingComponent>(TEXT("Riding"));
 	WeaponLoadoutComponent = CreateDefaultSubobject<URPGPlayerWeaponLoadoutComponent>(TEXT("WeaponLoadoutComponent"));
 	PlayerUIComponent = CreateDefaultSubobject<UPlayerUIComponent>(TEXT("PlayerUIComp"));
 	CreateDefaultSubobject<URPGShieldComponent>(TEXT("ShieldComponent"));

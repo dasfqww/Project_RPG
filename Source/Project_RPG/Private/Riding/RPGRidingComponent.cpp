@@ -1,0 +1,291 @@
+#include "Riding/RPGRidingComponent.h"
+#include "Riding/RPGRidingSessionComponent.h"
+#include "Riding/RPGRidingSession.h"
+#include "Riding/RPGRidingStatePolicy.h"
+#include "Riding/RPGMountDefinition.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemGlobals.h"
+#include "Abilities/GameplayAbility.h"
+#include "AttributeSet.h"
+#include "Engine/World.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
+#include "HAL/PlatformTime.h"
+#include "Net/UnrealNetwork.h"
+#include "Net/Core/PushModel/PushModel.h"
+
+URPGRidingComponent::URPGRidingComponent()
+{
+    SetIsReplicatedByDefault(true);
+    PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.TickInterval = 0.1f;
+}
+void URPGRidingComponent::BeginPlay()
+{
+    Super::BeginPlay();
+    if (auto* Pawn = Cast<APawn>(GetOwner()))
+    {
+        Pawn->ReceiveControllerChangedDelegate.AddDynamic(this, &ThisClass::HandleControllerChanged);
+        Pawn->ReceiveRestartedDelegate.AddDynamic(this, &ThisClass::HandleRestarted);
+    }
+    RefreshBinding();
+}
+void URPGRidingComponent::HandleControllerChanged(APawn*, AController*, AController*) { RefreshBinding(); }
+void URPGRidingComponent::HandleRestarted(APawn*) { RefreshBinding(); }
+
+bool URPGRidingComponent::IsBindingCurrent() const
+{
+    const auto* Pawn = Cast<APawn>(GetOwner());
+    const auto* S = Session.Get();
+    return !bEnding && IsValid(Pawn) && !Pawn->IsActorBeingDestroyed() && Pawn->HasAuthority()
+        && IsValid(S) && S->IsContextCurrent() && State.Key.RiderEpoch.IsValid()
+        && S->BoundPawn == this && S->BoundEpoch == State.Key.RiderEpoch && Pawn->GetWorld() == S->GetWorld()
+        && Controller.IsValid() && Pawn->GetController() == Controller && Controller->GetPawn() == Pawn
+        && Pawn->GetPlayerState() == S->GetOwner();
+}
+
+void URPGRidingComponent::RefreshBinding()
+{
+    auto* Pawn = Cast<APawn>(GetOwner());
+    if (!Pawn || !Pawn->HasAuthority() || bEnding) return;
+    if (IsBindingCurrent()) return;
+    ReleaseBinding();
+    auto* PS = Pawn->GetPlayerState();
+    auto* S = PS ? PS->FindComponentByClass<URPGRidingSessionComponent>() : nullptr;
+    if (!S) return;
+    const FGuid NewEpoch = S->Bind(*this);
+    if (!NewEpoch.IsValid()) return;
+    Session = S; Controller = Pawn->GetController();
+    State = {}; State.Key = {NewEpoch, 1, 0};
+    Publish();
+}
+
+void URPGRidingComponent::ReleaseBinding()
+{
+    const FGuid OldEpoch = State.Key.RiderEpoch;
+    auto* Previous = Session.Get();
+    Session.Reset(); Controller.Reset();
+    if (Previous) Previous->Unbind(*this, OldEpoch);
+    if (GetOwner() && GetOwner()->HasAuthority() && OldEpoch.IsValid())
+    {
+        State = {};
+        Publish();
+    }
+}
+
+void URPGRidingComponent::Publish()
+{
+    MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, State, this);
+    if (GetOwner()) GetOwner()->ForceNetUpdate();
+    const auto Snapshot = State;
+    OnChanged.Broadcast(Snapshot);
+}
+
+void URPGRidingComponent::OnRep_State(const FRPGRidingRepState& Previous)
+{
+    if (!RPGRiding::IsCanonical(State)
+        || (State.Key.RiderEpoch == Previous.Key.RiderEpoch && RPGRiding::Compare(State.Key, Previous.Key) == ERPGRidingStateOrder::Older))
+    { State = Previous; return; }
+    const auto Snapshot = State;
+    OnChanged.Broadcast(Snapshot);
+}
+
+void URPGRidingComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+    DOREPLIFETIME(ThisClass, State);
+}
+
+const URPGMountDefinition* URPGRidingComponent::FindDefinition(const FString& Id) const
+{
+    if (Definitions.Num() > RPGRiding::MaxMountDefinitions) return nullptr;
+    const URPGMountDefinition* Found = nullptr;
+    for (const URPGMountDefinition* Definition : Definitions)
+    {
+        if (!Definition || Definition->MountId != Id) continue;
+        if (Found) return nullptr;
+        TArray<FText> Errors;
+        if (!Definition->ValidateMetadata(Errors)) return nullptr;
+        Found = Definition;
+    }
+    return Found;
+}
+
+void URPGRidingComponent::BuildGuards(FRPGRidingEvaluationContext& Out) const
+{
+    Out.Current = State;
+    Out.bHasAuthority = IsBindingCurrent();
+    Out.bAuthorityRevoked = !Out.bHasAuthority;
+    auto* Pawn = Cast<APawn>(GetOwner());
+    auto* ASC = Pawn ? UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Pawn, true) : nullptr;
+    Out.bReady = ASC && ASC->GetAvatarActor() == Pawn && Session.IsValid()
+        && Session->Runtime->GetStatus() == ERPGRidingSessionStatus::Ready;
+    if (!ASC || ASC->GetAvatarActor() != Pawn) return;
+    // Read the existing GAS health field without depending on a concrete game's AttributeSet class.
+    for (const UAttributeSet* Set : ASC->GetSpawnedAttributes())
+    {
+        FProperty* Property = Set ? FindFProperty<FProperty>(Set->GetClass(), TEXT("CurrentHealth")) : nullptr;
+        const FGameplayAttribute Health(Property);
+        if (Health.IsValid())
+        {
+            const float Value = ASC->GetNumericAttribute(Health);
+            Out.bAlive = FMath::IsFinite(Value) && Value > 0;
+            break;
+        }
+    }
+    const auto Has = [ASC](const TCHAR* Name)
+    {
+        const auto Tag = FGameplayTag::RequestGameplayTag(FName(Name), false);
+        return Tag.IsValid() && ASC->HasMatchingGameplayTag(Tag);
+    };
+    Out.bAlive &= !Has(TEXT("Shared.Status.Death"));
+    Out.bActionBlocked = Has(TEXT("Player.Status.Holding")) || Has(TEXT("Shared.Status.Control.Stunned"))
+        || Has(TEXT("Shared.Status.Control.Knockback")) || Has(TEXT("Shared.Status.Control.Airborne")) || Has(TEXT("Shared.Status.Control.Staggered"));
+    Out.bSlowActive = Has(TEXT("Shared.Status.Movement.Slowed"));
+    Out.bActionBlocked |= Has(TEXT("Player.Status.Rolling")) || Has(TEXT("Player.Status.Blocking"));
+    const auto PlayerAbility = FGameplayTag::RequestGameplayTag(TEXT("Player.Ability"), false);
+    const auto TargetLock = FGameplayTag::RequestGameplayTag(TEXT("Player.Ability.TargetLock"), false);
+    for (const auto& Spec : ASC->GetActivatableAbilities())
+        if (Spec.IsActive() && Spec.Ability && PlayerAbility.IsValid()
+            && Spec.Ability->GetAssetTags().HasTag(PlayerAbility)
+            && !(TargetLock.IsValid() && Spec.Ability->GetAssetTags().HasTagExact(TargetLock))) Out.bActionBlocked = true;
+    const auto* Character = Cast<ACharacter>(Pawn);
+    const auto* Move = Character ? Character->GetCharacterMovement() : nullptr;
+    Out.bOnGround = Move && Move->MovementMode == MOVE_Walking;
+    const auto Timing = Session->Runtime->GetTiming(FPlatformTime::Seconds());
+    Out.bInCombat = !Timing.bValid || Timing.CombatRemaining > 0;
+}
+
+void URPGRidingComponent::RequestSetMounted(bool bMounted, const FRPGRidingSelector& Selector)
+{
+    const auto* Pawn = Cast<APawn>(GetOwner());
+    if (!Pawn || !Pawn->IsLocallyControlled() || !State.Key.RiderEpoch.IsValid()) return;
+    if (LocalRequestEpoch != State.Key.RiderEpoch) { LocalRequestEpoch = State.Key.RiderEpoch; LocalRequestSeq = 0; }
+    if (LocalRequestSeq == MAX_uint32) return;
+    FRPGRidingSetCommand Command;
+    Command.RiderEpoch = LocalRequestEpoch; Command.RequestSeq = ++LocalRequestSeq;
+    Command.ExpectedStateRevision = State.Key.StateRevision; Command.bDesiredMounted = bMounted;
+    if (bMounted) Command.Selector = Selector;
+    ServerSetRiding(Command);
+}
+
+void URPGRidingComponent::ServerSetRiding_Implementation(FRPGRidingSetCommand Command)
+{
+    RefreshBinding();
+    if (!IsBindingCurrent()) return;
+    auto* S = Session.Get();
+    auto Start = S->Runtime->BeginCommand(Command, State, FPlatformTime::Seconds());
+    if (Start.Disposition == ERPGRidingRequestDisposition::Pending) return;
+    if (Start.Disposition == ERPGRidingRequestDisposition::Reserved)
+    {
+        FRPGRidingEvaluationContext Context;
+        BuildGuards(Context);
+        FRPGRidingAdmissionSnapshot Owned;
+        if (Command.bDesiredMounted && S->Runtime->CopySnapshot(Owned))
+        {
+            FString Id = Command.Selector.Kind == ERPGRidingSelectorKind::Specific ? Command.Selector.MountId : Owned.SelectedMountId;
+            if (Command.Selector.Kind == ERPGRidingSelectorKind::RandomFavorites)
+            {
+                TArray<FString> Eligible;
+                for (const auto& Favorite : Owned.Favorites)
+                    if (const auto* Definition = FindDefinition(Favorite); Definition && Definition->RegionTags.IsEmpty()) Eligible.Add(Favorite);
+                Id = Eligible.IsEmpty() ? FString() : Eligible[FMath::RandHelper(Eligible.Num())];
+            }
+            Context.CandidateMountId = Id;
+            Context.bCandidateOwned = Owned.OwnedMountIds.Contains(Id);
+            if (const auto* Definition = FindDefinition(Id))
+            {
+                Context.CandidateDefinitionVersion = Definition->DefinitionVersion;
+                Context.bDefinitionCompatible = true;
+                // Restricted definitions fail closed until the authoritative region adapter is connected in M1b.
+                Context.bRegionAllowed = Definition->RegionTags.IsEmpty();
+            }
+        }
+        const auto Decision = RPGRidingStatePolicy::Evaluate(Context, Command);
+        Commit(Decision);
+        auto ResultCode = Decision.Result;
+        if (!IsBindingCurrent()) ResultCode = ERPGRidingResultCode::AuthorityRevoked;
+        else if (ResultCode == ERPGRidingResultCode::Applied && Command.bDesiredMounted && State.Mode != ERPGRidingMode::Mounted)
+            ResultCode = ERPGRidingResultCode::ActionBlocked;
+        Start.Receipt = {ResultCode, State};
+        if (!S->Runtime->CompleteCommand(Start.Token, Start.Receipt)) return;
+    }
+    if (!IsBindingCurrent() || Session != S) return;
+    S->PublishOwnerState();
+    ClientRidingResult({Command.RequestSeq, Start.Receipt.Result, Start.Receipt.State, State});
+}
+
+void URPGRidingComponent::ClientRidingResult_Implementation(FRPGRidingCommandResult Result)
+{
+    // Results never install authority state or adopt an Epoch; RepNotify is the sole network state source.
+    if (Result.LatestState.Key.RiderEpoch != State.Key.RiderEpoch || !State.Key.RiderEpoch.IsValid()) return;
+    OnResult.Broadcast(Result);
+}
+
+void URPGRidingComponent::MakeOnFoot(ERPGRidingEndReason Reason)
+{
+    const auto Key = State.Key;
+    State = {};
+    State.Key = Key;
+    ++State.Key.StateRevision;
+    State.LastEndReason = Reason;
+}
+
+void URPGRidingComponent::Commit(const FRPGRidingDecision& Decision)
+{
+    if (Decision.Result != ERPGRidingResultCode::Applied || !IsBindingCurrent()) return;
+    if (State.Key.StateRevision >= MAX_uint32 - 1 || State.Key.ActionSequence >= MAX_uint32 - 1)
+    { ReleaseBinding(); RefreshBinding(); return; }
+    TGuardValue<bool> Applying(bApplying, true);
+    if (Decision.Transition == ERPGRidingTransition::Dismount) MakeOnFoot(ERPGRidingEndReason::Manual);
+    else
+    {
+        const auto Key = State.Key;
+        State = {}; State.Key = Key; ++State.Key.StateRevision;
+        State.Mode = ERPGRidingMode::Mounted;
+        State.MountId = Decision.ResolvedMountId; State.DefinitionVersion = Decision.DefinitionVersion;
+    }
+    Publish();
+    if (PendingEnd != ERPGRidingEndReason::None && IsBindingCurrent())
+    {
+        const auto Reason = PendingEnd; PendingEnd = ERPGRidingEndReason::None;
+        if (State.Mode == ERPGRidingMode::Mounted) { MakeOnFoot(Reason); Publish(); }
+    }
+    PendingEnd = ERPGRidingEndReason::None;
+}
+
+void URPGRidingComponent::ForceDismount(ERPGRidingEndReason Reason)
+{
+    if (!IsBindingCurrent() || Reason == ERPGRidingEndReason::None
+        || static_cast<uint8>(Reason) > static_cast<uint8>(ERPGRidingEndReason::Completed)) return;
+    if (bApplying) { if (PendingEnd == ERPGRidingEndReason::None || Reason == ERPGRidingEndReason::AuthorityRevoked || Reason == ERPGRidingEndReason::Death) PendingEnd = Reason; return; }
+    if (State.Mode != ERPGRidingMode::Mounted) return;
+    if (State.Key.StateRevision >= MAX_uint32 - 1) { ReleaseBinding(); RefreshBinding(); return; }
+    MakeOnFoot(Reason); Publish();
+}
+
+void URPGRidingComponent::TickComponent(float Delta, ELevelTick Tick, FActorComponentTickFunction* Function)
+{
+    Super::TickComponent(Delta, Tick, Function);
+    RefreshBinding();
+    if (!IsBindingCurrent() || State.Mode != ERPGRidingMode::Mounted) return;
+    FRPGRidingEvaluationContext Context; BuildGuards(Context);
+    if (!Context.bAlive) ForceDismount(ERPGRidingEndReason::Death);
+    else if (!Context.bReady) ForceDismount(ERPGRidingEndReason::ContextLost);
+    else if (Context.bActionBlocked || Context.bSlowActive) ForceDismount(ERPGRidingEndReason::Control);
+    else if (!Context.bOnGround) ForceDismount(ERPGRidingEndReason::MovementMode);
+}
+void URPGRidingComponent::EndPlay(const EEndPlayReason::Type Reason)
+{
+    bEnding = true; ReleaseBinding();
+    if (auto* Pawn = Cast<APawn>(GetOwner()))
+    {
+        Pawn->ReceiveControllerChangedDelegate.RemoveDynamic(this, &ThisClass::HandleControllerChanged);
+        Pawn->ReceiveRestartedDelegate.RemoveDynamic(this, &ThisClass::HandleRestarted);
+    }
+    Super::EndPlay(Reason);
+}
+void URPGRidingComponent::OnUnregister() { bEnding = true; ReleaseBinding(); Super::OnUnregister(); }
+void URPGRidingComponent::OnRegister() { Super::OnRegister(); bEnding = false; }

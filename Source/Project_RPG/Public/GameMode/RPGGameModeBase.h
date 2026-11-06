@@ -61,6 +61,8 @@ public:
 
 	/** Native owning-controller RPC target. Marks only the socket it closes now. */
 	bool RequestPlannedDungeonLobbyDisconnect(APlayerController* Controller);
+    /** Exact current socket/PlayerState/identity generation confirmed by the backend. */
+    bool HasConfirmedDungeonAdmission(const ARPGPlayerState* State) const;
 
 #if WITH_EDITOR
 	virtual EDataValidationResult IsDataValid(

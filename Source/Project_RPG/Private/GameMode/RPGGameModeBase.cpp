@@ -954,6 +954,7 @@ void ARPGGameModeBase::CompleteDungeonAdmission(APlayerController* Controller,
 	Active.Admission = Expected;
 	Active.PlayerState = State;
 	Active.Connection = ExpectedConnection;
+	State->RefreshRidingContext();
 	Super::PostLogin(Controller);
 }
 

@@ -2,6 +2,8 @@
 
 
 #include "Player/RPGPlayerState.h"
+#include "Riding/RPGRidingSessionComponent.h"
+#include "GameMode/RPGGameModeBase.h"
 
 #include "Component/RPGAbilitySystemComponent.h"
 #include "Component/RPGInventoryProjectionComponent.h"
@@ -19,9 +21,31 @@ namespace
 	constexpr float CurrencyWalletRefreshIntervalSeconds = 15.0f;
 }
 
+ARPGPlayerState::ARPGPlayerState()
+{
+    CreateDefaultSubobject<URPGRidingSessionComponent>(TEXT("RidingSession"));
+}
+
+void ARPGPlayerState::RefreshRidingContext()
+{
+    if (!HasAuthority()) return;
+    auto* Riding = FindComponentByClass<URPGRidingSessionComponent>();
+    if (!Riding) return;
+    Riding->ValidateAdmission = [WeakThis = TWeakObjectPtr<ARPGPlayerState>(this)]()
+    {
+        const auto* Current = WeakThis.Get();
+        const auto* Mode = Current && Current->GetWorld() ? Current->GetWorld()->GetAuthGameMode<ARPGGameModeBase>() : nullptr;
+        return Current && Mode && Mode->HasConfirmedDungeonAdmission(Current);
+    };
+    const auto* Mode = GetWorld() ? GetWorld()->GetAuthGameMode<ARPGGameModeBase>() : nullptr;
+    Riding->UpdateAuthenticatedContext(BackendCharacterId, AuthenticatedSteamId, BackendDungeonSessionId,
+        BackendConnectionGeneration, bAuthenticatedIdentityRevoked, Mode && Mode->HasConfirmedDungeonAdmission(this));
+}
+
 void ARPGPlayerState::BeginPlay()
 {
 	Super::BeginPlay();
+    RefreshRidingContext();
 	if (HasAuthority())
 	{
 		if (UGameInstance* GameInstance = GetGameInstance())
@@ -41,6 +65,7 @@ void ARPGPlayerState::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	bAuthenticatedIdentityRevoked = true;
 	BackendConnectionGeneration = 0;
+    RefreshRidingContext();
 	++CurrencyWalletRequestGeneration;
 	GetWorldTimerManager().ClearTimer(CurrencyWalletRefreshTimerHandle);
 	if (UGameInstance* GameInstance = GetGameInstance())
@@ -107,6 +132,7 @@ void ARPGPlayerState::SetAuthenticatedIdentity(
 	BackendDungeonSessionId = InDungeonSessionId;
 	BackendCharacterId = InCharacterId;
 	BackendConnectionGeneration = InConnectionGeneration > 0 ? InConnectionGeneration : 0;
+    RefreshRidingContext();
 	OnCharacterIdentityChanged.Broadcast(BackendCharacterId);
 	if (bAuthenticatedIdentityRevoked) return;
 	OnDungeonSessionIdentityChanged.Broadcast(BackendDungeonSessionId);
@@ -136,6 +162,7 @@ bool ARPGPlayerState::RevokeAuthenticatedIdentity(FString ExpectedSessionId,
 	// Raise the irreversible barrier before any notification can re-enter us.
 	bAuthenticatedIdentityRevoked = true;
 	BackendConnectionGeneration = 0;
+    RefreshRidingContext();
 	++CurrencyWalletRequestGeneration;
 	GetWorldTimerManager().ClearTimer(CurrencyWalletRefreshTimerHandle);
 	BackendCharacterId.Reset();

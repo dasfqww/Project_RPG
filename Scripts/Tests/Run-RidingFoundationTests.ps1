@@ -1,10 +1,11 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession)
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
-$suite = if ($IncludeSession) { 'RidingSession' } else { 'RidingFoundation' }
-$reservation = if ($IncludeSession) { 'riding-session-20261106' } else { 'riding-foundation-20261106' }
+if ($IncludeActors) { $IncludeSession = $true }
+$suite = if ($IncludeActors) { 'RidingActors' } elseif ($IncludeSession) { 'RidingSession' } else { 'RidingFoundation' }
+$reservation = if ($IncludeActors) { 'riding-actors-20261106' } elseif ($IncludeSession) { 'riding-session-20261106' } else { 'riding-foundation-20261106' }
 $testFilter = if ($IncludeSession) { 'ProjectRPG.Riding' } else { 'ProjectRPG.Riding.Foundation' }
 $proofRoot = Join-Path $workspace ('Saved/BuildChecks/' + $suite + '-20261106/' + $id)
 $tempRoot = Join-Path $workspace 'Saved/RF'
@@ -40,6 +41,13 @@ try {
             $files += 'Source/Project_RPG/Private/Riding/' + $name + '.cpp'
         }
     }
+    if ($IncludeActors) {
+        $files += @('Source/Project_RPG/Private/Tests/RPGRidingActorTests.h','Source/Project_RPG/Private/Tests/RPGRidingActorTests.cpp','Source/Project_RPG/Public/Component/PawnExtensionComponentBase.h','Source/Project_RPG/Private/Component/PawnExtensionComponentBase.cpp')
+        foreach ($name in @('RPGRidingSessionComponent','RPGRidingComponent')) {
+            $files += 'Source/Project_RPG/Public/Riding/' + $name + '.h'
+            $files += 'Source/Project_RPG/Private/Riding/' + $name + '.cpp'
+        }
+    }
     foreach ($relative in $files) {
         $source = Join-Path $workspace $relative
         $destination = Join-Path $project $relative
@@ -52,8 +60,11 @@ try {
     # Compile the actual feature files, with their real module/export names and UHT.
     # No shared project binaries, incomplete peer sources, content, or plugins are copied.
     Write-Utf8 (Join-Path $project 'RidingFoundation.uproject') @'
-{"FileVersion":3,"EngineAssociation":"5.8","DisableEnginePluginsByDefault":true,"Modules":[{"Name":"Project_RPG","Type":"Runtime","LoadingPhase":"Default"}]}
+{"FileVersion":3,"EngineAssociation":"5.8","DisableEnginePluginsByDefault":true,"Plugins":[{"Name":"GameplayAbilities","Enabled":true}],"Modules":[{"Name":"Project_RPG","Type":"Runtime","LoadingPhase":"Default"}]}
 '@
+    if ($IncludeActors) {
+        Write-Utf8 (Join-Path $project 'Config/DefaultGame.ini') "[/Script/GameplayAbilities.AbilitySystemGlobals]`n+GameplayCueNotifyPaths=/Game/`n"
+    }
     Write-Utf8 (Join-Path $project 'Source/RidingFoundationEditor.Target.cs') @'
 using UnrealBuildTool;
 public class RidingFoundationEditorTarget : TargetRules {
@@ -71,7 +82,7 @@ public class Project_RPG : ModuleRules {
     public Project_RPG(ReadOnlyTargetRules Target) : base(Target) {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         bUseUnity = false;
-        PublicDependencyModuleNames.AddRange(new string[] {"Core", "CoreUObject", "Engine", "NetCore", "GameplayTags"});
+        PublicDependencyModuleNames.AddRange(new string[] {"Core", "CoreUObject", "Engine", "NetCore", "GameplayTags", "GameplayAbilities", "GameplayTasks"});
     }
 }
 '@
@@ -119,6 +130,9 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingFounda
     $expected = @('Values','CanonicalState','AdmissionGuards','Transitions','Authoring') | ForEach-Object {'ProjectRPG.Riding.Foundation.'+$_}
     if ($IncludeSession) {
         $expected += @('LedgerReplay','LedgerBounds','Admission','SnapshotValidation','Requests','Lifetime') | ForEach-Object {'ProjectRPG.Riding.Session.'+$_}
+    }
+    if ($IncludeActors) {
+        $expected += @('Transitions','Lifetime','Reentry','Results') | ForEach-Object {'ProjectRPG.Riding.Actors.'+$_}
     }
     if ((Compare-Object $expected @($proof.Tests.fullTestPath)) -or @($proof.Tests | Where-Object {$_.state -ne 'Success' -or $_.errors -ne 0 -or $_.warnings -ne 0}).Count) { throw 'Missing or failing native cases' }
     foreach ($inputFile in $proof.Inputs) {

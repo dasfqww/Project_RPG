@@ -1,11 +1,11 @@
 # Riding System 아키텍처 v1
 
 - 작성: 2026-11-06 / 담당: `riding-architecture-20261106`
-- 상태: **M1a의 상태 타입·정의/정책·순수 판정 및 요청 ledger/서버 세션 내부 로직 구현·독립 UHT/C++·native11 검증 완료. PlayerState/Pawn 컴포넌트·이동·UI 포트는 구현 예정이다.**
+- 상태: **M1a 값 로직 및 PlayerState/Pawn 컴포넌트·서버 요청/복제 연결 구현. 독립 native15 Success(검사 오류0/격리 설정 경고1)·실제 호출 CPP4 집중 컴파일 통과. 제품 snapshot/API·이동/외형·UI는 후속이다.**
 - 기준: 게시 `92fdb7bf`와 [Riding 상세 설계](RIDING_SYSTEM_DESIGN.md). 게임 규칙·수치·API/DB 계약은 상세 설계가 기준이고, 이 문서는 책임·의존·연결 방법을 정의한다.
 - 이번 산출물: 아키텍처와 구현 분할. C++ 골격, 백엔드, 에셋 생성 및 런타임 검증은 포함하지 않는다.
 - 다음 코드 설계: [M1 상태·세션·컴포넌트 계약](RIDING_SYSTEM_CODE_DESIGN.md) — C++ 값/시그니처·요청 ledger·초기화/재진입/복제·검사 순서. 공용 HUD의 구체 API 인계와 독립적으로 진행하며 제품 구현과 구분한다.
-- 실제 구현 현황은 [M1a 첫 기반 구현](RIDING_SYSTEM_CODE_DESIGN.md#10-m1a-첫-기반-구현--2026-11-06)과 [서버 세션 내부 로직](RIDING_SYSTEM_CODE_DESIGN.md#11-m1a-서버-세션-내부-로직--2026-11-06)을 따른다. 설계의 모든 클래스가 구현됐다는 뜻은 아니다.
+- 실제 구현 현황은 [M1a 첫 기반 구현](RIDING_SYSTEM_CODE_DESIGN.md#10-m1a-첫-기반-구현--2026-11-06), [서버 세션 내부 로직](RIDING_SYSTEM_CODE_DESIGN.md#11-m1a-서버-세션-내부-로직--2026-11-06), [Actor 연결](RIDING_SYSTEM_CODE_DESIGN.md#12-m1a-actor-연결--2026-11-07)을 따른다. 설계의 모든 클래스가 구현됐다는 뜻은 아니다.
 
 ## 1. 구조 결정
 

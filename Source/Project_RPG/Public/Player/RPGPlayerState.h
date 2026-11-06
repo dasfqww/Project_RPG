@@ -33,6 +33,9 @@ class PROJECT_RPG_API ARPGPlayerState : public AModularPlayerState
 	GENERATED_BODY()
 
 public:
+    ARPGPlayerState();
+    /** Re-read authoritative identity and confirmed admission; does not install a Riding snapshot. */
+    void RefreshRidingContext();
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;

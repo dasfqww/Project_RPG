@@ -70,6 +70,26 @@ struct PROJECT_RPG_API FRPGRidingRepState
     UPROPERTY(BlueprintReadOnly) ERPGRidingEndReason LastEndReason = ERPGRidingEndReason::None;
 };
 
+USTRUCT(BlueprintType)
+struct PROJECT_RPG_API FRPGRidingOwnerState
+{
+    GENERATED_BODY()
+    UPROPERTY(BlueprintReadOnly) bool bReady = false;
+    UPROPERTY(BlueprintReadOnly) double DashEndServerSeconds = 0;
+    UPROPERTY(BlueprintReadOnly) double EmoteEndServerSeconds = 0;
+    UPROPERTY(BlueprintReadOnly) double CombatEndServerSeconds = 0;
+};
+
+USTRUCT()
+struct PROJECT_RPG_API FRPGRidingCommandResult
+{
+    GENERATED_BODY()
+    UPROPERTY() uint32 RequestSeq = 0;
+    UPROPERTY() ERPGRidingResultCode Result = ERPGRidingResultCode::NotReady;
+    UPROPERTY() FRPGRidingRepState HistoricalState;
+    UPROPERTY() FRPGRidingRepState LatestState;
+};
+
 namespace RPGRiding
 {
     inline constexpr int32 MaxMountDefinitions = 512;
