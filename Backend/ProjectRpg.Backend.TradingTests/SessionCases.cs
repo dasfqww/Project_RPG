@@ -28,6 +28,8 @@ internal static class SessionCases
             Check((await f.Game.GetCharacterEconomyContextAsync(old.CharacterId, default))!.SteamId == old.AccountId, "migration preserves character");
             await f.Economy.UpsertDefinitionAsync(new("Gold", "Gold", CurrencyScope.Account, 100000, true), Now, default);
             await Success(f); await Rollback(f); await Consent(f); await CapacityAndAccess(f); await Races(f);
+            var commonA = await f.Person(); var commonB = await f.Person(); await f.Fund(commonA, 100); await f.Fund(commonB, 100);
+            await MemorySessionCases.SharedContract(f.Store, commonA, commonB, () => f.Balance(commonA), () => f.Balance(commonB));
             Console.WriteLine($"PASS PostgreSQL trade sessions: 5 groups, {count} assertions; no HTTP/UE/Memory-session claim."); return 0;
         }
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }

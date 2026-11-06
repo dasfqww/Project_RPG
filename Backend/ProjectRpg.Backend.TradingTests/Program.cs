@@ -2,6 +2,7 @@ using System.Text.Json;
 using ProjectRpg.Backend.Domain;
 using ProjectRpg.Backend.Domain.Trading;
 
+if (args is ["--sessions-memory"]) return await MemorySessionCases.Run();
 if (args is ["--sessions-postgres"] or ["--sessions-restart"]) return await SessionCases.Run(args[0] == "--sessions-restart");
 if (args is ["--exchange-plan"]) return await ExchangePlanCases.Run();
 if (args is ["--reservations-memory"] or ["--reservations-postgres"])

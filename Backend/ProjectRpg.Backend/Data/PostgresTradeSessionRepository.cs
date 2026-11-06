@@ -1,11 +1,10 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
 using ProjectRpg.Backend.Domain;
 using ProjectRpg.Backend.Domain.Trading;
 using static ProjectRpg.Backend.Data.PostgresTradeReservationRepository;
+using static ProjectRpg.Backend.Domain.Trading.TradeSessionRules;
 
 namespace ProjectRpg.Backend.Data;
 
@@ -23,7 +22,7 @@ public sealed partial class PostgresTradeSessionRepository(NpgsqlDataSource data
     public async Task<TradeSessionResult> ExecuteAsync(TradeSessionCommand command, CancellationToken ct)
     {
         Validate(command);
-        string fingerprint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(command))));
+        string fingerprint = Fingerprint(command);
         await using var c = await dataSource.OpenConnectionAsync(ct);
         // Participants are immutable. The authoritative state is reread after acquiring all gates.
         var before = await Load(c, null, command.TradeId, ct);
@@ -60,7 +59,7 @@ public sealed partial class PostgresTradeSessionRepository(NpgsqlDataSource data
         if (session.Completed || session.State.Status is TradeNegotiationStatus.Cancelled or TradeNegotiationStatus.Expired)
             throw new TradeRuleException("trade_closed");
         foreach (var p in people.OrderBy(p => p.CharacterId)) await Context(c, tx, p, ct);
-        Guid nextHold = new(SHA256.HashData(Encoding.UTF8.GetBytes("trade_ready|" + command.RequestId.ToString("D"))).AsSpan(0,16));
+        Guid nextHold = ReadyReservationId(command.RequestId);
         foreach (var id in new[] { session.InitiatorReservation, session.InviteeReservation, command.Kind == TradeCommandKind.Ready ? nextHold : (Guid?)null }
             .Where(id => id.HasValue).Select(id => id!.Value).Distinct().Order()) await LockReservation(c, tx, id, ct);
         await PostgresItemRepository.AcquireOwnerLocksAsync(c, tx, people.Select(p => new ItemOwnerRef(ItemOwnerType.Character, p.CharacterId.ToString("D"))), ct);
@@ -159,16 +158,6 @@ public sealed partial class PostgresTradeSessionRepository(NpgsqlDataSource data
         if ((bool)(await query.ExecuteScalarAsync(ct))!) throw new TradeRuleException("trade_requires_lobby");
     }
 
-    private static bool Participant(TradeNegotiation s, TradeParticipant p) => p == s.Initiator || p == s.Invitee;
-    private static void Validate(TradeSessionCommand c)
-    {
-        if (c is null || c.RequestId == Guid.Empty || c.TradeId == Guid.Empty || c.Actor is null || c.Actor.CharacterId == Guid.Empty
-            || string.IsNullOrWhiteSpace(c.Actor.AccountId) || c.Actor.AccountId.Length > 20 || !Enum.IsDefined(c.Kind)
-            || (c.Kind == TradeCommandKind.Invite ? c.Invitee is null || string.IsNullOrWhiteSpace(c.CurrencyCode)
-                || c.ExpectedRevision != 0 || c.ExpectedOfferRevision != 0 : c.Invitee is not null || c.CurrencyCode is not null)
-            || (c.Kind == TradeCommandKind.ReplaceOffer ? c.Offer is null : c.Offer is not null))
-            throw new TradeRuleException("invalid_trade_command");
-    }
     private static async Task Gate(NpgsqlConnection c, NpgsqlTransaction tx, string kind, Guid id, CancellationToken ct)
     {
         await using var q = new NpgsqlCommand("SELECT pg_advisory_xact_lock(hashtextextended(@key,0))", c, tx);

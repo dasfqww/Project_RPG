@@ -1,4 +1,5 @@
 using ProjectRpg.Backend.Domain;
+using Trading = ProjectRpg.Backend.Domain.Trading;
 
 namespace ProjectRpg.Backend.Data;
 
@@ -10,6 +11,34 @@ public sealed class InMemoryItemRepository(
     private readonly object _gate = transactionGate.SyncRoot;
 
     internal object TransactionSyncRoot => _gate;
+
+    internal IReadOnlyList<ItemRecord> TradeInventory(ItemOwnerRef owner) => _records.Values.Where(item =>
+        item.Owner == owner && item.LifecycleState == ItemLifecycleState.Active
+        && item.Location.ContainerType == ItemContainerType.Inventory).ToArray();
+
+    // Only the transaction coordinator may bypass reservation guards, after validating both live holds and the plan.
+    internal void ApplyTradePlan(IReadOnlyList<ItemRecordMutation> mutations)
+    {
+        if (!Monitor.IsEntered(_gate)) throw new InvalidOperationException("Asset transaction gate required.");
+        if (mutations.Count > Trading.TradeExchangePlanner.MaximumMutationCount) throw new InvalidDataException("Trade mutation limit");
+        Dictionary<Guid, ItemRecord> next = new(_records);
+        HashSet<Guid> seen = [];
+        foreach (var m in mutations)
+        {
+            if (!seen.Add(m.NewRecord.ItemId) || m.ExpectedRevision < 0 || m.ExpectedRevision == long.MaxValue
+                || m.NewRecord.Revision != m.ExpectedRevision
+                || (m.ExpectedRevision == 0 ? _records.ContainsKey(m.NewRecord.ItemId)
+                    : !_records.TryGetValue(m.NewRecord.ItemId, out var old) || old.Revision != m.ExpectedRevision))
+                throw new Trading.TradeRuleException("trade_item_revision_conflict");
+            var item = ItemRecordRules.SnapshotWithRevision(m.NewRecord, m.ExpectedRevision + 1);
+            if (!ItemRecordRules.TryValidateRecord(item, out _)) throw new InvalidDataException("Invalid trade item");
+            next[item.ItemId] = item;
+        }
+        if (next.Values.Where(i => i.LifecycleState == ItemLifecycleState.Active)
+            .GroupBy(i => (i.Owner, i.Location)).Any(group => group.Count() > 1))
+            throw new Trading.TradeRuleException("trade_inventory_full");
+        foreach (var m in mutations) _records[m.NewRecord.ItemId] = next[m.NewRecord.ItemId];
+    }
 
     internal void SeedStarter(ItemRecord record) => SeedStarters([record]);
 

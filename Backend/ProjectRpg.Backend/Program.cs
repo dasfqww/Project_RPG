@@ -114,6 +114,7 @@ if (string.Equals(storageProvider, "Postgres", StringComparison.OrdinalIgnoreCas
     builder.Services.AddSingleton<IEconomyRepository>(provider =>
         provider.GetRequiredService<PostgresEconomyRepository>());
     builder.Services.AddSingleton<ITradeReservationRepository, PostgresTradeReservationRepository>();
+    builder.Services.AddSingleton<ITradeSessionRepository, PostgresTradeSessionRepository>();
     builder.Services.AddSingleton<
         IDungeonRewardCommitRepository,
         PostgresDungeonRewardCommitRepository>();
@@ -150,6 +151,10 @@ else if (string.Equals(storageProvider, "Memory", StringComparison.OrdinalIgnore
     builder.Services.AddSingleton<IEconomyRepository>(provider =>
         provider.GetRequiredService<InMemoryEconomyRepository>());
     builder.Services.AddSingleton<ITradeReservationRepository, InMemoryTradeReservationRepository>();
+    builder.Services.AddSingleton<ITradeSessionRepository>(provider => new InMemoryTradeSessionRepository(
+        provider.GetRequiredService<InMemoryTransactionGate>(), (InMemoryGameRepository)provider.GetRequiredService<IGameRepository>(),
+        provider.GetRequiredService<InMemoryItemRepository>(), provider.GetRequiredService<InMemoryEconomyRepository>(),
+        provider.GetRequiredService<ProjectRpg.Backend.Domain.Trading.TradeItemPolicy>()));
     builder.Services.AddSingleton<
         IDungeonRewardCommitRepository,
         InMemoryDungeonRewardCommitRepository>();

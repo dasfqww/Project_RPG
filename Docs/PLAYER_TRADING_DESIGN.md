@@ -123,7 +123,7 @@ T6에서 보상 생성 시 확정한 eligible character/account 목록, 원래 �
 | T0 | 본 문서/조율 기록 | 현재 호출·계약 확인, 정책 기본값과 미결 분리 |
 | T1 | 서버 정의별 허용 정책, 불변 제안, 양측 동의 상태 전이 | 실제 Backend 빌드와 정책/위조 참여자/오래된 버전/변경 시 동의 해제/만료 회귀 |
 | T2a | Memory/PG 자산 예약·해제·만료와 기존 변이/지출 차단 | 실제 PG 병렬 예약/지출/아이템 변경·취소 봉인·중간 실패 롤백·저장소 재생성 |
-| T2b | 교환 계획(11절)·PostgreSQL 원자 저장(12절) 완료, Memory 동등 저장 후속 | 실제 PG 양측 교환/취소·입장 경합, 주입 실패 전체 롤백, 재시작/응답 유실 복구; Memory 동등 계약 |
+| T2b | 교환 계획(11절)·PostgreSQL 원자 저장(12절)·Memory 원자 저장/내부 DI(13절) 완료 | 실제 PG 양측 교환/취소·입장 경합, 주입 실패 전체 롤백, 재시작/응답 유실 복구; Memory 동등 계약 |
 | T3 | 인증된 직거래 API/조회/만료 처리 | 실제 HTTP 두 계정·세 번째 계정 거절·요청 충돌·응답 유실·재시작, 제한/감사 |
 | T4 | UE 로비 직거래 화면/복구/Projection | 실제 두 클라이언트 제안·준비·확정·취소·재접속, 기존 인벤토리 명령과 충돌 검사 |
 | T5 | 경매장 등록/검색/구매/취소/만료/대금 수령/API/UI | 동시 구매 1명 성공·취소 경합·오프라인 판매·포화/잔액 상한·재시작 실연결 |
@@ -137,7 +137,7 @@ Memory 테스트를 PG 동시성 증거로, 도메인 테스트를 실제 HTTP/U
 
 - T0/T1과 T2a 구현·검증 완료. T1에서 서버 허용 목록·아이템 소유/상태/귀속/수량 검사, 불변 제안,
   초대 수락·준비/철회·양측 확인·제안 변경 시 동의 해제·취소/만료를 구현했다.
-  T2a는 10절, 교환 계획은 11절, PostgreSQL 동의/예약/자산 이전/완료 영수증은 12절에 기록한다. Memory 세션 저장·API·UE 화면은 후속이다.
+  T2a는 10절, 교환 계획은 11절, PostgreSQL 원자 저장은 12절, Memory 동등 저장과 내부 DI는 13절에 기록한다. 인증 application/API·UE 화면은 후속이다.
 - T1 당시 게시 Backend 96081fe7+본인 거래 코드의 Release 빌드 경고0/오류0,
   도메인 6그룹/105 assertion 통과. 첫 실행의 잘못된 귀속 enum 기대 오류 코드를 기존
   ItemRecordRules의 invalid_trade_item으로 보정했으며 제품 검증을 완화하지 않았다.
@@ -148,7 +148,7 @@ Memory 테스트를 PG 동시성 증거로, 도메인 테스트를 실제 HTTP/U
 - T1 경로: Backend/ProjectRpg.Backend/Domain/Trading, Backend/ProjectRpg.Backend.TradingTests.
 - 검증: `powershell -NoProfile -File Scripts/Tests/Run-TradingTests.ps1`.
   게시된 Backend 사본에 자기 거래 코드만 덧씌워 빌드하며 Temp는 finally 폐기한다.
-- 다음 구현은 Memory의 동등 세션 저장/게임 상태 잠금 연계와 T3 인증된 application/API 연결이다. PostgreSQL 내부 저장 포트는 12절까지 구현했다. 최신 조율 표와 서비스/입장 경계를 재확인한다.
+- 다음 구현은 T3 인증된 application/API 연결이다. 양쪽 저장소의 내부 저장 포트와 DI는 13절까지 구현했다. 서버 초대 제한/만료 작업·실제 거래 허용 목록과 최신 조율 표의 서비스/입장 경계를 재확인한다.
 
 ## 10. T2a 자산 예약 저장·소비 차단 (2026-11-06)
 
@@ -257,8 +257,8 @@ T2b에서는 단독 ReserveAsync를 두 번 호출해 원자 교환으로 간주
 ## 12. PostgreSQL 동의·예약·자산 교환 원자 저장 (2026-11-06)
 
 운영툴 서비스 제어 9c8e4022 인계 후 `ITradeSessionRepository`와 `PostgresTradeSessionRepository`를 구현했다.
-이 내부 포트는 아직 DI/HTTP/UE에 공개하지 않는다. Actor는 이후 application이 인증 결과에서 만들어야 하며,
-Expire는 서버 만료 작업 전용이다. Memory용 세션 저장 구현도 후속이다.
+이 단계에서는 내부 포트를 DI/HTTP/UE에 공개하지 않았다. 이후 13절에서 Memory 구현과 내부 DI를 연결했다.
+Actor는 이후 application이 인증 결과에서 만들어야 하며, Expire는 서버 만료 작업 전용이다.
 
 ### 저장과 수명
 
@@ -302,5 +302,41 @@ Expire는 서버 만료 작업 전용이다. Memory용 세션 저장 구현도 �
 - 실행: `powershell -NoProfile -File Scripts/Tests/Run-TradeSessionTests.ps1`.
   `-MigrationOnly`는 패키지/배포 명령 검사만 실행한다. 전체 근거는 Saved/BuildChecks/TradeSession-20261106/2cb5fefd78544f8b8ffc4f252f5b1195/Result.json,
   마이그레이션 후속은 같은 루트/ca99daba959341e6afa18126feb6c378/Result.json. 작은 로그/해시만 보존한다.
-- 후속은 Memory의 동일 세션/예약/자산 rollback과 서비스/계정/리스 직렬화, 인증 application/DI·서버 TTL/초대 제한·만료 worker/API,
-  실제 거래 허용 콘텐츠와 UE 화면이다. 이 단계에서 API나 기본 허용 목록을 열지 않았다.
+- 당시 후속이었던 Memory의 동일 세션/예약/자산 rollback과 서비스/계정/리스 직렬화·내부 DI는 13절에서 구현했다.
+  인증 application·서버 초대 제한·만료 worker/API, 실제 거래 허용 콘텐츠와 UE 화면은 남아 있다. API나 기본 허용 목록은 열지 않았다.
+
+## 13. Memory 원자 거래와 공통 저장소 계약 (2026-11-06)
+
+`InMemoryTradeSessionRepository`를 구현하고 Memory/PostgreSQL 모두 `ITradeSessionRepository`로 내부 DI에 등록했다.
+명령 검증·참여자 판정·요청 지문·준비 예약 ID는 `TradeSessionRules`를 공유한다. HTTP/UE 호출은 아직 없다.
+
+### 저장·잠금·롤백
+
+- Memory는 실제 게임 저장소의 dungeon gate → 기존 item/economy 공통 transaction gate 순서로 실행한다.
+  생성 시 게임/아이템/재화 저장소의 gate 일치를 강제하고, 기존 입장·서비스 Drain·계정 제재와 같은 경계에서 접근을 재검사한다.
+  이 경계 안에서는 동기적으로 끝나는 구체 Memory 저장소만 호출하며 외부 I/O나 await를 넣지 않는다.
+- 초대/수락/제안/준비/확정/철회/취소/만료에 PG와 같은 5분 TTL·캐릭터당 활성 거래 1개·상태 CAS·요청 재생을 적용한다.
+  세션/영수증을 직렬화해 보관하므로 반환 결과 수정이 저장 상태를 바꾸지 않는다. 같은 gate로 저장소를 재생성해도 재생 가능하지만,
+  Memory 데이터는 프로세스 종료 시 사라진다. 프로세스 재시작 복구는 PostgreSQL의 별도 검증이다.
+- 마지막 확정은 전체 가방과 최신 지갑/다른 예약을 읽고 교환 계산 후 아이템·재화·예약 해제·완료·영수증을 한 번에 반영한다.
+  내부 전용 적용은 전역 아이템 ID/CAS·최종 슬롯 유일성·재화 상한을 다시 확인한다. 꽉 찬 양측 가방의 맞교환과 분할/병합을 지원한다.
+- 아이템/재화와 각각의 기존 영수증·거래 예약·세션·명령 영수증을 함께 snapshot/복원한다. Ready/Confirm의 정책/접근 거절은
+  해당 시도만 되돌리고 양측 준비/예약 해제와 거절 영수증을 저장한다. 취소 예외나 예기치 않은 실패는 전체 명령을 롤백해 같은 요청으로 재시도한다.
+- Memory 지갑에 저장됐던 재화 정의가 오래되어 변경된 잔액 상한을 놓치는 문제도 수정했다. 지갑 조회 시 현재 정의를 사용하고,
+  교환 적용 시 다시 검사한다. 일반 아이템/재화 명령의 예약 차단은 유지한다.
+
+### 검증·정리·다음 연결
+
+- 게시 e93a4e1d와 본인 명시 overlay의 분리 Release 빌드 두 개 모두 경고0/오류0. Memory 세션 6그룹320 assertion,
+  실제 PostgreSQL 세션 5그룹320·별도 프로세스 영수증 재생4, 양쪽에 동일한 공통 세션 계약을 실행했다.
+  요청 재생/CAS/소유권/반환 결과 격리, 동시 Ready·확정/취소, 실제 게임 저장소 입장 경합, Drain/제재/만료,
+  꽉 찬 가방 맞교환·분할/병합·상한 변경·중간 실패/취소 전체 롤백을 확인했다.
+- 기존 T1 105·교환 계획8985·예약 Memory69/PG81, 제작 Memory9그룹·보상 Memory7그룹도 통과했다.
+  제작/보상 검사는 실제 bearer HTTP를 포함하며 거래 HTTP 검증은 아니다. 검증 후 제품/검사 소스11개의 해시가 동일하다.
+- 실행: `powershell -NoProfile -File Scripts/Tests/Run-TradeMemorySessionTests.ps1` (dotnet·Docker·Node 필요).
+  근거는 Saved/BuildChecks/TradeMemorySession-20261106/4ac60af9cfbd4654a789b7b0745aad00/의 Result.json·CleanupRecovery.json·CompletionAudit.json이다.
+  최초 러너 결과는 모든 동작 검사를 통과한 뒤 Windows 긴 경로 정리에서 실패했다. 전용 정리 함수를 보완해 남은 실제 경로를 삭제했고,
+  초기 실패 기록은 보존했다. 복구에서 확인한 삭제량은 7,067,029 bytes이며 그 전 부분 삭제량은 미집계다.
+  자기 DB/프로세스/Temp 잔여와 정리 예외는0, 작은 로그/해시만 남긴다. 폐기한 바이너리는 재실행 가능한 증거로 취급하지 않는다.
+- 다음은 인증 결과에서 Actor를 만드는 application/API, 초대 제한과 서버 만료 작업이다. 운영 거래 허용 목록은 계속 비어 있으며,
+  실제 콘텐츠 허용·UE 화면·다중 PC 거래 검증은 후속이다.

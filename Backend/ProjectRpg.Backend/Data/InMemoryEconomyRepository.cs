@@ -1,4 +1,5 @@
 using ProjectRpg.Backend.Domain;
+using Trading = ProjectRpg.Backend.Domain.Trading;
 
 namespace ProjectRpg.Backend.Data;
 
@@ -12,6 +13,22 @@ public sealed class InMemoryEconomyRepository(
     private readonly Dictionary<Guid, CurrencyTransactionResult> _receipts = [];
     private readonly object _gate = transactionGate.SyncRoot;
     internal object TransactionSyncRoot => _gate;
+
+    internal void ApplyTradePlan(IReadOnlyList<Trading.TradeCurrencyMovement> changes)
+    {
+        if (!Monitor.IsEntered(_gate)) throw new InvalidOperationException("Asset transaction gate required.");
+        foreach (var change in changes)
+        {
+            if (!_definitions.TryGetValue(change.CurrencyCode, out var definition) || !definition.Enabled
+                || definition.Scope != change.Owner.Scope || change.NewBalance < 0 || change.NewBalance > definition.MaxBalance)
+                throw new Trading.TradeRuleException("trade_balance_limit");
+            var current = _balances.GetValueOrDefault(Key(change.Owner, change.CurrencyCode));
+            if ((current?.Balance ?? 0) != change.PreviousBalance || (current?.Revision ?? 0) != change.ExpectedRevision
+                || change.ExpectedRevision == long.MaxValue)
+                throw new Trading.TradeRuleException("trade_revision_exhausted");
+            _balances[Key(change.Owner, change.CurrencyCode)] = new(definition, change.Owner, change.NewBalance, change.ExpectedRevision + 1);
+        }
+    }
 
     internal sealed record Snapshot(
         Dictionary<(CurrencyScope, string, string), CurrencyBalance> Balances,
@@ -109,8 +126,9 @@ public sealed class InMemoryEconomyRepository(
                     CurrencyOwnerRef owner = new(
                         definition.Scope,
                         EconomyRules.ResolveOwnerId(definition.Scope, context));
-                    return _balances.GetValueOrDefault(Key(owner, definition.CurrencyCode))
-                        ?? new CurrencyBalance(definition, owner, 0, 0);
+                    var stored = _balances.GetValueOrDefault(Key(owner, definition.CurrencyCode));
+                    return stored is null ? new CurrencyBalance(definition, owner, 0, 0)
+                        : stored with { Definition = definition };
                 })
                 .ToArray();
             return Task.FromResult(new CurrencyWallet(
