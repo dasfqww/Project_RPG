@@ -4,6 +4,7 @@
 - 상태: **아키텍처 문서 작성 완료. 아래 신규 타입·포트·호출 순서는 구현 예정이며 제품 코드는 아직 없다.**
 - 기준: 게시 `92fdb7bf`와 [Riding 상세 설계](RIDING_SYSTEM_DESIGN.md). 게임 규칙·수치·API/DB 계약은 상세 설계가 기준이고, 이 문서는 책임·의존·연결 방법을 정의한다.
 - 이번 산출물: 아키텍처와 구현 분할. C++ 골격, 백엔드, 에셋 생성 및 런타임 검증은 포함하지 않는다.
+- 다음 코드 설계: [M1 상태·세션·컴포넌트 계약](RIDING_SYSTEM_CODE_DESIGN.md) — C++ 값/시그니처·요청 ledger·초기화/재진입/복제·검사 순서. 공용 HUD의 구체 API 인계와 독립적으로 진행하며 제품 구현과 구분한다.
 
 ## 1. 구조 결정
 
@@ -123,7 +124,7 @@ flowchart TB
 
 ### 하단 HUD 좌측 퀵슬롯 전환 연계 — 2026-11-06
 
-사용자가 공용 좌측 퀵슬롯 전환을 다른 에이전트에게 맡겼다. **Riding은 공용 호스트에 붙는 기능 제공자**로 구현한다. 최신 조율 표의 `actionbar-context-20261106` 담당은 `UI/ActionBar/**`와 QuickSlotComponent·RPGHUD·PlayerController의 공용 연결을 예약했고, Riding 상태/이동/저장과 문서는 별도 담당으로 구분했다. 인계 문서 예정 경로는 `Docs/ACTION_BAR_CONTEXT.md`이며 이번 확인 시 아직 생성 전이다. 아래는 Riding 측 요구/제공 계약으로, 상대 담당의 상세 배치·완료 상태나 최종 API 합의를 가정하지 않는다.
+사용자가 공용 좌측 퀵슬롯 전환을 다른 에이전트에게 맡겼다. **Riding은 공용 호스트에 붙는 기능 제공자**로 구현한다. 최신 조율 표의 `actionbar-context-20261106` 담당은 `UI/ActionBar/**`와 QuickSlotComponent·RPGHUD·PlayerController의 공용 연결을 예약했고, Riding 상태/이동/저장과 문서는 별도 담당으로 구분했다. 재개 시 `Docs/ACTION_BAR_CONTEXT.md`와 공용 provider/context/profile 헤더가 생성돼 실제 API를 대조했다. 상대 구현은 검증·게시 전이며 아래 Riding 요구가 공용 API에 모두 구현됐다는 뜻은 아니다.
 
 | 담당 | 소유 범위 |
 |---|---|
@@ -131,7 +132,7 @@ flowchart TB
 | Riding 담당 | 서버 탑승/액션/쿨타임·보유/설정·탈것별 표시 데이터·사용 불가 사유·명령 수신 어댑터·보관함·Riding 키 설정 제공 |
 | 인계 후 순차 연결 | 공용 provider 등록/해제, 표시 문맥 요청, 액션 전달, 눌린 입력 취소, 슬롯 배정 요청 연결, 실제 통합 검사 |
 
-현재 공통 `QuickSlotComponent`, `RPGQuickSlotWidget`, `RPGQuickSlotViewModel`, PlayerHUD/SkillBar 에셋 및 입력 dispatch를 Riding 담당이 병행 수정하지 않는다. 공용 인터페이스 선언/파일 경로는 HUD 담당이 정한 계약을 소비한다. 다음 포트 이름은 **설명용 가칭**이며 다른 버전의 공용 인터페이스를 별도로 만들지 않는다.
+현재 공통 `QuickSlotComponent`, `RPGQuickSlotWidget`, `RPGQuickSlotViewModel`, PlayerHUD/SkillBar 에셋 및 입력 dispatch를 Riding 담당이 병행 수정하지 않는다. 공용 인터페이스 선언/파일 경로는 HUD 담당이 정한 계약을 소비한다. 다음 포트 이름은 **Riding 내부의 논리적 제공 기능**이며 공용 API의 실제 함수명이 아니다. 실제 `IRPGActionBarProvider`와 `URPGActionBarContext`에 대한 [어댑터 매핑](RIDING_SYSTEM_CODE_DESIGN.md#실제-공용-api를-소비하는-어댑터)을 따른다.
 
 | Riding이 제공할 포트/값 | 내용과 검증 경계 |
 |---|---|
@@ -156,7 +157,7 @@ flowchart TB
 
 화면 전환 중에도 서버의 수동 전투/소모 가드는 유지한다. 호스트 미준비/등록 실패는 UI 연결 미완료로 보고하며, 임시로 두 번째 스킬바를 만드는 우회는 하지 않는다. 독립 상태·이동·액션·저장 기능은 이 UI 인계와 분리해 진행할 수 있다.
 
-공용 호스트 인계 때 확인할 항목은 **계약 파일/타입명, 등록/해제 API, 표시 문맥 요청·복귀 규칙, ActionId와 물리 셀/키 연결, 입력 취소 소유자, 드롭 배정 API, 예약 해제된 수정 경로**다. 이를 문서/실제 호출과 대조한 후 어댑터만 맞춘다.
+공용 호스트의 `UQuickSlotComponent::GetActionBarContext`, `Activate/Deactivate`, provider의 `ReadAction/PressAction/ReleaseAction`, profile의 좌측/중앙 표시 계약을 실제 헤더와 대조했다. 등록 handle은 임의 FGuid가 아니라 설치한 shared provider identity다. 입력의 공용 revision과 Riding 상태 revision은 별도로 검사한다. 현재 공용 action view에는 차단 사유가 없고 provider에는 논리 슬롯 배정/드롭 API가 없으므로 이 두 항목은 별도 인계한다. 검증/게시 및 예약 해제 전 공용 파일을 수정하지 않는다.
 R08/R09 통합 검사에는 탑승 거절 시 전환 없음, 승인/하차/강제 하차, 누른 상태의 페이지 교체, 클릭+키 중복, HUD 재생성, 쿨타임 연속성, 캐릭터/World 교체, 기존 슬롯 편성 보존을 포함한다. 제공자 단위 검사로 공용 HUD 통합 완료를 대신하지 않는다.
 
 ## 4. 초기화·전이·종료 순서
