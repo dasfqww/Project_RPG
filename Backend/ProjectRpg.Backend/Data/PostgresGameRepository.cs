@@ -52,7 +52,7 @@ public sealed partial class PostgresGameRepository(
 
         await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
-        await PostgresAccountAccess.EnsureAsync(connection, transaction, identity.SteamId, authenticatedAt, cancellationToken);
+        await PostgresAdmissionAccess.EnsureAsync(connection, transaction, identity.SteamId, authenticatedAt, cancellationToken);
         await using NpgsqlCommand command = new(sql, connection, transaction);
         command.Parameters.AddWithValue("steam_id", identity.SteamId);
         command.Parameters.AddWithValue("owner_steam_id", identity.OwnerSteamId);
@@ -80,7 +80,7 @@ public sealed partial class PostgresGameRepository(
 
         await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
-        await PostgresAccountAccess.EnsureAsync(connection, transaction, steamId, connectionClock?.GetUtcNow() ?? DateTimeOffset.UtcNow, cancellationToken);
+        await PostgresAdmissionAccess.EnsureAsync(connection, transaction, steamId, connectionClock?.GetUtcNow() ?? DateTimeOffset.UtcNow, cancellationToken);
         await using NpgsqlCommand command = new(sql, connection, transaction);
         command.Parameters.AddWithValue("token_hash", tokenHash);
         command.Parameters.AddWithValue("steam_id", steamId);
@@ -479,7 +479,7 @@ public sealed partial class PostgresGameRepository(
             await dataSource.OpenConnectionAsync(cancellationToken);
         await using NpgsqlTransaction transaction =
             await connection.BeginTransactionAsync(cancellationToken);
-        await PostgresAccountAccess.EnsureAsync(connection, transaction, steamId, connectionClock?.GetUtcNow() ?? now, cancellationToken);
+        await PostgresAdmissionAccess.EnsureAsync(connection, transaction, steamId, connectionClock?.GetUtcNow() ?? now, cancellationToken);
         await CleanupExpiredDungeonSessionsAsync(
             connection,
             transaction,
@@ -572,7 +572,7 @@ public sealed partial class PostgresGameRepository(
             await dataSource.OpenConnectionAsync(cancellationToken);
         await using NpgsqlTransaction transaction =
             await connection.BeginTransactionAsync(cancellationToken);
-        await PostgresAccountAccess.EnsureAsync(connection, transaction, steamId, connectionClock?.GetUtcNow() ?? now, cancellationToken);
+        await PostgresAdmissionAccess.EnsureAsync(connection, transaction, steamId, connectionClock?.GetUtcNow() ?? now, cancellationToken);
         await CleanupExpiredDungeonSessionsAsync(
             connection,
             transaction,
@@ -1091,7 +1091,7 @@ public sealed partial class PostgresGameRepository(
     {
         await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
-        await PostgresAccountAccess.EnsureAsync(connection, transaction, steamId, connectionClock?.GetUtcNow() ?? now, cancellationToken);
+        await PostgresAdmissionAccess.EnsureAsync(connection, transaction, steamId, connectionClock?.GetUtcNow() ?? now, cancellationToken);
         await CleanupExpiredDungeonSessionsAsync(connection, transaction, now, cancellationToken);
         var locked = await LockDungeonSessionAsync(connection, transaction, dungeonSessionId, cancellationToken);
         if (locked is null) throw new DungeonSessionNotFoundException(dungeonSessionId);
@@ -1892,7 +1892,7 @@ public sealed partial class PostgresGameRepository(
     {
         await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
-        await PostgresAccountAccess.EnsureAsync(connection, transaction, steamId, connectionClock?.GetUtcNow() ?? DateTimeOffset.UtcNow, cancellationToken);
+        await PostgresAdmissionAccess.EnsureAsync(connection, transaction, steamId, connectionClock?.GetUtcNow() ?? DateTimeOffset.UtcNow, cancellationToken);
         var locked = await LockDungeonSessionAsync(connection, transaction, dungeonSessionId, cancellationToken);
         if (locked is null) return JoinTicketIssueResult.NotActiveMember;
         DateTimeOffset now = connectionClock?.GetUtcNow() ?? DateTimeOffset.UtcNow;
@@ -2009,7 +2009,7 @@ public sealed partial class PostgresGameRepository(
             UNION SELECT steam_id FROM game_join_ticket_consumptions WHERE token_hash=@hash LIMIT 1
             """, connection, transaction))
         { owner.Parameters.AddWithValue("hash",tokenHash); account = await owner.ExecuteScalarAsync(cancellationToken) as string; }
-        if (account is null || !await PostgresAccountAccess.AllowAsync(connection,transaction,account,
+        if (account is null || !await PostgresAdmissionAccess.AllowAsync(connection,transaction,account,
             connectionClock?.GetUtcNow() ?? now,cancellationToken)) return null;
         if (await LockDungeonSessionAsync(connection, transaction, dungeonSessionId, cancellationToken) is null)
             return null;

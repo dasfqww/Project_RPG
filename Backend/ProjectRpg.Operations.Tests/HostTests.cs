@@ -40,8 +40,8 @@ internal static class HostTests
             await using (var source=NpgsqlDataSource.Create(postgres))
             {
                 var catalog=await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory,default);
-                Check.That(await PostgresSchemaMigrations.ApplyAsync(source,catalog.Take(6).ToArray(),default)==6,"Published v6 catalog installs.");
-                Check.That(await PostgresSchemaMigrations.ApplyAsync(source,catalog,default)==1,"Operations upgrades v6 with exactly one append migration.");
+                Check.That(await PostgresSchemaMigrations.ApplyAsync(source,catalog.Take(8).ToArray(),default)==8,"Published v8 catalog installs.");
+                Check.That(await PostgresSchemaMigrations.ApplyAsync(source,catalog,default)==1,"Operations upgrades v8 with exactly one service-control append migration.");
                 Check.That(await PostgresSchemaMigrations.ApplyAsync(source,catalog,default)==0,"Operations migration is idempotent through history.");
                 await PostgresSchemaMigrations.ValidateAsync(source,catalog,default);
             }

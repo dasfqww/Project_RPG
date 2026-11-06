@@ -18,7 +18,7 @@ public sealed partial class InMemoryGameRepository
         lock(_dungeonGate)
         {
             ct.ThrowIfCancellationRequested();var intent=command.Intent;
-            if(_operationsActions.ContainsKey(intent.RequestId))return Result<RestrictionCommit>.Fail(RestrictionFailures.RequestConflict);
+            if(_operationsActions.ContainsKey(intent.RequestId)||_serviceActions.ContainsKey(intent.RequestId))return Result<RestrictionCommit>.Fail(RestrictionFailures.RequestConflict);
             if(_restrictionActions.TryGetValue(intent.RequestId,out var prior))return prior.Hash==command.InputHash
                 ?Result<RestrictionCommit>.Success(new("Replayed",prior.Receipt)):Result<RestrictionCommit>.Fail(RestrictionFailures.RequestConflict);
             if(!_accounts.ContainsKey(intent.AccountId))return Result<RestrictionCommit>.Fail(RestrictionFailures.AccountMissing);

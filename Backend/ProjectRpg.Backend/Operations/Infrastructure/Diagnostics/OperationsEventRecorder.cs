@@ -74,6 +74,18 @@ public sealed class OperationsEventRecorder(OperationsLogStore store, Operations
         }
         catch(Exception) { /* The immutable database receipt is authoritative even when technical logging is unavailable. */ }
     }
+    public void RecordService(HttpContext context, Guid requestId, string outcome, string? error)
+    {
+        try
+        {
+            Write(new(1,Guid.NewGuid(),"ops.command."+outcome.ToLowerInvariant(),clock.GetUtcNow(),error is null?"Information":"Warning",
+                options.EnvironmentId,"ProjectRpg.Backend",store.BootId,BuildVersion,OperationsHttp.RequestId(context),
+                Activity.Current?.TraceId.ToString(),Activity.Current?.SpanId.ToString(),null,
+                ProjectRpg.Operations.Core.ServiceControl.ServiceCommand.Operation,null,options.OperatorId,
+                null,null,null,requestId,null,null,null,outcome,error,null,"OperationsServiceControl"));
+        }
+        catch(Exception) { /* Committed database audit remains authoritative. */ }
+    }
     private void Write(LogEvent value)
     {
         // Only these typed, server-owned fields cross the logger boundary. Never attach request/body/exception objects.

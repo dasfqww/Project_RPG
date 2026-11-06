@@ -5,6 +5,7 @@ await CompensationTests.RunAsync();
 await MonitoringPolicyTests.RunAsync();
 await MonitoringHostTests.RunAsync();
 await RestrictionTests.RunAsync();
+await ServiceControlTests.RunAsync();
 Console.WriteLine("Operations contract tests passed.");
 
 internal static class Check

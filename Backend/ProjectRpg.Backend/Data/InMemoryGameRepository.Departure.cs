@@ -10,6 +10,7 @@ public sealed partial class InMemoryGameRepository
         cancellationToken.ThrowIfCancellationRequested();
         lock (_dungeonGate)
         {
+            if (!cancel) EnsureAdmissionAllowed(steamId, connectionClock?.GetUtcNow() ?? now);
             CleanupExpiredDungeonSessions(now);
             DungeonSession updated = DungeonDeparturePolicy.Apply(GetRequiredDungeonSession(dungeonSessionId),
                 steamId, characterId, requestId, expectedRevision, cancel, minimumPartySize, now);

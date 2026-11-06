@@ -48,7 +48,7 @@ public sealed class OperationsBoundary(RequestDelegate next)
         bool login = context.Request.Path == "/ops/login" && HttpMethods.IsGet(context.Request.Method)
             || context.Request.Path == "/ops/auth/login" && HttpMethods.IsPost(context.Request.Method);
         bool callback = context.Request.Path == "/ops/auth/github-callback" && HttpMethods.IsGet(context.Request.Method);
-        bool command = HttpMethods.IsPost(context.Request.Method) && context.Request.Path.StartsWithSegments("/ops/api");
+        bool command = (HttpMethods.IsPost(context.Request.Method) || HttpMethods.IsPut(context.Request.Method)) && context.Request.Path.StartsWithSegments("/ops/api");
         deadline.CancelAfter(TimeSpan.FromSeconds(login || callback ? 25 : command ? 10 : 5));
         context.RequestAborted = deadline.Token;
         try

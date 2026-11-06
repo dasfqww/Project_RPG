@@ -1,6 +1,20 @@
 # 운영툴 실행과 유지보수
 
-2026-11-05 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 영수증·정산 조사, S3 개별 보상·기간 제재/해제의 Backend/운영 화면과 S4 런타임 감시·알림 구현. 제재의 최신 UE 통합 검증은 인계 대기다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md)의 공지/점검·백업 수집/복구는 후속 구현 범위다.
+2026-11-06 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 조사, S3 개별 보상·기간 제재/해제, S4 런타임 감시·알림과 공지·Open/Drain의 Backend/운영 화면을 구현했다. 공지·점검의 UE 화면 연결, Drain 장기 지속 경보와 백업 수집/복구·실제 운영 배포는 후속 범위다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md).
+
+## 공지·Open/Drain 서비스 제어
+
+`Operations:ServiceControlEnabled=true`와 기존 운영 인증/관리 HTTPS 설정을 적용하면 `/ops/service-control` 및 `GET/PUT /ops/api/service-control`을 제공한다. 기본 쓰기는 비활성이다. 배포 전 기존 스키마 이력을 유지한 채 `--migrate-schema`로 v9 `operations_service_control`을 적용한다. UI에서 모드·공지·시각·사유를 확인한 뒤 실행하며, 화면은 배포/프로세스 종료/DB 복원을 수행하지 않는다.
+
+- 최초 상태는 Open/revision 0/빈 공지다. 변경은 기대 revision을 검사해 1 증가시키고 변경·원래 요청/운영자/HTTP/trace가 있는 불변 감사 영수증을 같은 트랜잭션으로 저장한다. 같은 ID/같은 정규 입력은 원래 영수증을 재생하고 다른 내용·다른 조치 종류의 ID 재사용은 거절한다. 조회는 상태를 변경하지 않는다.
+- Core는 공지·시각·revision 정책과 좁은 읽기/원자 변경 포트를, 저장 어댑터는 영속화·트랜잭션을 소유한다. `PostgresAdmissionAccess`는 서비스→계정→게임 잠금 순서만 조립한다. 계정 제재 정책과 서비스 정책은 각각 독립돼 있다. 신규 입장은 서비스 공유 transaction advisory lock, 전환은 배타 lock을 사용한다. Memory는 기존 공통 transaction gate 안에서 같은 경계를 보장한다.
+- Drain은 신규 로그인/인증 발급·던전 생성/참가·출발 요청·새 티켓 발급/소비·입장 확인을 503 `service_draining`/`Retry-After: 30`으로 거절한다. 출발 취소, 이미 인증된 조회/우편 수령, 기존 전투·heartbeat·정산과 읽기 전용 입장 근거는 유지한다. 기존 인증·멤버·리스·확정 보상을 삭제하지 않는다. Open 전환 후 신규 접근을 다시 허용한다.
+- `GET /api/service-status`는 운영 화면 비활성 상태에서도 익명 읽기로 제공한다. 예외는 정확한 경로의 GET뿐이며 IP당 60회/분, no-store를 적용한다. 모드·plain text 공지·시작/종료·표시 여부·관측시각만 반환한다. 운영자·사유·감사/요청/trace ID는 공개하지 않는다. 시작 포함/종료 제외의 UTC 구간이며 양쪽 시각을 생략하면 즉시·무기한, 빈 공지는 숨김이다. 클라이언트는 HTML로 실행하지 않고 텍스트로 표시해야 한다.
+- UI는 int64 revision을 문자열로 유지하고 요청 ID와 원래 본문을 전송 전에 저장한다. 응답 유실/401/영수증 404는 미커밋으로 단정하지 않고 같은 요청의 조회/재시도만 제공한다. 영수증의 조치 종류·요청·내용 일치를 확인한 뒤 최신 상태를 다시 읽는다. `GET /ops/api/actions/{requestId}`와 화면 로그 링크로 원래 조치 및 `operationRequestId`를 추적한다. 기술 로그에는 공지/사유 본문을 넣지 않는다. PUT도 CSRF·32KiB·운영 명령 30회/분 제한을 적용한다.
+
+필요한 검증은 기존 `Scripts/Tests/Run-OperationsTests.ps1 -Postgres`에 포함된다. 실제 HTTPS/모의 OAuth, Memory·격리 tmpfs PostgreSQL의 익명 경계/제한·권한/CSRF/본문·공지 시간·revision/재생·다른 종류 ID 충돌, 모든 신규 입장 거절과 기존 2인 heartbeat/실제 worker 양쪽 지급, 공유/배타 gate 대기·감사 실패 롤백·재시작 영속화·로그 검색을 검사한다. 별도 화면 스크립트 검사는 응답 유실/새로고침·동일 바이트 재전송·int64·401/404/영수증 불일치·저장 실패를 다룬다. 실제 GitHub OAuth·브라우저 시각 렌더·UE 화면/게임 소켓·운영 배포 검증과 구분한다.
+
+Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복구는 활성 던전·미확정/실패/처리 중 정산 확인 후 외부 수단으로 생산자·worker·백엔드를 중지하고 쓰기 차단을 확인해야 한다. 장기 Drain 자동 강제 종료는 없으며 30분 경보 연결은 후속이다.
 
 ## 구현 경계
 

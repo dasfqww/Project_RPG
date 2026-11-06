@@ -11,6 +11,7 @@ public sealed partial class PostgresGameRepository
     {
         await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
+        if (!cancel) await PostgresAdmissionAccess.EnsureAsync(connection, transaction, steamId, connectionClock?.GetUtcNow() ?? now, cancellationToken);
         await CleanupExpiredDungeonSessionsAsync(connection, transaction, now, cancellationToken);
         if (await LockDungeonSessionAsync(connection, transaction, dungeonSessionId, cancellationToken) is null)
             throw new DungeonSessionNotFoundException(dungeonSessionId);

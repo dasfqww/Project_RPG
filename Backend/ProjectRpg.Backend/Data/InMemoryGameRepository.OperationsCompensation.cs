@@ -22,7 +22,7 @@ public sealed partial class InMemoryGameRepository
         lock (_characterGate)
         {
             ct.ThrowIfCancellationRequested();
-            if (_restrictionActions.ContainsKey(command.RequestId)) return Fail(CompensationFailures.RequestConflict);
+            if (_restrictionActions.ContainsKey(command.RequestId) || _serviceActions.ContainsKey(command.RequestId)) return Fail(CompensationFailures.RequestConflict);
             var itemReceipt = items.TryGetCommitResultAsync(command.RequestId, ct).GetAwaiter().GetResult();
             if (_operationsActions.TryGetValue(command.RequestId, out var stored))
             {

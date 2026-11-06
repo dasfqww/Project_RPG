@@ -56,6 +56,7 @@ public static class PostgresSchemaMigrations
             Path.Combine(baseDirectory, "Database", "Migrations", "0006_operations_compensation.sql"), cancellationToken);
         string restrictions = await File.ReadAllTextAsync(Path.Combine(baseDirectory,"Database","Migrations","0007_operations_restrictions.sql"),cancellationToken);
         string reservations = await File.ReadAllTextAsync(Path.Combine(baseDirectory,"Database","Migrations","0008_trade_reservations.sql"),cancellationToken);
+        string service = await File.ReadAllTextAsync(Path.Combine(baseDirectory,"Database","Migrations","0009_operations_service_control.sql"),cancellationToken);
         return [new PostgresSchemaMigration(1, "baseline", sql),
             new PostgresSchemaMigration(2, "item_equipment_progression", equipment),
             new PostgresSchemaMigration(3, "character_narrative", narrative),
@@ -63,7 +64,8 @@ public static class PostgresSchemaMigrations
             new PostgresSchemaMigration(5, "operations_evidence", evidence),
             new PostgresSchemaMigration(6, "operations_compensation", compensation),
             new PostgresSchemaMigration(7, "operations_restrictions", restrictions),
-            new PostgresSchemaMigration(8, "trade_reservations", reservations)];
+            new PostgresSchemaMigration(8, "trade_reservations", reservations),
+            new PostgresSchemaMigration(9, "operations_service_control", service)];
     }
 
     // Development/Testing replays the current idempotent catalog under the existing

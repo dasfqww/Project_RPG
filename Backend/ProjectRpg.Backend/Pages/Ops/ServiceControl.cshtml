@@ -1,0 +1,67 @@
+@page "/ops/service-control"
+@model ProjectRpg.Backend.Pages.Ops.ServiceControlModel
+<h1>공지·신규 입장 제어</h1>
+@if(Model.Error is not null){<p class="error">@Model.Error · 현재 상태를 확인할 수 없습니다.</p>}
+@if(Model.Status is not null)
+{
+<div id="service" data-revision="@Model.Status.Revision" data-storage="@Model.StorageKey">
+<p id="current-state">@Model.Status.Mode · revision @Model.Status.Revision</p>
+@if(Model.Status.ActionRequestId is {} latest){<p>최근 확정 조치 <a href="/ops/api/actions/@latest">@latest</a></p>}
+<p>Drain은 신규 로그인·방 생성/참가·출발·티켓/입장 확인을 막습니다. 기존 전투·정산·조회·우편 수령은 유지합니다. 자동 강제 종료나 배포는 수행하지 않습니다.</p>
+<form id="service-form">@Html.AntiForgeryToken()
+<label>모드 <select name="mode"><option value="Open" selected="@(Model.Status.Mode=="Open")">Open</option><option value="Drain" selected="@(Model.Status.Mode=="Drain")">Drain</option></select></label>
+<label>공지(빈 값은 숨김) <textarea name="notice" maxlength="1000" rows="4" cols="65">@Model.Status.NoticeText</textarea></label>
+<label>시작 UTC <input name="starts" value="@Model.Status.NoticeStartsAtUtc?.ToString("O")" placeholder="2026-11-07T12:00:00Z" /></label>
+<label>종료 UTC <input name="ends" value="@Model.Status.NoticeEndsAtUtc?.ToString("O")" placeholder="2026-11-07T13:00:00Z" /></label>
+<label>변경 사유 <input name="reason" required minlength="10" maxlength="512" size="50" /></label>
+<button type="submit">변경 내용 확인</button></form>
+<pre id="intent" style="white-space:pre-wrap"></pre>
+<button id="send" type="button" disabled>확인한 변경 실행</button><button id="reset" type="button" disabled>확정 결과 확인 후 새 변경</button>
+<p id="status" role="status" aria-live="polite"></p>
+<form id="lookup"><label>원래 요청 UUID <input name="requestId" required maxlength="36" size="38" /></label><button>확정 결과 조회</button></form>
+<a id="trace" hidden>변경 로그 추적</a>
+</div>
+<script nonce="@HttpContext.Items["Ops.ScriptNonce"]">
+(()=>{
+ 'use strict';
+ const root=document.getElementById('service'),form=document.getElementById('service-form'),send=document.getElementById('send'),reset=document.getElementById('reset');
+ const status=document.getElementById('status'),detail=document.getElementById('intent'),lookup=document.getElementById('lookup'),trace=document.getElementById('trace');
+ const key=root.dataset.storage,pendingKey=key+'.intent.global';let pending=null,busy=false,resolved=false;
+ function lock(value){for(const field of Object.values(form.elements))field.disabled=value;}
+ function show(){detail.textContent=pending?pending.body:'';send.disabled=!pending;lock(!!pending);}
+ async function api(path,body){const response=await fetch(path,{method:body?'PUT':'GET',headers:body?{'Content-Type':'application/json','X-Ops-CSRF':document.querySelector('[name="__RequestVerificationToken"]').value}:{},body});
+  const value=await response.json();if(!response.ok){const e=new Error(value.code||'ops.request_failed');e.code=value.code;throw e;}return value.data;}
+ function date(value){if(!value.trim())return null;if(!/(Z|[+-]\d\d:\d\d)$/.test(value)||!Number.isFinite(Date.parse(value)))throw new Error('UTC 또는 명시적 시간대가 있는 시각을 입력하세요.');return new Date(value).toISOString();}
+ async function refresh(){const state=await api('/ops/api/service-control');if(!/^\d+$/.test(state.revision))throw new Error('상태 Revision 형식 오류');root.dataset.revision=state.revision;
+  document.getElementById('current-state').textContent=state.mode+' · revision '+state.revision;
+  form.elements.mode.value=state.mode;form.elements.notice.value=state.noticeText;form.elements.starts.value=state.noticeStartsAtUtc||'';form.elements.ends.value=state.noticeEndsAtUtc||'';}
+ async function confirmed(receipt){
+  if(receipt.operation!=='Ops.ServiceControl.Change.v1'||receipt.target?.scope!=='Service'||receipt.target.id!=='global')throw new Error('다른 종류의 영수증입니다.');
+  if(pending){const v=JSON.parse(pending.body),r=receipt.result;
+   if(receipt.requestId!==v.requestId||r.revision!==(BigInt(v.expectedRevision)+1n).toString()||r.mode!==v.mode||r.noticeText!==v.noticeText||receipt.reason!==v.reason
+     ||(r.noticeStartsAtUtc?Date.parse(r.noticeStartsAtUtc):null)!==(v.noticeStartsAtUtc?Date.parse(v.noticeStartsAtUtc):null)
+     ||(r.noticeEndsAtUtc?Date.parse(r.noticeEndsAtUtc):null)!==(v.noticeEndsAtUtc?Date.parse(v.noticeEndsAtUtc):null))throw new Error('원래 변경과 영수증이 일치하지 않습니다.');}
+  await refresh();sessionStorage.removeItem(pendingKey);pending=null;resolved=true;show();send.disabled=true;reset.disabled=false;lock(true);
+  trace.href='/ops/diagnostics?operationRequestId='+encodeURIComponent(receipt.requestId)+'&fromUtc='+encodeURIComponent(new Date(Date.parse(receipt.committedAtUtc)-300000).toISOString())+'&toUtc='+encodeURIComponent(new Date(Date.parse(receipt.committedAtUtc)+300000).toISOString());trace.hidden=false;
+  status.textContent='확정 영수증 확인 완료 · 현재 상태를 다시 조회했습니다.';
+ }
+ form.onsubmit=e=>{e.preventDefault();if(busy||pending||resolved)return;try{
+  const v={requestId:crypto.randomUUID(),expectedRevision:root.dataset.revision,mode:form.elements.mode.value,noticeText:form.elements.notice.value.trim(),noticeStartsAtUtc:date(form.elements.starts.value),noticeEndsAtUtc:date(form.elements.ends.value),reason:form.elements.reason.value.trim()};
+  pending={body:JSON.stringify(v)};show();status.textContent='내용을 확인한 뒤 실행하세요.';
+ }catch(error){status.textContent=error.message;}};
+ send.onclick=async()=>{if(busy||!pending)return;busy=true;send.disabled=true;try{
+  const v=JSON.parse(pending.body);sessionStorage.setItem(pendingKey,JSON.stringify(pending));
+  const ids=JSON.parse(localStorage.getItem(key+'.requests')||'[]');if(!Array.isArray(ids))throw new Error('요청 저장소 형식 오류');
+  localStorage.setItem(key+'.requests',JSON.stringify([v.requestId,...ids.filter(id=>id!==v.requestId)].slice(0,20)));lookup.elements.requestId.value=v.requestId;
+  await confirmed((await api('/ops/api/service-control',pending.body)).receipt);
+ }catch(error){status.textContent=error.message+' · 새 요청을 만들지 말고 원래 요청을 조회/재시도하세요.';
+  if(['ops.revision_conflict','ops.invalid_service_control'].includes(error.code)){resolved=true;reset.disabled=false;send.disabled=true;}}
+ finally{busy=false;if(pending&&!resolved)send.disabled=false;}};
+ lookup.onsubmit=async e=>{e.preventDefault();if(busy)return;busy=true;try{await confirmed(await api('/ops/api/actions/'+encodeURIComponent(lookup.elements.requestId.value.trim())));}catch(error){status.textContent=error.message+' · 조회 실패는 미커밋의 증거가 아닙니다.';}finally{busy=false;}};
+ reset.onclick=async()=>{if(busy||!resolved)return;busy=true;try{await refresh();sessionStorage.removeItem(pendingKey);pending=null;resolved=false;show();reset.disabled=true;trace.hidden=true;}catch(error){status.textContent=error.message;}finally{busy=false;}};
+ try{const saved=sessionStorage.getItem(pendingKey);if(saved){pending=JSON.parse(saved);const v=JSON.parse(pending.body);if(!v.requestId||typeof v.expectedRevision!=='string'||!/^\d+$/.test(v.expectedRevision)||pending.body.length>32768)throw new Error('보관된 요청 형식 오류');show();lookup.elements.requestId.value=v.requestId;status.textContent='미확정 원래 요청을 복구했습니다. 조회 또는 같은 요청 재시도만 가능합니다.';}
+  else{const ids=JSON.parse(localStorage.getItem(key+'.requests')||'[]');if(Array.isArray(ids)&&ids.length){lookup.elements.requestId.value=ids[0];status.textContent='최근 요청 번호를 복원했습니다. 새 변경 전 결과를 확인하세요.';}}}
+ catch(error){lock(true);send.disabled=true;form.onsubmit=e=>e.preventDefault();status.textContent='요청 저장소를 확인할 수 없어 실행을 차단했습니다. '+error.message;}
+})();
+</script>
+}

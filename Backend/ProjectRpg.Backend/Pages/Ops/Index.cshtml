@@ -1,6 +1,8 @@
 @page "/ops"
 @model ProjectRpg.Backend.Pages.Ops.IndexModel
+@inject OperationsOptions ServiceOptions
 <h1>캐릭터 검색</h1>
+@if(ServiceOptions.ServiceControlEnabled){<p><a href="/ops/service-control">공지·점검 상태 관리</a></p>}
 <form method="get">
 <label for="kind">검색 기준</label>
 <select name="kind" id="kind"><option value="SteamId" selected="@(Model.Kind == "SteamId")">Steam ID</option><option value="CharacterId" selected="@(Model.Kind == "CharacterId")">캐릭터 ID</option></select>

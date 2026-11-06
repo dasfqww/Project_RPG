@@ -28,7 +28,11 @@ public static class OperationsHosting
         OperationsOptions options = configuration.GetSection("Operations").Get<OperationsOptions>() ?? new();
         options.Validate(environment);
         services.AddSingleton(options);
+        ServiceControl.ServiceControlHosting.Register(services, configuration);
         if (!options.Enabled) return services;
+        services.AddScoped<ProjectRpg.Operations.Core.ServiceControl.ChangeServiceControl>();
+        services.AddScoped<ProjectRpg.Operations.Core.ServiceControl.ReadServiceControl>();
+        services.AddScoped<OperationsServiceFacade>();
         Monitoring.OperationsMonitoring.Register(services, string.Equals(configuration["Storage:Provider"], "Postgres", StringComparison.OrdinalIgnoreCase));
         var compensationPolicy = new CompensationCatalog(options);
         services.AddSingleton<ICompensationPolicy>(compensationPolicy);
@@ -144,6 +148,7 @@ public static class OperationsHosting
     }
     public static WebApplication MapOperations(this WebApplication app)
     {
+        ServiceControl.ServiceControlHosting.MapPublic(app);
         if (!app.Services.GetRequiredService<OperationsOptions>().Enabled) return app;
         OperationsEndpoints.Map(app);
         Monitoring.OperationsMonitoring.Map(app);

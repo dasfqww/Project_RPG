@@ -23,6 +23,7 @@ public sealed class OperationsOptions
     public Infrastructure.Compensation.CompensationOptions Compensation { get; set; } = new();
     public Monitoring.OperationsMonitorOptions Monitor { get; set; } = new();
     public bool RestrictionsEnabled { get; set; }
+    public bool ServiceControlEnabled { get; set; }
     public string OperatorId => "github:" + AllowedGitHubUserId;
 
     public void Validate(IHostEnvironment environment)

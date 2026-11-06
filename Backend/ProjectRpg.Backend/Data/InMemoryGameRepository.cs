@@ -77,7 +77,7 @@ public sealed partial class InMemoryGameRepository(TimeProvider? connectionClock
 
         lock (_dungeonGate)
         {
-            EnsureAccountAllowed(identity.SteamId, authenticatedAt);
+            EnsureAdmissionAllowed(identity.SteamId, authenticatedAt);
             _accounts.AddOrUpdate(
                 identity.SteamId,
                 _ => new AccountRecord(identity, authenticatedAt, authenticatedAt),
@@ -113,7 +113,7 @@ public sealed partial class InMemoryGameRepository(TimeProvider? connectionClock
 
         lock (_dungeonGate)
         {
-            EnsureAccountAllowed(steamId, connectionClock?.GetUtcNow() ?? DateTimeOffset.UtcNow);
+            EnsureAdmissionAllowed(steamId, connectionClock?.GetUtcNow() ?? DateTimeOffset.UtcNow);
             _sessions[tokenHash] = new SessionRecord(steamId, expiresAt);
             return Task.CompletedTask;
         }
@@ -423,7 +423,7 @@ public sealed partial class InMemoryGameRepository(TimeProvider? connectionClock
     {
         lock (_dungeonGate)
         {
-            EnsureAccountAllowed(steamId, connectionClock?.GetUtcNow() ?? now);
+            EnsureAdmissionAllowed(steamId, connectionClock?.GetUtcNow() ?? now);
             CleanupExpiredDungeonSessions(now);
             AcquireCharacterLease(characterId, Guid.Empty, now, expiresAt);
 
@@ -464,7 +464,7 @@ public sealed partial class InMemoryGameRepository(TimeProvider? connectionClock
     {
         lock (_dungeonGate)
         {
-            EnsureAccountAllowed(steamId, connectionClock?.GetUtcNow() ?? now);
+            EnsureAdmissionAllowed(steamId, connectionClock?.GetUtcNow() ?? now);
             CleanupExpiredDungeonSessions(now);
             DungeonSession session = GetRequiredDungeonSession(dungeonSessionId);
             if (session.State != DungeonSessionState.Waiting || session.DepartureRequestedAt.HasValue)
@@ -718,7 +718,7 @@ public sealed partial class InMemoryGameRepository(TimeProvider? connectionClock
         cancellationToken.ThrowIfCancellationRequested();
         lock (_dungeonGate)
         {
-            EnsureAccountAllowed(steamId, connectionClock?.GetUtcNow() ?? now);
+            EnsureAdmissionAllowed(steamId, connectionClock?.GetUtcNow() ?? now);
             now = connectionClock?.GetUtcNow() ?? now;
             CleanupExpiredDungeonSessions(now);
             DungeonSession session = GetRequiredDungeonSession(dungeonSessionId);
@@ -1319,7 +1319,7 @@ public sealed partial class InMemoryGameRepository(TimeProvider? connectionClock
         lock (_dungeonGate)
         {
             DateTimeOffset now = connectionClock?.GetUtcNow() ?? DateTimeOffset.UtcNow;
-            EnsureAccountAllowed(steamId, now);
+            EnsureAdmissionAllowed(steamId, now);
             if (_dungeonDisconnectionExpulsions.TryGetValue((dungeonSessionId, characterId), out var expulsion)
                 && expulsion.SteamId == steamId)
                 return Task.FromResult(JoinTicketIssueResult.ReconnectGraceExpired);
@@ -1373,6 +1373,7 @@ public sealed partial class InMemoryGameRepository(TimeProvider? connectionClock
             // Re-read the authoritative clock after any wait, not when the HTTP
             // request first arrived.
             now = connectionClock?.GetUtcNow() ?? now;
+            EnsureServiceOpen();
             string? account = _joinTickets.GetValueOrDefault(tokenHash)?.SteamId
                 ?? _joinTicketConsumptions.Values.FirstOrDefault(r => r.TokenHash == tokenHash)?.Admission.SteamId;
             if (account is null || !AccountAllowed(account, now)) return Task.FromResult<ConsumedJoinTicket?>(null);

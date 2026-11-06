@@ -9,6 +9,12 @@ public sealed class ApiAuthenticationMiddleware(RequestDelegate next)
     public async Task InvokeAsync(HttpContext context, BearerAuthenticator authenticator)
     {
         try { await InvokeCoreAsync(context, authenticator); }
+        catch (ServiceDrainingException) when (!context.Response.HasStarted)
+        {
+            context.Response.Headers.CacheControl = "no-store"; context.Response.Headers.RetryAfter = "30";
+            context.Response.StatusCode = 503;
+            await context.Response.WriteAsJsonAsync(new { error = "service_draining" }, context.RequestAborted);
+        }
         catch (AccountRestrictedException) when (!context.Response.HasStarted)
         {
             context.Response.Headers.CacheControl = "no-store";
@@ -19,7 +25,8 @@ public sealed class ApiAuthenticationMiddleware(RequestDelegate next)
     private async Task InvokeCoreAsync(HttpContext context, BearerAuthenticator authenticator)
     {
         if (!context.Request.Path.StartsWithSegments("/api")
-            || context.Request.Path.Equals("/api/auth/steam-ticket", StringComparison.OrdinalIgnoreCase))
+            || context.Request.Path.Equals("/api/auth/steam-ticket", StringComparison.OrdinalIgnoreCase)
+            || (HttpMethods.IsGet(context.Request.Method) && string.Equals(context.Request.Path.Value,"/api/service-status",StringComparison.Ordinal)))
         {
             await next(context);
             return;

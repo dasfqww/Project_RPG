@@ -11,6 +11,7 @@ public static class OperationsEndpoints
     {
         OperationsCompensationEndpoints.Map(app);
         OperationsRestrictionEndpoints.Map(app);
+        OperationsServiceEndpoints.Map(app);
         OperationsActionEndpoints.Map(app);
         app.MapPost("/ops/auth/login", async (HttpContext context, IAntiforgery antiforgery) =>
         {
