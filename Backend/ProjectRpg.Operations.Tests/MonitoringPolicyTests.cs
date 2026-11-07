@@ -4,7 +4,7 @@ using ProjectRpg.Operations.Monitor;
 
 internal static class MonitoringPolicyTests
 {
-    internal static RuntimeStatus Healthy(DateTimeOffset now) => new(now,"11111111111111111111111111111111",true,new(0,0,0,null,null),new(0,0,0,null));
+    internal static RuntimeStatus Healthy(DateTimeOffset now) => new(now,"11111111111111111111111111111111",true,new(0,0,0,null,null),new(0,0,0,null),new("Open"));
     internal static async Task RunAsync()
     {
         var now=DateTimeOffset.UtcNow;

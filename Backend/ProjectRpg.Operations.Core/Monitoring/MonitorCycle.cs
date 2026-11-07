@@ -4,7 +4,7 @@ namespace ProjectRpg.Operations.Core.Monitoring;
 public static class MonitorPolicy
 {
     public static readonly IReadOnlySet<string> IncidentKeys = new HashSet<string>(StringComparer.Ordinal)
-        { "backend_unavailable", "settlement_failed", "settlement_delayed", "log_dropped", "log_sink_error", "log_budget" };
+        { "backend_unavailable", "settlement_failed", "settlement_delayed", "log_dropped", "log_sink_error", "log_budget", "service_drain_long" };
     public static void Evaluate(MonitorState state, MonitorObservation observation, long logBudgetBytes)
     {
         var now = observation.ObservedAtUtc;
@@ -13,10 +13,16 @@ public static class MonitorPolicy
         Update(state, "backend_unavailable", !healthy, 3, "Backend health, readiness or status collection failed.", now);
         if (!healthy)
         {
+            DrainDurationPolicy.Reset(state);
             foreach(var pair in state.Incidents.Where(p=>p.Key!="backend_unavailable"))
             { pair.Value.BadSamples=0; pair.Value.GoodSamples=0; }
             return; // Unknown never resolves an incident using stale counters.
         }
+        bool drain = status!.ServiceControl.Mode == "Drain";
+        DateTimeOffset? drainSince = drain ? DrainDurationPolicy.Observe(state, now) : null;
+        if (!drain) DrainDurationPolicy.Reset(state);
+        Update(state, "service_drain_long", drain, 1, "Service has been observed in Drain for over thirty minutes. Investigate maintenance progress.", now,
+            eligible: !drain || now - drainSince!.Value > DrainDurationPolicy.Threshold, badSince: drainSince);
         var settlements = status!.Settlements;
         state.Incidents.TryGetValue("settlement_failed",out var failed);
         bool newFailure=settlements.Failed>state.LastFailedCount || settlements.LatestFailedUpdatedAtUtc>state.LastFailedUpdatedAtUtc;
@@ -33,6 +39,7 @@ public static class MonitorPolicy
         state.BootId = status.BootId; state.LastDropped = dropped; state.LastSinkErrors = errors;
     }
     public static bool Valid(RuntimeStatus? status, DateTimeOffset now) => status is not null && status.Settlements is not null && status.Logs is not null
+        && status.ServiceControl is { Mode: "Open" or "Drain" }
         && status.ObservedAtUtc <= now.AddSeconds(30) && now - status.ObservedAtUtc <= TimeSpan.FromMinutes(2)
         && Guid.TryParseExact(status.BootId, "N", out var boot) && boot != Guid.Empty
         && status.Settlements.Pending >= 0 && status.Settlements.Processing >= 0 && status.Settlements.Failed >= 0
@@ -41,15 +48,16 @@ public static class MonitorPolicy
         && status.Logs.DroppedCount >= 0 && status.Logs.SinkErrorCount >= 0 && status.Logs.RetainedBytes >= 0
         && (status.Settlements.OldestOutstandingAtUtc is null || status.Settlements.OldestOutstandingAtUtc <= status.ObservedAtUtc)
         && (status.Settlements.LatestFailedUpdatedAtUtc is null || status.Settlements.LatestFailedUpdatedAtUtc <= status.ObservedAtUtc);
-    private static void Update(MonitorState state, string key, bool bad, int threshold, string summary, DateTimeOffset now, string? signal = null)
+    private static void Update(MonitorState state, string key, bool bad, int threshold, string summary, DateTimeOffset now, string? signal = null,
+        bool eligible = true, DateTimeOffset? badSince = null)
     {
         if (!state.Incidents.TryGetValue(key, out var incident)) state.Incidents.Add(key, incident = new());
         if (bad)
         {
-            if (incident.BadSamples == 0 && !incident.Active) incident.FirstSeenAtUtc = now;
+            if (!incident.Active && (incident.BadSamples == 0 || badSince is not null)) incident.FirstSeenAtUtc = badSince ?? now;
             incident.BadSamples = Math.Min(threshold, incident.BadSamples + 1); incident.GoodSamples = 0;
             bool newlyFailed = key == "settlement_failed" && incident.Active && signal != incident.LastSignal;
-            if (incident.BadSamples >= threshold && (!incident.Active || newlyFailed || now - incident.LastEventAtUtc >= TimeSpan.FromMinutes(30)))
+            if (eligible && incident.BadSamples >= threshold && (!incident.Active || newlyFailed || now - incident.LastEventAtUtc >= TimeSpan.FromMinutes(30)))
             {
                 incident.Active = true;
                 Queue(state, key, "Firing", summary, incident, now);

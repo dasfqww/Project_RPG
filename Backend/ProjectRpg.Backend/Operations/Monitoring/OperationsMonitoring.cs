@@ -7,6 +7,7 @@ using ProjectRpg.Backend.Data;
 using ProjectRpg.Backend.Operations.Hosting;
 using ProjectRpg.Backend.Operations.Infrastructure.Diagnostics;
 using ProjectRpg.Operations.Core.Monitoring;
+using ProjectRpg.Operations.Core.ServiceControl;
 
 namespace ProjectRpg.Backend.Operations.Monitoring;
 
@@ -72,13 +73,16 @@ public static class OperationsMonitoring
     public static void Map(WebApplication app)
     {
         if (!app.Services.GetRequiredService<OperationsOptions>().Monitor.Enabled) return;
-        app.MapGet("/internal/operations/status", async (HttpContext context, ISettlementHealthReader settlements, OperationsLogStore logs, TimeProvider clock) =>
+        app.MapGet("/internal/operations/status", async (HttpContext context, ISettlementHealthReader settlements, IServiceControlReader service,
+            OperationsLogStore logs, TimeProvider clock) =>
         {
             var health=await settlements.ReadAsync(context.RequestAborted);
+            var control=await service.ReadAsync(context.RequestAborted);
+            if (!control.IsSuccess) return Results.Json(new { status="Unknown" }, statusCode:503);
             var files=logs.Files();
             DateTimeOffset? last=files.Length==0 ? null : new(files.Max(f=>f.LastWriteTimeUtc),TimeSpan.Zero);
             return Results.Json(new RuntimeStatus(clock.GetUtcNow(),logs.BootId,true,health,
-                new(logs.Dropped,logs.SinkErrors,files.Sum(f=>f.Length),last)), MonitoringJson.Options);
+                new(logs.Dropped,logs.SinkErrors,files.Sum(f=>f.Length),last),new(control.Value.Mode)), MonitoringJson.Options);
         });
     }
 }

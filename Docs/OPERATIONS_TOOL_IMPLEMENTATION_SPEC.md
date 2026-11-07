@@ -2,7 +2,7 @@
 
 작성일: 2026-11-05 · 상태: v1 설계 확정, S1·S2 구현/격리 검증 완료. 실제 운영 배포 미수행
 
-S1·S2·S3 보상/제재 Backend·S4 런타임 감시의 소스 경계·설정·기동/검증 방법은 [운영툴 실행 문서](OPERATIONS_TOOL_RUNTIME.md)에 기록한다. S3 제재의 실제 최신 UE 통합 검증과 S4 공지/점검·백업 감시/복구는 후속 범위이며 현재 완료를 v1 전체 구현 완료로 취급하지 않는다.
+S1·S2·S3 보상/제재 Backend·S4 런타임 감시·공지/점검·장기 Drain 경보의 소스 경계·설정·기동/검증 방법은 [운영툴 실행 문서](OPERATIONS_TOOL_RUNTIME.md)에 기록한다. S3 제재의 실제 최신 UE 통합 검증과 S4 백업 감시/복구는 후속 범위이며 현재 완료를 v1 전체 구현 완료로 취급하지 않는다.
 
 사용자 요청은 SOLID·유지보수성·로그 추적을 갖춘 운영툴의 설계를 끝내는 것이다. 이 문서는 [아키텍처](OPERATIONS_TOOL_ARCHITECTURE.md)의 상세 계약을 확정한다. [제작 계획](SOLO_OPERATIONS_TOOL_PLAN.md)은 범위/순서, [추적 계약](OPERATIONS_LOG_TRACING.md)은 공통 사건 의미를 관리한다. 값·DTO·오류·동시성 정책의 최종 기준은 본 문서이며, 변경할 때 관련 요약도 함께 갱신한다.
 
@@ -268,7 +268,7 @@ Backend/운영 화면과 Memory/PG/HTTPS 검증은 구현했다. [실행 및 남
 
 `PUT /ops/api/service-control`은 `{requestId,expectedRevision,mode:Open|Drain,noticeText,noticeStartsAtUtc?,noticeEndsAtUtc?,reason}`를 받는다. notice는 최대 1000자 plain text, 시작<종료, 링크/HTML 실행 없음. 현재 표시 여부는 UTC로 계산하고 별도 예약 worker를 만들지 않는다. service-control과 성공 감사는 동일 트랜잭션이다.
 
-2026-11-06: Backend/운영 화면·익명 상태 조회·신규 입장 원자 가드를 구현했다. 기본 쓰기 비활성, v9 migration·복구 UI·검증 범위는 [실행 계약](OPERATIONS_TOOL_RUNTIME.md#공지opendrain-서비스-제어)을 따른다. 공지·점검의 UE 로비 표시/실제 HTTP 연결도 구현했다. native 위젯/인증 캐시/캐시 수명 검증과 실제 GPU·Steam·게임 소켓 전투의 경계는 [로비 계약](ONLINE_LOBBY_UI.md#서비스-공지와-점검-안내)을 따른다. 장기 Drain 경보/실제 배포는 후속이다.
+2026-11-08: Backend/운영 화면·익명 상태 조회·신규 입장 원자 가드를 구현했다. 기본 쓰기 비활성, v9 migration·복구 UI·검증 범위는 [실행 계약](OPERATIONS_TOOL_RUNTIME.md#공지opendrain-서비스-제어)을 따른다. 공지·점검의 UE 로비 표시/실제 HTTP 연결과 장기 Drain 경보도 구현했다. native 위젯/인증 캐시/캐시 수명 검증과 실제 GPU·Steam·게임 소켓 전투의 경계는 [로비 계약](ONLINE_LOBBY_UI.md#서비스-공지와-점검-안내)을 따른다. 실제 배포는 후속이다.
 
 초기 singleton은 Open/revision=0/빈 공지이며 action 참조는 초기 행만 null을 허용한다. 변경은 expectedRevision 일치와 +1을 요구한다. `GET /ops/api/service-control`로 현재값/관측시각을 읽고 같은 변경 전에 재확인한다. `GET /api/service-status`는 익명·읽기 전용으로 mode/공지/표시 예정 시각만 제공하며 운영자/감사 정보는 제외한다. 현재 ApiAuthenticationMiddleware는 steam-ticket 외 `/api`에 인증을 요구하므로 S4에 이 정확한 GET 한 개의 예외와 IP당 60회/분 제한을 추가한다. 다른 메서드/하위 경로는 예외가 아니다. UE 로그인·로비가 이를 표시하고 서버의 503 `service_draining` 거절을 안내한다. 공지 시각 둘 다 null이면 즉시·무기한, 한쪽만 있으면 열린 구간이다. 빈 noticeText는 공지 숨김이다.
 
@@ -278,11 +278,11 @@ Drain은 신규 로그인·던전 생성/참가·출발·새 티켓/입장 확�
 
 ### 9.2 알림
 
-런타임·정산·로그 감시와 외부 HTTPS webhook 전달/영속 재전송은 구현했다. [실행 범위](OPERATIONS_TOOL_RUNTIME.md#런타임-감시알림s4-독립-범위)를 따른다. 백업 상태 수집/경보와 Drain 장기 지속 경보는 해당 기능 구현 후 연결한다.
+런타임·정산·로그·장기 Drain 감시와 외부 HTTPS webhook 전달/영속 재전송은 구현했다. [실행 범위](OPERATIONS_TOOL_RUNTIME.md#런타임-감시알림s4-독립-범위)를 따른다. 백업 상태 수집/경보는 후속이다. `service_drain_long`은 첫 정상 Drain 관측부터 30분 초과에 경보, 30분마다 지속 요약, 두 번 연속 Open에 복구를 전송한다. 관측 구간/사건은 영속하며 공지 편집은 타이머를 초기화하지 않는다. Unknown/2분 초과 공백은 미확정 구간을 다시 측정하고 활성 경보를 해제하지 않는다. [세부 관측·배포 계약](OPERATIONS_TOOL_RUNTIME.md#장기-drain-경보).
 
 외부 감시 프로세스가 30초마다 health/ready를 5초 timeout으로 확인한다. 3회 연속 실패 시 알림, 2회 연속 성공 시 복구 알림, 지속 장애는 30분마다 요약한다. Failed 정산 신규는 발견 즉시(정상 감시 주기 30초 이내), Pending/Processing 2분 초과는 3회 관측 시, 로그 드롭/공간 예산 초과·백업 실패는 발견 시 알림이다.
 
-감시는 backend와 다른 관리 호스트에서 실행한다. `GET /internal/operations/status`는 management ingress 전용·별도 `OperationsMonitor` 기계 인증(전용 비밀 bearer, 상수 시간 대조)으로만 접근하며 분당 30회로 제한한다. 이 자격은 `/ops`나 게임 API 권한을 부여하지 않는다. 응답은 observedAt/bootId·ready·정산 Pending/Processing/Failed 수와 가장 오래된 지연/latestFailedUpdatedAt·로그 droppedCount/sinkErrorCount/retainedBytes/lastWriteAt뿐이며 ID/본문/SQL은 없다. DB 장애는 Unknown/503이다. 감시가 수집 실패도 경보하므로 backend 종료 시 마지막 정상값을 최신으로 표시하지 않는다. Failed 수 증가/최신 Failed 시각 전진을 새 장애로 알리고 최초 관측에 Failed가 남아 있어도 알린다. 상세 조사는 사람이 운영 로그인으로 수행한다.
+감시는 backend와 다른 관리 호스트에서 실행한다. `GET /internal/operations/status`는 management ingress 전용·별도 `OperationsMonitor` 기계 인증(전용 비밀 bearer, 상수 시간 대조)으로만 접근하며 분당 30회로 제한한다. 이 자격은 `/ops`나 게임 API 권한을 부여하지 않는다. 응답은 observedAt/bootId·ready·정산 Pending/Processing/Failed 수와 가장 오래된 지연/latestFailedUpdatedAt·로그 droppedCount/sinkErrorCount/retainedBytes/lastWriteAt·serviceControl.mode이며 ID/본문/SQL은 없다. DB/서비스 조회 장애는 Unknown/503이다. 감시가 수집 실패도 경보하므로 backend 종료 시 마지막 정상값을 최신으로 표시하지 않는다. Failed 수 증가/최신 Failed 시각 전진을 새 장애로 알리고 최초 관측에 Failed가 남아 있어도 알린다. 상세 조사는 사람이 운영 로그인으로 수행한다.
 
 DB 호스트의 60초 상태 수집 작업은 pgBackRest 결과/마지막 full·incremental·archive 성공/실패·미전송 WAL 상태를 작은 원자 교체 JSON에 기록한다. 외부 감시는 관리용 읽기 전용 경로로 이 상태만 읽으며 2분 갱신 중단/일 incremental 성공 26시간 초과/주 full 성공 8일 초과도 경보한다. 쓰기가 없는 정상 DB는 archive 시각만 오래됐다고 실패로 판정하지 않는다. 상태 전달 경로·기계 자격은 배포 입력이고 외부 서버 중단 감지와 별개로 복구 리허설에서 전달 실패까지 검사한다.
 
@@ -335,4 +335,4 @@ Ops 활성 상태에서 인증·키 보호·DB 세션·영속 로그 root가 잘
 - **구현 때 검증할 사실:** 실제 라이브러리 버전/호스트 호환성, 기존 코드와 잠금 경합, 실제 DB/UE 연결·성능·복구 목표. 검증이 설계 가정을 반증하면 해당 결정과 영향을 문서화해 수정한다.
 - **v1 밖:** S5 대량/예약·직원 권한 UI·자유 편집/회수·전체 경제 대시보드. 별도 기능 요청 시 설계한다.
 
-설계 단계의 남은 미결 항목은 없다. S1 기본 조회·인증·추적과 S2 보상 조사·worker 원래 ID 계측, S3 개별 아이템 보상·기간 제재/해제의 Backend/운영 화면, S4 런타임 감시/알림과 공지·Open/Drain Backend/운영 화면을 구현했다. [실행/검증 경계](OPERATIONS_TOOL_RUNTIME.md)를 따른다. S4 공지/점검의 UE 로비 표시와 HTTP 연결도 구현했다. 장기 Drain 경보·백업 상태 수집/복구, UE 전체 사건 계측과 실제 운영 배포는 후속이다. 고정 사본의 UE 인증/문맥 검증을 실제 게임 소켓 전투·Steam 검증으로 확대하지 않는다.
+설계 단계의 남은 미결 항목은 없다. S1 기본 조회·인증·추적과 S2 보상 조사·worker 원래 ID 계측, S3 개별 아이템 보상·기간 제재/해제의 Backend/운영 화면, S4 런타임 감시/알림과 공지·Open/Drain Backend/운영 화면을 구현했다. [실행/검증 경계](OPERATIONS_TOOL_RUNTIME.md)를 따른다. S4 공지/점검의 UE 로비 표시와 HTTP 연결·장기 Drain 경보도 구현했다. 백업 상태 수집/복구, UE 전체 사건 계측과 실제 운영 배포는 후속이다. 고정 사본의 UE 인증/문맥 검증을 실제 게임 소켓 전투·Steam 검증으로 확대하지 않는다.

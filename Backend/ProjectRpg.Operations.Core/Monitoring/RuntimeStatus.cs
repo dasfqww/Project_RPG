@@ -5,7 +5,9 @@ namespace ProjectRpg.Operations.Core.Monitoring;
 public sealed record SettlementHealth(long Pending, long Processing, long Failed,
     DateTimeOffset? OldestOutstandingAtUtc, DateTimeOffset? LatestFailedUpdatedAtUtc);
 public sealed record LogHealth(long DroppedCount, long SinkErrorCount, long RetainedBytes, DateTimeOffset? LastWriteAtUtc);
-public sealed record RuntimeStatus(DateTimeOffset ObservedAtUtc, string BootId, bool Ready, SettlementHealth Settlements, LogHealth Logs);
+public sealed record ServiceHealth(string Mode);
+public sealed record RuntimeStatus(DateTimeOffset ObservedAtUtc, string BootId, bool Ready, SettlementHealth Settlements, LogHealth Logs,
+    ServiceHealth ServiceControl);
 public interface ISettlementHealthReader
 {
     Task<SettlementHealth> ReadAsync(CancellationToken ct);
@@ -34,6 +36,8 @@ public sealed class MonitorState
     public long LastSinkErrors { get; set; }
     public long LastFailedCount { get; set; }
     public DateTimeOffset? LastFailedUpdatedAtUtc { get; set; }
+    public DateTimeOffset? DrainObservedSinceUtc { get; set; }
+    public DateTimeOffset? DrainLastObservedAtUtc { get; set; }
     public Dictionary<string, IncidentState> Incidents { get; init; } = new(StringComparer.Ordinal);
     public List<PendingAlert> Outbox { get; init; } = [];
 }

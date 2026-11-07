@@ -1,6 +1,6 @@
 # 운영툴 실행과 유지보수
 
-2026-11-06 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 조사, S3 개별 보상·기간 제재/해제, S4 런타임 감시·알림과 공지·Open/Drain의 Backend/운영 화면, UE 로비 공지·점검 연결을 구현했다. Drain 장기 지속 경보와 백업 수집/복구·실제 운영 배포는 후속 범위다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md).
+2026-11-08 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 조사, S3 개별 보상·기간 제재/해제, S4 런타임 감시·알림과 공지·Open/Drain의 Backend/운영 화면, UE 로비 공지·점검 연결과 장기 Drain 경보를 구현했다. 백업 수집/복구·실제 운영 배포는 후속 범위다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md).
 
 ## 공지·Open/Drain 서비스 제어
 
@@ -16,7 +16,7 @@ UE 로비의 공지/점검 연결과 캐시·실패·주소 전환·인증 보�
 
 필요한 검증은 기존 `Scripts/Tests/Run-OperationsTests.ps1 -Postgres`에 포함된다. 실제 HTTPS/모의 OAuth, Memory·격리 tmpfs PostgreSQL의 익명 경계/제한·권한/CSRF/본문·공지 시간·revision/재생·다른 종류 ID 충돌, 모든 신규 입장 거절과 기존 2인 heartbeat/실제 worker 양쪽 지급, 공유/배타 gate 대기·감사 실패 롤백·재시작 영속화·로그 검색을 검사한다. 별도 화면 스크립트 검사는 응답 유실/새로고침·동일 바이트 재전송·int64·401/404/영수증 불일치·저장 실패를 다룬다. 실제 GitHub OAuth·브라우저 시각 렌더·UE 화면/게임 소켓·운영 배포 검증과 구분한다.
 
-Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복구는 활성 던전·미확정/실패/처리 중 정산 확인 후 외부 수단으로 생산자·worker·백엔드를 중지하고 쓰기 차단을 확인해야 한다. 장기 Drain 자동 강제 종료는 없으며 30분 경보 연결은 후속이다.
+Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복구는 활성 던전·미확정/실패/처리 중 정산 확인 후 외부 수단으로 생산자·worker·백엔드를 중지하고 쓰기 차단을 확인해야 한다. 장기 Drain은 아래 외부 감시에서 경보하며 자동 강제 종료하지 않는다.
 
 ## 구현 경계
 
@@ -122,7 +122,7 @@ PostgreSQL에서 운영 요청 → 캐릭터 → 기존 아이템 owner/request 
 
 외부 관리 호스트에서 [Operations.Monitor](../Backend/ProjectRpg.Operations.Monitor/)를 실행한다. 게임 backend와 다른 프로세스/호스트여야 backend 종료도 감지한다. [Core 감시 정책](../Backend/ProjectRpg.Operations.Core/Monitoring/MonitorCycle.cs)은 HTTP/파일 구현에 의존하지 않으며 probe·상태 저장·알림 전달 포트를 사용한다. 백엔드 [기계 상태 경계](../Backend/ProjectRpg.Backend/Operations/Monitoring/OperationsMonitoring.cs)는 기존 인증/입장 API와 독립적이다.
 
-`GET /internal/operations/status`는 관리 HTTPS origin·허용 네트워크와 전용 bearer를 요구한다. 운영 cookie와 게임 관리자 bearer는 이 경로의 자격이 아니며 monitor token도 운영/게임 API 권한을 주지 않는다. 정확한 GET만 제공하고 query는 거절하며 분당 30회·5초 제한이다. forward header는 기존 KnownProxies에서 온 관리 요청에만 적용한다. 공개 ingress에서 `/internal/operations`도 차단해야 한다. 응답은 observedAtUtc/bootId/ready, 정산 Pending·Processing·Failed 수/가장 오래된 미완료 생성 시각/최근 Failed 갱신 시각, 로그 droppedCount/sinkErrorCount/retainedBytes/파일 관측 lastWriteAtUtc뿐이다. DB/로그 관측 실패는 Unknown/503으로 응답하며 식별자·오류 본문·SQL을 노출하지 않는다. PostgreSQL 집계는 READ ONLY/REPEATABLE READ로 게임 상태를 바꾸지 않는다.
+`GET /internal/operations/status`는 관리 HTTPS origin·허용 네트워크와 전용 bearer를 요구한다. 운영 cookie와 게임 관리자 bearer는 이 경로의 자격이 아니며 monitor token도 운영/게임 API 권한을 주지 않는다. 정확한 GET만 제공하고 query는 거절하며 분당 30회·5초 제한이다. forward header는 기존 KnownProxies에서 온 관리 요청에만 적용한다. 공개 ingress에서 `/internal/operations`도 차단해야 한다. 응답은 observedAtUtc/bootId/ready, 정산 Pending·Processing·Failed 수/가장 오래된 미완료 생성 시각/최근 Failed 갱신 시각, 로그 droppedCount/sinkErrorCount/retainedBytes/파일 관측 lastWriteAtUtc, `serviceControl:{mode:Open|Drain}`이다. 서비스 상태는 기존 읽기 포트를 사용하며 공지·revision·운영자·감사 정보를 포함하지 않는다. DB/로그/서비스 관측 실패는 Unknown/503으로 응답하며 식별자·오류 본문·SQL을 노출하지 않는다. PostgreSQL 정산 집계는 READ ONLY/REPEATABLE READ로 게임 상태를 바꾸지 않는다.
 
 감시기는 30초마다 `/health/live`, `/health/ready`, 기계 상태를 함께 수집한다. 한 회 수집 한도는 5초이며 HTTP 실패·과대/손상/오래된 응답을 최신 정상값으로 취급하지 않는다. 3회 연속 수집 실패에 장애 알림, 2회 연속 정상에 복구 알림, 지속 장애는 30분마다 요약한다. Failed 정산은 최초 관측과 수 증가/최근 실패 시각 전진 시 즉시 알린다. Pending/Processing이 2분 넘게 남은 상태는 3회 연속 관측 시 알린다. 로그 drop/sink error 증가와 설정 공간 예산 초과도 감지한다. 관측 실패는 정산·로그 장애를 해제하는 정상 표본으로 쓰지 않는다.
 
@@ -142,7 +142,15 @@ PostgreSQL에서 운영 요청 → 캐릭터 → 기존 아이템 owner/request 
 
 상태 디렉터리의 `monitor.lock`을 단독 소유하고 `state.json`에 환경·서비스·incident 상태와 미전송 event를 보관한다. 전송 전에 eventId를 저장하고 파일 flush/원자 교체 후 HTTP를 보낸다. 성공하지 못하면 같은 eventId로 1/5/15분 간격 최대 3회 재전송하며 지속 장애 요약은 별도 event다. 수신자는 eventId로 중복을 제거해야 한다. 손상/다른 환경의 상태는 자동 초기화하지 않고 오류로 멈춘다. 상태 디렉터리를 삭제하면 알림 중복이 생길 수 있으므로 배포 때 유지한다. 링크/reparse 경로와 64KiB 초과 상태를 거절한다. 전체 원문 개인정보 대신 고정 summary와 빈 referenceIds를 보낸다.
 
-이번 감시 범위는 런타임/정산/로그다. pgBackRest 상태 수집·백업 실패/보존 경보, Drain 장기 지속 경보는 각각 백업 및 서비스 제어 구현에 연결할 후속 범위다. 실제 외부 관리 호스트·알림 수신 서비스 배포와 장애 주입 리허설은 별도로 수행한다. 제재의 실제 최신 UE 통합은 해당 소스/검증 자원 인계 후 진행한다.
+### 장기 Drain 경보
+
+`service_drain_long`은 정상 수집에서 처음 Drain을 관측한 시각부터 **30분 초과** 시 Warning/Firing을 발생시킨다. 30분마다 지속 요약을 보내고 Open을 두 번 연속 관측하면 Information/Resolved를 보낸다. `firstSeenAtUtc`는 임계값 도달 시각이 아니라 해당 관측 구간의 시작이다. 공지 편집·backend bootId 변경은 관측 구간을 초기화하지 않는다. 경보는 고정 summary와 빈 referenceIds만 사용하며 운영 사유·공지 원문을 전송하지 않는다.
+
+정책은 실제 전환 시각 대신 **감시에서 관측한 기간**을 측정한다. 첫 설치/상태 유실 후 이미 Drain이면 그때부터 측정한다. 실패/오래된 상태/잘못되거나 누락된 mode, 2분 초과 관측 공백, 시계 역행은 미확정 대기 구간을 다시 시작한다. 이미 발생한 경보는 Unknown으로 해제하지 않으며 복구 연속 횟수도 초기화한다. 두 번의 Open 사이에 Drain이 관측되면 복구되지 않는다. 표본 사이의 미관측 전환까지 증명하는 기능은 아니다.
+
+대기 구간과 경보·미전송 event는 기존 v1 `state.json`에 함께 영속한다. 감시 재시작은 대기 구간/같은 eventId 재전송을 보존하며, 재시작 공백이 2분을 넘으면 대기 구간을 다시 측정한다. 기존 v1 파일의 새 필드 부재는 빈 대기 구간으로 읽고 기존 장애/전송 대기는 보존한다. 배포는 mode를 제공하는 backend를 먼저, 새 monitor를 다음으로 갱신한다. 구 backend의 mode 누락을 Open으로 간주하지 않고 수집 실패로 경보한다. 새 사건 키를 모르는 구 monitor로 되돌릴 때 상태 파일을 임의 삭제하지 말고 보존/인계한다.
+
+이번 감시 범위는 런타임/정산/로그/장기 Drain이다. pgBackRest 상태 수집·백업 실패/보존 경보는 후속 범위다. 실제 외부 관리 호스트·알림 수신 서비스 배포와 장애 주입 리허설은 별도로 수행한다. 제재의 실제 최신 UE 통합은 해당 소스/검증 자원 인계 후 진행한다.
 
 ## 검사 실행
 
@@ -150,6 +158,7 @@ PostgreSQL에서 운영 요청 → 캐릭터 → 기존 아이템 owner/request 
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Run-OperationsTests.ps1 -Postgres
+powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Run-OperationsDrainTests.ps1 -Postgres
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Test-NPCPickupBackendSnapshot.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Test-InventoryConsumeBackendSnapshot.ps1
 ```
@@ -161,5 +170,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Test-Inventory
 보상 검사는 실제 HTTPS/CSRF·기본 거절·정의 검증·body/rate 한도, 만료 뒤 동일 영수증·정책 변경/재시작, 동시 요청/사건 중복, PostgreSQL 감사 실패 후 전체 롤백·리스/세션 NOWAIT·부재 리스 FK 경합·독립 Pending/Processing 차단·영수증 불일치를 포함한다. 실제 페이지 스크립트를 DOM/storage/fetch 어댑터에서 실행해 응답 유실/새로고침/같은 ID 미리보기 갱신/저장소 실패/로그아웃도 검증한다.
 
 감시는 정책의 실패/복구/지연/반복 경보와 영속 상태 재시작·중복 실행·재전송·손상 거절을 검사한다. 실제 HTTPS 상태/API 권한 분리·Memory/PG 읽기 전후 지문·민감 정보 제외·webhook 실패/재전송도 포함한다. 테스트는 자체 loopback 인증서를 신뢰하는 클라이언트를 사용하며 제품 감시기에는 인증서 검증 우회 설정이 없다.
+
+장기 Drain 전용 러너는 게시본에 명시한 8개 C# 파일만 덮고 `--monitoring` 검사를 실행한다. `-FullSuite`를 추가하면 같은 고정 입력에서 전체 운영툴 C# 회귀를 실행한다. 기존 감시 회귀와 30분 경계/관측 공백/Unknown/Open 복구·공지 편집·재시작 전후 대기/동일 사건 재전송을 검사한다. 실제 Memory/PG 저장소 모드와 loopback HTTPS를 사용하며 긴 경과 시간은 테스트 시계로 진행한다. 실제 30분 대기·외부 알림 서비스 배포 검증과 구분한다.
 
 자기 테스트 프로세스 종료 후 실행별 Temp와 자기 라벨 DB 컨테이너를 자동 폐기한다. 작은 결과/명령·입력 해시만 `Saved/BuildChecks`에 남으며 제품 커밋에는 포함하지 않는다. 이 검사는 실제 GitHub 계정 연결, 운영 배포, 실제 브라우저 렌더링, UE 실행 또는 부하 검사를 대신하지 않는다.

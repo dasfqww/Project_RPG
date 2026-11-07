@@ -26,6 +26,8 @@ public sealed class FileMonitorStateStore : IMonitorStateStore, IDisposable
         var state=await JsonSerializer.DeserializeAsync<MonitorState>(stream,MonitoringJson.Options,ct)
             ?? throw new InvalidDataException("Invalid monitor state.");
         if(state.Version!=1||state.Environment!=environment||state.Service!=service||state.Incidents is null||state.Outbox is null
+            ||(state.DrainObservedSinceUtc is null)!=(state.DrainLastObservedAtUtc is null)
+            ||state.DrainObservedSinceUtc>state.DrainLastObservedAtUtc
             ||state.Incidents.Count>MonitorPolicy.IncidentKeys.Count||state.Incidents.Keys.Any(k=>!MonitorPolicy.IncidentKeys.Contains(k))
             ||state.Outbox.Count>MonitorPolicy.IncidentKeys.Count||state.Outbox.Any(p=>p is null||p.Event is null||p.Event.EventId==Guid.Empty
                 ||p.Event.Environment!=environment||p.Event.Service!=service||!MonitorPolicy.IncidentKeys.Contains(p.Event.IncidentKey)
