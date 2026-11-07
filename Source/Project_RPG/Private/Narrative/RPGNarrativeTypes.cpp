@@ -140,6 +140,25 @@ bool FRPGNarrativeCodec::Decode(const FString& Body, const FGuid ExpectedCharact
         for (const auto& Choice : Node.Choices)
             if (!Choice.NextDialogueId.IsEmpty() && !Parsed.AvailableDialogues.ContainsByPredicate(
                 [&](const auto& Target) { return Target.Id == Choice.NextDialogueId && Target.bInformational; })) return false;
+    if (Object->HasField(TEXT("dungeonObjectiveCandidates")))
+    {
+        if (!Object->TryGetArrayField(TEXT("dungeonObjectiveCandidates"), Values) || Values->Num() > 256) return false;
+        TSet<FString> Keys;
+        for (const auto& Value : *Values)
+        {
+            const TSharedPtr<FJsonObject>* Item = nullptr; FRPGNarrativeDungeonCandidate Candidate; FString Session;
+            if (!Value || !Value->TryGetObject(Item) || !*Item
+                || !(*Item)->TryGetStringField(TEXT("questId"), Candidate.QuestId) || !Id(Candidate.QuestId)
+                || !(*Item)->TryGetStringField(TEXT("objectiveId"), Candidate.ObjectiveId) || !Id(Candidate.ObjectiveId)
+                || !(*Item)->TryGetStringField(TEXT("dungeonSessionId"), Session)
+                || !FGuid::ParseExact(Session, EGuidFormats::DigitsWithHyphens, Candidate.DungeonSessionId) || !Candidate.DungeonSessionId.IsValid()) return false;
+            const FString Key = Candidate.QuestId + TEXT("/") + Candidate.ObjectiveId;
+            const auto* Quest = Parsed.Quests.FindByPredicate([&](const auto& Q) { return Q.QuestId == Candidate.QuestId; });
+            if (Keys.Contains(Key) || !Quest || Quest->Status != ERPGQuestStatus::Active
+                || !Quest->Objectives.ContainsByPredicate([&](const auto& O) { return O.Id == Candidate.ObjectiveId && !O.bCompleted; })) return false;
+            Keys.Add(Key); Parsed.DungeonObjectiveCandidates.Add(MoveTemp(Candidate));
+        }
+    }
     Out = MoveTemp(Parsed); return true;
 }
 
@@ -152,6 +171,22 @@ bool FRPGNarrativeCodec::Encode(const FRPGNarrativeCommand& Command, FString& Ou
     Object->SetStringField(TEXT("expectedRevision"), LexToString(Command.ExpectedRevision));
     Object->SetNumberField(TEXT("catalogVersion"), Command.CatalogVersion);
     Object->SetStringField(TEXT("dialogueId"), Command.DialogueId); Object->SetStringField(TEXT("choiceId"), Command.ChoiceId);
+    FString Body;
+    if (!FJsonSerializer::Serialize(Object, TJsonWriterFactory<>::Create(&Body))) return false;
+    OutBody = MoveTemp(Body); return true;
+}
+
+bool FRPGNarrativeCodec::EncodeDungeon(const FRPGNarrativeDungeonCommand& Command, FString& OutBody)
+{
+    if (!Command.RequestId.IsValid() || Command.ExpectedRevision < 0 || Command.CatalogVersion < 1
+        || !Command.Target.DungeonSessionId.IsValid() || !RPGNarrativeJson::Id(Command.Target.QuestId)
+        || !RPGNarrativeJson::Id(Command.Target.ObjectiveId)) return false;
+    auto Object = MakeShared<FJsonObject>();
+    Object->SetStringField(TEXT("requestId"), Command.RequestId.ToString(EGuidFormats::DigitsWithHyphensLower));
+    Object->SetStringField(TEXT("expectedRevision"), LexToString(Command.ExpectedRevision));
+    Object->SetNumberField(TEXT("catalogVersion"), Command.CatalogVersion);
+    Object->SetStringField(TEXT("dungeonSessionId"), Command.Target.DungeonSessionId.ToString(EGuidFormats::DigitsWithHyphensLower));
+    Object->SetStringField(TEXT("questId"), Command.Target.QuestId); Object->SetStringField(TEXT("objectiveId"), Command.Target.ObjectiveId);
     FString Body;
     if (!FJsonSerializer::Serialize(Object, TJsonWriterFactory<>::Create(&Body))) return false;
     OutBody = MoveTemp(Body); return true;

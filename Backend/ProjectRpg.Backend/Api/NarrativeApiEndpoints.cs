@@ -76,6 +76,7 @@ public static class NarrativeApiEndpoints
         view.CatalogVersion, view.State.CharacterId, view.State.SchemaVersion,
         Revision = view.State.Revision.ToString(CultureInfo.InvariantCulture),
         Quests = view.Journal,
-        view.State.CompletedChapters, view.State.StoryUnlocks, view.AvailableDialogues
+        view.State.CompletedChapters, view.State.StoryUnlocks, view.AvailableDialogues,
+        DungeonObjectiveCandidates = view.DungeonObjectiveCandidates.IsDefault ? [] : view.DungeonObjectiveCandidates
     };
 }

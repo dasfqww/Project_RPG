@@ -2,7 +2,8 @@
 param([string]$EngineRoot='D:/UE_5.8', [string]$ExpectedModuleSHA256='',
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$TaskId='narrative-dialogue-20261104',
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$ProofName='NarrativeDialogue-20261104',
-    [string]$BackendRoot='', [switch]$IncludeInformation, [string]$RuntimeProjectRoot='', [switch]$IncludeNPC)
+    [string]$BackendRoot='', [switch]$IncludeInformation, [string]$RuntimeProjectRoot='', [switch]$IncludeNPC,
+    [switch]$IncludeDungeonObjectives)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if(!$BackendRoot){$BackendRoot=Join-Path $workspace 'Backend'}
@@ -16,6 +17,7 @@ $inputs=Join-Path $temp 'Backend'
 $artifacts=Join-Path $temp 'artifacts'
 $containerName='rpg-narrative-ui-'+$runId
 $containerId=$null; $backend=$null; $backendOut=$null; $backendErr=$null
+$enableDungeonCatalog=$false
 $copies=[Collections.Generic.List[object]]::new()
 $result=[ordered]@{Passed=$false;Run=$runId;ModuleSHA256=$ExpectedModuleSHA256;NPC=[bool]$IncludeNPC;Phases=@();Revision=$null;Receipts=$null;AltIsolated=$false;GrowthUnchanged=$false;FreshBackend=$false;ContainerRemoved=$false;Cleanup=$null;TempDeleted=$false;Failure=$null}
 $null=New-Item -ItemType Directory -Path $inputs -Force
@@ -44,8 +46,10 @@ function New-BackendProcess([string]$Arguments) {
     $start.EnvironmentVariables['ConnectionStrings__Postgres']=$connection
     $start.EnvironmentVariables['Auth__AdminToken']=$adminToken
     $start.EnvironmentVariables['Steam__AllowDevelopmentAuthentication']='true'
-    $start.EnvironmentVariables['Narrative__EnableDevelopmentContent']=if($IncludeInformation){'false'}else{'true'}
-    $start.EnvironmentVariables['Narrative__CatalogPath']=if($IncludeInformation){$informationCatalog}else{''}
+    $start.EnvironmentVariables['Narrative__EnableDevelopmentContent']=if($IncludeInformation -or $enableDungeonCatalog){'false'}else{'true'}
+    $start.EnvironmentVariables['Narrative__CatalogPath']=if($enableDungeonCatalog){$dungeonCatalog}elseif($IncludeInformation){$informationCatalog}else{''}
+    $start.EnvironmentVariables.Remove('DungeonContent__DevelopmentProfile')
+    if($enableDungeonCatalog){$start.EnvironmentVariables['DungeonContent__DevelopmentProfile']='Training'}
     $start.EnvironmentVariables['Kestrel__Endpoints__Http__Url']=$url
     $start.EnvironmentVariables['RateLimits__Enabled']='false'
     $child=[Diagnostics.Process]::new(); $child.StartInfo=$start
@@ -90,13 +94,14 @@ function Run-Frontend([string]$Phase) {
     $path=$line[0].Substring(8); $proof=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
     if(!$proof.Passed -or !$proof.RuntimeDeleted){throw 'HTTP frontend proof failed/unclean'}
     $native=Get-Content -LiteralPath (Join-Path (Split-Path -Parent $path) 'Native.log') -Raw -Encoding UTF8
-    $marker=if($IncludeNPC){'World NPC HTTP persistence verified: '}else{'Narrative HTTP persistence verified: '}
+    $marker=if($Phase.StartsWith('dungeon')){'Dungeon goal HTTP automatic sync verified: '}elseif($IncludeNPC){'World NPC HTTP persistence verified: '}else{'Narrative HTTP persistence verified: '}
     if(!$native.Contains($marker+$Phase)){throw 'Real HTTP completion marker missing'}
     $result.Phases+=@{Phase=$Phase;Proof=$path;ModuleSHA256=$proof.SnapshotModuleSHA256}
     Write-Output ('PASS UE HTTP '+$Phase)
 }
 try {
     Assert-Reservation
+    if($IncludeDungeonObjectives -and $IncludeInformation){throw 'Use separate information and dungeon probe runs'}
     & docker image inspect postgres:17-alpine --format '{{.Id}}' *> $null
     if($LASTEXITCODE -ne 0){throw 'Docker with cached postgres:17-alpine is required'}
     foreach($directory in @('ProjectRpg.Backend','Database','ProjectRpg.Operations.Core')){
@@ -146,6 +151,15 @@ try {
         if($migration.ExitCode -ne 0){throw 'Own DB migration failed'}
     }finally{if(!$migration.HasExited){$migration.Kill();$migration.WaitForExit()};$migration.Dispose()}
     Start-Backend
+    if($IncludeDungeonObjectives){
+        $content=Get-Content -LiteralPath (Join-Path $inputs 'ProjectRpg.Backend/Narrative/Content/development.json') -Raw -Encoding UTF8|ConvertFrom-Json
+        $goal=@{id='DEV.DungeonProof';version=1;prerequisites=@();objectives=@('clear');title='Dungeon proof';dungeonObjectives=@{clear=@{dungeonId='Progression.Training';difficulty='Normal'}}}
+        $offer=@{id='DEV.DungeonProof.Offer';speaker='Probe';text='Accept';questId='DEV.DungeonProof';requiredStatus=$null;choices=@(@{id='accept';text='Accept';effect='AcceptQuest'})}
+        $report=@{id='DEV.DungeonProof.Report';speaker='Probe';text='Report';questId='DEV.DungeonProof';requiredStatus='ReadyToReport';choices=@(@{id='report';text='Report';effect='ReportQuest'})}
+        $content.quests=@($content.quests)+@($goal);$content.dialogues=@($content.dialogues)+@($offer,$report)
+        $dungeonCatalog=Join-Path $temp 'dungeon.json'
+        [IO.File]::WriteAllText($dungeonCatalog,($content|ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
+    }
     $steam='76561198'+([string](Get-Random -Minimum 100000000 -Maximum 999999999))
     $headers=$null;$login=Api POST '/auth/steam-ticket' @{ticket=('dev:'+$steam)}
     $headers=@{Authorization=('Bearer '+$login.accessToken)};$login=$null
@@ -168,6 +182,26 @@ try {
     $receipts=Sql "SELECT count(*) FROM character_narrative_commands WHERE character_id='$id';"
     if($receipts -cne '4'){throw 'Unexpected extra command after reopen/reconnect'}
     $result.Receipts=[int]$receipts
+    if($IncludeDungeonObjectives){
+        Stop-Backend;$enableDungeonCatalog=$true;Start-Backend
+        $accepted=Api POST ('/characters/'+$id+'/narrative/choices') @{requestId=[Guid]::NewGuid();expectedRevision='4';catalogVersion=1;dialogueId='DEV.DungeonProof.Offer';choiceId='accept'}
+        if($accepted.revision -cne '5'){throw 'Dungeon fixture acceptance failed'}
+        $proofSession=[Guid]::NewGuid()
+        # An immutable success fixture in our disposable DB, not a claim of live combat verification.
+        $seed="INSERT INTO dungeon_sessions(dungeon_session_id,dungeon_id,difficulty,state,server_id,created_at,updated_at,expires_at) VALUES ('$proofSession','Progression.Training','Normal','Cleared','narrative-probe',clock_timestamp(),clock_timestamp(),clock_timestamp()); INSERT INTO dungeon_reward_settlements(dungeon_session_id,server_id,reward_version,command_fingerprint,state,character_ids,currency_changes,next_attempt_at,created_at,updated_at,completed_at) VALUES ('$proofSession','narrative-probe','probe',repeat('a',64),'Completed',jsonb_build_array('$id'::text),'[]'::jsonb,clock_timestamp(),clock_timestamp(),clock_timestamp(),clock_timestamp());"
+        $null=Sql $seed
+        $beforeSync=Api GET ('/characters/'+$id+'/narrative')
+        if($beforeSync.revision -cne '5' -or $beforeSync.dungeonObjectiveCandidates.Count -ne 1){throw 'Read-only evidence discovery fixture failed'}
+        Run-Frontend dungeon
+        Stop-Backend;Start-Backend;Run-Frontend dungeonrestore
+        $afterSync=Api GET ('/characters/'+$id+'/narrative')
+        $goalState=@($afterSync.quests|Where-Object questId -eq 'DEV.DungeonProof')
+        if($afterSync.revision -cne '6' -or $goalState.Count -ne 1 -or $goalState[0].status -cne 'ReadyToReport' -or $afterSync.dungeonObjectiveCandidates.Count -ne 0){throw 'Automatic dungeon progress/report boundary failed'}
+        $result.Revision='6';$result.Receipts=[int](Sql "SELECT count(*) FROM character_narrative_commands WHERE character_id='$id';")
+        if($result.Receipts -ne 6){throw 'Restart duplicated a dungeon objective command'}
+        $other=Api GET ('/characters/'+$altId+'/narrative');if($other.revision -cne '0'){throw 'Dungeon progress leaked to alt'}
+        $result['DungeonAutomaticSync']=$true;$result['DungeonFreshProcessRestore']=$true
+    }
     if((Sql $growthQuery) -cne $growthBefore){throw 'Story UI changed persistent growth'}
     $result.GrowthUnchanged=$true;$result.Passed=$true
     Write-Output 'PASS real UE lobby/dialogue HTTP -> PostgreSQL; fresh backend and UE restore; alt/growth isolated'

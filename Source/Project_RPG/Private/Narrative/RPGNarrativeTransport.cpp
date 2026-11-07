@@ -10,6 +10,16 @@ bool FRPGHttpNarrativeTransport::GetContext(FString& Endpoint, FString& SteamId)
 bool FRPGHttpNarrativeTransport::Send(const FGuid CharacterId, const FString& ChoiceBody,
     TFunction<void(FRPGNarrativeHttpResult)> Completion)
 {
+    return SendRequest(CharacterId, ChoiceBody, false, MoveTemp(Completion));
+}
+bool FRPGHttpNarrativeTransport::SendDungeon(const FGuid CharacterId, const FString& Body,
+    TFunction<void(FRPGNarrativeHttpResult)> Completion)
+{
+    return !Body.IsEmpty() && SendRequest(CharacterId, Body, true, MoveTemp(Completion));
+}
+bool FRPGHttpNarrativeTransport::SendRequest(const FGuid CharacterId, const FString& ChoiceBody, const bool bDungeon,
+    TFunction<void(FRPGNarrativeHttpResult)> Completion)
+{
     if (!Web.IsValid() || ActiveRequest || !Completion) return false;
     const uint64 ExpectedGeneration = ++Generation;
     TWeakPtr<FRPGHttpNarrativeTransport> WeakThis = AsShared();
@@ -22,6 +32,14 @@ bool FRPGHttpNarrativeTransport::Send(const FGuid CharacterId, const FString& Ch
             Completion(MoveTemp(Result));
         });
     if (!ActiveRequest) return false;
+    if (bDungeon)
+    {
+        // Reuse the player's build-only request and context checks; replace only its owner-scoped path.
+        FString Endpoint, SteamId;
+        if (!GetContext(Endpoint, SteamId)) { Cancel(); return false; }
+        ActiveRequest->SetURL(Endpoint / FString::Printf(TEXT("characters/%s/narrative/dungeon-objectives"),
+            *CharacterId.ToString(EGuidFormats::DigitsWithHyphensLower)));
+    }
     const FHttpRequestPtr Request = ActiveRequest;
     if (!Request->ProcessRequest() && ActiveRequest == Request)
         Request->OnProcessRequestComplete().ExecuteIfBound(Request, nullptr, false);

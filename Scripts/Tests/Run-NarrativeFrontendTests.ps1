@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param([string]$EngineRoot='D:/UE_5.8', [string]$ExpectedModuleSHA256='',
-    [ValidateSet('native','complete','restore')][string]$Phase='native',
+    [ValidateSet('native','complete','restore','dungeon','dungeonrestore')][string]$Phase='native',
     [string]$BackendUrl='', [Guid]$CharacterId=[Guid]::Empty, [string]$SteamId='',
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$TaskId='narrative-dialogue-20261104',
     [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$ProofName='NarrativeDialogue-20261104', [switch]$IncludeInformation,
@@ -16,6 +16,7 @@ $runtime=Join-Path $temp 'Runtime'
 $process=$null; $loaded=$null; $copies=[Collections.Generic.List[object]]::new()
 $tests=@('ProjectRPG.Narrative.Codec','ProjectRPG.Narrative.Coordinator','ProjectRPG.Narrative.PlayerTransport','ProjectRPG.Narrative.SubsystemOwnership','ProjectRPG.Narrative.DialogueWidget')
 $tests+=@('ProjectRPG.Narrative.InformationDialogue')
+$tests+=@('ProjectRPG.Narrative.DungeonObjectives')
 if($IncludeNPC){$tests+=@('ProjectRPG.Narrative.NPCInteraction')}
 $tests+=@('ProjectRPG.Online.DungeonLobbyWidget','ProjectRPG.Online.DungeonLobbyNavigation.NativeConnection','ProjectRPG.Online.DungeonLobbyNavigation.OrderAndAvailability','ProjectRPG.Online.DungeonLobbyBackInput.Preparation')
 if($Phase -ne 'native'){

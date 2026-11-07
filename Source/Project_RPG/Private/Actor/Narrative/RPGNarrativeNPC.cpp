@@ -80,7 +80,7 @@ bool ARPGNarrativeNPC::OpenDialogue(APlayerController* Controller)
     if (!Web || !Web->HasAccessToken() || Web->GetAuthenticatedSteamId().IsEmpty() || !Dungeon || !Flow
         || UI->HasUIOpen() || Dungeon->IsRequestInFlight() || Dungeon->HasUnresolvedDeparture()
         || Dungeon->HasUnresolvedDungeonAbandonment() || Flow->IsBusy()
-        || (Flow->HasPendingChoice() && !HasEntry(Flow->GetPendingDialogueId()))
+        || (Flow->HasPendingChoice() && !Flow->HasPendingDungeonObjective() && !HasEntry(Flow->GetPendingDialogueId()))
         || !FGuid::Parse(Dungeon->GetSelectedCharacterId(), Character) || !Character.IsValid()) return false;
     auto* Panel = CreateWidget<URPGNarrativeDialogueWidget>(Controller);
     if (!Panel || !Panel->OpenForNPC(Character, this)) return false;

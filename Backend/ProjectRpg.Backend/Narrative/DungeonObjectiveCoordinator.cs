@@ -11,6 +11,22 @@ public sealed class DungeonObjectiveCoordinator(INarrativeRepository repository,
     INarrativeDungeonEvidenceRepository evidenceRepository, NarrativeCatalog catalog, QuestManager quests,
     ScenarioManager scenarios, NarrativeCoordinator narrative, TimeProvider clock)
 {
+    internal static IReadOnlyList<NarrativeDungeonObjectiveQuery> BuildQueries(NarrativeState state, NarrativeCatalog catalog)
+    {
+        List<NarrativeDungeonObjectiveQuery> result = [];
+        foreach (var progress in state.Quests.Where(q => q.Status == QuestStatus.Active).OrderBy(q => q.QuestId, StringComparer.Ordinal))
+        {
+            var definition = catalog.Quests[progress.QuestId];
+            if (definition.DungeonObjectives is null || progress.DungeonObjectives is null) continue;
+            foreach (var pair in definition.DungeonObjectives.OrderBy(p => p.Key, StringComparer.Ordinal))
+                if (!progress.CompletedObjectives.Contains(pair.Key)
+                    && progress.DungeonObjectives.TryGetValue(pair.Key, out var activated))
+                    result.Add(new(progress.QuestId, pair.Key, pair.Value.DungeonId, pair.Value.Difficulty, activated.ActivatedAt,
+                        [.. progress.DungeonObjectives.Values.Where(p => p.DungeonSessionId.HasValue).Select(p => p.DungeonSessionId!.Value)]));
+        }
+        return result;
+    }
+
     public static void ValidateTargets(NarrativeCatalog catalog, DungeonContentCatalog content)
     {
         if (catalog.Quests.Values.SelectMany(q => q.DungeonObjectives?.Values ?? [])

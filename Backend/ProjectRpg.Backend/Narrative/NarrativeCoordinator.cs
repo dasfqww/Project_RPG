@@ -4,10 +4,16 @@ namespace ProjectRpg.Backend.Narrative;
 
 /// <summary>Composition root for one narrative operation. Character state belongs to the repository.</summary>
 public sealed class NarrativeCoordinator(INarrativeRepository repository, NarrativeCatalog catalog,
-    QuestManager quests, ScenarioManager scenarios, DialogueManager dialogues, TimeProvider clock)
+    QuestManager quests, ScenarioManager scenarios, DialogueManager dialogues, TimeProvider clock,
+    INarrativeDungeonEvidenceRepository? dungeonEvidence = null)
 {
     public async Task<NarrativeView> LoadAsync(Guid characterId, string steamId, CancellationToken cancellationToken)
-        => View(await repository.LoadNarrativeAsync(characterId, steamId, cancellationToken));
+    {
+        NarrativeView view = View(await repository.LoadNarrativeAsync(characterId, steamId, cancellationToken));
+        if (dungeonEvidence is null) return view;
+        return view with { DungeonObjectiveCandidates = await dungeonEvidence.FindNarrativeDungeonObjectiveCandidatesAsync(
+            characterId, steamId, DungeonObjectiveCoordinator.BuildQueries(view.State, catalog), cancellationToken) };
+    }
 
     public async Task<NarrativeView> ChooseAsync(Guid characterId, string steamId, NarrativeCommand command,
         CancellationToken cancellationToken)

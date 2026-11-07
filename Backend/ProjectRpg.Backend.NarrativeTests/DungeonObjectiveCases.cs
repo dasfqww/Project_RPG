@@ -78,7 +78,7 @@ internal static class DungeonObjectiveCases
 
         Clock clock = new(DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
         QuestManager quests = new();
-        NarrativeCoordinator Flow() => new(reopen(), catalog, quests, new(), new(quests), clock);
+        NarrativeCoordinator Flow() => new(reopen(), catalog, quests, new(), new(quests), clock, (INarrativeDungeonEvidenceRepository)game);
         DungeonObjectiveCoordinator Goals() => new(reopen(), (INarrativeDungeonEvidenceRepository)game,
             catalog, quests, new(), Flow(), clock);
         async Task<GameCharacter> Character(string owner)
@@ -93,7 +93,7 @@ internal static class DungeonObjectiveCases
         string growth = JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(character.CharacterId, clock.Now, default));
         async Task Choice(GameCharacter who, Guid requestId, long revision, string node, string choice) =>
             _ = await Flow().ChooseAsync(who.CharacterId, who.SteamId, new(requestId, revision, 7, node, choice), default);
-        async Task<Guid> Clear(string difficulty = Difficulty, bool excludeMember = false)
+        async Task<Guid> Clear(string difficulty = Difficulty, bool excludeMember = false, bool failDelivery = false)
         {
             clock.Advance();
             var session = await game.CreateDungeonSessionAsync(character.SteamId, character.CharacterId, Dungeon, difficulty,
@@ -121,7 +121,8 @@ internal static class DungeonObjectiveCases
             Check(evidence is not null && evidence.OccurredAt == clock.Now, "Pending settlement did not provide frozen evidence.");
             var claim = await game.ClaimNextDungeonRewardSettlementAsync("quest-test", clock.Now, clock.Now.AddMinutes(1), default);
             Check(claim?.DungeonSessionId == session.DungeonSessionId, "Unexpected private test settlement.");
-            await game.CompleteDungeonRewardSettlementAsync(session.DungeonSessionId, "quest-test", clock.Now, default);
+            if (failDelivery) await game.FailDungeonRewardSettlementAsync(session.DungeonSessionId, "quest-test", "Fixture delivery failure", clock.Now, default);
+            else await game.CompleteDungeonRewardSettlementAsync(session.DungeonSessionId, "quest-test", clock.Now, default);
             return session.DungeonSessionId;
         }
         DungeonObjectiveCommand Command(Guid session, long revision, string objective = "clear", Guid? id = null) =>
@@ -140,7 +141,16 @@ internal static class DungeonObjectiveCases
         await Choice(character, dialogueReceipt, 1, Quest, "clear");
         await Rejected(() => Record(Command(beforeAccept, 2)), "dungeon_objective_event_out_of_window");
         await Rejected(() => Record(Command(beforePrerequisite, 2)), "dungeon_objective_event_out_of_window");
-        var validSession = await Clear(excludeMember: true);
+        Check((await Flow().LoadAsync(character.CharacterId, character.SteamId, default)).DungeonObjectiveCandidates.IsEmpty,
+            "Discovery offered an event before objective activation.");
+        var validSession = await Clear(excludeMember: true, failDelivery: true);
+        var discovered = await Flow().LoadAsync(character.CharacterId, character.SteamId, default);
+        Check(discovered.State.Revision == 2 && discovered.DungeonObjectiveCandidates.SequenceEqual([new DungeonObjectiveCandidate(Quest, "clear", validSession)]),
+            "Read-only discovery lost eligible frozen evidence or wrote progress.");
+        var boundary = new NarrativeDungeonObjectiveQuery(Quest, "clear", Dungeon, Difficulty, clock.Now.AddTicks(1), []);
+        Check((await ((INarrativeDungeonEvidenceRepository)game).FindNarrativeDungeonObjectiveCandidatesAsync(
+            character.CharacterId, character.SteamId, [boundary], default)).IsEmpty,
+            "Discovery rounded activation backward across the persistent timestamp boundary.");
         await Rejected(() => Record(Command(validSession, 0), alt), "dungeon_clear_evidence_not_authorized");
         await Rejected(() => Goals().RecordAsync(character.CharacterId, foreign.SteamId, Command(validSession, 2), default), "dungeon_clear_evidence_not_authorized");
         Check(await ((INarrativeDungeonEvidenceRepository)game).LoadNarrativeDungeonClearEvidenceAsync(validSession, excluded.CharacterId, default) is null,
@@ -158,6 +168,8 @@ internal static class DungeonObjectiveCases
         // The winning request is not necessarily the first PostgreSQL task.
         if (results[0] is not null) command = command with { RequestId = winningRequest };
         Check((await Flow().LoadAsync(character.CharacterId, character.SteamId, default)).State.Revision == 3, "Clear revision mismatch.");
+        Check((await Flow().LoadAsync(character.CharacterId, character.SteamId, default)).DungeonObjectiveCandidates.IsEmpty,
+            "Discovery reused a clear for a sequential objective.");
         await Rejected(() => Record(Command(validSession, 3, "again")), "dungeon_objective_evidence_already_used");
         Guid wrongDifficulty = await Clear("Hard");
         await Rejected(() => Record(Command(wrongDifficulty, 3, "again")), "dungeon_objective_target_mismatch");
@@ -167,6 +179,7 @@ internal static class DungeonObjectiveCases
         Check(ready.State.Quests.Single().Status == QuestStatus.ReadyToReport && ready.State.StoryUnlocks.IsEmpty, "Clear bypassed report.");
         await Choice(character, Guid.NewGuid(), 4, Quest + ".Report", "report");
         var restored = await Flow().LoadAsync(character.CharacterId, character.SteamId, default);
+        Check(restored.DungeonObjectiveCandidates.IsEmpty, "Completed quest still offered gameplay evidence.");
         Check(restored.State.Revision == 5 && restored.State.StoryUnlocks.SequenceEqual(["TEST.Unlock"]), "Restored report/unlock failed.");
         Check((await Record(command)).State.Revision == 3 && (await Record(second)).State.Revision == 4, "Stable evidence receipt replay failed.");
         await Rejected(() => Record(command with { DungeonSessionId = next }), "idempotency_conflict");

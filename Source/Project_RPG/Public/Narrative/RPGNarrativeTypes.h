@@ -48,6 +48,12 @@ struct PROJECT_RPG_API FRPGDialogueNode
     UPROPERTY(BlueprintReadOnly) bool bEntryPoint = true;
 };
 
+struct PROJECT_RPG_API FRPGNarrativeDungeonCandidate
+{
+    FString QuestId, ObjectiveId;
+    FGuid DungeonSessionId;
+};
+
 struct PROJECT_RPG_API FRPGNarrativeSnapshot
 {
     FGuid CharacterId;
@@ -57,6 +63,7 @@ struct PROJECT_RPG_API FRPGNarrativeSnapshot
     TArray<FString> CompletedChapters;
     TArray<FString> StoryUnlocks;
     TArray<FRPGDialogueNode> AvailableDialogues;
+    TArray<FRPGNarrativeDungeonCandidate> DungeonObjectiveCandidates;
 };
 
 struct PROJECT_RPG_API FRPGNarrativeCommand
@@ -66,6 +73,13 @@ struct PROJECT_RPG_API FRPGNarrativeCommand
     int32 CatalogVersion = 0;
     FString DialogueId;
     FString ChoiceId;
+};
+struct PROJECT_RPG_API FRPGNarrativeDungeonCommand
+{
+    FGuid RequestId;
+    int64 ExpectedRevision = 0;
+    int32 CatalogVersion = 0;
+    FRPGNarrativeDungeonCandidate Target;
 };
 
 struct PROJECT_RPG_API FRPGNarrativeHttpResult
@@ -81,4 +95,5 @@ class PROJECT_RPG_API FRPGNarrativeCodec
 public:
     static bool Decode(const FString& Body, FGuid ExpectedCharacter, FRPGNarrativeSnapshot& Out);
     static bool Encode(const FRPGNarrativeCommand& Command, FString& OutBody);
+    static bool EncodeDungeon(const FRPGNarrativeDungeonCommand& Command, FString& OutBody);
 };

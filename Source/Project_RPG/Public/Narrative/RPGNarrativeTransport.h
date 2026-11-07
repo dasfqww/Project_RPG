@@ -11,6 +11,7 @@ public:
     virtual ~IRPGNarrativeTransport() = default;
     virtual bool GetContext(FString& Endpoint, FString& SteamId) const = 0;
     virtual bool Send(FGuid CharacterId, const FString& ChoiceBody, TFunction<void(FRPGNarrativeHttpResult)> Completion) = 0;
+    virtual bool SendDungeon(FGuid CharacterId, const FString& Body, TFunction<void(FRPGNarrativeHttpResult)> Completion) = 0;
     virtual void Cancel() = 0;
 };
 
@@ -23,8 +24,10 @@ public:
     virtual ~FRPGHttpNarrativeTransport() override;
     virtual bool GetContext(FString& Endpoint, FString& SteamId) const override;
     virtual bool Send(FGuid CharacterId, const FString& ChoiceBody, TFunction<void(FRPGNarrativeHttpResult)> Completion) override;
+    virtual bool SendDungeon(FGuid CharacterId, const FString& Body, TFunction<void(FRPGNarrativeHttpResult)> Completion) override;
     virtual void Cancel() override;
 private:
+    bool SendRequest(FGuid CharacterId, const FString& Body, bool bDungeon, TFunction<void(FRPGNarrativeHttpResult)> Completion);
     TWeakObjectPtr<UHttpWebManager> Web;
     FHttpRequestPtr ActiveRequest;
     uint64 Generation = 0;

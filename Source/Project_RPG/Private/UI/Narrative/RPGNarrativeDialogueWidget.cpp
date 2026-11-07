@@ -76,7 +76,7 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
         };
         RefreshButton = Button(TEXT("NarrativeRefresh"), NSLOCTEXT("RPGNarrative", "Refresh", "대화 다시 확인"));
         RefreshButton->OnClicked.AddUniqueDynamic(this, &ThisClass::RefreshStory);
-        RetryButton = Button(TEXT("NarrativeRetry"), NSLOCTEXT("RPGNarrative", "Retry", "선택 결과 다시 확인"));
+        RetryButton = Button(TEXT("NarrativeRetry"), NSLOCTEXT("RPGNarrative", "Retry", "진행 결과 다시 확인"));
         RetryButton->OnClicked.AddUniqueDynamic(this, &ThisClass::RetryChoice);
         Button(TEXT("NarrativeClose"), NSLOCTEXT("RPGNarrative", "Close", "닫기"))->OnClicked.AddUniqueDynamic(this, &ThisClass::CloseScreen);
     }
@@ -110,7 +110,7 @@ bool URPGNarrativeDialogueWidget::OpenForNPC(const FGuid CharacterId, ARPGNarrat
         || !FGuid::Parse(Dungeon->GetSelectedCharacterId(), Selected) || Selected != CharacterId) return false;
     auto* Player = GetOwningLocalPlayer();
     auto* Flow = Player ? Player->GetSubsystem<URPGNarrativeCoordinator>() : nullptr;
-    if (!Flow || (Flow->HasPendingChoice() && !NPC->HasEntry(Flow->GetPendingDialogueId()))) return false;
+    if (!Flow || (Flow->HasPendingChoice() && !Flow->HasPendingDungeonObjective() && !NPC->HasEntry(Flow->GetPendingDialogueId()))) return false;
     ReleaseNPCInput();
     bNPCContext = true; SourceNPC = NPC; SourcePawn = GetOwningPlayer()->GetPawn();
     NPCAccount = Web->GetAuthenticatedSteamId(); NPCEndpoint = Web->GetApiUrl();
@@ -203,14 +203,15 @@ void URPGNarrativeDialogueWidget::RefreshStory()
 }
 void URPGNarrativeDialogueWidget::RetryChoice()
 {
-    if (!EnsureNPCContext() || (bNPCContext && Coordinator->HasPendingChoice() && !SourceNPC->HasEntry(Coordinator->GetPendingDialogueId()))) return;
+    if (!EnsureNPCContext() || (bNPCContext && Coordinator->HasPendingChoice() && !Coordinator->HasPendingDungeonObjective()
+        && !SourceNPC->HasEntry(Coordinator->GetPendingDialogueId()))) return;
     if (MatchesSelection()) { FailureText = FText::GetEmpty(); Coordinator->RetryPendingChoice(); Render(); }
 }
 void URPGNarrativeDialogueWidget::HandleChanged() { Render(); }
 void URPGNarrativeDialogueWidget::HandleFinished(bool bSuccess, const FString&, bool bOutcomeUnknown)
 {
     FailureText = bSuccess ? FText::GetEmpty() : bOutcomeUnknown
-        ? NSLOCTEXT("RPGNarrative", "Unknown", "선택 결과를 아직 확인하지 못했습니다. 다시 확인해 주세요.")
+        ? NSLOCTEXT("RPGNarrative", "Unknown", "진행 결과를 아직 확인하지 못했습니다. 다시 확인해 주세요.")
         : NSLOCTEXT("RPGNarrative", "Failed", "대화를 확인하지 못했습니다. 연결 상태를 확인하고 다시 시도해 주세요.");
     Render();
 }
@@ -301,6 +302,6 @@ void URPGNarrativeDialogueWidget::Render()
         }
     }
     Status->SetText(bLastBusy ? NSLOCTEXT("RPGNarrative", "Busy", "이야기를 확인하고 있습니다…") : !FailureText.IsEmpty() ? FailureText
-        : bLastPending ? NSLOCTEXT("RPGNarrative", "Pending", "선택 결과를 다시 확인해 주세요.")
+        : bLastPending ? NSLOCTEXT("RPGNarrative", "Pending", "진행 결과를 다시 확인해 주세요.")
         : !bLastReadable ? NSLOCTEXT("RPGNarrative", "Load", "대화를 불러오려면 다시 확인해 주세요.") : FText::GetEmpty());
 }

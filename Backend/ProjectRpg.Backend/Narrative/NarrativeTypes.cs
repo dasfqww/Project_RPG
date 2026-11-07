@@ -79,4 +79,6 @@ public sealed record QuestJournalEntry(string QuestId, int DefinitionVersion, st
             definition.ObjectiveTexts?.GetValueOrDefault(id), progress.CompletedObjectives.Contains(id)))]);
 }
 public sealed record NarrativeView(int CatalogVersion, NarrativeState State,
-    ImmutableArray<DialogueView> AvailableDialogues, ImmutableArray<QuestJournalEntry> Journal);
+    ImmutableArray<DialogueView> AvailableDialogues, ImmutableArray<QuestJournalEntry> Journal,
+    ImmutableArray<DungeonObjectiveCandidate> DungeonObjectiveCandidates = default);
+public sealed record DungeonObjectiveCandidate(string QuestId, string ObjectiveId, Guid DungeonSessionId);

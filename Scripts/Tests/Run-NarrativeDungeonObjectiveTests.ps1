@@ -1,10 +1,12 @@
 [CmdletBinding()]
-param([switch]$Postgres, [string]$BaseCommit='HEAD')
+param([switch]$Postgres, [string]$BaseCommit='HEAD',
+ [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$TaskId='narrative-dungeon-objective-20261106',
+ [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$ProofName='NarrativeDungeonObjective-20261106')
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$task='narrative-dungeon-objective-20261106'
+$task=$TaskId
 $runId=[Guid]::NewGuid().ToString('N')
-$run=Join-Path $workspace ('Saved/BuildChecks/NarrativeDungeonObjective-20261106/'+$runId)
+$run=Join-Path $workspace ('Saved/BuildChecks/'+$ProofName+'/'+$runId)
 $temp=Join-Path $run 'Temp';$inputs=Join-Path $temp 'Repo';$artifacts=Join-Path $temp 'artifacts'
 $containerName='rpg-narrative-objective-'+$runId;$containerId=$null
 $result=[ordered]@{Passed=$false;BaseCommit=$null;Postgres=[bool]$Postgres;Inputs=@();InputsUnchanged=$false;Cleanup=$null;ContainerDeleted=$false;TempDeleted=$false;Failure=$null}
@@ -13,12 +15,12 @@ $overlay=@(
  'Backend/ProjectRpg.Backend/Narrative/QuestManager.cs',
  'Backend/ProjectRpg.Backend/Narrative/NarrativeCatalog.cs',
  'Backend/ProjectRpg.Backend/Narrative/NarrativeCoordinator.cs',
+ 'Backend/ProjectRpg.Backend/Narrative/NarrativeCatalogLoader.cs',
  'Backend/ProjectRpg.Backend/Narrative/DungeonObjectiveCoordinator.cs',
  'Backend/ProjectRpg.Backend/Data/INarrativeDungeonEvidenceRepository.cs',
  'Backend/ProjectRpg.Backend/Data/InMemoryGameRepository.NarrativeDungeonEvidence.cs',
  'Backend/ProjectRpg.Backend/Data/PostgresGameRepository.NarrativeDungeonEvidence.cs',
  'Backend/ProjectRpg.Backend/Api/NarrativeApiEndpoints.cs',
- 'Backend/ProjectRpg.Backend/Program.cs',
  'Backend/ProjectRpg.Backend.NarrativeTests/Program.cs',
  'Backend/ProjectRpg.Backend.NarrativeTests/DungeonObjectiveCases.cs'
 )

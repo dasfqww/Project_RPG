@@ -119,6 +119,9 @@ public static class NarrativeCatalogLoader
                 new(q.Id, q.Version, QuestStatus.ReadyToReport, q.Objectives), q)),
             completedChapters = catalog.Chapters.Keys,
             storyUnlocks = catalog.Chapters.Values.SelectMany(c => c.StoryUnlocks).Distinct(),
+            dungeonObjectiveCandidates = catalog.Quests.Values.SelectMany(q => q.DungeonObjectives?.Keys.Select(id =>
+                new DungeonObjectiveCandidate(q.Id, id, Guid.Empty)) ?? [])
+                .OrderByDescending(c => c.QuestId.Length + c.ObjectiveId.Length).Take(256),
             availableDialogues = catalog.Dialogues.Values.Select(d => new { id = d.Id, speaker = d.Speaker,
                 text = d.Text, informational = d.Informational, entryPoint = d.EntryPoint,
                 choices = d.Choices.Select(c => new { id = c.Id, text = c.Text, nextDialogueId = c.NextDialogueId }) })

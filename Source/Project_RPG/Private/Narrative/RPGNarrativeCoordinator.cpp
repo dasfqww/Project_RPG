@@ -3,6 +3,7 @@
 #include "Narrative/RPGScenarioManager.h"
 #include "Narrative/RPGDialogueManager.h"
 #include "Narrative/RPGNarrativeTransport.h"
+#include "Online/RPGDungeonSessionSubsystem.h"
 #include "Manager/HttpWebManager.h"
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
@@ -15,6 +16,12 @@ void URPGNarrativeCoordinator::Initialize(FSubsystemCollectionBase& Collection)
     Super::Initialize(Collection); bShuttingDown = false;
     Collection.InitializeDependency<URPGDialogueManager>();
     BindManagers();
+    if (DungeonFlow)
+    {
+        DungeonFlow->OnDungeonSessionChanged.AddDynamic(this, &ThisClass::HandleDungeonSessionChanged);
+        DungeonFlow->OnFlowStateChanged.AddDynamic(this, &ThisClass::HandleDungeonFlowChanged);
+        HandleDungeonSessionChanged(DungeonFlow->GetCurrentDungeonSession());
+    }
 }
 bool URPGNarrativeCoordinator::BindManagers()
 {
@@ -22,6 +29,7 @@ bool URPGNarrativeCoordinator::BindManagers()
     Quests = Instance ? Instance->GetSubsystem<URPGQuestManager>() : nullptr;
     Scenarios = Instance ? Instance->GetSubsystem<URPGScenarioManager>() : nullptr;
     Dialogues = Player ? Player->GetSubsystem<URPGDialogueManager>() : nullptr;
+    DungeonFlow = Instance ? Instance->GetSubsystem<URPGDungeonSessionSubsystem>() : nullptr;
     return Quests && Scenarios && Dialogues;
 }
 bool URPGNarrativeCoordinator::EnsureTransport()
@@ -46,7 +54,7 @@ bool URPGNarrativeCoordinator::HasCurrentSnapshot() const
 }
 void URPGNarrativeCoordinator::ClearView()
 {
-    bHasView = false; Revision = 0; CatalogVersion = 0;
+    bHasView = false; Revision = 0; CatalogVersion = 0; DungeonCandidates.Reset();
     if (Dialogues) Dialogues->Reset();
 }
 bool URPGNarrativeCoordinator::SelectCharacter(const FGuid CharacterId)
@@ -56,19 +64,23 @@ bool URPGNarrativeCoordinator::SelectCharacter(const FGuid CharacterId)
     if (!Transport->GetContext(CurrentEndpoint, CurrentSteam)) return false;
     // Resolve an uncertain command before switching within the same account/endpoint.
     // Another account cannot inherit this account's display or pending request.
-    if (PendingChoice && CurrentEndpoint == Endpoint && CurrentSteam == SteamId) return false;
+    if (HasPendingChoice() && CurrentEndpoint == Endpoint && CurrentSteam == SteamId) return false;
     if (!BindManagers()) return false;
-    ++RequestGeneration; Transport->Cancel(); PendingChoice.Reset(); PendingBody.Reset();
+    ++RequestGeneration; Transport->Cancel(); PendingChoice.Reset(); PendingDungeon.Reset(); PendingBody.Reset();
+    FTSTicker::GetCoreTicker().RemoveTicker(DungeonSyncTick); DungeonSyncTick.Reset(); bDungeonRefreshNeeded = false; LastObservedDungeonResult.Invalidate();
     SelectedCharacter = CharacterId; Endpoint = MoveTemp(CurrentEndpoint); SteamId = MoveTemp(CurrentSteam);
     ClearView(); OnChanged.Broadcast(); return true;
 }
 bool URPGNarrativeCoordinator::Refresh()
 {
-    return !bBusy && !PendingChoice && ContextMatches() && Dispatch(false);
+    if (bBusy || HasPendingChoice() || !ContextMatches()) return false;
+    DungeonSyncBudget = 256;
+    bDungeonRefreshNeeded = false;
+    return Dispatch(false);
 }
 bool URPGNarrativeCoordinator::BeginDialogue(const FString& DialogueId)
 {
-    if (!HasCurrentSnapshot() || bBusy || PendingChoice
+    if (!HasCurrentSnapshot() || bBusy || HasPendingChoice()
         || !Dialogues->Dialogues.ContainsByPredicate([&](const auto& D) { return D.Id == DialogueId && D.bEntryPoint; })) return false;
     Dialogues->ActiveId = DialogueId; OnChanged.Broadcast(); return true;
 }
@@ -80,7 +92,7 @@ void URPGNarrativeCoordinator::CloseDialogue()
 bool URPGNarrativeCoordinator::Choose(const FString& ChoiceId)
 {
     FRPGDialogueNode Active;
-    if (!HasCurrentSnapshot() || bBusy || PendingChoice || !Dialogues->GetActiveDialogue(Active)
+    if (!HasCurrentSnapshot() || bBusy || HasPendingChoice() || !Dialogues->GetActiveDialogue(Active)
         || !Active.Choices.ContainsByPredicate([&](const auto& C) { return C.Id == ChoiceId; })) return false;
     if (Active.bInformational)
     {
@@ -95,9 +107,9 @@ bool URPGNarrativeCoordinator::Choose(const FString& ChoiceId)
 }
 bool URPGNarrativeCoordinator::RetryPendingChoice()
 {
-    return !bBusy && PendingChoice && ContextMatches() && Dispatch(true);
+    return !bBusy && HasPendingChoice() && ContextMatches() && Dispatch(true, PendingDungeon.IsSet());
 }
-bool URPGNarrativeCoordinator::Dispatch(const bool bWrite)
+bool URPGNarrativeCoordinator::Dispatch(const bool bWrite, const bool bDungeon)
 {
     if (!Transport || !ContextMatches()) return false;
     const uint64 Generation = ++RequestGeneration;
@@ -105,11 +117,13 @@ bool URPGNarrativeCoordinator::Dispatch(const bool bWrite)
     const TWeakObjectPtr<URPGNarrativeCoordinator> WeakThis(this);
     // The previous HTTP callback has returned before a new operation begins.
     Transport->Cancel();
-    const bool bSent = Transport->Send(SelectedCharacter, bWrite ? PendingBody : FString(),
+    TFunction<void(FRPGNarrativeHttpResult)> Completion =
         [WeakThis, Generation, bWrite](FRPGNarrativeHttpResult Result)
         {
             if (auto* Owner = WeakThis.Get()) Owner->Receive(Generation, bWrite, MoveTemp(Result));
-        });
+        };
+    const bool bSent = bDungeon ? Transport->SendDungeon(SelectedCharacter, PendingBody, MoveTemp(Completion))
+        : Transport->Send(SelectedCharacter, bWrite ? PendingBody : FString(), MoveTemp(Completion));
     if (!bSent)
     {
         bBusy = false;
@@ -127,18 +141,24 @@ void URPGNarrativeCoordinator::Receive(const uint64 Generation, const bool bWrit
         && FRPGNarrativeCodec::Decode(Result.Body, SelectedCharacter, Snapshot);
     if (bDecoded)
     {
-        if (bWrite) { PendingChoice.Reset(); PendingBody.Reset(); }
-        Apply(MoveTemp(Snapshot)); OnRequestFinished.Broadcast(true, FString(), false); return;
+        const bool bWasDungeon = PendingDungeon.IsSet();
+        if (bWrite) { PendingChoice.Reset(); PendingDungeon.Reset(); PendingBody.Reset(); }
+        Apply(MoveTemp(Snapshot)); OnRequestFinished.Broadcast(true, FString(), false);
+        if (bWrite) ScheduleDungeonSync(true, !bWasDungeon);
+        else if (bDungeonRefreshNeeded || !DungeonCandidates.IsEmpty()) ScheduleDungeonSync(false);
+        return;
     }
     const bool bUncertain = bWrite && (!bContext || !Result.bTransportSuccessful
         || Result.StatusCode >= 500 || Result.StatusCode == 200 || Result.StatusCode == 401 || Result.StatusCode == 403);
-    if (bWrite && !bUncertain) { PendingChoice.Reset(); PendingBody.Reset(); }
+    const bool bDungeonConflict = PendingDungeon.IsSet() && bContext && Result.bTransportSuccessful && Result.StatusCode == 409;
+    if (bWrite && !bUncertain) { PendingChoice.Reset(); PendingDungeon.Reset(); PendingBody.Reset(); }
     FString Error = bContext ? TEXT("narrative_request_failed") : TEXT("narrative_context_changed");
     TSharedPtr<FJsonObject> Object; FString Code;
     if (bContext && Result.Body.Len() <= 8192
         && FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Result.Body), Object) && Object
         && Object->TryGetStringField(TEXT("error"), Code) && Code.Len() <= 96) Error = MoveTemp(Code);
     OnRequestFinished.Broadcast(false, Error, bUncertain);
+    if (bDungeonConflict) ScheduleDungeonSync(true);
 }
 void URPGNarrativeCoordinator::Apply(FRPGNarrativeSnapshot Snapshot)
 {
@@ -153,13 +173,67 @@ void URPGNarrativeCoordinator::Apply(FRPGNarrativeSnapshot Snapshot)
     Dialogues->CharacterId = Snapshot.CharacterId; Dialogues->Revision = Snapshot.Revision;
     if (!Dialogues->Dialogues.ContainsByPredicate([&](const auto& D) { return D.Id == Dialogues->ActiveId; })) Dialogues->ActiveId.Reset();
     Revision = Snapshot.Revision; CatalogVersion = Snapshot.CatalogVersion; bHasView = true;
+    DungeonCandidates = MoveTemp(Snapshot.DungeonObjectiveCandidates);
     OnChanged.Broadcast();
 }
 void URPGNarrativeCoordinator::Deinitialize()
 {
     bShuttingDown = true; ++RequestGeneration;
+    FTSTicker::GetCoreTicker().RemoveTicker(DungeonSyncTick); DungeonSyncTick.Reset();
+    if (DungeonFlow) DungeonFlow->OnDungeonSessionChanged.RemoveDynamic(this, &ThisClass::HandleDungeonSessionChanged);
+    if (DungeonFlow) DungeonFlow->OnFlowStateChanged.RemoveDynamic(this, &ThisClass::HandleDungeonFlowChanged);
     if (Transport) Transport->Cancel();
-    Transport.Reset(); bBusy = false; PendingChoice.Reset(); PendingBody.Reset(); ClearView();
+    Transport.Reset(); bBusy = false; PendingChoice.Reset(); PendingDungeon.Reset(); PendingBody.Reset(); ClearView();
+    DungeonFlow = nullptr;
     Quests = nullptr; Scenarios = nullptr; Dialogues = nullptr;
     OnChanged.Clear(); OnRequestFinished.Clear(); Super::Deinitialize();
+}
+
+void URPGNarrativeCoordinator::HandleDungeonSessionChanged(const FRPGDungeonSession& Session)
+{
+    if (!DungeonFlow) return;
+    FGuid Character;
+    if (!FGuid::Parse(DungeonFlow->GetSelectedCharacterId(), Character) || !Character.IsValid()) return;
+    // The game-instance flow belongs to the primary local player. Never rebind another local player's view.
+    auto* Instance = GetLocalPlayer() ? GetLocalPlayer()->GetGameInstance() : nullptr;
+    if (!Instance || Instance->GetFirstGamePlayer() != GetLocalPlayer()) return;
+    const bool bRebind = !ContextMatches() || SelectedCharacter != Character;
+    const bool bFinished = Session.State == TEXT("Cleared") || Session.State == TEXT("Failed");
+    if (!bFinished && !bRebind && bHasView) return;
+    if (bRebind && !SelectCharacter(Character)) return;
+    if (bFinished)
+    {
+        FGuid SessionId;
+        if (!FGuid::Parse(Session.DungeonSessionId, SessionId) || !SessionId.IsValid()
+            || (!bRebind && LastObservedDungeonResult == SessionId)) return;
+        LastObservedDungeonResult = SessionId;
+    }
+    ScheduleDungeonSync(true, true);
+}
+void URPGNarrativeCoordinator::HandleDungeonFlowChanged(const ERPGDungeonClientFlowState State, const FString&)
+{
+    if (DungeonFlow && (State == ERPGDungeonClientFlowState::Idle || State == ERPGDungeonClientFlowState::InSession
+        || State == ERPGDungeonClientFlowState::ResumingSession))
+        HandleDungeonSessionChanged(DungeonFlow->GetCurrentDungeonSession());
+}
+void URPGNarrativeCoordinator::ScheduleDungeonSync(const bool bRefresh, const bool bResetBudget)
+{
+    if (bShuttingDown) return;
+    bDungeonRefreshNeeded |= bRefresh;
+    if (bResetBudget) DungeonSyncBudget = 256;
+    if (!DungeonSyncTick.IsValid()) DungeonSyncTick = FTSTicker::GetCoreTicker().AddTicker(
+        FTickerDelegate::CreateWeakLambda(this, [this](float Delta) { return TickDungeonSync(Delta); }));
+}
+bool URPGNarrativeCoordinator::TickDungeonSync(float)
+{
+    DungeonSyncTick.Reset();
+    if (bBusy || HasPendingChoice() || !ContextMatches() || DungeonSyncBudget <= 0) return false;
+    if (bDungeonRefreshNeeded)
+    {
+        bDungeonRefreshNeeded = false; Dispatch(false); return false;
+    }
+    if (!HasCurrentSnapshot() || DungeonCandidates.IsEmpty()) return false;
+    FRPGNarrativeDungeonCommand Command{FGuid::NewGuid(), Revision, CatalogVersion, DungeonCandidates[0]};
+    if (!FRPGNarrativeCodec::EncodeDungeon(Command, PendingBody)) return false;
+    --DungeonSyncBudget; PendingDungeon = MoveTemp(Command); Dispatch(true, true); return false;
 }

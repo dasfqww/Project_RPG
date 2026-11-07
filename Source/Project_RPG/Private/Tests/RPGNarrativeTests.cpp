@@ -39,6 +39,12 @@
 
 struct FRPGNarrativeTestAccess
 {
+    static void QueueDungeonRefresh(URPGNarrativeCoordinator* Owner) { Owner->ScheduleDungeonSync(true, true); }
+    static void PumpDungeon(URPGNarrativeCoordinator* Owner)
+    {
+        FTSTicker::GetCoreTicker().RemoveTicker(Owner->DungeonSyncTick);
+        Owner->TickDungeonSync(0.f);
+    }
     static void Attach(URPGNarrativeCoordinator* Owner, TSharedPtr<IRPGNarrativeTransport> Transport)
     {
         Owner->Transport = MoveTemp(Transport); Owner->BindManagers();
@@ -92,6 +98,7 @@ namespace RPGNarrativeTests
         FString Account = TEXT("76561198000000001");
         FString LastBody;
         int32 Sends = 0;
+        bool bDungeonSend = false;
         TFunction<void(FRPGNarrativeHttpResult)> Pending;
         bool GetContext(FString& Endpoint, FString& SteamId) const override
         {
@@ -99,8 +106,10 @@ namespace RPGNarrativeTests
         }
         bool Send(FGuid, const FString& Body, TFunction<void(FRPGNarrativeHttpResult)> Completion) override
         {
-            ++Sends; LastBody = Body; Pending = MoveTemp(Completion); return true;
+            bDungeonSend = false; ++Sends; LastBody = Body; Pending = MoveTemp(Completion); return true;
         }
+        bool SendDungeon(FGuid CharacterId, const FString& Body, TFunction<void(FRPGNarrativeHttpResult)> Completion) override
+        { Send(CharacterId, Body, MoveTemp(Completion)); bDungeonSend = true; return true; }
         void Cancel() override { Pending = nullptr; }
         bool Complete(const FString& Body, const int32 Status = 200)
         {
@@ -316,6 +325,57 @@ bool FRPGNarrativeFlowTest::RunTest(const FString&)
     FRPGNarrativeHttpResult Result; Result.bCurrentPlayerContext = Result.bTransportSuccessful = true;
     Result.StatusCode = 200; Result.Body = Snapshot(4); Late(MoveTemp(Result));
     TestFalse(TEXT("Late callback after shutdown ignored"), Owner->HasCurrentSnapshot());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGNarrativeDungeonTest, "ProjectRPG.Narrative.DungeonObjectives",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGNarrativeDungeonTest::RunTest(const FString&)
+{
+    using namespace RPGNarrativeTests;
+    FGameFixture Fixture; if (!TestTrue(TEXT("Subsystem fixture"), Fixture.Init())) return false;
+    auto* Flow = Fixture.Player->GetSubsystem<URPGNarrativeCoordinator>();
+    auto Transport = MakeShared<FTransport>(); FRPGNarrativeTestAccess::Attach(Flow, Transport);
+    TestTrue(TEXT("Select context"), Flow->SelectCharacter(Character));
+    FString Candidate = Snapshot(1); Candidate.LeftChopInline(1);
+    Candidate += TEXT(",\"dungeonObjectiveCandidates\":[{\"questId\":\"DEV.Introduction\",\"objectiveId\":\"contact\",\"dungeonSessionId\":\"00000001-0000-0002-0000-000300000004\"}]}");
+    FRPGNarrativeSnapshot Parsed;
+    TestTrue(TEXT("Decode server-proven candidate"), FRPGNarrativeCodec::Decode(Candidate, Character, Parsed));
+    TestEqual(TEXT("One candidate"), Parsed.DungeonObjectiveCandidates.Num(), 1);
+    FString Invalid = Candidate.Replace(TEXT("\"objectiveId\":\"contact\""), TEXT("\"objectiveId\":\"absent\""));
+    TestFalse(TEXT("Unknown candidate objective rejected"), FRPGNarrativeCodec::Decode(Invalid, Character, Parsed));
+    Flow->Refresh();
+    const int32 InFlightSends = Transport->Sends;
+    FRPGNarrativeTestAccess::QueueDungeonRefresh(Flow); FRPGNarrativeTestAccess::PumpDungeon(Flow);
+    TestEqual(TEXT("Result event does not overlap an in-flight read"), Transport->Sends, InFlightSends);
+    Transport->Complete(Snapshot(1)); FRPGNarrativeTestAccess::PumpDungeon(Flow);
+    TestEqual(TEXT("Result event survives the older read response"), Transport->Sends, InFlightSends + 1);
+    TestTrue(TEXT("Deferred result reads fresh evidence"), Transport->LastBody.IsEmpty());
+    Transport->Complete(Candidate);
+    TestFalse(TEXT("No optimistic goal completion"), Flow->GetQuestManager()->GetQuests(Character)[0].CompletedObjectives.Contains(TEXT("contact")));
+    FRPGNarrativeTestAccess::PumpDungeon(Flow);
+    TestTrue(TEXT("Automatic dedicated objective POST"), Transport->bDungeonSend);
+    FString Original = Transport->LastBody;
+    TSharedPtr<FJsonObject> EncodedGoal; FString EncodedRevision;
+    TestTrue(TEXT("Evidence reference encoded"), FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Original), EncodedGoal)
+        && EncodedGoal && EncodedGoal->HasField(TEXT("dungeonSessionId"))
+        && EncodedGoal->TryGetStringField(TEXT("expectedRevision"), EncodedRevision) && EncodedRevision == TEXT("1"));
+    TestFalse(TEXT("No authored choice in evidence body"), Original.Contains(TEXT("dialogueId")));
+    Transport->Complete(FString(), 0);
+    TestTrue(TEXT("Unknown goal result retained"), Flow->HasPendingChoice());
+    TestFalse(TEXT("Uncertain goal blocks character switch"), Flow->SelectCharacter(FGuid::NewGuid()));
+    TestTrue(TEXT("Shared retry retries the goal"), Flow->RetryPendingChoice());
+    TestTrue(TEXT("Retry uses goal route"), Transport->bDungeonSend);
+    TestEqual(TEXT("Retry preserves exact body"), Transport->LastBody, Original);
+    Transport->Complete(TEXT("{\"error\":\"narrative_revision_conflict\"}"), 409);
+    TestFalse(TEXT("Definite conflict clears pending goal"), Flow->HasPendingChoice());
+    FRPGNarrativeTestAccess::PumpDungeon(Flow);
+    TestTrue(TEXT("Conflict reads fresh state"), Transport->LastBody.IsEmpty() && !Transport->bDungeonSend);
+    Transport->Complete(Snapshot(2));
+    const int32 Sends = Transport->Sends;
+    FRPGNarrativeTestAccess::PumpDungeon(Flow);
+    TestEqual(TEXT("No candidates means no further writes"), Transport->Sends, Sends);
+    TestTrue(TEXT("Server completion restored"), Flow->GetQuestManager()->GetQuests(Character)[0].CompletedObjectives.Contains(TEXT("contact")));
     return true;
 }
 
@@ -564,8 +624,23 @@ bool FRPGNarrativeNPCTest::RunTest(const FString&)
     TestTrue(TEXT("Escape is handled by NPC window"), FRPGNarrativeTestAccess::BackNPC(Panel));
     TestFalse(TEXT("Escape closes viewport"), Panel->IsInViewport());
     TestFalse(TEXT("Rebinding/close releases fallback movement lock"), Controller->IsMoveInputIgnored());
+    FString Candidate = Snapshot(2); Candidate.LeftChopInline(1);
+    Candidate += TEXT(",\"dungeonObjectiveCandidates\":[{\"questId\":\"DEV.Introduction\",\"objectiveId\":\"preparation\",\"dungeonSessionId\":\"00000001-0000-0002-0000-000300000004\"}]}");
+    Flow->Refresh(); Transport->Complete(Candidate); FRPGNarrativeTestAccess::PumpDungeon(Flow);
+    const FString GoalBody = Transport->LastBody; Transport->Complete(FString(), 0);
+    TestTrue(TEXT("Unknown dungeon goal retained"), Flow->HasPendingDungeonObjective());
+    if (!TestTrue(TEXT("Information NPC can reopen a player-owned pending goal"), Guide->OpenDialogue(Controller))) return false;
+    Panel = Guide->GetOpenDialogue(Controller);
+    auto* RetryGoal = Cast<UButton>(Panel->GetWidgetFromName(TEXT("NarrativeRetry")));
+    if (!TestTrue(TEXT("NPC goal retry is enabled"), RetryGoal && RetryGoal->GetIsEnabled())) return false;
+    const int32 BeforeGoalRetry = Transport->Sends;
+    RetryGoal->OnClicked.Broadcast();
+    TestEqual(TEXT("NPC retry actually dispatches"), Transport->Sends, BeforeGoalRetry + 1);
+    TestTrue(TEXT("NPC retries the goal route"), Transport->bDungeonSend);
+    TestEqual(TEXT("NPC preserves the pending evidence request"), Transport->LastBody, GoalBody);
+    Transport->Complete(Snapshot(3)); Panel->CloseScreen();
     if (!TestTrue(TEXT("NPC reopens after Escape"), Guide->OpenDialogue(Controller))) return false;
-    Panel = Guide->GetOpenDialogue(Controller); Transport->Complete(InformationSnapshot(false, 2));
+    Panel = Guide->GetOpenDialogue(Controller); Transport->Complete(InformationSnapshot(false, 3));
     FRPGNarrativeTestAccess::Logout(Fixture.Instance->GetSubsystem<UHttpWebManager>());
     FRPGNarrativeTestAccess::TickNPC(Panel); TestFalse(TEXT("Logout closes NPC panel"), Panel->IsInViewport());
     TestFalse(TEXT("Logout releases fallback input"), Controller->IsMoveInputIgnored());
@@ -581,8 +656,9 @@ namespace RPGNarrativeTests
     {
     public:
         FHttpDialogueCommand(FAutomationTestBase* InTest, FGuid InCharacter, FString InSteam,
-            FString InWorld, bool bInRestore)
-            : Test(InTest), Character(InCharacter), Steam(MoveTemp(InSteam)), WorldName(MoveTemp(InWorld)), bRestore(bInRestore) {}
+            FString InWorld, bool bInRestore, FString InDungeonPhase = FString())
+            : Test(InTest), Character(InCharacter), Steam(MoveTemp(InSteam)), WorldName(MoveTemp(InWorld)),
+                DungeonPhase(MoveTemp(InDungeonPhase)), bRestore(bInRestore) {}
         ~FHttpDialogueCommand()
         {
             if (ContactNPC.IsValid()) ContactNPC->Destroy();
@@ -623,6 +699,11 @@ namespace RPGNarrativeTests
                         Player->GetPlayerController(World) == Controller, Controller->GetLocalPlayer() == Player,
                         Controller->IsActorBeingDestroyed(), World->bIsTearingDown));
                 if (!Flow->SelectCharacter(Character.ToString(EGuidFormats::DigitsWithHyphensLower))) return Fail(TEXT("Character selection failed"));
+                if (!DungeonPhase.IsEmpty())
+                {
+                    if (!Flow->ResumeDungeonSession()) return Fail(TEXT("Dungeon recovery query failed"));
+                    Stage = 20; return false;
+                }
                 if (bNPC)
                 {
                     if (!Controller->GetPawn())
@@ -645,6 +726,18 @@ namespace RPGNarrativeTests
                         Lobby.IsValid(), Lobby.IsValid() && Lobby->GetPlayerContext().IsInitialized(), Lobby.IsValid() && Lobby->GetPlayerContext().IsValid()));
                 if (!Lobby.IsValid() || !Lobby->AddToPlayerScreen()) return Fail(TEXT("Lobby viewport unavailable"));
                 Stage = 2; return false;
+            }
+            if (Stage == 20)
+            {
+                if (Narrative->IsBusy() || !Narrative->HasCurrentSnapshot()) return false;
+                if (Narrative->HasPendingChoice()) return Fail(TEXT("Automatic dungeon goal has an unresolved HTTP result"));
+                const auto Quests = Narrative->GetQuestManager()->GetQuests(Character);
+                const auto* Goal = Quests.FindByPredicate([](const auto& Q) { return Q.QuestId == TEXT("DEV.DungeonProof"); });
+                if (!Goal || Goal->Status == ERPGQuestStatus::Active) return false;
+                if (Goal->Status != ERPGQuestStatus::ReadyToReport || Goal->CompletedObjectives.Num() != 1
+                    || !Goal->CompletedObjectives.Contains(TEXT("clear")) || !Narrative->GetQuestManager()->HasRevision(Character, 6))
+                    return Fail(TEXT("Automatic dungeon goal bypassed reporting or duplicated progress"));
+                Test->AddInfo(TEXT("Dungeon goal HTTP automatic sync verified: ") + DungeonPhase); return true;
             }
             if (Stage == 2)
             {
@@ -749,7 +842,7 @@ namespace RPGNarrativeTests
         }
         FAutomationTestBase* Test;
         FGuid Character;
-        FString Steam, WorldName;
+        FString Steam, WorldName, DungeonPhase;
         bool bRestore = false, bCheckedClose = false, bInformationChecked = false;
         const bool bNPC = FParse::Param(FCommandLine::Get(), TEXT("RPGNarrativeNPC"));
         TWeakObjectPtr<ARPGNarrativeNPC> ContactNPC, InstructorNPC, CurrentNPC;
@@ -775,13 +868,14 @@ bool FRPGNarrativeHttpDialoguePersistenceTest::RunTest(const FString&)
     { AddInfo(TEXT("Skipped: use Run-NarrativeDialogueE2E.ps1 with disposable storage.")); return true; }
     FGuid Character;
     if (!FParse::Param(FCommandLine::Get(), TEXT("nosteam")) || !URPGOnlineLobbyWidget::IsDevelopmentUIEnabled()
-        || (Phase != TEXT("complete") && Phase != TEXT("restore"))
+        || (Phase != TEXT("complete") && Phase != TEXT("restore") && Phase != TEXT("dungeon") && Phase != TEXT("dungeonrestore"))
         || !FParse::Value(FCommandLine::Get(), TEXT("RPGNarrativeCharacter="), Id) || !FGuid::Parse(Id, Character)
         || !FParse::Value(FCommandLine::Get(), TEXT("RPGNarrativeSteam="), Steam)
         || !FParse::Param(FCommandLine::Get(), TEXT("game"))
         || !FParse::Value(FCommandLine::Get(), TEXT("RPGNarrativeWorld="), World) || World != TEXT("/Engine/Maps/Entry"))
     { AddError(TEXT("Invalid isolated narrative context")); return false; }
-    ADD_LATENT_AUTOMATION_COMMAND(RPGNarrativeTests::FHttpDialogueCommand(this, Character, Steam, World, Phase == TEXT("restore")));
+    ADD_LATENT_AUTOMATION_COMMAND(RPGNarrativeTests::FHttpDialogueCommand(this, Character, Steam, World,
+        Phase == TEXT("restore"), Phase.StartsWith(TEXT("dungeon")) ? Phase : FString()));
     return true;
 }
 #endif
