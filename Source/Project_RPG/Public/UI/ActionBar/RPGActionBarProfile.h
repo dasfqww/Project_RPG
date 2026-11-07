@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "GameplayTagContainer.h"
+#include "UI/ActionBar/RPGActionBarActionView.h"
 #include "RPGActionBarProfile.generated.h"
 
 class URPGActionBarWidget;
@@ -19,16 +20,6 @@ struct PROJECT_RPG_API FRPGActionBarEntry
     UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="-1", ClampMax="7")) int32 SkillSlot = INDEX_NONE;
     /** Optional existing ability-input tag. Additional contexts may call PressAction directly. */
     UPROPERTY(EditAnywhere, BlueprintReadOnly) FGameplayTag InputTag;
-};
-
-USTRUCT(BlueprintType)
-struct PROJECT_RPG_API FRPGActionBarActionView
-{
-    GENERATED_BODY()
-    UPROPERTY(BlueprintReadOnly) bool bAvailable = false;
-    UPROPERTY(BlueprintReadOnly) FText KeyLabel;
-    UPROPERTY(BlueprintReadOnly) float CooldownRemaining = 0.f;
-    UPROPERTY(BlueprintReadOnly) float CooldownDuration = 0.f;
 };
 
 /** Immutable authoring data; never owns grants, cooldowns or saved class loadouts. */

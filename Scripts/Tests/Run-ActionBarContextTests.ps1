@@ -53,7 +53,8 @@ try {
         'Source/Project_RPG/Public/UI/HUD/RPGHUD.h',
         'Source/Project_RPG/Private/UI/HUD/RPGHUD.cpp',
         'Source/Project_RPG/Private/Controller/RPGPlayerController.cpp',
-        'Source/Project_RPG/Private/Tests/RPGActionBarContextTests.cpp'
+        'Source/Project_RPG/Private/Tests/RPGActionBarContextTests.cpp',
+        'Source/Project_RPG/Private/Tests/RPGActionBarCellTests.cpp'
     )
     foreach($kind in @('Public','Private')){
         $folder=Join-Path $workspace ('Source/Project_RPG/'+$kind+'/UI/ActionBar')
@@ -111,7 +112,7 @@ try {
             if($process.ExitCode-ne0){throw 'Native automation failed'}
             $data=Get-Content -LiteralPath (Join-Path $report 'index.json') -Raw -Encoding UTF8|ConvertFrom-Json
             $proof.Tests=@($data.tests|Select-Object fullTestPath,state,errors,warnings)
-            if(@($proof.Tests|Where-Object{$_.fullTestPath-like'ProjectRPG.UI.ActionBar.*'}).Count-ne4-or$proof.Tests.Count-lt5-or@($proof.Tests|Where-Object state -ne 'Success').Count){throw 'Missing or failing automation cases'}
+            if(@($proof.Tests|Where-Object{$_.fullTestPath-like'ProjectRPG.UI.ActionBar.*'}).Count-ne7-or$proof.Tests.Count-lt8-or@($proof.Tests|Where-Object state -ne 'Success').Count){throw 'Missing or failing automation cases'}
             foreach($entry in $proof.Overlay){
                 if((Get-FileHash -LiteralPath (Join-Path $workspace $entry.Path)).Hash-ne$entry.SHA256){throw 'Source changed after validation'}
             }
