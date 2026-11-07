@@ -1,6 +1,6 @@
 # 운영툴 실행과 유지보수
 
-2026-11-08 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 조사, S3 개별 보상·기간 제재/해제, S4 런타임 감시·알림과 공지·Open/Drain의 Backend/운영 화면, UE 로비 공지·점검 연결·장기 Drain 경보·백업 상태 수집/경보를 구현했다. 실제 복구 리허설·운영 배포는 후속 범위다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md).
+2026-11-08 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 조사, S3 개별 보상·기간 제재/해제, S4 런타임 감시·알림과 공지·Open/Drain의 Backend/운영 화면, UE 로비 공지·점검 연결·장기 Drain 경보·백업 상태 수집/경보·격리 복원/PITR 리허설 도구를 구현했다. 운영 용량/외부 환경 복구 리허설·실제 운영 배포는 후속 범위다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md).
 
 ## 공지·Open/Drain 서비스 제어
 
@@ -159,6 +159,10 @@ PostgreSQL에서 운영 요청 → 캐릭터 → 기존 아이템 owner/request 
 
 full8일/daily26시간 지연, 작업/저장소 실패, full2체인 미달, WAL 실패/2분 적체를 감시한다. idle DB는 archive 시각만 오래됐다고 실패로 판단하지 않는다. 사건과 재전송은 기존 상태/outbox를 사용한다. 실제 full2/incr1·암호화 repo·읽기 전용 SQL·WAL 실패 주입은 격리 DB에서 검증하며 원격 운영 repo·전달 수단·복원/PITR와 구분한다.
 
+## 복원·PITR 리허설
+
+[복구 리허설/운영 전환 계약](OPERATIONS_RECOVERY.md)에 읽기 전용 체크포인트·행 스트리밍 지문·별도 pause 복원본·소유 PID 정리와 운영 세션/AuthEpoch/자격 폐기 순서를 정리했다. full/incremental consistency 복원과 시점 복구, 데이터/키/WAL/목표 실패를 실제 격리 PostgreSQL에서 검사한다. 도구는 운영 DB를 덮어쓰거나 승격/연결 전환하지 않으며 운영 크기 RPO/RTO 달성을 주장하지 않는다.
+
 ## 검사 실행
 
 저장소 루트에서 실행한다. PostgreSQL 검사는 Docker와 이미 준비된 `postgres:17-alpine` 이미지가 필요하며 기존 DB에는 연결하지 않는다.
@@ -167,6 +171,7 @@ full8일/daily26시간 지연, 작업/저장소 실패, full2체인 미달, WAL 
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Run-OperationsTests.ps1 -Postgres
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Run-OperationsDrainTests.ps1 -Postgres
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Run-OperationsBackupTests.ps1 -FullSuite
+powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Run-OperationsRecoveryTests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Test-NPCPickupBackendSnapshot.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Test-InventoryConsumeBackendSnapshot.ps1
 ```

@@ -11,6 +11,7 @@ import resource
 import signal
 import subprocess
 import tempfile
+import threading
 import uuid
 
 UTC = dt.timezone.utc
@@ -81,14 +82,26 @@ def read_json(path):
     return json.loads(data)
 
 
-def execute(arguments, timeout=5, capture=True):
+def execute(arguments, timeout=5, capture=True, env=None, diagnostic=None):
     # The subprocess owns its process group. No inherited/user backup process is terminated.
     def limit_output():
         resource.setrlimit(resource.RLIMIT_FSIZE, (LIMIT, LIMIT))
     with tempfile.TemporaryFile() as output:
         process = subprocess.Popen(arguments, stdout=output if capture else subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL, start_new_session=True,
-                                   preexec_fn=limit_output if capture else None)
+                                   stderr=subprocess.PIPE if diagnostic else subprocess.DEVNULL, start_new_session=True,
+                                   preexec_fn=limit_output if capture else None, env=env)
+        errors = bytearray()
+        def drain_error():
+            while True:
+                chunk = process.stderr.read(4096)
+                if not chunk:
+                    break
+                errors.extend(chunk)
+                if len(errors) > 65536:
+                    del errors[:-65536]
+        reader = threading.Thread(target=drain_error, daemon=True) if diagnostic else None
+        if reader:
+            reader.start()
         try:
             code = process.wait(timeout=timeout)
         except BaseException:
@@ -99,6 +112,12 @@ def execute(arguments, timeout=5, capture=True):
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
             raise
+        finally:
+            if reader:
+                reader.join(timeout=1)
+                path = reject_links(diagnostic)
+                path.write_bytes(bytes(errors))
+                os.chmod(path, 0o600)
         if not capture:
             return code
         if code != 0 or output.tell() >= LIMIT:

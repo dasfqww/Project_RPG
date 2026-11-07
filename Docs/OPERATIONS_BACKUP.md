@@ -1,6 +1,6 @@
 # 백업 상태 수집과 외부 경보
 
-2026-11-08. Linux DB 호스트의 pgBackRest 실행/상태 수집과 외부 monitor의 읽기/판정을 분리했다. 실제 복구·배포·운영 크기 RPO/RTO 달성 검증은 별도다. 게임 backend와 운영 웹에는 백업 실행·DB 복원 권한이나 버튼을 추가하지 않는다.
+2026-11-08. Linux DB 호스트의 pgBackRest 실행/상태 수집과 외부 monitor의 읽기/판정을 분리했다. [격리 복원/PITR 리허설 도구](OPERATIONS_RECOVERY.md)도 구현했다. 실제 운영 복구·배포·운영 크기 RPO/RTO 달성 검증은 별도다. 게임 backend와 운영 웹에는 백업 실행·DB 복원 권한이나 버튼을 추가하지 않는다.
 
 ## 구성과 책임
 
@@ -68,6 +68,6 @@ full 체인 수는 성공 메타데이터 수이며 원격 모든 객체의 무�
 
 `Scripts/Tests/Run-OperationsBackupTests.ps1 -FullSuite`는 게시본+본인 명시 입력만 별도 빌드한다. Docker의 자기 임시 PostgreSQL 17에 pgBackRest/Python을 설치하고 실제 암호화 repo의 full2/incr1, 읽기 전용 역할 수집, 실패한 job receipt·연결 실패 Unknown을 검사한다. Python 단위 검사와 실제 JSON→.NET reader→정책→영속 HTTPS 재전송/복구·기존 운영툴 Memory 회귀를 실행한다. 자기 컨테이너/DB/repo/Temp는 finally 폐기하고 작은 결과/입력 해시만 남긴다.
 
-실제 외부 repo·관리 호스트 전달·운영 타이머·복원/PITR·운영 크기 성능은 검증 범위 밖이다. 기존 전체 PostgreSQL 운영툴 회귀의 migration 개수 기대값 불일치는 [장기 Drain 완료 기록](Online_RPG_Development_Roadmap.md#12-현재-현황과-다음-작업-체크리스트-2026-10-20)에 별도 기록되어 있다.
+이 수집 러너의 범위는 실제 외부 repo·관리 호스트 전달·운영 타이머·복원/PITR·운영 크기 성능을 포함하지 않는다. 복원/PITR의 별도 실제 DB 검사는 [복구 리허설 경로](OPERATIONS_RECOVERY.md#검증-경로)를 따른다. 기존 전체 PostgreSQL 운영툴 회귀의 migration 개수 기대값 불일치는 [장기 Drain 완료 기록](Online_RPG_Development_Roadmap.md#12-현재-현황과-다음-작업-체크리스트-2026-10-20)에 별도 기록되어 있다.
 
 근거: [pgBackRest info/backup 공식 계약](https://pgbackrest.org/command.html), [pgBackRest 운영·복원 지침](https://pgbackrest.org/user-guide.html), [PostgreSQL archive 상태/파일 조회](https://www.postgresql.org/docs/17/functions-admin.html), [pg_stat_archiver](https://www.postgresql.org/docs/17/monitoring-stats.html#MONITORING-PG-STAT-ARCHIVER-VIEW). native JSON 필드는 [pgBackRest 자체 info 회귀 검사](https://github.com/pgbackrest/pgbackrest/blob/main/test/src/module/command/infoTest.c)와 실제 실행 출력으로 대조한다.
