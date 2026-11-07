@@ -2,7 +2,7 @@
 
 작성일: 2026-11-05 · 상태: v1 설계 확정, S1·S2 구현/격리 검증 완료. 실제 운영 배포 미수행
 
-S1·S2·S3 보상/제재 Backend·S4 런타임 감시·공지/점검·장기 Drain 경보의 소스 경계·설정·기동/검증 방법은 [운영툴 실행 문서](OPERATIONS_TOOL_RUNTIME.md)에 기록한다. S3 제재의 실제 최신 UE 통합 검증과 S4 백업 감시/복구는 후속 범위이며 현재 완료를 v1 전체 구현 완료로 취급하지 않는다.
+S1·S2·S3 보상/제재 Backend·S4 런타임 감시·공지/점검·장기 Drain 경보·백업 수집/경보의 소스 경계·설정·기동/검증 방법은 [운영툴 실행 문서](OPERATIONS_TOOL_RUNTIME.md)에 기록한다. S3 제재의 실제 최신 UE 통합 검증과 S4 실제 복구 리허설/배포는 후속 범위이며 현재 완료를 v1 전체 구현 완료로 취급하지 않는다.
 
 사용자 요청은 SOLID·유지보수성·로그 추적을 갖춘 운영툴의 설계를 끝내는 것이다. 이 문서는 [아키텍처](OPERATIONS_TOOL_ARCHITECTURE.md)의 상세 계약을 확정한다. [제작 계획](SOLO_OPERATIONS_TOOL_PLAN.md)은 범위/순서, [추적 계약](OPERATIONS_LOG_TRACING.md)은 공통 사건 의미를 관리한다. 값·DTO·오류·동시성 정책의 최종 기준은 본 문서이며, 변경할 때 관련 요약도 함께 갱신한다.
 
@@ -278,13 +278,15 @@ Drain은 신규 로그인·던전 생성/참가·출발·새 티켓/입장 확�
 
 ### 9.2 알림
 
-런타임·정산·로그·장기 Drain 감시와 외부 HTTPS webhook 전달/영속 재전송은 구현했다. [실행 범위](OPERATIONS_TOOL_RUNTIME.md#런타임-감시알림s4-독립-범위)를 따른다. 백업 상태 수집/경보는 후속이다. `service_drain_long`은 첫 정상 Drain 관측부터 30분 초과에 경보, 30분마다 지속 요약, 두 번 연속 Open에 복구를 전송한다. 관측 구간/사건은 영속하며 공지 편집은 타이머를 초기화하지 않는다. Unknown/2분 초과 공백은 미확정 구간을 다시 측정하고 활성 경보를 해제하지 않는다. [세부 관측·배포 계약](OPERATIONS_TOOL_RUNTIME.md#장기-drain-경보).
+런타임·정산·로그·장기 Drain·백업 감시와 외부 HTTPS webhook 전달/영속 재전송은 구현했다. [실행 범위](OPERATIONS_TOOL_RUNTIME.md#런타임-감시알림s4-독립-범위)를 따른다. `service_drain_long`은 첫 정상 Drain 관측부터 30분 초과에 경보, 30분마다 지속 요약, 두 번 연속 Open에 복구를 전송한다. 관측 구간/사건은 영속하며 공지 편집은 타이머를 초기화하지 않는다. Unknown/2분 초과 공백은 미확정 구간을 다시 측정하고 활성 경보를 해제하지 않는다. [세부 관측·배포 계약](OPERATIONS_TOOL_RUNTIME.md#장기-drain-경보).
 
 외부 감시 프로세스가 30초마다 health/ready를 5초 timeout으로 확인한다. 3회 연속 실패 시 알림, 2회 연속 성공 시 복구 알림, 지속 장애는 30분마다 요약한다. Failed 정산 신규는 발견 즉시(정상 감시 주기 30초 이내), Pending/Processing 2분 초과는 3회 관측 시, 로그 드롭/공간 예산 초과·백업 실패는 발견 시 알림이다.
 
 감시는 backend와 다른 관리 호스트에서 실행한다. `GET /internal/operations/status`는 management ingress 전용·별도 `OperationsMonitor` 기계 인증(전용 비밀 bearer, 상수 시간 대조)으로만 접근하며 분당 30회로 제한한다. 이 자격은 `/ops`나 게임 API 권한을 부여하지 않는다. 응답은 observedAt/bootId·ready·정산 Pending/Processing/Failed 수와 가장 오래된 지연/latestFailedUpdatedAt·로그 droppedCount/sinkErrorCount/retainedBytes/lastWriteAt·serviceControl.mode이며 ID/본문/SQL은 없다. DB/서비스 조회 장애는 Unknown/503이다. 감시가 수집 실패도 경보하므로 backend 종료 시 마지막 정상값을 최신으로 표시하지 않는다. Failed 수 증가/최신 Failed 시각 전진을 새 장애로 알리고 최초 관측에 Failed가 남아 있어도 알린다. 상세 조사는 사람이 운영 로그인으로 수행한다.
 
 DB 호스트의 60초 상태 수집 작업은 pgBackRest 결과/마지막 full·incremental·archive 성공/실패·미전송 WAL 상태를 작은 원자 교체 JSON에 기록한다. 외부 감시는 관리용 읽기 전용 경로로 이 상태만 읽으며 2분 갱신 중단/일 incremental 성공 26시간 초과/주 full 성공 8일 초과도 경보한다. 쓰기가 없는 정상 DB는 archive 시각만 오래됐다고 실패로 판정하지 않는다. 상태 전달 경로·기계 자격은 배포 입력이고 외부 서버 중단 감지와 별개로 복구 리허설에서 전달 실패까지 검사한다.
+
+2026-11-08: Linux pgBackRest 작업 결과 ledger/상태 수집과 monitor 파일 reader·순수 경보 정책을 구현했다. 환경/서비스·stanza/cluster 대조·WAL 실제 대기열/실패·full2체인·독립 backend 장애·Unknown/복구를 다룬다. [실행/권한/검증 계약](OPERATIONS_BACKUP.md)을 따른다. 실제 운영 원격 repo/전달/타이머·복원/PITR·RPO/RTO 달성 검증은 후속이다.
 
 전달은 설정된 HTTPS webhook 어댑터 하나로 시작한다. payload는 `{eventId,environment,service,incidentKey,severity,state,firstSeenAtUtc,observedAtUtc,summary,referenceIds}`; 비밀값/원문 개인정보는 제외한다. 외부 감시가 incidentKey/마지막 전달을 작은 영속 상태로 보관하고 1/5/15분 간격 최대 3회 재전송한다. 중복 전달을 허용하는 같은 eventId를 사용한다. 관리 URL/인증 헤더는 배포 비밀값이며 수신 endpoint 외 임의 URL 전송을 허용하지 않는다.
 
@@ -335,4 +337,4 @@ Ops 활성 상태에서 인증·키 보호·DB 세션·영속 로그 root가 잘
 - **구현 때 검증할 사실:** 실제 라이브러리 버전/호스트 호환성, 기존 코드와 잠금 경합, 실제 DB/UE 연결·성능·복구 목표. 검증이 설계 가정을 반증하면 해당 결정과 영향을 문서화해 수정한다.
 - **v1 밖:** S5 대량/예약·직원 권한 UI·자유 편집/회수·전체 경제 대시보드. 별도 기능 요청 시 설계한다.
 
-설계 단계의 남은 미결 항목은 없다. S1 기본 조회·인증·추적과 S2 보상 조사·worker 원래 ID 계측, S3 개별 아이템 보상·기간 제재/해제의 Backend/운영 화면, S4 런타임 감시/알림과 공지·Open/Drain Backend/운영 화면을 구현했다. [실행/검증 경계](OPERATIONS_TOOL_RUNTIME.md)를 따른다. S4 공지/점검의 UE 로비 표시와 HTTP 연결·장기 Drain 경보도 구현했다. 백업 상태 수집/복구, UE 전체 사건 계측과 실제 운영 배포는 후속이다. 고정 사본의 UE 인증/문맥 검증을 실제 게임 소켓 전투·Steam 검증으로 확대하지 않는다.
+설계 단계의 남은 미결 항목은 없다. S1 기본 조회·인증·추적과 S2 보상 조사·worker 원래 ID 계측, S3 개별 아이템 보상·기간 제재/해제의 Backend/운영 화면, S4 런타임 감시/알림과 공지·Open/Drain Backend/운영 화면을 구현했다. [실행/검증 경계](OPERATIONS_TOOL_RUNTIME.md)를 따른다. S4 공지/점검의 UE 로비 표시와 HTTP 연결·장기 Drain 경보·백업 상태 수집/경보도 구현했다. 실제 복구 리허설, UE 전체 사건 계측과 운영 배포는 후속이다. 고정 사본의 UE 인증/문맥 검증을 실제 게임 소켓 전투·Steam 검증으로 확대하지 않는다.

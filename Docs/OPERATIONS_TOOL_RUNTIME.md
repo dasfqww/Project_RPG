@@ -1,6 +1,6 @@
 # 운영툴 실행과 유지보수
 
-2026-11-08 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 조사, S3 개별 보상·기간 제재/해제, S4 런타임 감시·알림과 공지·Open/Drain의 Backend/운영 화면, UE 로비 공지·점검 연결과 장기 Drain 경보를 구현했다. 백업 수집/복구·실제 운영 배포는 후속 범위다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md).
+2026-11-08 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 조사, S3 개별 보상·기간 제재/해제, S4 런타임 감시·알림과 공지·Open/Drain의 Backend/운영 화면, UE 로비 공지·점검 연결·장기 Drain 경보·백업 상태 수집/경보를 구현했다. 실제 복구 리허설·운영 배포는 후속 범위다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md).
 
 ## 공지·Open/Drain 서비스 제어
 
@@ -137,6 +137,7 @@ PostgreSQL에서 운영 요청 → 캐릭터 → 기존 아이템 owner/request 
 | `RPG_MONITOR_WEBHOOK_TOKEN` | 수신 endpoint 전용 bearer 비밀값 |
 | `RPG_MONITOR_STATE_DIRECTORY` | 서비스 계정만 쓰는 비공개 절대 경로. Windows ACL은 배포에서 제한 |
 | `RPG_MONITOR_LOG_BUDGET_BYTES` | 기본 1GiB, 최소 1MiB. 실제 보관 예산 |
+| `RPG_MONITOR_BACKUP_STATUS_PATH` | 백업 상태의 로컬 읽기 전용 절대 파일 경로. 빈 값은 백업 감시 비활성, 운영 배포에서 설정 |
 
 실행은 `dotnet ProjectRpg.Operations.Monitor.dll`, 단일 수집은 `--once`다. TLS 인증서를 정상 검증하고 redirect는 따라가지 않는다. webhook URL/인증과 응답 본문/예외 원문은 출력하지 않는다. 감시 서비스의 프로세스 생존은 배포 호스트의 서비스 관리자에서 관리하고 종료 코드 1은 설정/상태/실행 오류로 조사한다.
 
@@ -150,7 +151,13 @@ PostgreSQL에서 운영 요청 → 캐릭터 → 기존 아이템 owner/request 
 
 대기 구간과 경보·미전송 event는 기존 v1 `state.json`에 함께 영속한다. 감시 재시작은 대기 구간/같은 eventId 재전송을 보존하며, 재시작 공백이 2분을 넘으면 대기 구간을 다시 측정한다. 기존 v1 파일의 새 필드 부재는 빈 대기 구간으로 읽고 기존 장애/전송 대기는 보존한다. 배포는 mode를 제공하는 backend를 먼저, 새 monitor를 다음으로 갱신한다. 구 backend의 mode 누락을 Open으로 간주하지 않고 수집 실패로 경보한다. 새 사건 키를 모르는 구 monitor로 되돌릴 때 상태 파일을 임의 삭제하지 말고 보존/인계한다.
 
-이번 감시 범위는 런타임/정산/로그/장기 Drain이다. pgBackRest 상태 수집·백업 실패/보존 경보는 후속 범위다. 실제 외부 관리 호스트·알림 수신 서비스 배포와 장애 주입 리허설은 별도로 수행한다. 제재의 실제 최신 UE 통합은 해당 소스/검증 자원 인계 후 진행한다.
+이번 감시 범위는 런타임/정산/로그/장기 Drain/백업이다. 실제 외부 관리 호스트·알림 수신 서비스 배포와 운영 복구 리허설은 별도로 수행한다. 제재의 실제 최신 UE 통합은 해당 소스/검증 자원 인계 후 진행한다.
+
+## 백업 상태 수집·경보
+
+[백업 운영 계약](OPERATIONS_BACKUP.md)에 Linux pgBackRest 작업 래퍼·60초 상태 수집·읽기 전용 관리 호스트 전달·환경 변수/권한·5개 사건 키를 정리했다. 앱/운영 웹에서 DB 복원을 실행하지 않는다. backend 종료와 백업 관측은 독립적으로 평가하며 파일 없음/손상/수집 실패/2분 갱신 중단을 Unknown으로 경보한다.
+
+full8일/daily26시간 지연, 작업/저장소 실패, full2체인 미달, WAL 실패/2분 적체를 감시한다. idle DB는 archive 시각만 오래됐다고 실패로 판단하지 않는다. 사건과 재전송은 기존 상태/outbox를 사용한다. 실제 full2/incr1·암호화 repo·읽기 전용 SQL·WAL 실패 주입은 격리 DB에서 검증하며 원격 운영 repo·전달 수단·복원/PITR와 구분한다.
 
 ## 검사 실행
 
@@ -159,6 +166,7 @@ PostgreSQL에서 운영 요청 → 캐릭터 → 기존 아이템 owner/request 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Run-OperationsTests.ps1 -Postgres
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Run-OperationsDrainTests.ps1 -Postgres
+powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Run-OperationsBackupTests.ps1 -FullSuite
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Test-NPCPickupBackendSnapshot.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Tests/Test-InventoryConsumeBackendSnapshot.ps1
 ```

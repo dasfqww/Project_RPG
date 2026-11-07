@@ -16,7 +16,7 @@ public static class MonitoringJson
 {
     public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) { RespectRequiredConstructorParameters = true };
 }
-public sealed record MonitorObservation(DateTimeOffset ObservedAtUtc, RuntimeStatus? Status);
+public sealed record MonitorObservation(DateTimeOffset ObservedAtUtc, RuntimeStatus? Status, BackupObservation? Backup = null);
 public sealed record AlertEvent(Guid EventId, string Environment, string Service, string IncidentKey, string Severity,
     string State, DateTimeOffset FirstSeenAtUtc, DateTimeOffset ObservedAtUtc, string Summary, IReadOnlyList<string> ReferenceIds);
 public interface IMonitorProbe { Task<MonitorObservation> ObserveAsync(CancellationToken ct); }

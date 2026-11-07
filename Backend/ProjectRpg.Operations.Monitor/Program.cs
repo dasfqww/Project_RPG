@@ -10,7 +10,9 @@ try
     using var storage=new FileMonitorStateStore(configuration.StateDirectory,configuration.Environment,configuration.Service);
     using var handler=new HttpClientHandler { AllowAutoRedirect=false };
     using var http=new HttpClient(handler) { Timeout=Timeout.InfiniteTimeSpan };
-    var cycle=new MonitorCycle(new HttpOperationsProbe(http,configuration,TimeProvider.System),storage,
+    IMonitorProbe probe=new HttpOperationsProbe(http,configuration,TimeProvider.System);
+    if(configuration.BackupStatusPath.Length>0) probe=new BackupAwareProbe(probe,new FileBackupStatusReader(configuration.BackupStatusPath));
+    var cycle=new MonitorCycle(probe,storage,
         new HttpWebhookDelivery(http,configuration),configuration.Environment,configuration.Service,configuration.LogBudgetBytes);
     using var timer=new PeriodicTimer(TimeSpan.FromSeconds(30));
     do

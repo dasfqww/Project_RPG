@@ -3,18 +3,20 @@ namespace ProjectRpg.Operations.Core.Monitoring;
 /// <summary>Pure incident policy; transport/storage failures cannot become healthy samples.</summary>
 public static class MonitorPolicy
 {
-    public static readonly IReadOnlySet<string> IncidentKeys = new HashSet<string>(StringComparer.Ordinal)
+    private static readonly IReadOnlySet<string> RuntimeIncidentKeys = new HashSet<string>(StringComparer.Ordinal)
         { "backend_unavailable", "settlement_failed", "settlement_delayed", "log_dropped", "log_sink_error", "log_budget", "service_drain_long" };
+    public static readonly IReadOnlySet<string> IncidentKeys = new HashSet<string>(RuntimeIncidentKeys.Concat(BackupPolicy.IncidentKeys), StringComparer.Ordinal);
     public static void Evaluate(MonitorState state, MonitorObservation observation, long logBudgetBytes)
     {
         var now = observation.ObservedAtUtc;
         var status = observation.Status;
+        BackupPolicy.Evaluate(state, observation.Backup, now);
         bool healthy = Valid(status, now) && status!.Ready;
         Update(state, "backend_unavailable", !healthy, 3, "Backend health, readiness or status collection failed.", now);
         if (!healthy)
         {
             DrainDurationPolicy.Reset(state);
-            foreach(var pair in state.Incidents.Where(p=>p.Key!="backend_unavailable"))
+            foreach(var pair in state.Incidents.Where(p=>RuntimeIncidentKeys.Contains(p.Key) && p.Key!="backend_unavailable"))
             { pair.Value.BadSamples=0; pair.Value.GoodSamples=0; }
             return; // Unknown never resolves an incident using stale counters.
         }
@@ -48,7 +50,7 @@ public static class MonitorPolicy
         && status.Logs.DroppedCount >= 0 && status.Logs.SinkErrorCount >= 0 && status.Logs.RetainedBytes >= 0
         && (status.Settlements.OldestOutstandingAtUtc is null || status.Settlements.OldestOutstandingAtUtc <= status.ObservedAtUtc)
         && (status.Settlements.LatestFailedUpdatedAtUtc is null || status.Settlements.LatestFailedUpdatedAtUtc <= status.ObservedAtUtc);
-    private static void Update(MonitorState state, string key, bool bad, int threshold, string summary, DateTimeOffset now, string? signal = null,
+    internal static void Update(MonitorState state, string key, bool bad, int threshold, string summary, DateTimeOffset now, string? signal = null,
         bool eligible = true, DateTimeOffset? badSince = null)
     {
         if (!state.Incidents.TryGetValue(key, out var incident)) state.Incidents.Add(key, incident = new());

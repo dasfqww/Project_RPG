@@ -4,6 +4,7 @@ if (args.SequenceEqual(["--monitoring"]))
     await MonitoringPolicyTests.RunAsync();
     await MonitoringHostTests.RunAsync();
     await DrainMonitoringTests.RunAsync();
+    await BackupMonitoringTests.RunAsync();
     return;
 }
 if (args.Length != 0) throw new ArgumentException("Unknown operations test mode.");
@@ -16,6 +17,7 @@ await MonitoringHostTests.RunAsync();
 await RestrictionTests.RunAsync();
 await ServiceControlTests.RunAsync();
 await DrainMonitoringTests.RunAsync();
+await BackupMonitoringTests.RunAsync();
 Console.WriteLine("Operations contract tests passed.");
 
 internal static class Check

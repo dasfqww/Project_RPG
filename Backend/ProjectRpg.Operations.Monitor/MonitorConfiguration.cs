@@ -1,7 +1,7 @@
 namespace ProjectRpg.Operations.Monitor;
 
 public sealed record MonitorConfiguration(string Environment, string Service, Uri BackendOrigin, string MonitorToken,
-    Uri WebhookUrl, string WebhookToken, string StateDirectory, long LogBudgetBytes)
+    Uri WebhookUrl, string WebhookToken, string StateDirectory, long LogBudgetBytes, string BackupStatusPath = "")
 {
     public static MonitorConfiguration FromEnvironment()
     {
@@ -11,7 +11,7 @@ public sealed record MonitorConfiguration(string Environment, string Service, Ur
             || !long.TryParse(Read("LOG_BUDGET_BYTES") is { Length:>0 } size ? size : "1073741824", out long budget))
             throw new InvalidOperationException("Invalid monitor settings.");
         var value = new MonitorConfiguration(Read("ENVIRONMENT"),Read("SERVICE"),backend,Read("TOKEN"),webhook,
-            Read("WEBHOOK_TOKEN"),Read("STATE_DIRECTORY"),budget);
+            Read("WEBHOOK_TOKEN"),Read("STATE_DIRECTORY"),budget,Read("BACKUP_STATUS_PATH"));
         value.Validate(); return value;
     }
     public void Validate()
@@ -22,7 +22,8 @@ public sealed record MonitorConfiguration(string Environment, string Service, Ur
             || WebhookUrl.Scheme!="https"||WebhookUrl.UserInfo.Length!=0||WebhookUrl.Fragment.Length!=0
             || MonitorToken.Length is <32 or >256 || MonitorToken.Any(c=>!char.IsAsciiLetterOrDigit(c)&&c is not '-' and not '_')
             || WebhookToken.Length is <16 or >512 || WebhookToken.Any(c=>c<'!'||c>'~')
-            || !Path.IsPathFullyQualified(StateDirectory)||LogBudgetBytes<1024*1024)
+            || !Path.IsPathFullyQualified(StateDirectory)||LogBudgetBytes<1024*1024
+            || BackupStatusPath.Length > 0 && (!Path.IsPathFullyQualified(BackupStatusPath) || BackupStatusPath.StartsWith("\\\\", StringComparison.Ordinal)))
             throw new InvalidOperationException("Invalid monitor settings.");
     }
 }
