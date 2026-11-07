@@ -41,4 +41,6 @@ struct FRPGRidingRepState;
 /** Cosmetic-only fixture injection; never available in a Shipping build. */
 void RPGSetRidingVisualTestState(URPGRidingComponent& Component, const FRPGRidingRepState& State,
     TConstArrayView<URPGMountDefinition*> Definitions);
+void RPGPrepareRidingMovementTestSession(class URPGRidingSessionComponent& Session, URPGRidingComponent& Riding);
+void RPGSendRidingMovementTestCommand(URPGRidingComponent& Riding, const struct FRPGRidingSetCommand& Command);
 #endif

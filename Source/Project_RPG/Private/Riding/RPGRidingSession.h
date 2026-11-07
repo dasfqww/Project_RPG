@@ -67,6 +67,7 @@ public:
     bool FailSnapshot(const FRPGRidingSnapshotTicket& Ticket, double Now);
     ERPGRidingSessionStatus GetStatus() const { return Status; }
     bool CopySnapshot(FRPGRidingAdmissionSnapshot& Out) const;
+    bool CopyMovementProfile(FRPGRidingMovementProfile& Out) const;
 
     FGuid BindPawn();
     bool UnbindPawn(const FGuid& ExpectedEpoch);

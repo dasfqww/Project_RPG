@@ -1,11 +1,11 @@
 # Riding System 아키텍처 v1
 
 - 작성: 2026-11-06 / 담당: `riding-architecture-20261106`
-- 상태: **M1a Actor/서버 요청 연결 및 M1b 기본 외형/비동기 수명 구현. 독립 native20 오류·경고0·실제 Player 생성 경로 컴파일 통과. 제품 snapshot/API·CMC 이동/예측·최종 자세/UI는 후속이다.**
+- 상태: **M1a Actor/서버 요청과 M1b 기본 외형·CMC 이동/예측·권위 보정 구현. 분리 전체 Editor 빌드/링크와 Riding·감속·제어36 통과, 기존 권한 폐기 검사1 실패는 코드 설계14절에 별도 기록했다. 제품 snapshot/API·최종 자세/UI·다인 네트워크 검증은 후속이다.**
 - 기준: 게시 `92fdb7bf`와 [Riding 상세 설계](RIDING_SYSTEM_DESIGN.md). 게임 규칙·수치·API/DB 계약은 상세 설계가 기준이고, 이 문서는 책임·의존·연결 방법을 정의한다.
 - 이번 산출물: 아키텍처와 구현 분할. C++ 골격, 백엔드, 에셋 생성 및 런타임 검증은 포함하지 않는다.
 - 다음 코드 설계: [M1 상태·세션·컴포넌트 계약](RIDING_SYSTEM_CODE_DESIGN.md) — C++ 값/시그니처·요청 ledger·초기화/재진입/복제·검사 순서. 공용 HUD의 구체 API 인계와 독립적으로 진행하며 제품 구현과 구분한다.
-- 실제 구현 현황은 [M1a 첫 기반 구현](RIDING_SYSTEM_CODE_DESIGN.md#10-m1a-첫-기반-구현--2026-11-06), [서버 세션 내부 로직](RIDING_SYSTEM_CODE_DESIGN.md#11-m1a-서버-세션-내부-로직--2026-11-06), [Actor 연결](RIDING_SYSTEM_CODE_DESIGN.md#12-m1a-actor-연결--2026-11-07), [기본 외형](RIDING_SYSTEM_CODE_DESIGN.md#13-m1b-기본-외형과-비동기-수명--2026-11-08)을 따른다. 설계의 모든 클래스가 구현됐다는 뜻은 아니다.
+- 실제 구현 현황은 [M1a 첫 기반 구현](RIDING_SYSTEM_CODE_DESIGN.md#10-m1a-첫-기반-구현--2026-11-06), [서버 세션 내부 로직](RIDING_SYSTEM_CODE_DESIGN.md#11-m1a-서버-세션-내부-로직--2026-11-06), [Actor 연결](RIDING_SYSTEM_CODE_DESIGN.md#12-m1a-actor-연결--2026-11-07), [기본 외형](RIDING_SYSTEM_CODE_DESIGN.md#13-m1b-기본-외형과-비동기-수명--2026-11-08), [CMC 이동과 예측](RIDING_SYSTEM_CODE_DESIGN.md#14-m1b-cmc-이동과-예측--2026-11-08)을 따른다. 설계의 모든 클래스가 구현됐다는 뜻은 아니다.
 
 ## 1. 구조 결정
 

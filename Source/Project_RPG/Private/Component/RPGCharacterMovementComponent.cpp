@@ -1,4 +1,5 @@
 #include "Component/RPGCharacterMovementComponent.h"
+#include "Riding/RPGRidingTypes.h"
 #include "Combat/RPGCombatControlTypes.h"
 #include "Component/Combat/RPGCombatControlComponent.h"
 #include "GameFramework/Character.h"
@@ -58,6 +59,14 @@ float URPGCharacterMovementComponent::GetSkillMovementScalar() const
 
 bool URPGCharacterMovementComponent::IsVoluntaryMovementBlocked() const
 {
+	const auto* ASC = CharacterOwner ? UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(CharacterOwner) : nullptr;
+	if (ASC && ASC->GetAvatarActor() == CharacterOwner)
+	{
+		const auto* Stats = ASC->GetSet<URPGAttributeSet>();
+		const auto Death = FGameplayTag::RequestGameplayTag(TEXT("Shared.Status.Death"), false);
+		if ((Stats && (!FMath::IsFinite(Stats->GetCurrentHealth()) || Stats->GetCurrentHealth() <= 0.f))
+			|| (Death.IsValid() && ASC->HasMatchingGameplayTag(Death))) return true;
+	}
 	return RPGCombatControl::IsActionBlocked(CharacterOwner) || GetSkillMovementScalar() == 0.f;
 }
 
@@ -128,6 +137,13 @@ void URPGCharacterMovementComponent::EndWalkSpeedLimit(FGuid Handle) { WalkSpeed
 float URPGCharacterMovementComponent::GetMaxSpeed() const
 {
 	if (IsVoluntaryMovementBlocked()) return 0.f;
+    FRPGRidingMovementProfile Riding;
+    if (MovementMode == MOVE_Walking && TryGetRidingProfile(Riding))
+    {
+        float Speed = Riding.Speed;
+        for (const auto& Limit : WalkSpeedLimits) Speed = FMath::Min(Speed, Limit.Value);
+        return Speed * GetSkillMovementScalar(); // Absolute constraints precede Riding; combat stat multipliers do not.
+    }
 	float Base = Super::GetMaxSpeed();
 	if (MovementMode != MOVE_Walking && MovementMode != MOVE_NavWalking && MovementMode != MOVE_Falling)
 		return Base * GetSkillMovementScalar();
@@ -142,12 +158,28 @@ float URPGCharacterMovementComponent::GetMaxSpeed() const
 
 float URPGCharacterMovementComponent::GetMaxAcceleration() const
 {
-	return IsVoluntaryMovementBlocked() ? 0.f : Super::GetMaxAcceleration();
+    if (IsVoluntaryMovementBlocked()) return 0.f;
+    FRPGRidingMovementProfile Riding;
+    return MovementMode == MOVE_Walking && TryGetRidingProfile(Riding) ? Riding.Acceleration : Super::GetMaxAcceleration();
+}
+
+bool URPGCharacterMovementComponent::TryGetRidingProfile(FRPGRidingMovementProfile& Out) const { Out = {}; return false; }
+float URPGCharacterMovementComponent::GetMaxBrakingDeceleration() const
+{
+    FRPGRidingMovementProfile Riding;
+    return MovementMode == MOVE_Walking && TryGetRidingProfile(Riding) ? Riding.Braking : Super::GetMaxBrakingDeceleration();
+}
+FRotator URPGCharacterMovementComponent::GetDeltaRotation(float DeltaTime) const
+{
+    FRPGRidingMovementProfile Riding;
+    if (MovementMode != MOVE_Walking || !TryGetRidingProfile(Riding)) return Super::GetDeltaRotation(DeltaTime);
+    return FRotator(0, FMath::IsFinite(DeltaTime) ? FMath::Clamp(Riding.YawRate * DeltaTime, 0.f, 360.f) : 0.f, 0);
 }
 
 bool URPGCharacterMovementComponent::CanAttemptJump() const
 {
-	return !IsVoluntaryMovementBlocked() && Super::CanAttemptJump();
+    FRPGRidingMovementProfile Riding;
+    return !TryGetRidingProfile(Riding) && !IsVoluntaryMovementBlocked() && Super::CanAttemptJump();
 }
 
 FVector URPGCharacterMovementComponent::ConstrainInputAcceleration(const FVector& Input) const

@@ -120,6 +120,31 @@ const URPGMountDefinition* URPGRidingComponent::GetPresentationDefinition() cons
     return Definition && Definition->DefinitionVersion == State.DefinitionVersion ? Definition : nullptr;
 }
 
+bool URPGRidingComponent::TryBuildMovementProfile(FRPGRidingMovementProfile& Out) const
+{
+    Out = {};
+    if (!RPGRiding::IsCanonical(State) || State.Mode != ERPGRidingMode::Mounted || bEnding) return false;
+    if (GetOwner() && GetOwner()->HasAuthority())
+    {
+        if (!IsBindingCurrent()) return false;
+        FRPGRidingEvaluationContext Guards; BuildGuards(Guards);
+        if (!Guards.bReady || !Guards.bAlive || Guards.bActionBlocked || Guards.bSlowActive || !Guards.bOnGround) return false;
+    }
+    Out = State.Movement;
+    return true;
+}
+
+bool URPGRidingComponent::ApplyMovementCorrection(const FRPGRidingRepState& Incoming)
+{
+    const auto* Pawn = Cast<APawn>(GetOwner());
+    if (!Pawn || Pawn->HasAuthority() || Pawn->GetLocalRole() != ROLE_AutonomousProxy
+        || !RPGRiding::IsCanonical(Incoming) || Incoming.Key.RiderEpoch != State.Key.RiderEpoch
+        || RPGRiding::Compare(Incoming.Key, State.Key) != ERPGRidingStateOrder::Newer) return false;
+    // A response can advance an already-bound epoch, never install an unrelated binding or resurrect old state.
+    const auto Previous = State; State = Incoming; OnRep_State(Previous);
+    return true;
+}
+
 void URPGRidingComponent::BuildGuards(FRPGRidingEvaluationContext& Out) const
 {
     Out.Current = State;
@@ -160,6 +185,7 @@ void URPGRidingComponent::BuildGuards(FRPGRidingEvaluationContext& Out) const
             && !(TargetLock.IsValid() && Spec.Ability->GetAssetTags().HasTagExact(TargetLock))) Out.bActionBlocked = true;
     const auto* Character = Cast<ACharacter>(Pawn);
     const auto* Move = Character ? Character->GetCharacterMovement() : nullptr;
+    Out.bActionBlocked |= Character && Character->bIsCrouched;
     Out.bOnGround = Move && Move->MovementMode == MOVE_Walking;
     const auto Timing = Session->Runtime->GetTiming(FPlatformTime::Seconds());
     Out.bInCombat = !Timing.bValid || Timing.CombatRemaining > 0;
@@ -211,8 +237,8 @@ void URPGRidingComponent::ServerSetRiding_Implementation(FRPGRidingSetCommand Co
             }
         }
         const auto Decision = RPGRidingStatePolicy::Evaluate(Context, Command);
-        Commit(Decision);
         auto ResultCode = Decision.Result;
+        if (Decision.Result == ERPGRidingResultCode::Applied && !Commit(Decision)) ResultCode = ERPGRidingResultCode::NotReady;
         if (!IsBindingCurrent()) ResultCode = ERPGRidingResultCode::AuthorityRevoked;
         else if (ResultCode == ERPGRidingResultCode::Applied && Command.bDesiredMounted && State.Mode != ERPGRidingMode::Mounted)
             ResultCode = ERPGRidingResultCode::ActionBlocked;
@@ -226,7 +252,7 @@ void URPGRidingComponent::ServerSetRiding_Implementation(FRPGRidingSetCommand Co
 
 void URPGRidingComponent::ClientRidingResult_Implementation(FRPGRidingCommandResult Result)
 {
-    // Results never install authority state or adopt an Epoch; RepNotify is the sole network state source.
+    // RPC results never install authority state or adopt an Epoch. RepNotify and newer same-epoch CMC corrections own state.
     if (Result.LatestState.Key.RiderEpoch != State.Key.RiderEpoch || !State.Key.RiderEpoch.IsValid()) return;
     OnResult.Broadcast(Result);
 }
@@ -240,11 +266,13 @@ void URPGRidingComponent::MakeOnFoot(ERPGRidingEndReason Reason)
     State.LastEndReason = Reason;
 }
 
-void URPGRidingComponent::Commit(const FRPGRidingDecision& Decision)
+bool URPGRidingComponent::Commit(const FRPGRidingDecision& Decision)
 {
-    if (Decision.Result != ERPGRidingResultCode::Applied || !IsBindingCurrent()) return;
+    if (Decision.Result != ERPGRidingResultCode::Applied || !IsBindingCurrent()) return false;
     if (State.Key.StateRevision >= MAX_uint32 - 1 || State.Key.ActionSequence >= MAX_uint32 - 1)
-    { ReleaseBinding(); RefreshBinding(); return; }
+    { ReleaseBinding(); RefreshBinding(); return false; }
+    FRPGRidingMovementProfile Profile;
+    if (Decision.Transition != ERPGRidingTransition::Dismount && !Session->Runtime->CopyMovementProfile(Profile)) return false;
     TGuardValue<bool> Applying(bApplying, true);
     if (Decision.Transition == ERPGRidingTransition::Dismount) MakeOnFoot(ERPGRidingEndReason::Manual);
     else
@@ -253,6 +281,7 @@ void URPGRidingComponent::Commit(const FRPGRidingDecision& Decision)
         State = {}; State.Key = Key; ++State.Key.StateRevision;
         State.Mode = ERPGRidingMode::Mounted;
         State.MountId = Decision.ResolvedMountId; State.DefinitionVersion = Decision.DefinitionVersion;
+        State.Movement = Profile;
     }
     Publish();
     if (PendingEnd != ERPGRidingEndReason::None && IsBindingCurrent())
@@ -261,6 +290,7 @@ void URPGRidingComponent::Commit(const FRPGRidingDecision& Decision)
         if (State.Mode == ERPGRidingMode::Mounted) { MakeOnFoot(Reason); Publish(); }
     }
     PendingEnd = ERPGRidingEndReason::None;
+    return true;
 }
 
 void URPGRidingComponent::ForceDismount(ERPGRidingEndReason Reason)
@@ -276,6 +306,12 @@ void URPGRidingComponent::ForceDismount(ERPGRidingEndReason Reason)
 void URPGRidingComponent::TickComponent(float Delta, ELevelTick Tick, FActorComponentTickFunction* Function)
 {
     Super::TickComponent(Delta, Tick, Function);
+    ValidateServerMovementContext();
+}
+
+void URPGRidingComponent::ValidateServerMovementContext()
+{
+    if (!GetOwner() || !GetOwner()->HasAuthority()) return;
     RefreshBinding();
     if (!IsBindingCurrent() || State.Mode != ERPGRidingMode::Mounted) return;
     FRPGRidingEvaluationContext Context; BuildGuards(Context);

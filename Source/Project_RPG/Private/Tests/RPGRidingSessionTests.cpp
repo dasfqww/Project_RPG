@@ -51,6 +51,7 @@ namespace
     {
         auto Value = State(Epoch, 2);
         Value.Mode = ERPGRidingMode::Mounted;
+        Value.Movement = {1, 600, 2048, 2000, 500};
         Value.MountId = TEXT("horse");
         Value.DefinitionVersion = 1;
         Value.Key.ActionSequence = Sequence;

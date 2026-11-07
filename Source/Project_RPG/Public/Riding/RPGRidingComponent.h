@@ -6,6 +6,7 @@
 
 class URPGMountDefinition;
 class URPGRidingSessionComponent;
+class URPGPlayerMovementComponent;
 struct FRPGRidingDecision;
 struct FRPGRidingEvaluationContext;
 DECLARE_MULTICAST_DELEGATE_OneParam(FRPGRidingChanged, const FRPGRidingRepState&);
@@ -32,11 +33,16 @@ public:
     FRPGRidingResultReceived OnResult;
     /** Current cosmetic definition only; cannot grant ownership or mutate the authoritative state. */
     const URPGMountDefinition* GetPresentationDefinition() const;
+    bool TryBuildMovementProfile(FRPGRidingMovementProfile& Out) const;
+    /** Server movement entrypoints revalidate guards before simulating an accepted move. */
+    void ValidateServerMovementContext();
 
 private:
     friend class URPGRidingSessionComponent;
+    friend class URPGPlayerMovementComponent;
 #if WITH_DEV_AUTOMATION_TESTS
     friend struct FRPGRidingActorTestAccess;
+    friend struct FRPGRidingMovementTestAccess;
 #endif
     UFUNCTION() void HandleControllerChanged(APawn* Pawn, AController* Old, AController* Current);
     UFUNCTION() void HandleRestarted(APawn* Pawn);
@@ -46,7 +52,8 @@ private:
     bool IsBindingCurrent() const;
     void ReleaseBinding();
     void Publish();
-    void Commit(const FRPGRidingDecision& Decision);
+    bool Commit(const FRPGRidingDecision& Decision);
+    bool ApplyMovementCorrection(const FRPGRidingRepState& Incoming);
     void MakeOnFoot(ERPGRidingEndReason Reason);
     void BuildGuards(FRPGRidingEvaluationContext& Out) const;
     const URPGMountDefinition* FindDefinition(const FString& Id) const;

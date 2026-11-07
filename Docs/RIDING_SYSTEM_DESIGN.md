@@ -1,11 +1,11 @@
 # Riding System 상세 설계 v1 — 로스트아크 벤치마크
 
 - 작성·상세화: 2026-11-06
-- 상태: **M1a Actor/서버 요청과 M1b 기본 외형/비동기 수명 구현·독립 native20 오류/경고0·실제 Player 생성 경로 컴파일 통과 / 제품 보유 API·CMC 이동/예측·최종 자세/UI 후속**
+- 상태: **M1a Actor/서버 요청과 M1b 기본 외형·CMC 이동/예측·권위 보정 구현 / 분리 전체 Editor 빌드·Riding/감속/제어36 통과, 기존 권한 폐기 검사1 실패 별도 / 제품 보유 API·최종 자세/UI·다인 네트워크 검증 후속**
 - 담당: `riding-detail-20261106`
 - 대체 문서: 기존 `MOUNT_SYSTEM_DESIGN.md` 초안. 그 경로는 이 문서로 안내한다.
 - 구현 구조: [Riding System 아키텍처](RIDING_SYSTEM_ARCHITECTURE.md) — 클래스 책임·의존 방향·수명·기존 코드 연결·구현 분할. 게임 규칙과 저장 계약은 본 문서를 기준으로 한다.
-- 코드와 검증 현황: [M1a 첫 기반 구현](RIDING_SYSTEM_CODE_DESIGN.md#10-m1a-첫-기반-구현--2026-11-06), [서버 세션 내부 로직](RIDING_SYSTEM_CODE_DESIGN.md#11-m1a-서버-세션-내부-로직--2026-11-06), [Actor 연결](RIDING_SYSTEM_CODE_DESIGN.md#12-m1a-actor-연결--2026-11-07), [기본 외형](RIDING_SYSTEM_CODE_DESIGN.md#13-m1b-기본-외형과-비동기-수명--2026-11-08). 이 문서의 M1 전체 및 M2~M5 완료와 구분한다.
+- 코드와 검증 현황: [M1a 첫 기반 구현](RIDING_SYSTEM_CODE_DESIGN.md#10-m1a-첫-기반-구현--2026-11-06), [서버 세션 내부 로직](RIDING_SYSTEM_CODE_DESIGN.md#11-m1a-서버-세션-내부-로직--2026-11-06), [Actor 연결](RIDING_SYSTEM_CODE_DESIGN.md#12-m1a-actor-연결--2026-11-07), [기본 외형](RIDING_SYSTEM_CODE_DESIGN.md#13-m1b-기본-외형과-비동기-수명--2026-11-08), [CMC 이동과 예측](RIDING_SYSTEM_CODE_DESIGN.md#14-m1b-cmc-이동과-예측--2026-11-08). 이 문서의 M1 전체 및 M2~M5 완료와 구분한다.
 
 이 문서는 사용자 요청인 로아식 탈것의 상세 설계다. 아래 “프로젝트 결정”은 구현을 진행할 수 있도록 이번 설계에서 선택한 기본 정책이며, 사용자가 각각을 별도로 확정했거나 로아의 모든 규칙과 같다는 뜻은 아니다. 수치 조정과 최종 에셋 저작은 플레이 검증에서 수행하되 상태·권한·저장 계약을 미정으로 남기지 않는다.
 

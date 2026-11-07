@@ -4,6 +4,7 @@
 #include "RPGCharacterMovementComponent.generated.h"
 
 class UAnimInstance;
+struct FRPGRidingMovementProfile;
 
 /** Shared Player/NPC voluntary movement gate. Never restores a cached movement mode. */
 UCLASS()
@@ -23,6 +24,8 @@ public:
 	void EndWalkSpeedLimit(FGuid Handle);
 	virtual float GetMaxSpeed() const override;
 	virtual float GetMaxAcceleration() const override;
+	virtual float GetMaxBrakingDeceleration() const override;
+	virtual FRotator GetDeltaRotation(float DeltaTime) const override;
 	virtual bool CanAttemptJump() const override;
 	virtual FVector ConstrainInputAcceleration(const FVector& InputAcceleration) const override;
 	virtual void PerformMovement(float DeltaTime) override;
@@ -32,6 +35,8 @@ public:
 	/** Server-measured displacement actually applied by based movement; not an allowance or client input. */
 	FVector GetServerBasedMovementTotal() const { return ServerBasedMovementTotal; }
 protected:
+    /** NPC/default movement has no Riding branch. Player implementation supplies only admitted state. */
+    virtual bool TryGetRidingProfile(FRPGRidingMovementProfile& Out) const;
 	virtual void UpdateBasedMovement(float DeltaSeconds) override;
 	virtual void ApplyRootMotionToVelocity(float DeltaTime) override;
 	virtual void HandleImpact(const FHitResult& Hit, float TimeSlice = 0.f, const FVector& MoveDelta = FVector::ZeroVector) override;

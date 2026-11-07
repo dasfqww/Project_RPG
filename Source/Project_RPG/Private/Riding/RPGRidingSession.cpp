@@ -135,6 +135,16 @@ bool FRPGRidingSession::CopySnapshot(FRPGRidingAdmissionSnapshot& Out) const
     return true;
 }
 
+bool FRPGRidingSession::CopyMovementProfile(FRPGRidingMovementProfile& Out) const
+{
+    Out = {};
+    if (Status != ERPGRidingSessionStatus::Ready) return false;
+    Out.Version = Policy.CatalogVersion;
+    Out.Speed = Policy.RideSpeed; Out.Acceleration = Policy.Acceleration;
+    Out.Braking = Policy.Braking; Out.YawRate = Policy.YawRate;
+    return Out.IsValid();
+}
+
 FGuid FRPGRidingSession::BindPawn()
 {
     if (!Identity.IsValid() || Status == ERPGRidingSessionStatus::Revoked) return {};

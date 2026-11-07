@@ -53,7 +53,21 @@ struct PROJECT_RPG_API FRPGRidingSetCommand
     UPROPERTY() FRPGRidingSelector Selector;
 };
 
-/** Canonical replicated-value schema; actual replication belongs to the future Pawn component. */
+/** Immutable admitted locomotion values, replicated atomically with the Riding state. */
+USTRUCT(BlueprintType)
+struct PROJECT_RPG_API FRPGRidingMovementProfile
+{
+    GENERATED_BODY()
+    UPROPERTY(BlueprintReadOnly) int32 Version = 0;
+    UPROPERTY(BlueprintReadOnly) float Speed = 0;
+    UPROPERTY(BlueprintReadOnly) float Acceleration = 0;
+    UPROPERTY(BlueprintReadOnly) float Braking = 0;
+    UPROPERTY(BlueprintReadOnly) float YawRate = 0;
+    bool IsValid() const;
+    bool IsEmpty() const;
+};
+
+/** Canonical authoritative state. No client setter; observer/owner consume the same admitted profile. */
 USTRUCT(BlueprintType)
 struct PROJECT_RPG_API FRPGRidingRepState
 {
@@ -68,6 +82,7 @@ struct PROJECT_RPG_API FRPGRidingRepState
     UPROPERTY(BlueprintReadOnly) float ActionDuration = 0;
     UPROPERTY() FVector_NetQuantizeNormal ActionDirection{FVector::ZeroVector};
     UPROPERTY(BlueprintReadOnly) ERPGRidingEndReason LastEndReason = ERPGRidingEndReason::None;
+    UPROPERTY(BlueprintReadOnly) FRPGRidingMovementProfile Movement;
 };
 
 USTRUCT(BlueprintType)

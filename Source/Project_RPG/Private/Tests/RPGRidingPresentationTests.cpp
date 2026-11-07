@@ -63,6 +63,7 @@ namespace
             InitialActor = Character->GetActorTransform(); InitialMesh = Character->GetMesh()->GetRelativeTransform();
             InitialRadius = Character->GetCapsuleComponent()->GetUnscaledCapsuleRadius(); InitialHeight = Character->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
             State.Key = {FGuid::NewGuid(), 1, 0}; State.Mode = ERPGRidingMode::Mounted; State.MountId = TEXT("horse"); State.DefinitionVersion = 1;
+            State.Movement = {1, 600, 2048, 2000, 500};
             Set();
         }
         void Set() { RPGSetRidingVisualTestState(*Riding, State, Definitions); FRPGRidingPresentationTestAccess::Refresh(*Visual); }
@@ -112,7 +113,7 @@ bool FRidingVisualLifecycle::RunTest(const FString&)
     TestTrue(TEXT("Action notification does not reload same visual revision"), FRPGRidingPresentationTestAccess::Token(*F.Visual) == Token);
     FRPGRidingPresentationTestAccess::Complete(*F.Visual, Token);
     TestTrue(TEXT("Repeated completion is idempotent"), Model == FRPGRidingPresentationTestAccess::Mesh(*F.Visual));
-    F.State.Mode = ERPGRidingMode::OnFoot; F.State.MountId.Reset(); F.State.DefinitionVersion = 0; F.State.Key.StateRevision++; F.Set();
+    F.State.Mode = ERPGRidingMode::OnFoot; F.State.MountId.Reset(); F.State.DefinitionVersion = 0; F.State.Movement = {}; F.State.Key.StateRevision++; F.Set();
     TestTrue(TEXT("Dismount clears all owned visuals"), F.Visual->GetVisualStatus() == ERPGRidingVisualStatus::Hidden && !FRPGRidingPresentationTestAccess::Root(*F.Visual));
     FRPGRidingPresentationTestAccess::Complete(*F.Visual, Token);
     TestTrue(TEXT("Late completion cannot resurrect dismounted visual"), F.Visual->GetVisualStatus() == ERPGRidingVisualStatus::Hidden);

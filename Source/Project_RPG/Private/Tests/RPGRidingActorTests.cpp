@@ -84,6 +84,17 @@ void RPGSetRidingVisualTestState(URPGRidingComponent& Component, const FRPGRidin
     FRPGRidingActorTestAccess::VisualState(Component, State, Definitions);
 }
 
+void RPGPrepareRidingMovementTestSession(URPGRidingSessionComponent& Session, URPGRidingComponent& Riding)
+{
+    FRPGRidingActorTestAccess::Configure(Session);
+    FRPGRidingActorTestAccess::Define(Riding);
+    Riding.RefreshBinding();
+}
+void RPGSendRidingMovementTestCommand(URPGRidingComponent& Riding, const FRPGRidingSetCommand& Command)
+{
+    FRPGRidingActorTestAccess::Send(Riding, Command);
+}
+
 namespace
 {
     constexpr auto Flags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter;

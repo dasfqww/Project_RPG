@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Component/RPGCharacterMovementComponent.h"
+#include "Riding/RPGRidingMovementPrediction.h"
 #include "RPGPlayerMovementComponent.generated.h"
 
 /** Keeps a revoked Pawn alive for queued Iris RPCs while refusing new movement. */
@@ -9,10 +10,26 @@ class PROJECT_RPG_API URPGPlayerMovementComponent : public URPGCharacterMovement
 {
 	GENERATED_BODY()
 public:
+    URPGPlayerMovementComponent();
 	virtual void SetMovementMode(EMovementMode NewMovementMode, uint8 NewCustomMode = 0) override;
 	virtual void PerformMovement(float DeltaTime) override;
 	virtual void ServerMove_HandleMoveData(const FCharacterNetworkMoveDataContainer& MoveDataContainer) override;
 	void StopRevokedMovement();
+    virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
+    virtual bool CanCrouchInCurrentState() const override;
+    virtual void ServerMove_PerformMovement(const FCharacterNetworkMoveData& MoveData) override;
+    virtual void ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& Response) override;
+    virtual bool ServerCheckClientError(float Stamp, float Delta, const FVector& Accel, const FVector& ClientLocation,
+        const FVector& RelativeLocation, FMovementBaseInterfaceData* Base, FName Bone, uint8 Mode) override;
+protected:
+    virtual bool TryGetRidingProfile(FRPGRidingMovementProfile& Out) const override;
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+    friend struct FRPGRidingMovementTestAccess;
+#endif
 	bool IsRevokedOnServer() const;
+    FRPGRidingMoveDataContainer RidingMoves;
+    FRPGRidingMoveResponse RidingResponse;
+    FRPGRidingMoveStamp EvaluatedStamp;
+    bool bEvaluatingRidingMove = false, bHasRidingStamp = false;
 };

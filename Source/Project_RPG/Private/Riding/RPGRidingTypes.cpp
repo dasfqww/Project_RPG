@@ -1,5 +1,15 @@
 #include "Riding/RPGRidingTypes.h"
 
+bool FRPGRidingMovementProfile::IsValid() const
+{
+    const auto Range = [](float V, float Max) { return FMath::IsFinite(V) && V >= 1 && V <= Max; };
+    return Version > 0 && Range(Speed, 5000) && Range(Acceleration, 20000) && Range(Braking, 20000) && Range(YawRate, 1080);
+}
+bool FRPGRidingMovementProfile::IsEmpty() const
+{
+    return Version == 0 && Speed == 0 && Acceleration == 0 && Braking == 0 && YawRate == 0;
+}
+
 bool RPGRiding::IsValidMountId(const FString& Id)
 {
     if (Id.IsEmpty() || Id.Len() > 64) return false;
@@ -38,9 +48,9 @@ bool RPGRiding::IsCanonical(const FRPGRidingRepState& State)
     else if (State.Key.StateRevision == 0) return false;
     if (State.Mode == ERPGRidingMode::OnFoot)
     {
-        if (!State.MountId.IsEmpty() || State.DefinitionVersion != 0 || State.Action != ERPGRidingAction::None) return false;
+        if (!State.MountId.IsEmpty() || State.DefinitionVersion != 0 || State.Action != ERPGRidingAction::None || !State.Movement.IsEmpty()) return false;
     }
-    else if (!IsValidMountId(State.MountId) || State.DefinitionVersion <= 0) return false;
+    else if (!IsValidMountId(State.MountId) || State.DefinitionVersion <= 0 || !State.Movement.IsValid()) return false;
     if (State.Action == ERPGRidingAction::None)
         return !State.ExecutionId.IsValid() && State.ActionStartServerWorldSeconds == 0 && State.ActionDuration == 0
             && State.ActionDirection == FVector::ZeroVector;

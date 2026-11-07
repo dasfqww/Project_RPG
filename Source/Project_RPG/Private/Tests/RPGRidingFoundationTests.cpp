@@ -29,6 +29,7 @@ void Mount(FRPGRidingEvaluationContext& C)
 {
     C.Current.Mode = ERPGRidingMode::Mounted; C.Current.MountId = C.CandidateMountId;
     C.Current.DefinitionVersion = C.CandidateDefinitionVersion;
+    C.Current.Movement = {1, 600, 2048, 2000, 500};
 }
 void Define(URPGMountDefinition& D)
 {
