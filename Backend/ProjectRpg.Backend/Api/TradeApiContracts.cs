@@ -79,6 +79,22 @@ public static class TradeApiContracts
     };
     private static string Text(long n) => n.ToString(CultureInfo.InvariantCulture);
 
+    public static object Preview(TradePreview preview)
+    {
+        object[] Items(IReadOnlyList<TradePreviewItem> items) => items.Select(i => (object)new
+        {
+            i.ItemId, expectedRevision = Text(i.ExpectedRevision), i.Quantity,
+            availability = i.Details is null ? "Unavailable" : "Available",
+            details = i.Details is not { } d ? null : new
+            {
+                d.DefinitionType, d.DefinitionName, d.DefinitionVersion, d.InstanceTags, d.StatValues,
+                d.EquipmentProgression, bindState = d.BindState.ToString(), d.Durability, d.ExpiresAtUtc
+            }
+        }).ToArray();
+        return new { session = Session(preview.Session), preview.ObservedAt, preview.IsOpen, preview.AllItemsAvailable,
+            initiatorItems = Items(preview.InitiatorItems), inviteeItems = Items(preview.InviteeItems) };
+    }
+
     internal static void RejectDuplicateProperties(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Object)

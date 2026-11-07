@@ -5,7 +5,7 @@ using static ProjectRpg.Backend.Domain.Trading.TradeSessionRules;
 
 namespace ProjectRpg.Backend.Data;
 
-public sealed class InMemoryTradeSessionRepository : ITradeSessionRepository
+public sealed partial class InMemoryTradeSessionRepository : ITradeSessionRepository
 {
     private readonly InMemoryTransactionGate gate;
     private readonly InMemoryGameRepository game;

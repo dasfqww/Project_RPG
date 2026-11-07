@@ -27,7 +27,7 @@ using ProjectRpg.Backend.Operations.Restrictions;
 using ProjectRpg.Operations.Core.ServiceControl;
 using ProjectRpg.Operations.Core.Restrictions;
 
-internal static class ApiCases
+internal static partial class ApiCases
 {
     private static int checks, sequence;
     private static readonly TradeItemPolicy Policy = new([new("Material", "Api.Ore", 1, true, false, 100)]);
@@ -37,7 +37,7 @@ internal static class ApiCases
         {
             await using var f = await Fixture.Create(mode != "--api-memory");
             if (mode == "--api-restart") { await ProgramRestart(f); }
-            else { await Contract(f); await AccessBoundaries(f); await Expiry(f); await Limits(f); }
+            else { await PreviewCases(f); await Contract(f); await AccessBoundaries(f); await Expiry(f); await Limits(f); }
             Console.WriteLine($"PASS {mode}: {checks} assertions; actual bearer HTTP, isolated repositories/DB."); return 0;
         }
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }

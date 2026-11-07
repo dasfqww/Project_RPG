@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ProjectRpg.Backend.Application;
 using ProjectRpg.Backend.Authentication;
+using ProjectRpg.Backend.Data;
 using ProjectRpg.Backend.Domain.Trading;
 
 namespace ProjectRpg.Backend.Api;
@@ -12,6 +13,18 @@ public static class TradeApiEndpoints
 
     public static void MapTradeApi(this WebApplication app)
     {
+        app.MapGet(Root + "/{tradeId:guid}/preview", async (Guid characterId, Guid tradeId, HttpContext context,
+            TradeApplication service, ITradeSessionRepository store, CancellationToken ct) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            try
+            {
+                var actor = await service.ActorAsync(context.GetProjectRpgPrincipal(), characterId, ct);
+                var preview = await store.PreviewAsync(tradeId, actor, ct);
+                return preview is null ? Failure(context, "trade_not_found") : Results.Ok(TradeApiContracts.Preview(preview));
+            }
+            catch (TradeRuleException e) { return Failure(context, e.Code); }
+        });
         app.MapGet(Root, (Guid characterId, HttpContext context, TradeApplication service, CancellationToken ct) =>
             Read(characterId, null, context, service, ct));
         app.MapGet(Root + "/{tradeId:guid}", (Guid characterId, Guid tradeId, HttpContext context, TradeApplication service, CancellationToken ct) =>
