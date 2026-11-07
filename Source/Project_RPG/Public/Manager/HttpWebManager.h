@@ -22,6 +22,7 @@ struct FRPGCharacterSkillConfiguration;
 struct FRPGEquipmentMutationCommand;
 struct FRPGEquipmentMutationHttpResult;
 struct FRPGNarrativeHttpResult;
+class IRPGTradeTransport;
 class FRPGDungeonDisconnectionJournal;
 class FRPGDungeonConsumeJournal;
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnBackendServiceDraining, const FString&);
@@ -306,6 +307,8 @@ public:
 
 	/** Pinned player/endpoint identity only, never exposes a bearer or service credential. */
 	bool GetPlayerEquipmentContext(FString& OutEndpoint, FString& OutSteamId) const;
+	/** Player-only trade HTTP. Credential refresh retains trade identity; no service-token fallback. */
+	TSharedRef<IRPGTradeTransport> CreatePlayerTradeTransport();
 	/** Build-only owner-scoped narrative GET/choice POST; player credentials remain private. */
 	FHttpRequestPtr CreatePlayerNarrativeRequest(FGuid CharacterId, const FString& ChoiceBody,
 		TFunction<void(FRPGNarrativeHttpResult)> Completion);

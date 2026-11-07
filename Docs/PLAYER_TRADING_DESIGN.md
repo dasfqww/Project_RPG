@@ -125,7 +125,7 @@ T6에서 보상 생성 시 확정한 eligible character/account 목록, 원래 �
 | T2a | Memory/PG 자산 예약·해제·만료와 기존 변이/지출 차단 | 실제 PG 병렬 예약/지출/아이템 변경·취소 봉인·중간 실패 롤백·저장소 재생성 |
 | T2b | 교환 계획(11절)·PostgreSQL 원자 저장(12절)·Memory 원자 저장/내부 DI(13절) 완료 | 실제 PG 양측 교환/취소·입장 경합, 주입 실패 전체 롤백, 재시작/응답 유실 복구; Memory 동등 계약 |
 | T3 | 인증된 직거래 API/조회/만료 처리 구현(14절), 기본 비활성 | 실제 HTTP 두 계정·세 번째 계정 거절·요청 충돌·응답 유실·재시작, 제한/영수증 감사 |
-| T4 | 상세 물품 미리보기 API 완료(15절), UE 로비 화면/복구/Projection 후속 | 실제 두 클라이언트 제안·준비·확정·취소·재접속, 기존 인벤토리 명령과 충돌 검사 |
+| T4 | 상세 미리보기 API·UE 세션/요청 상태·인증 HTTP/재시도 조율 구현(15~17절), 로비 화면/Projection 후속 | 실제 두 클라이언트 제안·준비·확정·취소·재접속, 기존 인벤토리 명령과 충돌 검사 |
 | T5 | 경매장 등록/검색/구매/취소/만료/대금 수령/API/UI | 동시 구매 1명 성공·취소 경합·오프라인 판매·포화/잔액 상한·재시작 실연결 |
 | T6 | 파티 전리품 자격/제한 교환 | 획득 당시 참여자만 허용·시간/장착/강화/재이전 규칙·정산 출처 보존 |
 
@@ -515,3 +515,61 @@ items는 최대 8개이며 quantity는 양의 JSON 정수다. 서버 전용 Expi
   `blocked by policy`로 거절하여 로그 8,008,182 bytes를 로컬 예외로 보존한다. 공유 UBT 진단 Trace.uba는 건드리지 않았다.
   근거: Saved/BuildChecks/TradeClient-20261108/CompletionAudit.json 및 e0e8891a21a34e228f198117ada1f0fd/Result.json.
   DLL 해시는 당시 실행 증거이며 폐기한 바이너리 재실행을 보장하지 않는다.
+
+## 17. 거래 player HTTP와 재시도 조율 — 2026-11-08
+
+`UHttpWebManager::CreatePlayerTradeTransport()`가 player 전용 `IRPGTradeTransport`를 만든다.
+로컬 소유자는 이 전송 객체와 `FRPGTradeCoordinator`를 한 계정/선택 캐릭터의 수명 동안 유지하고 게임 스레드에서 `Pump()`를 호출한다.
+UI는 SelectCharacter/Refresh/Invite/Submit/Retry와 OnChanged를 통해 사용한다. 아직 로비 위젯/LocalPlayer 수명 소유자에 연결하지 않았다.
+
+### 인증과 HTTP 경계
+
+- 인증은 기존 UHttpWebManager의 private PlayerAuth가 계속 소유한다. 거래 상태/결과에는 bearer를 넣지 않고,
+  HTTP 전송 중의 메모리 사본만 사용한다. 계정·endpoint 신원은 토큰 만료/재인증/로그아웃 요청 중에도 유지하며
+  재인증/로그아웃 중에는 새 HTTP를 보내지 않는다. 전용/설정된 던전 서버에서 player 거래 전송은 사용할 수 없다.
+- 실제 GET은 활성 거래 또는 특정 거래, POST는 invite/accept/offer/ready/withdraw/confirm/cancel만 만든다.
+  캐릭터/거래 GUID로 경로를 구성하고 임의 URL/액션을 받지 않는다. player bearer만 붙이며 서비스 인증으로 대체하지 않는다.
+  POST 본문은 기존 Client가 고정한 UTF-8 최대16KiB, 응답 본문은 최대32KiB다. 타임아웃은 기존 설정을 1~30초로 제한한다.
+- callback은 게임 스레드로 오고, 요청 당시 endpoint/계정/인증 세대가 현재와 일치해야 유효하다.
+  현재 인증의 401만 해당 player credential을 무효화한다. 이후 갱신된 인증을 과거 요청의 401로 무효화하지 않는다.
+  토큰이 바뀐 동안 완료된 과거 callback은 불확정으로 처리하고 같은 요청을 새 인증으로 재전송한다.
+- 전송 객체마다 동시 HTTP는 하나다. 취소/파괴는 자기 delegate를 해제하고 자기 요청만 취소한다.
+  취소 자체를 서버 미커밋 증거로 사용하지 않는다.
+
+### 재시도와 수명
+
+- 성공 영수증/저장된 거절은 §16 Client가 확정한다. 접속 실패·응답 유실·손상된 응답·401/429/5xx는 같은 pending을 유지한다.
+  새 명령을 준비하거나 새 요청 ID를 만드는 방식으로 해결하지 않는다. 준비된 의도는 인증이 없으면 전송하지 않고 기다린다.
+- 초기 시도 뒤 자동 재시도는 최대5회, 기본 대기는 1/2/4/8/16/30초 상한의 지수 대기다.
+  429/503의 정수 Retry-After는 1~3600초로 반영하고 누락/잘못된 값은60초로 처리한다.
+  마지막 응답을 받은 시점의 단조 시계로 기한을 잡아 오래된 tick 시각이나 시계 역행으로 대기를 줄이지 않는다.
+  예산 소진 뒤에도 의도를 버리지 않고 명시적 Retry로 같은 요청을 이어갈 수 있다. 수동 Retry도 서버 대기를 우회하지 않는다.
+- 활성/특정 거래 GET은 명시적 Refresh다. GET 응답은 pending을 확정하거나 이미 정해진 재전송 대기 시간을 줄이지 않는다.
+  자동 상태 polling과 화면 표시 주기는 후속 UI 소유자가 결정한다.
+- 같은 캐릭터 재선택/인증 복원은 의도를 유지한다. 계정/endpoint 변경·로그아웃 완료·명시적 Reset은 자기 HTTP를 취소하고
+  캐릭터 선택과 Client 세대를 지운다. 새 계정에서 캐릭터를 명시적으로 선택하기 전에는 이전 캐릭터로 요청하지 않는다.
+  늦은 callback과 OnChanged의 재진입도 이전 작업을 되살리지 않는다. 객체/프로세스 재생성 뒤 의도 저널 복원은 여전히 후속이다.
+
+### 검증 도구와 범위
+
+- `Scripts/Tests/Run-TradeTransportTests.ps1`는 실제 Client/Transport/Coordinator를 NoPCH 최소 UE5.8 모듈로 빌드/링크하고,
+  기존 Client6개와 신규 AuthRetry/RetryBounds/ContextLifetime/ReadAndFailure/RealHttp native 검사를 수행한다.
+  실제 UE HTTP는 엔진 Python의 자기 loopback 서버/자동 배정 포트를 사용한다. 서버는 초대를 한 번 저장한 뒤 첫 응답을 끊고,
+  동일 요청/본문 재전송에 기존 영수증을 돌려준다. GET·player 인증 헤더·허용 경로/본문·401·커밋1/재생을 대조한다.
+- 이 서버는 전송 검증 fixture이며 실제 ASP.NET/PostgreSQL 정산 검증은 기존 거래 API/세션 검사의 범위다.
+  `Run-TradeIntegrationCompile.ps1`는 게시된 전체 프로젝트의 닫힌 Source/Config/Plugins 사본과 본인 명시 overlay만 사용해
+  UHT 및 실제 HttpWebManagerTrading.cpp를 컴파일한다. 전체 모듈 링크·Steam·다중 PC·거래 위젯 검증과 구분한다.
+- 두 러너 모두 자기 Saved/TH 임시 사본/객체/모듈/runtime/cache와 자기 UE/fixture 프로세스를 finally에서 정리한다.
+  원본 게임 DLL/공유 Intermediate/DB는 바꾸지 않으며 작은 결과/해시/필요한 진단만 Saved/BuildChecks/TradeHttp-20261108에 남긴다.
+  다음은 로비/LocalPlayer 수명 소유자, 상세 미리보기 결합과 거래 화면, 정산 후 인벤토리 갱신이다.
+
+- 최종 독립 NoPCH 빌드/링크11단계·native11 Success/오류0·예상 밖 경고0/UE 종료0.
+  의도한 연결 종료의 libcurl52/상세 메시지/해당 invite 실패 로그만 예상 메시지로 등록했다.
+  실제 HTTP fixture 결과는 POST2/커밋1/동일 본문 영수증 재생1/GET2/401거절1/fixture 오류0이다.
+  게시 cff62eb6 사본의 전체 UHT와 실제 인증 factory CPP 컴파일도 성공했고 두 검사의 제품 입력 SHA 불변을 확인했다.
+  기동 중 기존 환경 Error15는 검사 시작 이후 Error 심각도0과 구분한다.
+- 초기 검사 공유 포인터 변환/시스템 Python 별칭/의도한 단절 경고의 strict gate 실패는 최종 성공과 구분해 남겼다.
+  자기6회(통합 컴파일 포함) 임시196,068,977 bytes를 폐기했으며 자기 프로세스/Temp/이번 정리 예외0이다.
+  기존 보존 예외 로그·공유 UBT Trace.uba는 변경하지 않았다. 실행 근거는 Saved/BuildChecks/TradeHttp-20261108/CompletionAudit.json,
+  최종 native 696740c070724bd388550410f9f7b59d/Result.json과 Integration-93e6bb67fe5c4b0aa8f8f1f04abb89ef/Result.json이다.
+  폐기한 모듈의 SHA는 당시 실행 증거이며 이후 같은 바이너리 재실행을 보장하지 않는다.
