@@ -30,6 +30,8 @@ public sealed class QuestManager
             case DialogueEffect.RecordObjective:
                 if (choice.ObjectiveId is { } target && definition.DungeonObjectives?.ContainsKey(target) == true)
                     throw new NarrativeConflictException("dungeon_objective_requires_evidence");
+                if (choice.ObjectiveId is { } interaction && definition.InteractionObjectives?.ContainsKey(interaction) == true)
+                    throw new NarrativeConflictException("interaction_objective_requires_event");
                 if (current is null || current.Status != QuestStatus.Active || choice.ObjectiveId is null
                     || !definition.Objectives.Contains(choice.ObjectiveId))
                     throw new NarrativeConflictException("objective_not_available");
@@ -80,11 +82,47 @@ public sealed class QuestManager
 
     private static QuestProgress ActivateDungeonObjectives(QuestProgress progress, QuestDefinition definition, DateTimeOffset now)
     {
-        if (definition.DungeonObjectives is null || definition.DungeonObjectives.Count == 0) return progress;
-        var activated = progress.DungeonObjectives ?? ImmutableDictionary<string, DungeonObjectiveProgress>.Empty;
-        foreach (string id in definition.DungeonObjectives.Keys)
-            if (!activated.ContainsKey(id) && definition.RequiredObjectives(id).All(progress.CompletedObjectives.Contains))
-                activated = activated.Add(id, new(now));
-        return progress with { DungeonObjectives = activated };
+        if (definition.DungeonObjectives is { Count: > 0 })
+        {
+            var activated = progress.DungeonObjectives ?? ImmutableDictionary<string, DungeonObjectiveProgress>.Empty;
+            foreach (string id in definition.DungeonObjectives.Keys)
+                if (!activated.ContainsKey(id) && definition.RequiredObjectives(id).All(progress.CompletedObjectives.Contains))
+                    activated = activated.Add(id, new(now));
+            progress = progress with { DungeonObjectives = activated };
+        }
+        if (definition.InteractionObjectives is { Count: > 0 })
+        {
+            var activated = progress.InteractionObjectives ?? ImmutableDictionary<string, InteractionObjectiveProgress>.Empty;
+            foreach (string id in definition.InteractionObjectives.Keys)
+                if (!activated.ContainsKey(id) && definition.RequiredObjectives(id).All(progress.CompletedObjectives.Contains))
+                    activated = activated.Add(id, new(now));
+            progress = progress with { InteractionObjectives = activated };
+        }
+        return progress;
+    }
+
+    internal NarrativeState RecordInteraction(NarrativeState state, NarrativeCatalog catalog, NarrativeInteractionCommand command,
+        NarrativeInteractionContext context)
+    {
+        var updated = state;
+        // Evaluate against the pre-event snapshot: one event cannot unlock and satisfy its next stage.
+        foreach (var current in state.Quests.Where(q => q.Status == QuestStatus.Active))
+        {
+            var definition = catalog.Quests[current.QuestId];
+            if (definition.InteractionObjectives is null || current.InteractionObjectives is null) continue;
+            string[] matches = [.. definition.Objectives.Where(id =>
+                definition.InteractionObjectives.TryGetValue(id, out var target)
+                && target.DungeonId == context.DungeonId && target.Difficulty == context.Difficulty && target.TargetId == command.TargetId
+                && CanRecordObjective(current, definition, id)
+                && current.InteractionObjectives.TryGetValue(id, out var activation) && activation.ActivatedAt <= command.ObservedAtUtc)];
+            if (matches.Length == 0) continue;
+            var completed = current.CompletedObjectives.AddRange(matches);
+            var evidence = current.InteractionObjectives;
+            foreach (string id in matches) evidence = evidence.SetItem(id, evidence[id] with { EventId = command.EventId });
+            var progress = current with { CompletedObjectives = completed, InteractionObjectives = evidence,
+                Status = completed.Length == definition.Objectives.Length ? QuestStatus.ReadyToReport : QuestStatus.Active };
+            updated = updated with { Quests = updated.Quests.Replace(current, ActivateDungeonObjectives(progress, definition, context.ReceivedAt)) };
+        }
+        return updated;
     }
 }

@@ -185,6 +185,9 @@ builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.QuestManager>();
 builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.ScenarioManager>();
 builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.DialogueManager>();
 builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.NarrativeCoordinator>();
+builder.Services.AddSingleton<INarrativeInteractionRepository>(provider =>
+    (INarrativeInteractionRepository)provider.GetRequiredService<IGameRepository>());
+builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.NarrativeInteractionCoordinator>();
 builder.Services.AddSingleton<INarrativeDungeonEvidenceRepository>(provider =>
     (INarrativeDungeonEvidenceRepository)provider.GetRequiredService<IGameRepository>());
 builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.DungeonObjectiveCoordinator>();

@@ -74,6 +74,31 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
                         != dungeonProgress.Values.Count(p => p.DungeonSessionId.HasValue))
                 throw new NarrativeConflictException("incompatible_dungeon_objective_state");
         }
+        foreach (var progress in state.Quests)
+        {
+            var definition = catalog.Quests[progress.QuestId];
+            var entries = progress.InteractionObjectives;
+            bool SameEventInPrerequisites(string id, Guid eventId)
+            {
+                Stack<string> pending = new(definition.RequiredObjectives(id)); HashSet<string> visited = new(StringComparer.Ordinal);
+                while (pending.TryPop(out string? parent))
+                {
+                    if (!visited.Add(parent)) continue;
+                    if (entries?.GetValueOrDefault(parent)?.EventId == eventId) return true;
+                    foreach (string ancestor in definition.RequiredObjectives(parent)) pending.Push(ancestor);
+                }
+                return false;
+            }
+            if (entries is not null && entries.Any(pair => pair.Value is null
+                    || definition.InteractionObjectives?.ContainsKey(pair.Key) != true
+                    || !definition.RequiredObjectives(pair.Key).All(progress.CompletedObjectives.Contains)
+                    || pair.Value.ActivatedAt == default || pair.Value.EventId == Guid.Empty
+                    || progress.CompletedObjectives.Contains(pair.Key) != pair.Value.EventId.HasValue
+                    || pair.Value.EventId is { } eventId && SameEventInPrerequisites(pair.Key, eventId))
+                || definition.InteractionObjectives is not null && definition.InteractionObjectives.Keys.Any(id =>
+                    definition.RequiredObjectives(id).All(progress.CompletedObjectives.Contains) && entries?.ContainsKey(id) != true))
+                throw new NarrativeConflictException("incompatible_interaction_objective_state");
+        }
         NarrativeState projected = new ScenarioManager().Project(state, catalog);
         if (!state.CompletedChapters.SequenceEqual(projected.CompletedChapters)
             || !state.StoryUnlocks.SequenceEqual(projected.StoryUnlocks))

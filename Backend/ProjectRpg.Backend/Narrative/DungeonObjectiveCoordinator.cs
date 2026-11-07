@@ -30,7 +30,9 @@ public sealed class DungeonObjectiveCoordinator(INarrativeRepository repository,
     public static void ValidateTargets(NarrativeCatalog catalog, DungeonContentCatalog content)
     {
         if (catalog.Quests.Values.SelectMany(q => q.DungeonObjectives?.Values ?? [])
-            .Any(target => content.GetSelectionError(target.DungeonId, target.Difficulty) is not null))
+            .Any(target => content.GetSelectionError(target.DungeonId, target.Difficulty) is not null)
+            || catalog.Quests.Values.SelectMany(q => q.InteractionObjectives?.Values ?? [])
+                .Any(target => content.GetSelectionError(target.DungeonId, target.Difficulty) is not null))
             throw new InvalidOperationException("Narrative: Dungeon objective references an unavailable dungeon selection.");
     }
 

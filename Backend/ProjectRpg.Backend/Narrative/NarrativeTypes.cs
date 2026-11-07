@@ -11,13 +11,16 @@ public enum DialogueEffect { AcceptQuest, RecordObjective, ReportQuest, None }
 public sealed record QuestDefinition(string Id, int Version, ImmutableArray<string> Prerequisites,
     ImmutableArray<string> Objectives, string? Title = null, ImmutableDictionary<string, string>? ObjectiveTexts = null,
     ImmutableDictionary<string, ImmutableArray<string>>? ObjectivePrerequisites = null,
-    ImmutableDictionary<string, DungeonClearObjective>? DungeonObjectives = null)
+    ImmutableDictionary<string, DungeonClearObjective>? DungeonObjectives = null,
+    ImmutableDictionary<string, InteractionObjective>? InteractionObjectives = null)
 {
     internal ImmutableArray<string> RequiredObjectives(string objectiveId) =>
         ObjectivePrerequisites?.GetValueOrDefault(objectiveId, []) ?? [];
 }
 public sealed record DungeonClearObjective(string DungeonId, string Difficulty);
 public sealed record DungeonObjectiveProgress(DateTimeOffset ActivatedAt, Guid? DungeonSessionId = null);
+public sealed record InteractionObjective(string DungeonId, string Difficulty, string TargetId);
+public sealed record InteractionObjectiveProgress(DateTimeOffset ActivatedAt, Guid? EventId = null);
 public sealed record ChapterDefinition(string Id, ImmutableArray<string> RequiredQuests,
     ImmutableArray<string> StoryUnlocks);
 public sealed record DialogueChoice(string Id, string Text, DialogueEffect Effect, string? ObjectiveId = null,
@@ -30,7 +33,8 @@ public sealed record DialogueDefinition(string Id, string Speaker, string Text, 
 }
 public sealed record QuestProgress(string QuestId, int DefinitionVersion, QuestStatus Status,
     ImmutableArray<string> CompletedObjectives,
-    ImmutableDictionary<string, DungeonObjectiveProgress>? DungeonObjectives = null);
+    ImmutableDictionary<string, DungeonObjectiveProgress>? DungeonObjectives = null,
+    ImmutableDictionary<string, InteractionObjectiveProgress>? InteractionObjectives = null);
 public sealed record NarrativeState(Guid CharacterId, int SchemaVersion, long Revision,
     ImmutableArray<QuestProgress> Quests, ImmutableArray<string> CompletedChapters,
     ImmutableArray<string> StoryUnlocks)

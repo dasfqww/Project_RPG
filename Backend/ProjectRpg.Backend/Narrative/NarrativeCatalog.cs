@@ -43,6 +43,12 @@ public sealed class NarrativeCatalog
                     && NarrativeCommand.ValidId(pair.Value.DungeonId) && pair.Value.DungeonId.Length <= 64
                     && pair.Value.Difficulty is "Easy" or "Normal" or "Hard" or "Hell"),
                 "invalid_dungeon_objective");
+            Require(q.InteractionObjectives is null || q.InteractionObjectives.Count <= q.Objectives.Length
+                && q.InteractionObjectives.All(pair => q.Objectives.Contains(pair.Key)
+                    && q.DungeonObjectives?.ContainsKey(pair.Key) != true && pair.Value is not null
+                    && NarrativeCommand.ValidId(pair.Value.DungeonId) && pair.Value.DungeonId.Length <= 64
+                    && pair.Value.Difficulty is "Easy" or "Normal" or "Hard" or "Hell"
+                    && NarrativeCommand.ValidId(pair.Value.TargetId)), "invalid_interaction_objective");
             HashSet<string> objectiveVisiting = new(StringComparer.Ordinal), objectiveVisited = new(StringComparer.Ordinal);
             void VisitObjective(string id)
             {
@@ -53,6 +59,7 @@ public sealed class NarrativeCatalog
             }
             foreach (string id in q.Objectives) VisitObjective(id);
         }
+        Require(Quests.Values.Sum(q => q.InteractionObjectives?.Count ?? 0) <= 256, "narrative_catalog_limit_exceeded");
         HashSet<string> visiting = new(StringComparer.Ordinal), visited = new(StringComparer.Ordinal);
         void Visit(string id)
         {
@@ -98,6 +105,7 @@ public sealed class NarrativeCatalog
                         ? d.RequiredStatus == QuestStatus.Active && c.ObjectiveId is not null
                             && Quests[d.QuestId!].Objectives.Contains(c.ObjectiveId)
                             && Quests[d.QuestId!].DungeonObjectives?.ContainsKey(c.ObjectiveId) != true
+                            && Quests[d.QuestId!].InteractionObjectives?.ContainsKey(c.ObjectiveId) != true
                         : c.ObjectiveId is null && (c.Effect == DialogueEffect.AcceptQuest
                             ? d.RequiredStatus is null : d.RequiredStatus == QuestStatus.ReadyToReport)),
                     "invalid_dialogue_choice");
@@ -122,6 +130,7 @@ public sealed class NarrativeCatalog
             Require(actions.Any(c => c.Effect == DialogueEffect.AcceptQuest)
                 && actions.Any(c => c.Effect == DialogueEffect.ReportQuest)
                 && q.Objectives.All(id => q.DungeonObjectives?.ContainsKey(id) == true
+                    || q.InteractionObjectives?.ContainsKey(id) == true
                     || actions.Any(c => c.Effect == DialogueEffect.RecordObjective && c.ObjectiveId == id)),
                 "unreachable_quest_definition");
         }
