@@ -1,0 +1,177 @@
+#include "UI/ActionBar/RPGRidingActionBarSubsystem.h"
+#include "UI/ActionBar/RPGActionBarContext.h"
+#include "Component/UI/QuickSlotComponent.h"
+#include "Riding/RPGRidingComponent.h"
+#include "Engine/LocalPlayer.h"
+#include "Engine/World.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
+#include "UObject/StrongObjectPtr.h"
+
+#define LOCTEXT_NAMESPACE "RPGRidingActionBar"
+
+class FRPGRidingActionBarProvider final : public IRPGActionBarProvider
+{
+public:
+    FRPGRidingActionBarProvider(URPGRidingComponent* InRiding, APlayerController* InController)
+        : Riding(InRiding), Controller(InController), Epoch(InRiding->GetRidingState().Key.RiderEpoch),
+          Profile(NewObject<URPGActionBarProfile>())
+    {
+        Profile->ProfileId = TEXT("Riding");
+        FRPGActionBarEntry Entry;
+        Entry.ActionId = TEXT("Dismount");
+        Entry.Label = LOCTEXT("Dismount", "내리기");
+        // Reuse the current fourth skill binding; never overwrite the player's physical key mapping.
+        Entry.SkillSlot = 3;
+        Profile->Actions.Add(Entry);
+    }
+    FGuid GetEpoch() const { return Epoch; }
+    virtual APawn* GetActionBarPawn() const override { return Riding.IsValid() ? Cast<APawn>(Riding->GetOwner()) : nullptr; }
+    virtual const URPGActionBarProfile* GetActionBarProfile() const override { return Profile.Get(); }
+    virtual FRPGActionBarActionView ReadAction(FName Id) const override
+    {
+        FRPGActionBarActionView View;
+        auto* P = GetActionBarPawn();
+        auto* PC = Controller.Get();
+        const auto* C = Riding.Get();
+        if (Id == TEXT("Dismount") && IsValid(P) && !P->IsActorBeingDestroyed() && C && C->IsRegistered()
+            && IsValid(PC) && !PC->IsActorBeingDestroyed() && PC->IsLocalController()
+            && PC->GetLocalPlayer() && PC->GetLocalPlayer()->GetPlayerController(PC->GetWorld()) == PC
+            && PC->GetPawn() == P && P->GetController() == PC && P->GetWorld() == PC->GetWorld())
+        {
+            const auto State = C->GetRidingState();
+            View.bAvailable = RPGRiding::IsCanonical(State) && State.Mode == ERPGRidingMode::Mounted
+                && Epoch.IsValid() && State.Key.RiderEpoch == Epoch;
+        }
+        if (!View.bAvailable) View.UnavailableReason = LOCTEXT("StateChanged", "탑승 상태를 다시 확인 중입니다.");
+        return View;
+    }
+    virtual void PressAction(FName Id) override
+    {
+        if (ReadAction(Id).bAvailable)
+            if (auto* C = Riding.Get()) C->RequestSetMounted(false, FRPGRidingSelector{});
+    }
+    virtual void ReleaseAction(FName) override {}
+private:
+    TWeakObjectPtr<URPGRidingComponent> Riding;
+    TWeakObjectPtr<APlayerController> Controller;
+    FGuid Epoch;
+    TStrongObjectPtr<URPGActionBarProfile> Profile;
+};
+
+void URPGRidingActionBarSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+    Super::Initialize(Collection);
+    bEnding = false;
+    PlayerControllerChanged(GetLocalPlayer()->GetPlayerController(GetWorld()));
+}
+
+bool URPGRidingActionBarSubsystem::IsControllerCurrent() const
+{
+    auto* PC = Controller.Get();
+    auto* World = GetWorld();
+    return !bEnding && World && !World->bIsTearingDown && IsValid(PC) && !PC->IsActorBeingDestroyed()
+        && PC->IsLocalController() && PC->GetLocalPlayer() == GetLocalPlayer() && PC->GetWorld() == World
+        && GetLocalPlayer()->GetPlayerController(World) == PC;
+}
+
+void URPGRidingActionBarSubsystem::PlayerControllerChanged(APlayerController* NewController)
+{
+    if (bEnding) return;
+    const uint64 Revision = ++BindingRevision;
+    if (auto* Previous = Controller.Get()) Previous->OnPossessedPawnChanged.RemoveDynamic(this, &ThisClass::HandlePawnChanged);
+    FTSTicker::GetCoreTicker().RemoveTicker(WatchHandle);
+    WatchHandle.Reset();
+    DropPawn();
+    if (bEnding || Revision != BindingRevision) return;
+    Controller = NewController;
+    if (!IsControllerCurrent()) { Controller.Reset(); return; }
+    NewController->OnPossessedPawnChanged.AddUniqueDynamic(this, &ThisClass::HandlePawnChanged);
+    // Observe late registration/unregistration as well as possession and replication events.
+    WatchHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &ThisClass::WatchBinding), 0.1f);
+    RefreshPawn();
+}
+
+bool URPGRidingActionBarSubsystem::WatchBinding(float)
+{
+    if (!IsControllerCurrent())
+    {
+        PlayerControllerChanged(nullptr);
+        return false;
+    }
+    RefreshPawn();
+    return true;
+}
+
+void URPGRidingActionBarSubsystem::HandlePawnChanged(APawn*, APawn*) { RefreshPawn(); }
+void URPGRidingActionBarSubsystem::HandleRidingChanged(const FRPGRidingRepState&) { RefreshPawn(); }
+
+void URPGRidingActionBarSubsystem::DropPawn()
+{
+    auto* OldRiding = Riding.Get();
+    auto* OldContext = Context.Get();
+    const auto OldProvider = Provider;
+    if (OldRiding) OldRiding->OnChanged.Remove(RidingHandle);
+    if (OldContext) OldContext->OnChanged.Remove(ContextHandle);
+    RidingHandle.Reset(); ContextHandle.Reset();
+    Pawn.Reset(); Riding.Reset(); Context.Reset(); Provider.Reset();
+    if (OldContext && OldProvider) OldContext->Deactivate(OldProvider.ToSharedRef());
+}
+
+void URPGRidingActionBarSubsystem::RefreshPawn()
+{
+    APawn* NextPawn = IsControllerCurrent() ? Controller->GetPawn() : nullptr;
+    if (NextPawn && (NextPawn->IsActorBeingDestroyed() || NextPawn->GetWorld() != GetWorld())) NextPawn = nullptr;
+    auto* NextRiding = NextPawn ? NextPawn->FindComponentByClass<URPGRidingComponent>() : nullptr;
+    auto* Slots = NextPawn ? NextPawn->FindComponentByClass<UQuickSlotComponent>() : nullptr;
+    if (NextRiding && !NextRiding->IsRegistered()) NextRiding = nullptr;
+    auto* NextContext = Slots && Slots->IsRegistered() ? Slots->GetActionBarContext() : nullptr;
+    if (Pawn != NextPawn || Riding != NextRiding || Context != NextContext)
+    {
+        const uint64 Revision = ++BindingRevision;
+        DropPawn();
+        if (Revision != BindingRevision || !IsControllerCurrent() || Controller->GetPawn() != NextPawn) return;
+        Pawn = NextPawn; Riding = NextRiding; Context = NextContext;
+        if (NextRiding) RidingHandle = NextRiding->OnChanged.AddUObject(this, &ThisClass::HandleRidingChanged);
+        if (NextContext) ContextHandle = NextContext->OnChanged.AddUObject(this, &ThisClass::Reconcile);
+    }
+    Reconcile();
+}
+
+void URPGRidingActionBarSubsystem::Reconcile()
+{
+    if (bReconciling || bEnding) return;
+    TGuardValue<bool> Guard(bReconciling, true);
+    auto* C = Context.Get();
+    auto* R = Riding.Get();
+    const auto State = R ? R->GetRidingState() : FRPGRidingRepState{};
+    const bool bMounted = IsControllerCurrent() && Pawn.IsValid() && Controller->GetPawn() == Pawn.Get()
+        && R && R->IsRegistered() && C && RPGRiding::IsCanonical(State) && State.Mode == ERPGRidingMode::Mounted;
+    if (!bMounted)
+    {
+        if (C && Provider) C->Deactivate(Provider.ToSharedRef());
+        Provider.Reset();
+        return;
+    }
+    // A different feature owns the visible profile. Do not steal it on every Riding update.
+    if (C->HasOverride() && (!Provider || C->GetProfile() != Provider->GetActionBarProfile())) return;
+    if (!C->HasOverride() && C->ConsumesCombatInput()) return;
+    if (!Provider || Provider->GetEpoch() != State.Key.RiderEpoch)
+        Provider = MakeShared<FRPGRidingActionBarProvider>(R, Controller.Get());
+    C->Activate(Provider.ToSharedRef());
+}
+
+void URPGRidingActionBarSubsystem::Deinitialize()
+{
+    if (bEnding) return;
+    bEnding = true;
+    ++BindingRevision;
+    if (auto* PC = Controller.Get()) PC->OnPossessedPawnChanged.RemoveDynamic(this, &ThisClass::HandlePawnChanged);
+    FTSTicker::GetCoreTicker().RemoveTicker(WatchHandle);
+    WatchHandle.Reset();
+    Controller.Reset();
+    DropPawn();
+    Super::Deinitialize();
+}
+
+#undef LOCTEXT_NAMESPACE

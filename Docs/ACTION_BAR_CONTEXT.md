@@ -1,6 +1,6 @@
 # 상태별 공통 액션바 — 2026-11-06
 
-현재 단계: 공통 전환/입력/HUD 연결 구현 및 집중 검증 완료(2026-11-07). 실제 Riding 상태/이동/보유 기능과 제공자 연결은 Riding 담당 범위다.
+현재 단계: 공통 전환/입력/HUD·사용 불가 안내와 실제 Riding 승인 상태를 읽는 로컬 UI 어댑터/하차 연결까지 구현·검증 완료(2026-11-08). 실제 Riding 권한/이동/액션 실행은 탈것 담당 범위다.
 
 ## 연결 계약
 
@@ -32,6 +32,22 @@
 `URPGRidingComponent`의 승인 Mounted 상태에 위 인터페이스를 구현한 어댑터를 연결한다. Profile의 액션은 Dash/Emote/Dismount 등 실제 Riding 명령으로 해석한다. 하차를 일반 스킬로 위장하거나 직업 슬롯 배열/영속 편성을 변경하지 않는다.
 
 연결 순서는 프로필/어댑터 준비 → 소유 Pawn의 확정 Mounted 수신 → `Activate` → 입력을 기존 서버 명령으로 전달 → 확정 하차/종료의 `Deactivate`다. 어댑터 인스턴스를 보관해 해제 때 같은 인스턴스를 전달한다. HUD 재생성은 제공자나 쿨타임을 새로 만들지 않는다. 전환의 Release 콜백 안에서 다시 Activate하지 않으며, 전환/종료 중 실패한 활성화는 확정 상태의 수명에 맞춰 처리한다.
+
+### 실제 상태 연결 — 2026-11-08
+
+`URPGRidingActionBarSubsystem`은 로컬 플레이어에 자동 생성되는 UI 어댑터다. 현재 Controller/Pawn의 `URPGRidingComponent::OnChanged`를 구독하고 **컴포넌트의 현재 canonical 상태**를 다시 읽는다. Mounted에서는 공통 context에 Riding 프로필을 설치하고 OnFoot/소유 변경/종료에서는 자신이 설치한 제공자만 해제한다. 결과 영수증으로 상태를 추정하거나 복제 상태를 직접 쓰지 않는다.
+
+현재 실제 서버 API가 있는 **Dismount 한 개**를 제공한다. 셀 클릭과 기존 네 번째 스킬 슬롯 입력은 모두 `RequestSetMounted(false, ...)`로 이어진다. 물리 키는 해당 슬롯의 현재 설정을 조회하며 별도 IMC나 기본 키 덮어쓰기를 추가하지 않는다. Dash/Emote와 탑승 호출/보관함·RidingShortcut 배정은 이 어댑터의 구현 범위가 아니다.
+
+제공자는 Component/Controller를 weak 참조하고 Epoch를 고정한다. HUD 재생성은 제공자를 교체하지 않으며, Epoch가 바뀌면 새 제공자로 교체해 이전 위젯 입력을 무효화한다. 다른 기능의 프로필이 활성화되어 있으면 상태 알림/수명 감시에서 되빼앗지 않는다. 해당 기능이 해제된 뒤 여전히 Mounted면 하차 프로필을 다시 표시한다. 향후 전체 Riding 제공자도 공통 `Activate`로 이 기본 프로필을 교체할 수 있다.
+
+빙의/복제 이벤트를 즉시 처리하고, 로컬 Controller가 연결되어 있는 동안 0.1초 간격의 수명 감시로 늦은 컴포넌트 등록·해제도 확인한다. 이 감시는 상태/보유를 승인하거나 명령을 제출하지 않는다. Controller/Pawn/World/로컬 소유자가 바뀌거나 종료되면 구독과 입력 제공자를 해제하며 로컬 플레이어 종료 시 감시도 제거한다. 제품 해금/API·feature flag는 변경하지 않는다.
+
+검증은 게시 `f6fef8c4` + 공통 UI/검사 소스22의 고정 사본에서 수행했다. 첫 전체 빌드의 `TObjectPtr` 포인터 추론 오류를 명시적 `APawn*`로 수정한 후, 최종 364단계 Editor 컴파일/전체 링크 종료0·DLL `8E13536B…6C546EE2` 실제 로드·native16 Success/검사 오류0/실행0을 확인했다. 이 중 Riding 연결 회귀는3개이며 기존 셀/전환/퀵슬롯/HUD 수명13개도 통과했다. 기존 에셋 경고140개·검사 전 `Condition failed`15개는 별도로 기록했고 그 외 로그 오류는0이다. 소스22와 실제 WBP_PlayerHUD 에셋 SHA는 검증 전후 일치했다.
+
+새 회귀는 실제 Riding 컴포넌트의 RepNotify에 canonical 상태를 주입하여 구독/표시/원복·Epoch 교체/빙의/다른 제공자/수명/늦은 등록을 검사한다. 하차 입력은 **입장 세션이 없는 테스트 Pawn**에서 실제 요청 API→서버 거절/무효 Epoch 해제 경로까지 확인했다. 제품 보유 권한을 받은 플레이어의 성공 하차나 실제 소켓 복제/물리 입력/GPU 외형을 확인한 결과는 아니다. UI 밖에서의 상태 조작·테스트 해금·권한 부여 포트는 추가하지 않았다.
+
+자기 임시 사본/OBJ/DLL/PDB/UserDir/cache 6,505,905,099 bytes(약6.06GiB)·Content 링크7개를 폐기했고 정리 예외는 없다. 원본 게임 DLL은 교체하지 않았다. 폐기한 모듈/입력의 해시는 당시 증거이며 로컬 최소 요약은 `Saved/BuildChecks/ActionBarRiding-20261108/Completion.json`이다. 유지할 검사 실행은 `Scripts/Tests/Run-ActionBarContextTests.ps1 -IncludeRidingBridge`이며, 후속 게시본/타 담당 진행 중 소스를 합친 전체 게임의 재검증과 구분한다.
 
 ## 검증 범위 — 2026-11-07
 

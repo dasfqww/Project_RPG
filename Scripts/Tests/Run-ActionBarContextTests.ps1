@@ -1,9 +1,11 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [int]$RepairWindowSeconds=600)
+param([string]$EngineRoot='D:/UE_5.8', [int]$RepairWindowSeconds=600, [switch]$IncludeRidingBridge)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id=[Guid]::NewGuid().ToString('N')
-$root=Join-Path $workspace ('Saved/BuildChecks/ActionBarContext-20261106/'+$id)
+$suite=if($IncludeRidingBridge){'ActionBarRiding-20261108'}else{'ActionBarContext-20261106'}
+$reservation=if($IncludeRidingBridge){'actionbar-riding-20261108'}else{'actionbar-context-20261106'}
+$root=Join-Path $workspace ('Saved/BuildChecks/'+$suite+'/'+$id)
 $tempRoot=Join-Path $workspace 'Saved/AB'
 $temp=Join-Path $tempRoot $id.Substring(0,8)
 $project=Join-Path $temp 'Project'
@@ -20,12 +22,13 @@ function Copy-Overlay {
         $hash=(Get-FileHash -LiteralPath $source).Hash
         $null=[IO.Directory]::CreateDirectory((Split-Path -Parent $destination))
         Copy-Item -LiteralPath $source -Destination $destination
+        [IO.File]::SetLastWriteTimeUtc($destination,[DateTime]::UtcNow)
         if((Get-FileHash -LiteralPath $source).Hash-ne$hash-or(Get-FileHash -LiteralPath $destination).Hash-ne$hash){throw 'Overlay changed during capture'}
         $proof.Overlay+=@{Path=$relative;SHA256=$hash}
     }
 }
 try {
-    $rows=@(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md')|Where-Object{$_-match'^\|[^|]* / actionbar-context-20261106 \|'})
+    $rows=@(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md')|Where-Object{$_-match('^\|[^|]* / '+[regex]::Escape($reservation)+' \|')})
     if($rows.Count-ne1){throw 'Missing actionbar reservation'}
     $null=[IO.Directory]::CreateDirectory($root)
     $null=[IO.Directory]::CreateDirectory($project)
@@ -56,6 +59,9 @@ try {
         'Source/Project_RPG/Private/Tests/RPGActionBarContextTests.cpp',
         'Source/Project_RPG/Private/Tests/RPGActionBarCellTests.cpp'
     )
+    if($IncludeRidingBridge){
+        $overlay+=@('Source/Project_RPG/Private/Tests/RPGRidingActionBarTests.h','Source/Project_RPG/Private/Tests/RPGRidingActionBarTests.cpp')
+    }
     foreach($kind in @('Public','Private')){
         $folder=Join-Path $workspace ('Source/Project_RPG/'+$kind+'/UI/ActionBar')
         foreach($file in Get-ChildItem -LiteralPath $folder -File){
@@ -112,7 +118,8 @@ try {
             if($process.ExitCode-ne0){throw 'Native automation failed'}
             $data=Get-Content -LiteralPath (Join-Path $report 'index.json') -Raw -Encoding UTF8|ConvertFrom-Json
             $proof.Tests=@($data.tests|Select-Object fullTestPath,state,errors,warnings)
-            if(@($proof.Tests|Where-Object{$_.fullTestPath-like'ProjectRPG.UI.ActionBar.*'}).Count-ne7-or$proof.Tests.Count-lt8-or@($proof.Tests|Where-Object state -ne 'Success').Count){throw 'Missing or failing automation cases'}
+            if(@($proof.Tests|Where-Object{$_.fullTestPath-like'ProjectRPG.UI.ActionBar.*'}).Count-lt7-or$proof.Tests.Count-lt8-or@($proof.Tests|Where-Object state -ne 'Success').Count){throw 'Missing or failing automation cases'}
+            if($IncludeRidingBridge-and@($proof.Tests|Where-Object{$_.fullTestPath-like'ProjectRPG.UI.ActionBar.Riding.*'}).Count-ne3){throw 'Missing Riding bridge cases'}
             foreach($entry in $proof.Overlay){
                 if((Get-FileHash -LiteralPath (Join-Path $workspace $entry.Path)).Hash-ne$entry.SHA256){throw 'Source changed after validation'}
             }
@@ -139,7 +146,7 @@ try {
 finally {
     $released=$true
     if($process){try{if(!$process.HasExited){$process.Kill()};if(!$process.WaitForExit(10000)){throw 'Owned process still active'}}catch{$released=$false;$failure=$_.Exception.Message}}
-    $rows=@(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md')|Where-Object{$_-match'^\|[^|]* / actionbar-context-20261106 \|'})
+    $rows=@(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md')|Where-Object{$_-match('^\|[^|]* / '+[regex]::Escape($reservation)+' \|')})
     if($rows.Count-ne1){$released=$false;$failure='Reservation missing at cleanup'}
     if($released-and(Test-Path -LiteralPath $temp)){
         try{$proof.Cleanup=Remove-GuardianProbeArtifact $temp $tempRoot}catch{$failure=$_.Exception.Message}
