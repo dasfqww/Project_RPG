@@ -68,7 +68,8 @@ bool FRPGItemPickupGrantPlanner::TryPlan(
 	Location.ContainerType = ERPGItemContainerType::Inventory;
 	Location.ContainerId = Request.Owner.OwnerId;
 	Location.SlotIndex = INDEX_NONE;
-	for (int32 Slot = 0; Slot < RPGItemInventoryPolicy::SlotCapacity; ++Slot)
+	const int32 First = RPGItemInventoryPolicy::FirstSlot(RPGItemInventoryPolicy::CategoryForDefinition(DefinitionId));
+	for (int32 Slot = First; Slot < First + RPGItemInventoryPolicy::SlotsPerTab; ++Slot)
 	{
 		if (Request.ReservedInventorySlots.Contains(Slot)) continue;
 		Location.SlotIndex = Slot;

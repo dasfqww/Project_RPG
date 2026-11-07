@@ -49,7 +49,7 @@ bool FRPGInventoryCommandJournal::Supports(const FName Operation)
 	return Operation == TEXT("Item.Move") || Operation == TEXT("Item.Swap") ||
 		Operation == TEXT("Item.StackTransfer") || Operation == TEXT("Item.Split") ||
 		Operation == TEXT("Item.ClaimMail") || Operation == TEXT("Item.Equip") ||
-		Operation == TEXT("Item.Unequip");
+		Operation == TEXT("Item.Unequip") || Operation == TEXT("Item.Sort");
 }
 
 FRPGInventoryCommandJournal::FRPGInventoryCommandJournal(const FString& RootDirectory, FRPGInventoryJournalScope InScope)
@@ -64,14 +64,15 @@ bool FRPGInventoryCommandJournal::ValidRequest(const FRPGItemRepositoryCommitReq
 {
 	// Swap counts no transferred units in the existing planner/wire contract.
 	// Preserve that zero rather than changing the frozen idempotent request.
+	const bool bSort = Request.Operation == TEXT("Item.Sort");
 	const bool bSwap = Request.Operation == TEXT("Item.Swap");
 	const bool bClaimMail = Request.Operation == TEXT("Item.ClaimMail");
 	const bool bEquip = Request.Operation == TEXT("Item.Equip");
 	const bool bEquipment = bEquip || Request.Operation == TEXT("Item.Unequip");
 	const int32 ExpectedMutationCount = (Request.Operation == TEXT("Item.Move") || bClaimMail || bEquipment) ? 1 : 2;
 	if (!Request.RequestId.IsValid() || !Supports(Request.Operation) || Request.Actor.Type != ERPGItemOwnerType::Character ||
-		Request.Actor.OwnerId != Scope.CharacterId || (bSwap ? Request.AffectedQuantity != 0 : Request.AffectedQuantity <= 0) || Request.CommandFingerprint.IsEmpty() ||
-		Request.CommandFingerprint.Len() > 4096 || Request.Mutations.Num() != ExpectedMutationCount) return false;
+		Request.Actor.OwnerId != Scope.CharacterId || ((bSwap || bSort) ? Request.AffectedQuantity != 0 : Request.AffectedQuantity <= 0) || Request.CommandFingerprint.IsEmpty() ||
+		Request.CommandFingerprint.Len() > 4096 || (bSort ? (Request.Mutations.IsEmpty() || Request.Mutations.Num() > RPGItemInventoryPolicy::SlotsPerTab) : Request.Mutations.Num() != ExpectedMutationCount)) return false;
 	if (bEquipment && Request.AffectedQuantity != 1) return false;
 	TSet<FGuid> Ids;
 	int32 Creates = 0;
@@ -85,6 +86,7 @@ bool FRPGInventoryCommandJournal::ValidRequest(const FRPGItemRepositoryCommitReq
 		if (bClaimMail && Record.GetQuantity() != Request.AffectedQuantity) return false;
 		// Equipment recovery restores a state, never a one-time use effect or a new grant.
 		if (bEquipment && (!Record.IsActive() || Record.GetQuantity() != 1 || Record.GetMetadata().bLocked)) return false;
+		if (bSort && (!Record.IsActive() || !RPGItemInventoryPolicy::CanStore(Record.GetDefinitionId(), Record.GetLocation().SlotIndex))) return false;
 		const int32 SlotLimit = bEquip ? static_cast<int32>(EEquipmentSlotType::Count) : RPGItemInventoryPolicy::SlotCapacity;
 		const auto Container = bEquip ? ERPGItemContainerType::Equipment : ERPGItemContainerType::Inventory;
 		// A fully merged source can be terminal; every active destination remains in the owner's container.
@@ -128,7 +130,7 @@ bool FRPGInventoryCommandJournal::Read(const FString& FilePath, FState& Out) con
 	{
 		FString Body, Canonical;
 		FRPGItemRepositoryCommitRequest Request;
-		if (!Value || !Value->TryGetString(Body) || Body.Len() > 64 * 1024 ||
+		if (!Value || !Value->TryGetString(Body) || Body.Len() > 1024 * 1024 ||
 			!FRPGItemBackendJsonCodec::DeserializeCommitRequest(Body, Request) || !ValidRequest(Request) ||
 			!FRPGItemBackendJsonCodec::SerializeCommitRequest(Request, Canonical) || Canonical != Body || Out.Bodies.Contains(Request.RequestId)) return false;
 		Out.Bodies.Add(Request.RequestId, MoveTemp(Body));

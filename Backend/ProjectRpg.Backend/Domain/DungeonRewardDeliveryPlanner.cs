@@ -4,7 +4,7 @@ namespace ProjectRpg.Backend.Domain;
 public static class DungeonRewardDeliveryPlanner
 {
     // Keep aligned with RPGItemInventoryPolicy::SlotCapacity. Not supplied by clients.
-    public const int InventorySlotCapacity = 80;
+    public const int InventorySlotCapacity = InventoryBagLayout.TotalSlots;
     public const int MaximumMutationCount = InventorySlotCapacity + DungeonRewardRules.MaximumItemRewardCount;
 
     public static ItemRepositoryCommitRequest Plan(
@@ -73,7 +73,7 @@ public static class DungeonRewardDeliveryPlanner
             }
 
             if (remaining == 0) continue;
-            int freeSlot = Enumerable.Range(0, InventorySlotCapacity)
+            int freeSlot = InventoryBagLayout.Slots(reward)
                 .FirstOrDefault(slot => !occupied.Contains(slot), -1);
             ItemRecord delivered = reward with
             {

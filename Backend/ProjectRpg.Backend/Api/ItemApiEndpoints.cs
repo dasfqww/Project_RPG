@@ -137,7 +137,7 @@ public static class ItemApiEndpoints
                 // before this game-server-only authorization check.
                 var (contract, failure) = await ReadCommitAsync(context, cancellationToken);
                 if (failure is not null) return failure;
-                if (contract?.Mutations is null || contract.Mutations.Count > ItemRecordRules.MaximumMutationCount)
+                if (contract?.Mutations is null || contract.Mutations.Count > InventoryBagLayout.CommitLimit(contract.Operation))
                 {
                     return Results.BadRequest(new { error = "invalid_item_commit" });
                 }

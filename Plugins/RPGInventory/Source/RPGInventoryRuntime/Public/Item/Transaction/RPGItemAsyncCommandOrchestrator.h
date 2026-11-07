@@ -99,6 +99,8 @@ public:
 		const FRPGItemStackTransferRequest& Request,
 		FRPGItemAsyncCommandCompletion Completion);
 	bool Split(const FRPGItemSplitRequest& Request, FRPGItemAsyncCommandCompletion Completion);
+	bool Sort(const FGuid& RequestId, const FRPGItemOwnerRef& Owner, EItemCategory Category,
+		FRPGItemAsyncCommandCompletion Completion);
 	bool Equip(
 		const FRPGItemEquipRequest& Request,
 		FRPGItemAsyncCommandCompletion Completion);

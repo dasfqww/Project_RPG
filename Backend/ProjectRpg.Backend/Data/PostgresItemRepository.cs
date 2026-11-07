@@ -133,6 +133,12 @@ public sealed partial class PostgresItemRepository(
                 };
             }
 
+            if (!InventoryBagLayout.ValidNewDestinations(request))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt);
+            }
+
             if ((await PostgresTradeReservationGuards.ReservedItems(connection, transaction,
                 request.Mutations.Select(mutation => mutation.NewRecord.ItemId), cancellationToken)).Count != 0)
             {
@@ -182,6 +188,14 @@ public sealed partial class PostgresItemRepository(
             if (request.Mutations.Any(mutation =>
                 storedRecords[mutation.NewRecord.ItemId]?.State.EquipmentProgression is not null
                 && mutation.NewRecord.State.EquipmentProgression is null))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt);
+            }
+
+            if (request.Operation == InventoryBagLayout.SortOperation &&
+                (request.AffectedQuantity != 0 || request.Mutations.Select(m => InventoryBagLayout.Tab(m.NewRecord.DefinitionName)).Distinct().Count() != 1 ||
+                 request.Mutations.Any(m => m.NewRecord.Owner != request.Actor || !InventoryBagLayout.IsSortMutation(storedRecords[m.NewRecord.ItemId], m.NewRecord))))
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt);

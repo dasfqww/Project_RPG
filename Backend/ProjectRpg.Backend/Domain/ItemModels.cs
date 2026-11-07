@@ -137,7 +137,7 @@ public static class ItemRecordRules
     public static bool TryValidateCommit(
         ItemRepositoryCommitRequest request,
         out string error)
-        => TryValidateCommit(request, MaximumMutationCount, out error);
+        => TryValidateCommit(request, InventoryBagLayout.CommitLimit(request.Operation), out error);
 
     // Only the internal atomic reward path may touch an entire inventory.
     internal static bool TryValidateRewardCommit(

@@ -75,6 +75,7 @@ void URPGInventoryProjectionViewModel::InitializeFromPlayerController(
 	SetLocalActionFeedback(FText::GetEmpty());
 	bInventoryAuthorityRevoked = false; // The new binding reads its own controller's terminal state below.
 	PendingInventoryMovesByRequest.Reset();
+	PendingInventorySorts.Reset();
 	PendingItemActionsByRequest.Reset();
 	PendingMailClaimsByRequest.Reset();
 	PendingMailItemIds.Reset();
@@ -176,6 +177,7 @@ void URPGInventoryProjectionViewModel::HandleInventoryRecoveryChanged()
 		NextInventoryRecoveryRequestTime = 0.0;
 		// Retire only local UI handles; this does not cancel or undo a database commit.
 		PendingInventoryMovesByRequest.Reset();
+		PendingInventorySorts.Reset();
 		PendingItemActionsByRequest.Reset();
 		PendingMailClaimsByRequest.Reset();
 		PendingMailItemIds.Reset();
@@ -269,7 +271,7 @@ FRPGInventoryCapacityPresentation URPGInventoryProjectionViewModel::GetInventory
 	if (!Capacity.bHasSnapshot) return Capacity;
 
 	const auto* Commands = CommandComponent.Get();
-	Capacity.bItemChangesBlocked = !Commands || bHasInventoryRecovery || bInventoryRecoveryStorageBlocked ||
+	Capacity.bItemChangesBlocked = !PendingInventorySorts.IsEmpty() || !Commands || bHasInventoryRecovery || bInventoryRecoveryStorageBlocked ||
 		(Commands && (Commands->IsInventoryRecoveryStorageBlocked() || !Commands->InventoryRecovery.IsEmpty()));
 	TSet<int32> OccupiedSlots;
 	for (const FRPGInventoryProjectionEntry& Entry : InventoryItems)
@@ -291,7 +293,7 @@ FRPGInventoryCapacityPresentation URPGInventoryProjectionViewModel::GetInventory
 void URPGInventoryProjectionViewModel::RefreshPendingItemCommandCount()
 {
 	const auto* Commands = CommandComponent.Get();
-	const int32 NewCount = PendingInventoryMovesByRequest.Num() + PendingMailItemIds.Num() + PendingItemActionsByRequest.Num() +
+	const int32 NewCount = PendingInventorySorts.Num() + PendingInventoryMovesByRequest.Num() + PendingMailItemIds.Num() + PendingItemActionsByRequest.Num() +
 		(!IsItemAuthorityRevoked() && Commands ? Commands->GetPendingPickupGrantCount() : 0);
 	if (PendingItemCommandCount != NewCount)
 	{
@@ -318,6 +320,7 @@ bool URPGInventoryProjectionViewModel::CanMoveItemToSlot(
 	FRPGInventoryProjectionEntry Entry;
 	return InventorySlotIndex >= 0 && InventorySlotIndex < RPGItemInventoryPolicy::SlotCapacity &&
 		TryGetInventoryDragEntry(ItemId, Entry) && Entry.GetRevision() == ExpectedRevision &&
+		RPGItemInventoryPolicy::CanStore(Entry.GetDefinitionId(), InventorySlotIndex) &&
 		Entry.GetSlotIndex() != InventorySlotIndex && !IsInventorySlotUnavailable(InventorySlotIndex);
 }
 
@@ -387,6 +390,8 @@ bool URPGInventoryProjectionViewModel::CanSwapItems(
 		Destination.GetRevision() == ExpectedDestinationRevision &&
 		Source.GetSlotIndex() >= 0 && Source.GetSlotIndex() < RPGItemInventoryPolicy::SlotCapacity &&
 		Destination.GetSlotIndex() >= 0 && Destination.GetSlotIndex() < RPGItemInventoryPolicy::SlotCapacity &&
+		RPGItemInventoryPolicy::CanStore(Source.GetDefinitionId(), Destination.GetSlotIndex()) &&
+		RPGItemInventoryPolicy::CanStore(Destination.GetDefinitionId(), Source.GetSlotIndex()) &&
 		Source.GetSlotIndex() != Destination.GetSlotIndex() &&
 		!IsInventorySlotReserved(Source.GetSlotIndex()) &&
 		!IsInventorySlotReserved(Destination.GetSlotIndex());
@@ -645,11 +650,11 @@ bool URPGInventoryProjectionViewModel::RequestUnequipToFirstFreeSlot(
 		!TryGetEntry(ItemId, ERPGItemContainerType::Equipment, Entry) ||
 		GetItemSlotPresentationState(ItemId, ERPGItemContainerType::Equipment) != ERPGItemSlotPresentationState::Idle)
 		return false;
-	for (int32 Slot = 0; Slot < RPGItemInventoryPolicy::SlotCapacity; ++Slot)
+	for (int32 Slot = 0; Slot < RPGItemInventoryPolicy::SlotsPerTab; ++Slot)
 	{
 		if (!IsInventorySlotUnavailable(Slot)) return RequestUnequip(ItemId, Slot, OutRequestId);
 	}
-	const FRPGInventoryCapacityPresentation Capacity = GetInventoryCapacity();
+	const FRPGInventoryCapacityPresentation Capacity = GetInventoryCapacityForCategory(EItemCategory::Equip);
 	return RejectLocalAction(Capacity.OccupiedSlots == Capacity.TotalSlots
 		? NSLOCTEXT("RPGItemFeedback", "LocalUnequipBagFull",
 			"Unequip not sent: your bag is full. Free a slot first.")
@@ -740,7 +745,8 @@ bool URPGInventoryProjectionViewModel::RequestUnequip(
 		!TryGetEntry(
 			ItemId,
 			ERPGItemContainerType::Equipment,
-			Entry) || GetItemSlotPresentationState(ItemId, ERPGItemContainerType::Equipment) != ERPGItemSlotPresentationState::Idle)
+			Entry) || !RPGItemInventoryPolicy::CanStore(Entry.GetDefinitionId(), InventorySlotIndex) ||
+		GetItemSlotPresentationState(ItemId, ERPGItemContainerType::Equipment) != ERPGItemSlotPresentationState::Idle)
 	{
 		return false;
 	}
@@ -775,7 +781,8 @@ bool URPGInventoryProjectionViewModel::RequestClaimMail(
 	}
 	FRPGInventoryProjectionEntry Entry;
 	URPGItemCommandComponent* Commands = CommandComponent.Get();
-	if (!Commands || !TryGetEntry(ItemId, ERPGItemContainerType::Mail, Entry))
+	if (!Commands || !TryGetEntry(ItemId, ERPGItemContainerType::Mail, Entry) ||
+		!RPGItemInventoryPolicy::CanStore(Entry.GetDefinitionId(), InventorySlotIndex))
 	{
 		return false;
 	}
@@ -808,7 +815,7 @@ ERPGMailClaimState URPGInventoryProjectionViewModel::ResolveMailClaimState(const
 	FRPGInventoryProjectionEntry Entry;
 	if (!TryGetEntry(ItemId, ERPGItemContainerType::Mail, Entry)) return EState::Unavailable;
 	if (Entry.IsLocked()) return EState::Locked;
-	const FRPGInventoryCapacityPresentation Capacity = GetInventoryCapacity();
+	const FRPGInventoryCapacityPresentation Capacity = GetInventoryCapacityForCategory(RPGItemInventoryPolicy::CategoryForDefinition(Entry.GetDefinitionId()));
 	if (!Capacity.bHasSnapshot || Capacity.bItemChangesBlocked) return EState::Unavailable;
 	if (Capacity.FreeSlots == 0)
 		return Capacity.OccupiedSlots == Capacity.TotalSlots ? EState::InventoryFull : EState::InventoryReserved;
@@ -865,7 +872,10 @@ bool URPGInventoryProjectionViewModel::RequestClaimMailToFirstFreeSlot(
 	const FGuid ItemId, FGuid& OutRequestId)
 {
 	OutRequestId.Invalidate();
-	for (int32 Slot = 0; Slot < RPGItemInventoryPolicy::SlotCapacity; ++Slot)
+	FRPGInventoryProjectionEntry Entry;
+	if (!TryGetEntry(ItemId, ERPGItemContainerType::Mail, Entry)) return false;
+	const int32 First = RPGItemInventoryPolicy::FirstSlot(RPGItemInventoryPolicy::CategoryForDefinition(Entry.GetDefinitionId()));
+	for (int32 Slot = First; Slot < First + RPGItemInventoryPolicy::SlotsPerTab; ++Slot)
 	{
 		if (!IsInventorySlotUnavailable(Slot))
 		{
@@ -921,6 +931,12 @@ void URPGInventoryProjectionViewModel::HandleCommandCompleted(
 	const auto* Commands = CommandComponent.Get();
 	const bool bRequiresRecovery = Commands && Commands->InventoryRecovery.ContainsByPredicate(
 		[&Result](const FRPGInventoryCommandRecovery& Entry) { return Entry.RequestId == Result.RequestId; });
+	if (auto* Sort = PendingInventorySorts.Find(Result.RequestId))
+	{
+		if (Result.Result == ERPGItemCommandResultCode::Succeeded || Result.Result == ERPGItemCommandResultCode::AlreadyApplied) Sort->bCommitted = true;
+		else if (bDefinitiveFailure && !bRequiresRecovery) PendingInventorySorts.Remove(Result.RequestId);
+	}
+	ReconcilePendingInventorySorts();
 	if (bDefinitiveFailure)
 	{
 		if (!bRequiresRecovery)
@@ -983,6 +999,7 @@ bool URPGInventoryProjectionViewModel::IsInventorySlotUnavailable(
 
 bool URPGInventoryProjectionViewModel::IsInventorySlotReserved(const int32 SlotIndex) const
 {
+	if (!PendingInventorySorts.IsEmpty()) return true;
 	if (const auto* Commands = CommandComponent.Get(); Commands && Commands->IsInventorySlotReservedByPickup(SlotIndex)) return true;
 	for (const auto& Pair : PendingItemActionsByRequest)
 	{
@@ -1027,6 +1044,7 @@ bool URPGInventoryProjectionViewModel::IsEquipmentSlotUnavailable(const int32 Sl
 
 bool URPGInventoryProjectionViewModel::IsItemActionPending(const FGuid ItemId) const
 {
+	if (!PendingInventorySorts.IsEmpty()) return true;
 	if (const auto* Commands = CommandComponent.Get())
 		if (const auto* Entry = InventoryItems.FindByPredicate([ItemId](const auto& Item) { return Item.GetItemId() == ItemId; });
 			Entry && Commands->IsInventorySlotReservedByPickup(Entry->GetSlotIndex())) return true;
@@ -1141,6 +1159,7 @@ void URPGInventoryProjectionViewModel::RefreshProjection()
 	InventoryItems = MoveTemp(NewInventoryItems);
 	EquipmentItems = MoveTemp(NewEquipmentItems);
 	MailItems = MoveTemp(NewMailItems);
+	ReconcilePendingInventorySorts();
 	ReconcilePendingMailClaims();
 	ReconcilePendingInventoryMoves();
 	ReconcilePendingItemActions();
@@ -1182,4 +1201,54 @@ void URPGInventoryProjectionViewModel::UnbindComponents()
 	ProjectionComponent.Reset();
 	CommandComponent.Reset();
 	BoundPlayerController.Reset();
+}
+
+FRPGInventoryCapacityPresentation URPGInventoryProjectionViewModel::GetInventoryCapacityForCategory(EItemCategory Category) const
+{
+	auto Capacity = GetInventoryCapacity();
+	Capacity.TotalSlots = RPGItemInventoryPolicy::SlotsPerTab;
+	Capacity.OccupiedSlots = Capacity.FreeSlots = Capacity.ReservedEmptySlots = 0;
+	if (!RPGItemInventoryPolicy::IsTab(Category)) { Capacity.bHasSnapshot = false; return Capacity; }
+	if (!Capacity.bHasSnapshot) return Capacity;
+	for (int32 Slot = RPGItemInventoryPolicy::FirstSlot(Category); Slot < RPGItemInventoryPolicy::FirstSlot(Category) + Capacity.TotalSlots; ++Slot)
+	{
+		if (InventoryItems.ContainsByPredicate([Slot](const auto& Item) { return Item.GetSlotIndex() == Slot; })) ++Capacity.OccupiedSlots;
+		else if (IsInventorySlotReserved(Slot)) ++Capacity.ReservedEmptySlots;
+		else ++Capacity.FreeSlots;
+	}
+	return Capacity;
+}
+bool URPGInventoryProjectionViewModel::CanSortInventoryTab(EItemCategory Category) const
+{
+	const auto* Commands = CommandComponent.Get();
+	const auto Capacity = GetInventoryCapacityForCategory(Category);
+	return Capacity.bHasSnapshot && !Capacity.bItemChangesBlocked && Commands && !Commands->HasInFlightCommands() &&
+		PendingItemCommandCount == 0 && Capacity.OccupiedSlots > 0;
+}
+bool URPGInventoryProjectionViewModel::RequestSortInventoryTab(EItemCategory Category, FGuid& OutRequestId)
+{
+	OutRequestId.Invalidate();
+	if (!CanSortInventoryTab(Category)) return false;
+	OutRequestId = FGuid::NewGuid();
+	auto& Pending = PendingInventorySorts.Add(OutRequestId);
+	for (const auto& Item : InventoryItems)
+		if (RPGItemInventoryPolicy::Contains(Category, Item.GetSlotIndex()) && !Item.IsLocked()) Pending.Revisions.Add(Item.GetItemId(), Item.GetRevision());
+	RefreshPendingItemCommandCount();
+	SetLocalActionFeedback(FText::GetEmpty());
+	CommandComponent->ServerSortInventoryTab(OutRequestId, Category);
+	return true;
+}
+void URPGInventoryProjectionViewModel::ReconcilePendingInventorySorts()
+{
+	for (auto It = PendingInventorySorts.CreateIterator(); It; ++It)
+	{
+		if (!It.Value().bCommitted) continue;
+		bool bReady = true;
+		for (const auto& Expected : It.Value().Revisions)
+		{
+			const auto* Entry = InventoryItems.FindByPredicate([&Expected](const auto& Item) { return Item.GetItemId() == Expected.Key; });
+			if (!Entry || Entry->GetRevision() <= Expected.Value) { bReady = false; break; }
+		}
+		if (bReady) It.RemoveCurrent();
+	}
 }

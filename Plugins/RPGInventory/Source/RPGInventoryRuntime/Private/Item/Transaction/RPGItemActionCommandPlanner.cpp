@@ -4,6 +4,7 @@
 #include "Item/Policy/RPGItemActionPolicyTypes.h"
 #include "Item/Policy/RPGItemInventoryPolicy.h"
 #include "Item/Policy/RPGItemStackPolicy.h"
+#include "Item/Transaction/RPGInventorySortPlanner.h"
 
 namespace RPGItemActionCommandPlanner
 {
@@ -240,7 +241,8 @@ FRPGItemCommandPlan FRPGItemActionCommandPlanner::Prepare(
 	}
 
 	FRPGItemRecord MovedRecord;
-	if (!StoredRecord.TryMoveTo(Request.Destination, MovedRecord))
+	if (!RPGItemInventoryPolicy::CanStore(StoredRecord.GetDefinitionId(), Request.Destination.SlotIndex) ||
+		!StoredRecord.TryMoveTo(Request.Destination, MovedRecord))
 	{
 		return Failure(ERPGItemTransactionStatus::RepositoryRejected);
 	}
@@ -293,7 +295,9 @@ FRPGItemCommandPlan FRPGItemActionCommandPlanner::Prepare(
 
 	FRPGItemRecord MovedSource;
 	FRPGItemRecord MovedDestination;
-	if (!Source.TryMoveTo(Destination.GetLocation(), MovedSource) ||
+	if (!RPGItemInventoryPolicy::CanStore(Source.GetDefinitionId(), Destination.GetLocation().SlotIndex) ||
+		!RPGItemInventoryPolicy::CanStore(Destination.GetDefinitionId(), Source.GetLocation().SlotIndex) ||
+		!Source.TryMoveTo(Destination.GetLocation(), MovedSource) ||
 		!Destination.TryMoveTo(Source.GetLocation(), MovedDestination))
 	{
 		return Failure(ERPGItemTransactionStatus::RepositoryRejected);
@@ -405,6 +409,7 @@ FRPGItemCommandPlan FRPGItemActionCommandPlanner::Prepare(const FRPGItemSplitReq
 		!FRPGItemInstanceState::TryRestore(NewId, Source.GetState().GetGenerationSeed(), Request.Quantity,
 			Source.GetState().GetInstanceTags(), Source.GetState().GetStatValues(), State,
 			Source.GetState().GetEquipmentProgression()) ||
+		!RPGItemInventoryPolicy::CanStore(Source.GetDefinitionId(), Request.Destination.SlotIndex) ||
 		!FRPGItemRecord::TryCreate(Source.GetDefinitionId(), Source.GetDefinitionVersion(), Request.Actor,
 			Request.Destination, State, Source.GetMetadata(), Created)) return Failure(ERPGItemTransactionStatus::RepositoryRejected);
 	FRPGItemRepositoryCommitRequest Commit;
@@ -567,7 +572,7 @@ FRPGItemCommandPlan FRPGItemActionCommandPlanner::Prepare(
 	}
 
 	FRPGItemRecord UnequippedRecord;
-	if (!StoredRecord.TryMoveTo(
+	if (!RPGItemInventoryPolicy::CanStore(StoredRecord.GetDefinitionId(), Request.InventoryDestination.SlotIndex) || !StoredRecord.TryMoveTo(
 		Request.InventoryDestination,
 		UnequippedRecord))
 	{
@@ -721,7 +726,8 @@ FRPGItemCommandPlan FRPGItemActionCommandPlanner::Prepare(
 		return Failure(ERPGItemTransactionStatus::LocationOccupied);
 	}
 	FRPGItemRecord ClaimedRecord;
-	if (!StoredRecord.TryMoveTo(Request.InventoryDestination, ClaimedRecord))
+	if (!RPGItemInventoryPolicy::CanStore(StoredRecord.GetDefinitionId(), Request.InventoryDestination.SlotIndex) ||
+		!StoredRecord.TryMoveTo(Request.InventoryDestination, ClaimedRecord))
 	{
 		return Failure(ERPGItemTransactionStatus::RepositoryRejected);
 	}
@@ -820,3 +826,7 @@ FRPGItemCommandPlan FRPGItemActionCommandPlanner::Ready(
 	Result.CommitRequest = MoveTemp(CommitRequest);
 	return Result;
 }
+
+FRPGItemCommandPlan FRPGItemActionCommandPlanner::PrepareSort(const FGuid& RequestId,
+	const FRPGItemOwnerRef& Owner, EItemCategory Category) const
+{ return FRPGInventorySortPlanner::Prepare(Records, RequestId, Owner, Category); }

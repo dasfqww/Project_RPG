@@ -6,6 +6,7 @@ namespace
 {
 FText GetOperationLabel(const FName Operation)
 {
+	if (Operation == TEXT("Item.Sort")) return NSLOCTEXT("RPGItemFeedback", "Sort", "Sort tab");
 	if (Operation == TEXT("Item.Move"))
 		return NSLOCTEXT("RPGItemFeedback", "Move", "Move item");
 	if (Operation == TEXT("Item.Swap"))
@@ -33,6 +34,9 @@ FText FRPGItemCommandFeedbackFormatter::Build(const FRPGItemCommandClientResult&
 	FText Outcome;
 	switch (Result.Result)
 	{
+	case ERPGItemCommandResultCode::NoChange:
+		Outcome = NSLOCTEXT("RPGItemFeedback", "SortedAlready", "This tab is already sorted.");
+		break;
 	case ERPGItemCommandResultCode::Succeeded:
 		Outcome = NSLOCTEXT("RPGItemFeedback", "Succeeded", "Confirmed by the server.");
 		break;

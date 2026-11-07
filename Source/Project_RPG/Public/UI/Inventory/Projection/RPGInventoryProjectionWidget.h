@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "FieldNotificationId.h"
+#include "Item/RPGInventoryTypes.h"
 #include "Types/SlateEnums.h"
 #include "UI/RPGWidgetBase.h"
 #include "RPGInventoryProjectionWidget.generated.h"
@@ -42,6 +43,10 @@ public:
 	virtual void RefreshFromViewModel();
 
 	FText GetDisplayedStatus() const;
+	UFUNCTION(BlueprintCallable, Category = "RPG|Item|UI")
+	void SelectInventoryCategory(EItemCategory Category);
+	UFUNCTION(BlueprintPure, Category = "RPG|Item|UI")
+	EItemCategory GetSelectedInventoryCategory() const { return ActiveCategory; }
 
 	/** Captures the drag revision/destination. Opening or cancelling sends no item command. */
 	UFUNCTION(BlueprintCallable, Category = "RPG|Item|UI")
@@ -104,6 +109,7 @@ protected:
 	TObjectPtr<UTextBlock> CommandResultText;
 
 private:
+	friend struct FRPGInventoryTabsTestAccess;
 	friend struct FRPGInventorySplitQuantityTestFixture;
 	bool EnsureSplitQuantityControls();
 	bool IsSplitSnapshotValid() const;
@@ -163,6 +169,16 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> RetryLoadButton;
 
+	void EnsureBagTabControls();
+	UFUNCTION() void HandleBagEquipment();
+	UFUNCTION() void HandleBagConsumables();
+	UFUNCTION() void HandleBagOther();
+	UFUNCTION() void HandleSortBag();
+	UPROPERTY(Transient) TObjectPtr<UButton> BagEquipmentButton;
+	UPROPERTY(Transient) TObjectPtr<UButton> BagConsumablesButton;
+	UPROPERTY(Transient) TObjectPtr<UButton> BagOtherButton;
+	UPROPERTY(Transient) TObjectPtr<UButton> SortBagButton;
+	EItemCategory ActiveCategory = EItemCategory::Equip;
 	bool bViewModelBound = false;
 	bool bOwnsInventoryViewModel = false;
 };

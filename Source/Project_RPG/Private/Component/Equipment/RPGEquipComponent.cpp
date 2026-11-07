@@ -132,7 +132,7 @@ void URPGEquipComponent::UnequipItem(const EEquipmentSlotType SlotType)
 	FRPGItemLocation Destination;
 	Destination.ContainerType = ERPGItemContainerType::Inventory;
 	Destination.ContainerId = Record.GetOwner().OwnerId;
-	for (int32 Index = 0; Index < RPGItemInventoryPolicy::SlotCapacity; ++Index)
+	for (int32 Index = 0; Index < RPGItemInventoryPolicy::SlotsPerTab; ++Index)
 	{
 		Destination.SlotIndex = Index;
 		FRPGItemRecord Occupant;

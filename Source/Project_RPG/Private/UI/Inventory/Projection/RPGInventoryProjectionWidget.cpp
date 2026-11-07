@@ -75,7 +75,7 @@ void FillInventoryGrid(
 	UWidgetTree* Tree,
 	UUniformGridPanel* Grid,
 	const TArray<FRPGInventoryProjectionEntry>& Entries,
-	URPGInventoryProjectionViewModel* ViewModel)
+	URPGInventoryProjectionViewModel* ViewModel, EItemCategory Category)
 {
 	Grid->ClearChildren();
 	Grid->SetMinDesiredSlotWidth(61.f);
@@ -83,25 +83,24 @@ void FillInventoryGrid(
 	Grid->SetSlotPadding(FMargin(2.f));
 
 	constexpr int32 Columns = 10;
-	const int32 SlotCount = FMath::Max(
-		RPGItemInventoryPolicy::SlotCapacity,
-		FMath::DivideAndRoundUp(Entries.Num(), Columns) * Columns);
+	const int32 SlotCount = RPGItemInventoryPolicy::SlotsPerTab;
 	for (int32 Index = 0; Index < SlotCount; ++Index)
 	{
+		const int32 StorageSlot = RPGItemInventoryPolicy::FirstSlot(Category) + Index;
 		const FRPGInventoryProjectionEntry* Entry = Entries.FindByPredicate(
-			[Index](const FRPGInventoryProjectionEntry& Candidate)
-			{ return Candidate.GetSlotIndex() == Index; });
+			[StorageSlot](const FRPGInventoryProjectionEntry& Candidate)
+			{ return Candidate.GetSlotIndex() == StorageSlot; });
 		const FText Label = Entry
 			? FText::Format(NSLOCTEXT("RPGItemUI", "InventoryCellLabel", "{0}\nx{1}\n[{2}]"),
 				GetItemDisplayName(*Entry, ViewModel), FText::AsNumber(Entry->GetQuantity()),
-				FText::AsNumber(Entry->GetSlotIndex()))
+				FText::AsNumber(Index + 1))
 			: FText::GetEmpty();
 		UWidget* Cell = nullptr;
 		URPGInventoryProjectionItemSlotWidget* ItemCell =
 			Tree->ConstructWidget<URPGInventoryProjectionItemSlotWidget>();
 		if (ItemCell)
 		{
-			ItemCell->SetItem(Entry ? Entry->GetItemId() : FGuid(), Label, ViewModel, false, Index);
+			ItemCell->SetItem(Entry ? Entry->GetItemId() : FGuid(), Label, ViewModel, false, StorageSlot);
 			Cell = ItemCell;
 		}
 		if (!Cell)
@@ -325,6 +324,7 @@ void URPGInventoryProjectionWidget::NativeConstruct()
 		InventoryRecoveryButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HandleInventoryRecoveryClicked);
 	if (CommandResultText) CommandResultText->SetAutoWrapText(true);
 	SetIsFocusable(true);
+	EnsureBagTabControls();
 	EnsureSplitQuantityControls();
 	CancelSplitQuantitySelection();
 
@@ -442,11 +442,12 @@ void URPGInventoryProjectionWidget::RefreshFromViewModel()
 	RefreshSplitQuantitySelection();
 	RefreshStatusFromViewModel();
 	if (InventoryItemsText)
-		InventoryItemsText->SetText(BuildProjectionText(InventoryViewModel->InventoryItems, false));
+		InventoryItemsText->SetText(BuildProjectionText(InventoryViewModel->InventoryItems.FilterByPredicate(
+			[this](const auto& Entry) { return RPGItemInventoryPolicy::Contains(ActiveCategory, Entry.GetSlotIndex()); }), false));
 	if (EquipmentItemsText)
 		EquipmentItemsText->SetText(BuildProjectionText(InventoryViewModel->EquipmentItems, true));
 	if (InventoryGrid)
-		FillInventoryGrid(WidgetTree, InventoryGrid, InventoryViewModel->InventoryItems, InventoryViewModel);
+		FillInventoryGrid(WidgetTree, InventoryGrid, InventoryViewModel->InventoryItems, InventoryViewModel, ActiveCategory);
 	if (EquipmentLeftSlots && EquipmentRightSlots)
 		FillEquipmentSlots(WidgetTree, EquipmentLeftSlots, EquipmentRightSlots, InventoryViewModel->EquipmentItems, InventoryViewModel);
 }
@@ -454,6 +455,10 @@ void URPGInventoryProjectionWidget::RefreshFromViewModel()
 void URPGInventoryProjectionWidget::RefreshStatusFromViewModel()
 {
 	if (!InventoryViewModel) return;
+	if (SortBagButton) SortBagButton->SetIsEnabled(InventoryViewModel->CanSortInventoryTab(ActiveCategory));
+	if (BagEquipmentButton) BagEquipmentButton->SetIsEnabled(ActiveCategory != EItemCategory::Equip);
+	if (BagConsumablesButton) BagConsumablesButton->SetIsEnabled(ActiveCategory != EItemCategory::Consume);
+	if (BagOtherButton) BagOtherButton->SetIsEnabled(ActiveCategory != EItemCategory::Craft);
 	RefreshInventoryCapacity();
 	FString StateMessage = FString::Printf(
 		TEXT("Projection: %s"),
@@ -493,6 +498,7 @@ void URPGInventoryProjectionWidget::RefreshStatusFromViewModel()
 
 void URPGInventoryProjectionWidget::RefreshInteractionFromViewModel()
 {
+	if (SortBagButton && InventoryViewModel) SortBagButton->SetIsEnabled(InventoryViewModel->CanSortInventoryTab(ActiveCategory));
 	if (!InventoryViewModel) return;
 	RefreshSplitQuantitySelection();
 	RefreshStatusFromViewModel();
@@ -505,7 +511,7 @@ void URPGInventoryProjectionWidget::RefreshInteractionFromViewModel()
 void URPGInventoryProjectionWidget::RefreshInventoryCapacity()
 {
 	if (!InventoryCapacityText || !InventoryViewModel) return;
-	const FRPGInventoryCapacityPresentation Capacity = InventoryViewModel->GetInventoryCapacity();
+	const FRPGInventoryCapacityPresentation Capacity = InventoryViewModel->GetInventoryCapacityForCategory(ActiveCategory);
 	const FLinearColor Muted(0.65f, 0.72f, 0.79f, 1.f);
 	if (!Capacity.bHasSnapshot)
 	{
@@ -796,4 +802,43 @@ void URPGInventoryProjectionWidget::HandleCancelSplitQuantity()
 {
 	CancelSplitQuantitySelection();
 	if (IsInViewport() && GetOwningPlayer()) SetUserFocus(GetOwningPlayer());
+}
+
+void URPGInventoryProjectionWidget::EnsureBagTabControls()
+{
+	if (!WidgetTree || !InventoryGrid || BagEquipmentButton) return;
+	auto* Parent = LoadStateText ? LoadStateText->GetParent() : nullptr;
+	if (!Parent || !Parent->CanAddMoreChildren()) return;
+	auto* Row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("BagCategoryControls"));
+	Parent->AddChild(Row);
+	const auto Add = [this, Row](FName Name, const FText& Label)
+	{
+		auto* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), Name);
+		auto* Text = WidgetTree->ConstructWidget<UTextBlock>();
+		Text->SetText(Label); Button->SetContent(Text); Row->AddChildToHorizontalBox(Button);
+		return Button;
+	};
+	BagEquipmentButton = Add(TEXT("BagEquipmentButton"), NSLOCTEXT("RPGItemUI", "BagEquipment80", "장비 (80)"));
+	BagConsumablesButton = Add(TEXT("BagConsumablesButton"), NSLOCTEXT("RPGItemUI", "BagConsumables80", "소비 (80)"));
+	BagOtherButton = Add(TEXT("BagOtherButton"), NSLOCTEXT("RPGItemUI", "BagOther80", "기타 (80)"));
+	SortBagButton = Add(TEXT("SortBagButton"), NSLOCTEXT("RPGItemUI", "SortBagTab", "정렬"));
+	BagEquipmentButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HandleBagEquipment);
+	BagConsumablesButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HandleBagConsumables);
+	BagOtherButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HandleBagOther);
+	SortBagButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HandleSortBag);
+}
+void URPGInventoryProjectionWidget::SelectInventoryCategory(EItemCategory Category)
+{
+	if (!RPGItemInventoryPolicy::IsTab(Category) || Category == ActiveCategory) return;
+	CancelSplitQuantitySelection();
+	ActiveCategory = Category;
+	RefreshFromViewModel();
+}
+void URPGInventoryProjectionWidget::HandleBagEquipment() { SelectInventoryCategory(EItemCategory::Equip); }
+void URPGInventoryProjectionWidget::HandleBagConsumables() { SelectInventoryCategory(EItemCategory::Consume); }
+void URPGInventoryProjectionWidget::HandleBagOther() { SelectInventoryCategory(EItemCategory::Craft); }
+void URPGInventoryProjectionWidget::HandleSortBag()
+{
+	FGuid Request;
+	if (InventoryViewModel) InventoryViewModel->RequestSortInventoryTab(ActiveCategory, Request);
 }

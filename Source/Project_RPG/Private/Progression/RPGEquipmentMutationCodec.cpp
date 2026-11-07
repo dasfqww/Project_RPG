@@ -1,4 +1,5 @@
 #include "Progression/RPGEquipmentMutationCodec.h"
+#include "Item/Policy/RPGItemInventoryPolicy.h"
 
 #include "Dom/JsonObject.h"
 #include "String/BytesToHex.h"
@@ -258,7 +259,7 @@ namespace RPGEquipmentMutation
 		const auto& Where = Record.GetLocation();
 		if (bGrant && Where.ContainerType == ERPGItemContainerType::Mail) return true;
 		if (!Where.ContainerId.Equals(Record.GetOwner().OwnerId, ESearchCase::CaseSensitive)) return false;
-		if (Where.ContainerType == ERPGItemContainerType::Inventory) return Where.SlotIndex >= 0 && Where.SlotIndex < 80;
+		if (Where.ContainerType == ERPGItemContainerType::Inventory) return Where.SlotIndex >= 0 && Where.SlotIndex < RPGItemInventoryPolicy::SlotCapacity;
 		if (bGrant) return false; // New grants never auto-equip.
 		const int32 Index = Model(Record.GetDefinitionId().PrimaryAssetName.ToString());
 		return Index != INDEX_NONE && Where.ContainerType == ERPGItemContainerType::Equipment && Where.SlotIndex == Slot(Index);

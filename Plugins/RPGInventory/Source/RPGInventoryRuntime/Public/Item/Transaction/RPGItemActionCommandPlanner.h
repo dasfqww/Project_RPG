@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Item/RPGInventoryTypes.h"
 #include "Item/Persistence/RPGItemRepository.h"
 #include "Item/Transaction/RPGItemClock.h"
 #include "Item/Transaction/RPGItemTransactionTypes.h"
@@ -84,6 +85,7 @@ public:
 	FRPGItemCommandPlan Prepare(
 		const FRPGItemStackTransferRequest& Request) const;
 	FRPGItemCommandPlan Prepare(const FRPGItemSplitRequest& Request) const;
+	FRPGItemCommandPlan PrepareSort(const FGuid& RequestId, const FRPGItemOwnerRef& Owner, EItemCategory Category) const;
 	FRPGItemCommandPlan Prepare(
 		const FRPGItemEquipRequest& Request) const;
 	FRPGItemCommandPlan Prepare(

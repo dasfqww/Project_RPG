@@ -449,6 +449,7 @@ bool URPGItemCommandComponent::TryPlanPickupGrant(const FRPGItemPickupGrantReque
 {
 	OutCommit = {};
 	if (!IsAuthenticatedItemOwner(Request.Owner)) return false;
+	for (const auto& Pending : PendingInventorySlotRequests) if (Pending.Value.Operation == TEXT("Item.Sort")) return false;
 	auto ScopedRequest = Request;
 	ScopedRequest.ReservedInventorySlots.Reset(); // Only this controller's server-owned reservations count.
 	for (const auto& Pending : PendingPickupLocations)
@@ -1194,7 +1195,9 @@ bool URPGItemCommandComponent::BeginRequest(
 		ClientNotifyItemCommand(Result);
 		return false;
 	}
-	const bool bRecoveryBlocked = !bRecoveryRetry && Orchestrator && Orchestrator->HasUncertainInventoryCommands();
+	bool bSortBlocked = false;
+	if (!bRecoveryRetry) for (const auto& Pending : PendingInventorySlotRequests) bSortBlocked |= Pending.Value.Operation == TEXT("Item.Sort");
+	const bool bRecoveryBlocked = bSortBlocked || (!bRecoveryRetry && Orchestrator && Orchestrator->HasUncertainInventoryCommands());
 	if (!RequestId.IsValid() || bRecoveryBlocked ||
 		InFlightRequestIds.Contains(RequestId) ||
 		InFlightRequestIds.Num() >= MaximumInFlightCommands)
@@ -1283,6 +1286,9 @@ void URPGItemCommandComponent::HandleOutcome(
 	{
 		switch (Outcome.PlanFailureStatus)
 		{
+		case ERPGItemTransactionStatus::NoChange:
+			Result.Result = ERPGItemCommandResultCode::NoChange;
+			break;
 		case ERPGItemTransactionStatus::Forbidden:
 			Result.Result = ERPGItemCommandResultCode::Forbidden;
 			break;
@@ -1376,4 +1382,23 @@ bool URPGItemCommandComponent::ReconcileEquipmentFromProjection(
 		OwnerRecords,
 		*DataManager,
 		OutError);
+}
+
+void URPGItemCommandComponent::ServerSortInventoryTab_Implementation(const FGuid RequestId, const EItemCategory Category)
+{
+	const FName Operation(TEXT("Item.Sort"));
+	// A sort spans a tab: begin only from a quiet authoritative snapshot.
+	if (HasInFlightCommands() || !PendingPickupLocations.IsEmpty() || !PendingInventorySlotRequests.IsEmpty())
+	{
+		FRPGItemCommandClientResult Result;
+		Result.RequestId = RequestId; Result.Operation = Operation; Result.Result = ERPGItemCommandResultCode::Busy;
+		ClientNotifyItemCommand(Result); return;
+	}
+	if (!BeginRequest(RequestId, Operation)) return;
+	FRPGItemOwnerRef Owner;
+	if (!RPGItemInventoryPolicy::IsTab(Category) || !TryGetAuthenticatedOwner(Owner) || !EnsureOrchestrator())
+	{ HandleOutcome(RequestId, Operation, {}); return; }
+	const TWeakObjectPtr<URPGItemCommandComponent> WeakThis(this);
+	Orchestrator->Sort(RequestId, Owner, Category, [WeakThis, RequestId, Operation](FRPGItemAsyncCommandOutcome Outcome)
+	{ if (auto* Self = WeakThis.Get()) Self->HandleOutcome(RequestId, Operation, MoveTemp(Outcome)); });
 }

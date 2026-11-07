@@ -635,7 +635,7 @@ bool FRPGItemBackendJsonCodec::SerializeCommitRequest(
 		!Request.Actor.IsValid() ||
 		Request.AffectedQuantity < 0 ||
 		Request.Mutations.IsEmpty() ||
-		Request.Mutations.Num() > 16)
+		Request.Mutations.Num() > (Request.Operation == TEXT("Item.Sort") ? 80 : 16))
 	{
 		SetError(OutError, TEXT("Item commit request is invalid."));
 		return false;
@@ -703,7 +703,7 @@ bool FRPGItemBackendJsonCodec::DeserializeCommitRequest(
 		!TryParseOwner(*Actor, Request.Actor) ||
 		!Root->TryGetNumberField(TEXT("affectedQuantity"), Request.AffectedQuantity) ||
 		!Root->TryGetArrayField(TEXT("mutations"), Mutations) || !Mutations ||
-		Mutations->IsEmpty() || Mutations->Num() > 16)
+		Mutations->IsEmpty() || Mutations->Num() > (Operation == TEXT("Item.Sort") ? 80 : 16))
 	{
 		SetError(OutError, TEXT("Persisted item command is invalid."));
 		return false;

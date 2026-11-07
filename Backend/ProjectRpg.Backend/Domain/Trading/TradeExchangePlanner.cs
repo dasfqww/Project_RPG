@@ -180,7 +180,7 @@ public static class TradeExchangePlanner
             else
             {
                 var occupied = inventory.Values.Select(i => i.Location.SlotIndex).ToHashSet();
-                int slot = Enumerable.Range(0, InventoryCapacity).FirstOrDefault(i => !occupied.Contains(i), -1);
+                int slot = InventoryBagLayout.Slots(item).FirstOrDefault(i => !occupied.Contains(i), -1);
                 if (slot < 0) throw new TradeRuleException("trade_inventory_full");
                 moved = item with { Owner = owner, State = item.State with { Quantity = remaining },
                     Location = new(ItemContainerType.Inventory, owner.OwnerId, slot) };

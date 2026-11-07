@@ -149,6 +149,12 @@ public:
 	/** A stack occupies one slot; pending destinations do not become confirmed items. */
 	UFUNCTION(BlueprintPure, Category = "RPG|Item|ViewModel")
 	FRPGInventoryCapacityPresentation GetInventoryCapacity() const;
+	UFUNCTION(BlueprintPure, Category = "RPG|Item|ViewModel")
+	FRPGInventoryCapacityPresentation GetInventoryCapacityForCategory(EItemCategory Category) const;
+	UFUNCTION(BlueprintPure, Category = "RPG|Item|ViewModel")
+	bool CanSortInventoryTab(EItemCategory Category) const;
+	UFUNCTION(BlueprintCallable, Category = "RPG|Item|ViewModel")
+	bool RequestSortInventoryTab(EItemCategory Category, FGuid& OutRequestId);
 
 	/** Capture a live revision at drag start; stale drags must not submit newer state. */
 	bool TryGetInventoryDragEntry(FGuid ItemId, FRPGInventoryProjectionEntry& OutEntry) const;
@@ -270,6 +276,7 @@ public:
 	FRPGInventoryProjectionCommandCompleted OnCommandCompleted;
 
 private:
+	friend struct FRPGInventoryTabsTestAccess;
 	void SetLocalActionFeedback(const FText& Feedback);
 	bool RejectLocalAction(const FText& Reason);
 	ERPGMailClaimState ResolveMailClaimState(FGuid ItemId) const;
@@ -281,6 +288,14 @@ private:
 	friend class FRPGItemStackSplitReservationTest;
 	friend class FRPGInventoryCommandRecoveryUITest;
 	friend class FRPGInventoryRecoveryRevokedUITest;
+
+	struct FPendingInventorySort
+	{
+		TMap<FGuid, int64> Revisions;
+		bool bCommitted = false;
+	};
+	TMap<FGuid, FPendingInventorySort> PendingInventorySorts;
+	void ReconcilePendingInventorySorts();
 
 	struct FPendingInventoryMove
 	{

@@ -25,7 +25,8 @@ enum class ERPGItemCommandResultCode : uint8
 	ProtocolError,
 	ServerStateError,
 	Busy,
-	Uncertain
+	Uncertain,
+	NoChange
 };
 
 USTRUCT(BlueprintType)
@@ -98,6 +99,9 @@ public:
 		(Orchestrator && (Orchestrator->HasUncertainInventoryCommands() || Orchestrator->IsInventoryPersistenceBlocked())); }
 	void CompletePickupGrant(const FRPGItemRepositoryCommitRequest& Request,
 		ERPGItemCommandResultCode Result);
+
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "RPG|Item")
+	void ServerSortInventoryTab(FGuid RequestId, EItemCategory Category);
 
 	/** Move within this character's bag; owner and container identity are server-derived. */
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "RPG|Item")

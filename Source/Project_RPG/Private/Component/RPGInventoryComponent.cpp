@@ -126,7 +126,7 @@ int32 URPGInventoryComponent::GetSlotCapacity(const EItemCategory Category) cons
 	case EItemCategory::Equip:
 	case EItemCategory::Consume:
 	case EItemCategory::Craft:
-		return RPGItemInventoryPolicy::SlotCapacity; // Shared bag, not three separate capacities.
+		return RPGItemInventoryPolicy::SlotsPerTab;
 	default:
 		return 0;
 	}

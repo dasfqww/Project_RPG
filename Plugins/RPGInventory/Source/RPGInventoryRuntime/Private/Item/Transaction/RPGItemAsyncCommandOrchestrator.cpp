@@ -433,3 +433,7 @@ void FRPGItemAsyncCommandOrchestrator::HandleCommit(
 	}
 	Completion(MoveTemp(Outcome));
 }
+
+bool FRPGItemAsyncCommandOrchestrator::Sort(const FGuid& RequestId, const FRPGItemOwnerRef& Owner,
+	EItemCategory Category, FRPGItemAsyncCommandCompletion Completion)
+{ return Submit(Planner.PrepareSort(RequestId, Owner, Category), MoveTemp(Completion)); }

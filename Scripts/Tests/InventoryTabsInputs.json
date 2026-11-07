@@ -1,0 +1,41 @@
+{
+  "UE": [
+    "Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Backend/RPGItemBackendJsonCodec.cpp",
+    "Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGInventoryCommandJournal.cpp",
+    "Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGItemActionCommandPlanner.cpp",
+    "Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGItemAsyncCommandOrchestrator.cpp",
+    "Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGItemPickupGrantPlanner.cpp",
+    "Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Policy/RPGItemInventoryPolicy.h",
+    "Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemActionCommandPlanner.h",
+    "Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGItemAsyncCommandOrchestrator.h",
+    "Source/Project_RPG/Private/Component/Equipment/RPGEquipComponent.cpp",
+    "Source/Project_RPG/Private/Component/RPGInventoryComponent.cpp",
+    "Source/Project_RPG/Private/Component/RPGItemCommandComponent.cpp",
+    "Source/Project_RPG/Private/Progression/RPGEquipmentMutationCodec.cpp",
+    "Source/Project_RPG/Private/UI/Inventory/Projection/RPGInventoryProjectionWidget.cpp",
+    "Source/Project_RPG/Private/UI/Inventory/Projection/RPGItemCommandFeedbackFormatter.cpp",
+    "Source/Project_RPG/Private/UI/MVVM/RPGInventoryProjectionViewModel.cpp",
+    "Source/Project_RPG/Public/Component/RPGItemCommandComponent.h",
+    "Source/Project_RPG/Public/UI/Inventory/Projection/RPGInventoryProjectionWidget.h",
+    "Source/Project_RPG/Public/UI/MVVM/RPGInventoryProjectionViewModel.h",
+    "Plugins/RPGInventory/Source/RPGInventoryRuntime/Public/Item/Transaction/RPGInventorySortPlanner.h",
+    "Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Item/Transaction/RPGInventorySortPlanner.cpp",
+    "Plugins/RPGInventory/Source/RPGInventoryRuntime/Private/Tests/RPGInventoryTabsTests.cpp",
+    "Source/Project_RPG/Private/Tests/RPGInventoryTabsUITests.cpp"
+  ],
+  "Backend": [
+    "Backend/ProjectRpg.Backend/Domain/InventoryBagLayout.cs",
+    "Backend/ProjectRpg.Backend/Domain/ItemModels.cs",
+    "Backend/ProjectRpg.Backend/Domain/DungeonRewardDeliveryPlanner.cs",
+    "Backend/ProjectRpg.Backend/Domain/Trading/TradeExchangePlanner.cs",
+    "Backend/ProjectRpg.Backend/Api/ItemApiEndpoints.cs",
+    "Backend/ProjectRpg.Backend/Data/InMemoryItemRepository.cs",
+    "Backend/ProjectRpg.Backend/Data/PostgresItemRepository.cs",
+    "Backend/ProjectRpg.Backend/Data/PostgresSchemaMigrations.cs",
+    "Backend/ProjectRpg.Backend/ProjectRpg.Backend.csproj",
+    "Backend/Database/Migrations/0011_inventory_tabs.sql",
+    "Backend/ProjectRpg.Backend.InventoryTabsTests/ProjectRpg.Backend.InventoryTabsTests.csproj",
+    "Backend/ProjectRpg.Backend.InventoryTabsTests/Program.cs",
+    "Backend/ProjectRpg.Backend.InventoryTabsTests/HttpFixture.cs"
+  ]
+}

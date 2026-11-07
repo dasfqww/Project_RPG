@@ -223,6 +223,9 @@ public sealed class InMemoryItemRepository(
                         committedAt));
             }
 
+            if (!InventoryBagLayout.ValidNewDestinations(request))
+                return Task.FromResult(Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt));
+
             if (request.Mutations.Any(mutation => transactionGate.IsItemReserved(mutation.NewRecord.ItemId)))
                 return Task.FromResult(Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt));
 
@@ -259,6 +262,11 @@ public sealed class InMemoryItemRepository(
                             committedAt));
                 }
             }
+
+            if (request.Operation == InventoryBagLayout.SortOperation &&
+                (request.AffectedQuantity != 0 || request.Mutations.Select(m => InventoryBagLayout.Tab(m.NewRecord.DefinitionName)).Distinct().Count() != 1 ||
+                 request.Mutations.Any(m => m.NewRecord.Owner != request.Actor || !InventoryBagLayout.IsSortMutation(_records.GetValueOrDefault(m.NewRecord.ItemId), m.NewRecord))))
+                return Task.FromResult(Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt));
 
             // An old client must not erase a stored growth value by omitting the new field.
             foreach (ItemRecordMutation mutation in request.Mutations)
