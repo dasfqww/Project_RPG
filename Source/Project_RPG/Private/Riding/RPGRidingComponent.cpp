@@ -113,6 +113,13 @@ const URPGMountDefinition* URPGRidingComponent::FindDefinition(const FString& Id
     return Found;
 }
 
+const URPGMountDefinition* URPGRidingComponent::GetPresentationDefinition() const
+{
+    if (!RPGRiding::IsCanonical(State) || State.Mode != ERPGRidingMode::Mounted) return nullptr;
+    const auto* Definition = FindDefinition(State.MountId);
+    return Definition && Definition->DefinitionVersion == State.DefinitionVersion ? Definition : nullptr;
+}
+
 void URPGRidingComponent::BuildGuards(FRPGRidingEvaluationContext& Out) const
 {
     Out.Current = State;

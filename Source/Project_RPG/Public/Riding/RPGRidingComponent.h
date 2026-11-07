@@ -30,6 +30,8 @@ public:
     void RefreshBinding();
     FRPGRidingChanged OnChanged;
     FRPGRidingResultReceived OnResult;
+    /** Current cosmetic definition only; cannot grant ownership or mutate the authoritative state. */
+    const URPGMountDefinition* GetPresentationDefinition() const;
 
 private:
     friend class URPGRidingSessionComponent;

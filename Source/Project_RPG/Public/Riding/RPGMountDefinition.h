@@ -28,6 +28,8 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Riding") TSoftClassPtr<UAnimInstance> RiderPoseLayer;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Riding") FName SaddleSocket;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Riding") FTransform RiderOffset;
+    /** Cosmetic placement relative to the existing character mesh/smoothing transform. */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Riding") FTransform MountOffset;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Riding") FGameplayTagContainer RegionTags;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Riding") TSoftObjectPtr<UAnimMontage> DashPresentation;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Riding") TSoftObjectPtr<UAnimMontage> EmotePresentation;

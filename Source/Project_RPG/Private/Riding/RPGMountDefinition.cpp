@@ -27,6 +27,9 @@ bool URPGMountDefinition::ValidateMetadata(TArray<FText>& Errors) const
     const FVector Scale = RiderOffset.GetScale3D();
     if (!RiderOffset.IsValid() || Scale.X <= 0 || Scale.Y <= 0 || Scale.Z <= 0)
         Fail(TEXT("Rider offset must have finite translation/scale, a normalized rotation and positive scale."));
+    const FVector MountScale = MountOffset.GetScale3D();
+    if (!MountOffset.IsValid() || MountScale.X <= 0 || MountScale.Y <= 0 || MountScale.Z <= 0)
+        Fail(TEXT("Mount offset must have a finite normalized transform and positive scale."));
     return Errors.Num() == Before;
 }
 

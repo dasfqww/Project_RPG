@@ -16,6 +16,19 @@ ARPGRidingTestPawn::ARPGRidingTestPawn()
     CreateDefaultSubobject<URPGRidingComponent>(TEXT("Riding"));
 }
 
+void URPGRidingTestReentryAnim::NativeInitializeAnimation()
+{
+    Super::NativeInitializeAnimation();
+#if WITH_DEV_AUTOMATION_TESTS
+    auto* Actor = GetOwningActor();
+    auto* C = Actor ? Actor->FindComponentByClass<URPGRidingComponent>() : nullptr;
+    if (!C || C->GetRidingState().Mode != ERPGRidingMode::Mounted) return;
+    FRPGRidingRepState OnFoot;
+    OnFoot.Key = C->GetRidingState().Key; ++OnFoot.Key.StateRevision;
+    RPGSetRidingVisualTestState(*C, OnFoot, {});
+#endif
+}
+
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
 
@@ -57,7 +70,19 @@ struct FRPGRidingActorTestAccess
     static void Result(URPGRidingComponent& C, FRPGRidingCommandResult Value) { C.ClientRidingResult_Implementation(Value); }
     static void Replicate(URPGRidingComponent& C, const FRPGRidingRepState& Incoming)
     { const auto Old = C.State; C.State = Incoming; C.OnRep_State(Old); }
+    static void VisualState(URPGRidingComponent& C, const FRPGRidingRepState& State, TConstArrayView<URPGMountDefinition*> Definitions)
+    {
+        C.Definitions.Reset();
+        for (auto* Definition : Definitions) C.Definitions.Add(Definition);
+        Replicate(C, State);
+    }
 };
+
+void RPGSetRidingVisualTestState(URPGRidingComponent& Component, const FRPGRidingRepState& State,
+    TConstArrayView<URPGMountDefinition*> Definitions)
+{
+    FRPGRidingActorTestAccess::VisualState(Component, State, Definitions);
+}
 
 namespace
 {

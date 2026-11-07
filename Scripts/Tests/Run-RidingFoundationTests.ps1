@@ -1,13 +1,15 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors)
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
+if ($IncludePresentation) { $IncludeActors = $true }
 if ($IncludeActors) { $IncludeSession = $true }
-$suite = if ($IncludeActors) { 'RidingActors' } elseif ($IncludeSession) { 'RidingSession' } else { 'RidingFoundation' }
-$reservation = if ($IncludeActors) { 'riding-actors-20261106' } elseif ($IncludeSession) { 'riding-session-20261106' } else { 'riding-foundation-20261106' }
+$suite = if ($IncludePresentation) { 'RidingPresentation' } elseif ($IncludeActors) { 'RidingActors' } elseif ($IncludeSession) { 'RidingSession' } else { 'RidingFoundation' }
+$reservation = if ($IncludePresentation) { 'riding-presentation-20261108' } elseif ($IncludeActors) { 'riding-actors-20261106' } elseif ($IncludeSession) { 'riding-session-20261106' } else { 'riding-foundation-20261106' }
 $testFilter = if ($IncludeSession) { 'ProjectRPG.Riding' } else { 'ProjectRPG.Riding.Foundation' }
-$proofRoot = Join-Path $workspace ('Saved/BuildChecks/' + $suite + '-20261106/' + $id)
+$proofDate = if ($IncludePresentation) { '20261108' } else { '20261106' }
+$proofRoot = Join-Path $workspace ('Saved/BuildChecks/' + $suite + '-' + $proofDate + '/' + $id)
 $tempRoot = Join-Path $workspace 'Saved/RF'
 $temp = Join-Path $tempRoot $id.Substring(0,8)
 $project = Join-Path $temp 'Project'
@@ -26,7 +28,13 @@ function Assert-Reservation {
 try {
     Assert-Reservation
     $null = [IO.Directory]::CreateDirectory($project)
-    $null = [IO.Directory]::CreateDirectory((Join-Path $project 'Content'))
+    if ($IncludePresentation) {
+        $proof.AssetInputs = @()
+        foreach ($asset in @('Content/GreatswordComboPack/Demo/Mannequin/Character/Mesh/SK_Mannequin.uasset','Content/GreatswordComboPack/Demo/Mannequin/Character/Mesh/UE4_Mannequin_Skeleton.uasset')) {
+            $proof.AssetInputs += @{Path=$asset;SHA256=(Get-FileHash -LiteralPath (Join-Path $workspace $asset)).Hash}
+        }
+        $null = New-Item -ItemType Junction -Path (Join-Path $project 'Content') -Target (Join-Path $workspace 'Content')
+    } else { $null = [IO.Directory]::CreateDirectory((Join-Path $project 'Content')) }
     $proof.Head = (git -C $workspace rev-parse HEAD).Trim()
     $files = @('Source/Project_RPG/Private/Tests/RPGRidingFoundationTests.cpp')
     foreach ($name in @('RPGRidingTypes','RPGRidingPolicy','RPGMountDefinition','RPGRidingStatePolicy')) {
@@ -48,6 +56,9 @@ try {
             $files += 'Source/Project_RPG/Private/Riding/' + $name + '.cpp'
         }
     }
+    if ($IncludePresentation) {
+        $files += @('Source/Project_RPG/Public/Riding/RPGRidingPresentationComponent.h','Source/Project_RPG/Private/Riding/RPGRidingPresentationComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingPresentationTests.cpp')
+    }
     foreach ($relative in $files) {
         $source = Join-Path $workspace $relative
         $destination = Join-Path $project $relative
@@ -63,7 +74,8 @@ try {
 {"FileVersion":3,"EngineAssociation":"5.8","DisableEnginePluginsByDefault":true,"Plugins":[{"Name":"GameplayAbilities","Enabled":true}],"Modules":[{"Name":"Project_RPG","Type":"Runtime","LoadingPhase":"Default"}]}
 '@
     if ($IncludeActors) {
-        Write-Utf8 (Join-Path $project 'Config/DefaultGame.ini') "[/Script/GameplayAbilities.AbilitySystemGlobals]`n+GameplayCueNotifyPaths=/Game/`n"
+        $cuePath = if ($IncludePresentation) { '/Game/GreatswordComboPack' } else { '/Game/' }
+        Write-Utf8 (Join-Path $project 'Config/DefaultGame.ini') ("[/Script/GameplayAbilities.AbilitySystemGlobals]`n+GameplayCueNotifyPaths="+$cuePath+"`n")
     }
     Write-Utf8 (Join-Path $project 'Source/RidingFoundationEditor.Target.cs') @'
 using UnrealBuildTool;
@@ -134,9 +146,17 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingFounda
     if ($IncludeActors) {
         $expected += @('Transitions','Lifetime','Reentry','Results') | ForEach-Object {'ProjectRPG.Riding.Actors.'+$_}
     }
+    if ($IncludePresentation) {
+        $expected += @('Async','Lifecycle','Replacement','Failure','Reentry') | ForEach-Object {'ProjectRPG.Riding.Presentation.'+$_}
+    }
     if ((Compare-Object $expected @($proof.Tests.fullTestPath)) -or @($proof.Tests | Where-Object {$_.state -ne 'Success' -or $_.errors -ne 0 -or $_.warnings -ne 0}).Count) { throw 'Missing or failing native cases' }
     foreach ($inputFile in $proof.Inputs) {
         if ((Get-FileHash -LiteralPath (Join-Path $workspace $inputFile.Path)).Hash -ne $inputFile.SHA256) { throw 'Original source changed during validation' }
+    }
+    if ($IncludePresentation) {
+        foreach ($asset in $proof.AssetInputs) {
+            if ((Get-FileHash -LiteralPath (Join-Path $workspace $asset.Path)).Hash -ne $asset.SHA256) { throw 'Read-only source asset changed' }
+        }
     }
     $proof.Passed = $true
 } catch { $proof.Failure = $_.Exception.Message }

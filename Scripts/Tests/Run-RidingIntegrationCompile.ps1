@@ -1,9 +1,11 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8')
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $run=[Guid]::NewGuid().ToString('N')
-$proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingActors-20261106/Integration-'+$run)
+$proofFolder = if ($IncludePresentation) { 'RidingPresentation-20261108' } else { 'RidingActors-20261106' }
+$reservation = if ($IncludePresentation) { 'riding-presentation-20261108' } else { 'riding-actors-20261106' }
+$proofRoot=Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/Integration-'+$run)
 $tempRoot=Join-Path $workspace 'Saved/RF'
 $temp=Join-Path $tempRoot $run.Substring(0,8)
 $project=Join-Path $temp 'Project'
@@ -11,7 +13,7 @@ $proof=[ordered]@{Passed=$false;Scope='Full published project UHT and focused in
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Save-Proof { [IO.File]::WriteAllText((Join-Path $proofRoot 'Result.json'),($proof|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false)) }
 function Assert-Reservation {
-    if (@(Get-Content -LiteralPath (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object {$_ -match '^\|[^|]* / riding-actors-20261106 \|'}).Count -ne 1) { throw 'Actor reservation missing' }
+    if (@(Get-Content -LiteralPath (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object {$_ -match ('^\|[^|]* / '+[regex]::Escape($reservation)+' \|')}).Count -ne 1) { throw 'Riding reservation missing' }
 }
 try {
     Assert-Reservation
@@ -42,6 +44,12 @@ try {
         $files+='Source/Project_RPG/Public/Riding/'+$name+'.h'
         $files+='Source/Project_RPG/Private/Riding/'+$name+'.cpp'
     }
+    if ($IncludePresentation) {
+        foreach($name in @('RPGMountDefinition','RPGRidingPresentationComponent')) {
+            $files+='Source/Project_RPG/Public/Riding/'+$name+'.h'
+            $files+='Source/Project_RPG/Private/Riding/'+$name+'.cpp'
+        }
+    }
     foreach($relative in $files) {
         $source=Join-Path $workspace $relative
         $destination=Join-Path $project $relative
@@ -55,6 +63,7 @@ try {
     $fileList=Join-Path $temp 'CompileFiles.txt'
     $compile=@('Source/Project_RPG/Private/Character/RPGPlayer.cpp','Source/Project_RPG/Private/Player/RPGPlayerState.cpp',
         'Source/Project_RPG/Private/GameMode/RPGGameModeBase.cpp','Source/Project_RPG/Private/GameMode/RPGGameModeRiding.cpp')
+    if ($IncludePresentation) { $compile=@('Source/Project_RPG/Private/Character/RPGPlayer.cpp') }
     [IO.File]::WriteAllLines($fileList,@($compile|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
     $dotnet=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
     $ubt=Join-Path $EngineRoot 'Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll'
