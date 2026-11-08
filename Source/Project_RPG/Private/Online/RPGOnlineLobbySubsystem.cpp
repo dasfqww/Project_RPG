@@ -8,6 +8,8 @@
 #include "Online/RPGDungeonSessionSubsystem.h"
 #include "Online/RPGSteamAuthSubsystem.h"
 #include "Online/RPGSteamLobbySubsystem.h"
+#include "Trading/RPGTradeSubsystem.h"
+#include "Engine/LocalPlayer.h"
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
 
 namespace
@@ -70,6 +72,8 @@ bool URPGOnlineLobbySubsystem::IsLogoutAllowed(const bool bLocalLobby, const boo
 
 bool URPGOnlineLobbySubsystem::CanLogoutFromBackend(const APlayerController* Controller) const
 {
+	auto* Trades = Controller && Controller->GetLocalPlayer() ? Controller->GetLocalPlayer()->GetSubsystem<URPGTradeSubsystem>() : nullptr;
+	if (Trades && Trades->BlocksTransitions()) return false;
 	UGameInstance* GI = GetGameInstance();
 	const auto* Web = GI ? GI->GetSubsystem<UHttpWebManager>() : nullptr;
 	const auto* Auth = GI ? GI->GetSubsystem<URPGSteamAuthSubsystem>() : nullptr;
@@ -103,7 +107,10 @@ bool URPGOnlineLobbySubsystem::LogoutFromBackend(APlayerController* Controller)
 		const auto* CurrentFlow = GI->GetSubsystem<URPGDungeonSessionSubsystem>();
 		const auto* Auth = GI->GetSubsystem<URPGSteamAuthSubsystem>();
 		const auto* Steam = GI->GetSubsystem<URPGSteamLobbySubsystem>();
+		auto* Player = ExpectedController.IsValid() ? ExpectedController->GetLocalPlayer() : nullptr;
+		auto* Trades = Player ? Player->GetSubsystem<URPGTradeSubsystem>() : nullptr;
 		return CurrentWeb && CurrentFlow && Auth && Steam
+			&& (!Trades || !Trades->BlocksTransitions())
 			&& CurrentWeb->GetAuthenticatedSteamId() == SteamId
 			&& CurrentFlow->GetSelectedCharacterId() == CharacterId
 			&& CurrentFlow->GetCurrentDungeonSession().DungeonSessionId == SessionId

@@ -10,12 +10,15 @@
 #include "UI/Lobby/RPGOnlineLobbyDevelopmentProfile.h"
 #include "UI/Lobby/RPGCharacterConfigurationWidget.h"
 #include "UI/Lobby/RPGEquipmentGrowthWidget.h"
+#include "UI/Lobby/RPGTradeWidget.h"
+#include "Trading/RPGTradeSubsystem.h"
 #include "UI/Lobby/RPGOnlineLobbyLayout.h"
 #include "UI/Lobby/RPGTutorialEntryPolicy.h"
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
 #include "Narrative/RPGNarrativeCoordinator.h"
 #include "Manager/UIManager.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/GameInstance.h"
 #include "GameFramework/PlayerController.h"
 
 void URPGOnlineLobbyWidget::BuildMenuContent(UVerticalBox& Parent, bool bServerPage)
@@ -48,6 +51,7 @@ void URPGOnlineLobbyWidget::BuildMenuContent(UVerticalBox& Parent, bool bServerP
 	Add(TEXT("OpenSkillMenuButton"), NSLOCTEXT("RPGFrontend", "Skills", "스킬 구성"));
 	Add(TEXT("OpenEquipmentMenuButton"), NSLOCTEXT("RPGFrontend", "Equipment", "장비 성장 · 제작"));
 	Add(TEXT("OpenStoryMenuButton"), NSLOCTEXT("RPGFrontend", "Story", "인물과 이야기"));
+	Add(TEXT("OpenTradeMenuButton"), NSLOCTEXT("RPGFrontend", "Trade", "거래 내역"));
 	Add(TEXT("CloseLobbyDetailsButton"), NSLOCTEXT("RPGFrontend", "MenuHome", "로비 메뉴로 돌아가기"));
 	TutorialStatusText = RPGOnlineLobbyLayout::Text(*WidgetTree, *Rows, TEXT("TutorialEntryStatus"), FText::GetEmpty());
 }
@@ -119,6 +123,35 @@ void URPGOnlineLobbyWidget::OpenEquipmentMenu()
 	bEquipmentMenuOpen = true; bSkillMenuOpen = bDungeonMenuOpen = false;
 	RefreshPresentation();
 	if (EquipmentPanel) EquipmentPanel->OpenScreen();
+}
+
+bool URPGOnlineLobbyWidget::CanUseTrading() const
+{
+	return bServerSelected && bPreparationOpen && !bTutorialEntryActive && CanUseCharacterConfiguration(false, false)
+		&& Flow && !Flow->HasUnresolvedDeparture() && !Flow->HasDepartureRecoveryError() && !Flow->HasUnresolvedDungeonAbandonment()
+		&& (!ConfigurationPanel || (!ConfigurationPanel->IsRequestInFlight() && !ConfigurationPanel->HasUnresolvedSave() && !ConfigurationPanel->HasUnsavedChanges()))
+		&& (!EquipmentPanel || (!EquipmentPanel->IsBusy() && !EquipmentPanel->HasUnresolvedCommand()));
+}
+void URPGOnlineLobbyWidget::OpenTradeMenu()
+{
+	if (!CanUseTrading()) return;
+	auto* Trades = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGTradeSubsystem>() : nullptr;
+	if (!Trades || !Trades->IsAvailable()) return;
+	const auto Owner = Trades->GetTradeOwner();
+	if (!Owner) return;
+	if (TradePanel && TradePanel->IsInViewport()) { TradePanel->SetKeyboardFocus(); return; }
+	TradePanel = CreateWidget<URPGTradeWidget>(GetOwningPlayer(), URPGTradeWidget::StaticClass());
+	if (TradePanel)
+	{
+		TradePanel->OnClosed.AddUObject(this, &ThisClass::HandleTradeClosed);
+		TradePanel->SetTradeOwner(Owner.ToSharedRef()); TradePanel->AddToViewport(140);
+	}
+}
+void URPGOnlineLobbyWidget::HandleTradeClosed()
+{
+	if (CanUseTrading())
+		if (auto* Button = Buttons.FindRef(TEXT("OpenTradeMenuButton")).Get(); Button && Button->GetIsEnabled() && Button->IsVisible())
+			Button->SetUserFocus(GetOwningPlayer());
 }
 
 bool URPGOnlineLobbyWidget::CanOpenNarrativeDialogues() const
@@ -231,7 +264,9 @@ void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 	{
 		if (auto* Button = Buttons.FindRef(Name).Get()) { Button->SetIsEnabled(bEnabled); RPGOnlineLobbyLayout::SetControlVisibility(*Button, bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed); }
 	};
-	Control(TEXT("SelectServerButton"), bAuth && !IsFrontendRequestInFlight(), bAuth && !bServerSelected);
+	// This changes only the frontend page for the same configured endpoint. Keep recovery
+	// reachable after widget recreation even when an existing trade pins gameplay actions.
+	Control(TEXT("SelectServerButton"), bAuth && !bLoggingOut, bAuth && !bServerSelected);
 	Control(TEXT("BackToServersButton"), bAuth && CurrentPresentation().bCanSelectCharacter && !bTutorialEntryActive
 		&& (!Flow || !Flow->HasUnresolvedDeparture()) && (!Steam || !Steam->IsInPartyLobby()), bAuth && bServerSelected && !bPreparationOpen);
 	Control(TEXT("StartTutorialButton"), CanStartTutorial() && !bTutorialEntryActive, bHome && Profile.bTraining);
@@ -248,6 +283,8 @@ void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 	Control(TEXT("OpenSkillMenuButton"), bHome && !bTutorialEntryActive, bHome);
 	Control(TEXT("OpenEquipmentMenuButton"), bHome && CanUseEquipmentGrowth(false, false), bHome);
 	Control(TEXT("OpenStoryMenuButton"), CanOpenNarrativeDialogues(), bHome);
+	auto* Trades = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGTradeSubsystem>() : nullptr;
+	Control(TEXT("OpenTradeMenuButton"), CanUseTrading(), bHome && Trades && Trades->IsAvailable());
 	if (NarrativePanel && NarrativePanel->IsInViewport()
 		&& (!CanOpenNarrativeDialogues() || NarrativePanel->GetCharacterId().ToString(EGuidFormats::DigitsWithHyphensLower) != Flow->GetSelectedCharacterId()))
 		NarrativePanel->CloseScreen();

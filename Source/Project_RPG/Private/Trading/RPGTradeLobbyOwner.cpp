@@ -1,0 +1,130 @@
+#include "Trading/RPGTradeLobbyOwner.h"
+#include "HAL/PlatformTime.h"
+
+bool FRPGTradeLobbyContext::operator==(const FRPGTradeLobbyContext& O) const
+{
+    return Endpoint == O.Endpoint && Account == O.Account && Character == O.Character && bEnabled == O.bEnabled
+        && bLocalLobby == O.bLocalLobby && bAuthenticated == O.bAuthenticated && bEligible == O.bEligible;
+}
+FRPGTradeLobbyOwner::FRPGTradeLobbyOwner(TSharedRef<IRPGTradeTransport> Transport, FContext InContext, TFunction<double()> InClock)
+    : Context(MoveTemp(InContext)), Clock(InClock ? MoveTemp(InClock) : TFunction<double()>([] { return FPlatformTime::Seconds(); })),
+      Coordinator(MakeShared<FRPGTradeCoordinator>(Transport, Clock)) {}
+TSharedRef<FRPGTradeLobbyOwner> FRPGTradeLobbyOwner::Create(TSharedRef<IRPGTradeTransport> Transport, FContext Context, TFunction<double()> Clock)
+{
+    auto Owner = MakeShared<FRPGTradeLobbyOwner>(Transport, MoveTemp(Context), MoveTemp(Clock));
+    TWeakPtr<FRPGTradeLobbyOwner> WeakOwner = Owner;
+    Owner->Coordinator->OnChanged = [WeakOwner] { if (auto Self = WeakOwner.Pin()) Self->Changed(); };
+    return Owner;
+}
+FRPGTradeLobbyOwner::~FRPGTradeLobbyOwner() { Shutdown(); }
+void FRPGTradeLobbyOwner::Shutdown()
+{
+    bEnding = true; Coordinator->OnChanged = {}; Coordinator->Reset(); OnChanged.Clear();
+}
+void FRPGTradeLobbyOwner::Changed() { if (!bEnding) OnChanged.Broadcast(); }
+bool FRPGTradeLobbyOwner::HasLiveTrade() const
+{ const auto* S = GetClient().GetSession(); return GetClient().GetPending() || (S && S->IsOpen()); }
+bool FRPGTradeLobbyOwner::IsAvailable() const { return !bEnding && (Current.bEnabled || HasLiveTrade()); }
+bool FRPGTradeLobbyOwner::BlocksTransitions() const { return !bEnding && (HasLiveTrade() || Coordinator->IsBusy()); }
+bool FRPGTradeLobbyOwner::Update(bool bPoll)
+{
+    if (bEnding || !Context) return false;
+    const auto KeepAlive = AsShared();
+    const auto Next = Context();
+    const bool bFrameChanged = !(Current == Next);
+    Current = Next;
+    if (Current.Account != Account || Current.Endpoint != Endpoint)
+    {
+        if (!Account.IsEmpty()) BlockedSelection = Current.Character;
+        Coordinator->Reset(); BoundCharacter.Invalidate();
+        Account = Current.Account; Endpoint = Current.Endpoint; NextPoll = 0;
+        Changed();
+        if (bEnding) return false;
+    }
+    if (!Current.Character.IsValid()) BlockedSelection.Invalidate();
+    if (Account.IsEmpty() || Endpoint.IsEmpty()) return false;
+    const bool bCanBind = Current.bEnabled && Current.bEligible && Current.Character.IsValid() && Current.Character != BlockedSelection;
+    if (bCanBind && Current.Character != BoundCharacter && !HasLiveTrade() && !Coordinator->IsBusy())
+    {
+        BoundCharacter = Current.Character;
+        if (!Coordinator->SelectCharacter(BoundCharacter)) { BoundCharacter.Invalidate(); return false; }
+        NextPoll = 0;
+    }
+    // A direct external selection change must not discard a previous character's uncertain write.
+    Coordinator->Pump(bPoll && Current.bLocalLobby && Current.bAuthenticated);
+    if (bEnding) return false;
+    const bool bCanAct = BoundCharacter.IsValid() && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible;
+    const double Now = Clock();
+    if (bPoll && bCanAct && FMath::IsFinite(Now) && Now >= NextPoll && !Coordinator->IsBusy() && !GetClient().GetPending())
+    {
+        const auto* S = GetClient().GetSession();
+        if (!S || S->IsOpen())
+        {
+            NextPoll = Now + 2.0;
+            Coordinator->Refresh(S ? S->TradeId : FGuid());
+            Changed();
+        }
+    }
+    if (bFrameChanged) Changed();
+    return bCanAct && !bEnding;
+}
+void FRPGTradeLobbyOwner::Tick() { Update(true); }
+bool FRPGTradeLobbyOwner::Refresh()
+{
+    if (!Update(false) || Coordinator->IsBusy()) return false;
+    const auto* S = GetClient().GetSession();
+    const auto* P = GetClient().GetPending();
+    const bool Sent = Coordinator->Refresh(S ? S->TradeId : P ? P->TradeId : FGuid());
+    Changed(); return Sent;
+}
+bool FRPGTradeLobbyOwner::Retry()
+{
+    if (!Update(false)) return false;
+    const bool Sent = Coordinator->Retry(); Changed(); return Sent;
+}
+bool FRPGTradeLobbyOwner::Submit(ERPGTradeAction Action)
+{
+    if (!Update(false) || Coordinator->IsBusy() || GetClient().GetPending()) return false;
+    if (Action != ERPGTradeAction::Accept && Action != ERPGTradeAction::Cancel && Action != ERPGTradeAction::Withdraw) return false;
+    if (Action == ERPGTradeAction::Accept && (!Current.bEnabled || Current.Character != BoundCharacter)) return false;
+    const bool Sent = Coordinator->Submit(Action); Changed(); return Sent;
+}
+void FRPGTradeLobbyOwner::DismissClosed()
+{
+    const auto* S = GetClient().GetSession();
+    if (S && !S->IsOpen() && Coordinator->ClearClosedSession()) { NextPoll = 0; Changed(); }
+}
+FRPGTradeLobbyView FRPGTradeLobbyOwner::GetView() const
+{
+    FRPGTradeLobbyView V;
+    const auto* S = GetClient().GetSession();
+    const auto* P = GetClient().GetPending();
+    const bool Eligible = !bEnding && BoundCharacter.IsValid() && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible;
+    const bool Free = Eligible && !Coordinator->IsBusy() && !P;
+    V.bRefresh = Eligible && !Coordinator->IsBusy(); V.bRetry = Eligible && P && !Coordinator->IsBusy();
+    V.bAccept = Free && Current.bEnabled && Current.Character == BoundCharacter && S && S->Status == ERPGTradeStatus::Invited && BoundCharacter == S->InviteeCharacterId;
+    V.bCancel = Free && S && S->IsOpen(); V.bWithdraw = Free && S && S->Status == ERPGTradeStatus::Negotiating;
+    if (!Current.bLocalLobby) V.Status = NSLOCTEXT("RPGTrade", "LobbyOnly", "로비에서 거래 상태를 확인할 수 있습니다.");
+    else if (P) V.Status = NSLOCTEXT("RPGTrade", "Unknown", "거래 요청의 처리 결과를 확인하고 있습니다. 새 요청을 보내기 전에 결과를 확인하세요.");
+    else if (!Current.bAuthenticated) V.Status = NSLOCTEXT("RPGTrade", "Login", "같은 계정으로 다시 로그인해 거래를 확인하세요.");
+    else if (!S) V.Status = NSLOCTEXT("RPGTrade", "Empty", "진행 중인 거래가 없습니다.");
+    else switch (S->Status)
+    {
+    case ERPGTradeStatus::Invited: V.Status = NSLOCTEXT("RPGTrade", "Invited", "거래 초대를 확인하세요. 수락 후 제안을 준비할 수 있습니다."); break;
+    case ERPGTradeStatus::Negotiating: V.Status = NSLOCTEXT("RPGTrade", "Negotiating", "거래 제안을 준비 중입니다."); break;
+    case ERPGTradeStatus::Completed: V.Status = NSLOCTEXT("RPGTrade", "Completed", "거래가 완료되었습니다."); break;
+    case ERPGTradeStatus::Cancelled: V.Status = NSLOCTEXT("RPGTrade", "Cancelled", "거래가 취소되었습니다."); break;
+    case ERPGTradeStatus::Expired: V.Status = NSLOCTEXT("RPGTrade", "Expired", "거래 시간이 만료되었습니다."); break;
+    }
+    if (!P && Coordinator->GetLastResponse() == ERPGTradeResponse::Rejected && (!S || S->IsOpen()))
+        V.Status = NSLOCTEXT("RPGTrade", "Rejected", "거래 요청을 처리할 수 없습니다. 현재 상태를 다시 확인하세요.");
+    if (S)
+    {
+        auto Summary = [](const FRPGTradeOffer& O)
+        { return FText::Format(NSLOCTEXT("RPGTrade", "OfferSummary", "물품 {0}종 · 재화 {1}"), FText::AsNumber(O.Items.Num()), FText::AsNumber(O.CurrencyAmount)); };
+        const bool First = BoundCharacter == S->InitiatorCharacterId;
+        V.MyOffer = Summary(First ? S->InitiatorOffer : S->InviteeOffer);
+        V.OtherOffer = Summary(First ? S->InviteeOffer : S->InitiatorOffer);
+    }
+    return V;
+}

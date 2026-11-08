@@ -17,7 +17,8 @@ public:
     bool Invite(FGuid Invitee);
     bool Submit(ERPGTradeAction Action, const FRPGTradeOffer* Offer = nullptr);
     bool Retry();
-    void Pump();
+    // Identity changes are still observed when lobby dispatch is paused.
+    void Pump(bool bAllowDispatch = true);
     bool ClearClosedSession() { return Client.ClearClosedSession(); }
     const FRPGTradeClient& GetClient() const { return Client; }
     bool IsBusy() const { return bBusy; }

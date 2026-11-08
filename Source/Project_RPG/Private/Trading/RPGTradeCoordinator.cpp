@@ -115,8 +115,8 @@ void FRPGTradeCoordinator::UpdateTime()
     if (!FMath::IsFinite(NowSeconds) || NowSeconds < 0) return;
     Now = FMath::Max(Now, NowSeconds);
 }
-void FRPGTradeCoordinator::Pump()
+void FRPGTradeCoordinator::Pump(bool bAllowDispatch)
 {
     UpdateTime();
-    if (SyncContext() && Retries < 6) Dispatch();
+    if (SyncContext() && bAllowDispatch && Retries < 6) Dispatch();
 }

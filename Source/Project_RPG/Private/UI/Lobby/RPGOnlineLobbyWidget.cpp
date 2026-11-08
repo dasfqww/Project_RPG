@@ -2,6 +2,8 @@
 #include "UI/Lobby/RPGCharacterConfigurationWidget.h"
 #include "UI/Lobby/RPGEquipmentGrowthWidget.h"
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
+#include "UI/Lobby/RPGTradeWidget.h"
+#include "Trading/RPGTradeSubsystem.h"
 #include "Narrative/RPGNarrativeCoordinator.h"
 #include "Engine/LocalPlayer.h"
 
@@ -342,6 +344,7 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 	BIND_ACTION("ReloadTutorialProgressButton", ReloadTutorialProgress);
 	BIND_ACTION("OpenSkillMenuButton", OpenSkillMenu);
 	BIND_ACTION("OpenEquipmentMenuButton", OpenEquipmentMenu);
+	BIND_ACTION("OpenTradeMenuButton", OpenTradeMenu);
 	BIND_ACTION("OpenStoryMenuButton", OpenStoryMenu);
 	BIND_ACTION("OpenDungeonMenuButton", OpenDungeonMenu);
 	BIND_ACTION("CloseLobbyDetailsButton", CloseLobbyDetails);
@@ -416,6 +419,8 @@ void URPGOnlineLobbyWidget::NativeDestruct()
 {
 	UnbindServiceStatus();
 	if (NarrativePanel) NarrativePanel->CloseScreen();
+	if (TradePanel) { TradePanel->OnClosed.RemoveAll(this); TradePanel->CloseScreen(); }
+	TradePanel = nullptr;
 	NarrativePanel = nullptr;
 	bTutorialEntryActive = bTutorialResolvingSession = false;
 	TutorialAccount.Reset(); TutorialCharacter.Reset(); TutorialDungeonId.Reset();
@@ -464,7 +469,9 @@ bool URPGOnlineLobbyWidget::HasOwnedSelection() const
 bool URPGOnlineLobbyWidget::IsFrontendRequestInFlight() const
 {
 	const auto* Narrative = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGNarrativeCoordinator>() : nullptr;
+	auto* Trades = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGTradeSubsystem>() : nullptr;
 	return bLoadingCharacters || bCreatingCharacter || bLoggingIn || bLoggingOut || bAbandonmentConfirmationOpen
+		|| (Trades && Trades->BlocksTransitions())
 		|| (Narrative && (Narrative->IsBusy() || Narrative->HasPendingChoice()))
 		|| (Web && Web->IsPlayerProgressionRequestInFlight())
 		|| (ConfigurationPanel && (ConfigurationPanel->IsRequestInFlight() || ConfigurationPanel->HasUnresolvedSave()))
@@ -550,6 +557,11 @@ FRPGOnlineLobbyPresentation URPGOnlineLobbyWidget::CurrentPresentation() const
 	if (Narrative && (Narrative->IsBusy() || Narrative->HasPendingChoice()))
 	{
 		View.bCanSelectCharacter = View.bCanCreateSession = View.bCanResume = View.bCanEnter = false;
+	}
+	if (auto* Trades = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGTradeSubsystem>() : nullptr; Trades && Trades->BlocksTransitions())
+	{
+		View.bCanSelectCharacter = View.bCanCreateSession = View.bCanResume = View.bCanEnter = false;
+		View.bBusy = true;
 	}
 	if (IsServiceAdmissionBlocked(TEXT("EnterDungeonButton"))) View.bCanLogin = View.bCanCreateSession = View.bCanEnter = false;
 	return View;
