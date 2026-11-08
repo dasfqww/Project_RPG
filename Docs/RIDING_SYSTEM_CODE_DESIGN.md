@@ -1,7 +1,7 @@
 # Riding 코드 설계 — M1 상태·세션·탑승 기반
 
 - 작성: 2026-11-06 / 담당: `riding-code-design-20261106`
-- 상태: **M1a 값 로직·Actor 연결과 M1b 기본 외형·CMC 이동/예측·권위 보정 구현. 분리 전체 Editor 빌드/링크·Riding/감속/제어36 통과, 기존 권한 폐기 검사1 실패는14절에 별도 기록했다. 제품 보유 snapshot/API와 다인 네트워크 검증은 후속이다.**
+- 상태: **M1a 값 로직·Actor 연결과 M1b 기본 외형·CMC 이동/예측·권위 보정·서버 기본 구역 판정 구현. 이동36개/기존 권한 폐기1 실패는14절, 구역 검증은15절을 따른다. 제품 보유 snapshot/API·실제 맵 배치·다인 네트워크 검증은 후속이다.**
 - 기준: [기능 계약](RIDING_SYSTEM_DESIGN.md), [아키텍처와 HUD 인계](RIDING_SYSTEM_ARCHITECTURE.md), 게시 `d546e392`의 관련 기존 소스. 재개 시 게시 HEAD `2971c97c`와 별도 담당의 미커밋 `Docs/ACTION_BAR_CONTEXT.md`/`UI/ActionBar` 계약을 추가 대조했다. 공용 코드의 빌드/검증 완료 주장은 아니다.
 - 목적: 첫 구현에서 만들 타입, 접근 제한, 판정 순서, 상태 수명, 검사 기준을 정한다. M2 액션 실행/M3 영속 저장은 포트만 정의하고 구현 완료로 취급하지 않는다.
 
@@ -415,3 +415,21 @@ CMC는 기존 도보 속도/제약 계산과 SavedMove·packed move/response가 
 확장한37개 전체 gate는 **false**다. 기존 `ProjectRPG.Online.DungeonAuthorityRevocation.Gameplay`의 `RPGDungeonGameplayRevocationTests.cpp:108` 양성 대조1이 실패했다. 이 fixture는 비활성 NewAction과 임의 key101로 RPC 캐시 생성 성공을 기대하지만 게시 `AdmitGenericReplicatedEvent`는 활성 spec과 실제 activation key를 요구한다. 두 파일이 기준 게시 사본과 같음을 확인했으며 이 단위에서 수정하지 않았다. 독립 기준 DLL 재실행은 하지 않았으므로 기준 실행 실패를 실측했다고 주장하지 않는다. 해당 case의 나머지 폐기 후 로컬/queued CMC 이동 차단 assertion은 통과했지만 전체 case 성공으로 표시하지 않는다. 러너는 실패를 계속 반환하며 이 기존 fixture/계약 조율은 해당 범위의 후속 인계다. 기동 자동화 등록 오류15·환경 ACL 경고 등은 검사 전 로그와 구분한다.
 
 자기 사본/OBJ/DLL/PDB/runtime/cache **6,485,292,014 bytes(약6.04GiB)**와 Content 등 읽기 junction7개를 최종 실패 종료의 finally에서 정리했다. 자기 실행/Temp/새 정리 예외0, 원본 Content/게임 DLL·공유 출력·타 담당 소스는 보존했다. 작은 명령/해시/결과/실패 원인 로그만 유지하며, DLL 해시는 폐기된 당시의 증거다. 기존 로그 정리 자동 승인 거절 예외와 공유 엔진 trace/cache는 이번 정리 범위에 넣지 않았다.
+
+## 15. 서버 구역 판정과 이동 경계 — 2026-11-08
+
+[WorldPolicy](../Source/Project_RPG/Public/Riding/RPGRidingWorldPolicy.h)는 Game/PIE World의 서버 전용 조회이며 기본값은 Deny다. [RegionVolume](../Source/Project_RPG/Public/Riding/RPGRidingRegionVolume.h)은 명시적 Allow, 그 하위 `ARPGNoRidingVolume`은 항상 Deny다. 정책 Box는 충돌/overlap/navigation/복제를 사용하지 않는다. 기존 캡슐과 실제 맵의 물리 충돌은 CMC가 계속 담당한다.
+
+- 서버 탑승/교체와 무작위 즐겨찾기 후보에 실제 캡슐 위치·정의 RegionTags를 사용한다. OnFoot의 입력이나 클라이언트 구역 ID로 허용을 만들지 않는다. 탑승 중 현재 위치/준비·정책 변화는 기존 서버 가드에서 재평가하고, 거절되면 Region 사유로 현재 리비전의 OnFoot를 발행한다.
+- 허용 영역은 캡슐 전체가 Box 안에 들어와야 한다. 금지/제한 영역은 캡슐의 투영 외곽을 Box에 확장해 보수적으로 접촉을 판정한다. 회전·비균일 scale을 반영하며 모서리에서는 실제 둥근 캡슐보다 일찍 거절할 수 있다. 여러 Allow 중 비어 있지 않은 AllowMountTags는 정확한 태그의 교집합을 요구한다. 큰 무제한 Allow와 겹쳐도 작은 제한 영역의 부분 접촉을 우회할 수 없다. 빈 교집합과 모든 Deny가 우선한다.
+- 이동 경로를 각 Box 진입/이탈 시점으로 나누어 양 끝과 구간 내부를 평가한다. 얇은 금지 Box를 시작/끝 위치가 모두 바깥인 채 건너뛰어도 첫 접촉 비율을 반환한다. 정규 지면 이동·sweep/slide/step 등 Player CMC의 `MoveUpdatedComponentImpl` 호출에서 이 비율까지만 이동시키고 서버 하차를 먼저 발행한다. 겹침 이벤트나 Tick 빈도에만 의존하지 않는다. 이후 OnFoot는 기존 물리 규칙으로 이동하며 구역 자체를 벽으로 만들지 않는다.
+- CMC는 예정 경로의 실제 캡슐 시작점을 전달한다. 비유한 값/현재 위치와 다른 시작점은 거절한다. 상태 통지 callback이 위치를 바꾸면 오래된 이동량을 재적용하지 않는다. 상태가 이동 중 바뀌면 기존 packed move 보정도 요청한다. 게임플레이 권한 폐기 가드가 이 경로보다 우선한다.
+- 쿼리마다 현재 살아 있는 정책 액터를 다시 읽는다. 파괴/정책 위치 변경의 오래된 overlap 캐시를 유지하지 않는다. 정책 액터128/태그64 상한, 미등록/잘못된 bounds·비유한 값은 Deny다. 가시성 전환 중이거나 항상 로드할 레벨이 미준비여도 Deny다.
+
+저작 시 정책 액터는 항상 로드되는 레벨에 두고 World Partition의 공간 로딩 기본값을 끈 상태로 유지한다(생성자 기본값). 금지 정책을 포함한 Data Layer/일반 스트리밍 레벨을 임의로 언로드하면서 다른 Allow만 남기는 구성은 지원하지 않는다. 기존 맵에는 Allow를 자동 배치하지 않았다. 이 단위의 native 검사는 합성 Box/서버 Actor이며 실제 맵 배치·World Partition/Data Layer 운용·움직이는 발판·외부 teleport·다인 Iris/GPU/패키징 검증과 구분한다. CMC를 우회하는 이동은 이동 전에 하차하거나 별도 경로 검증을 연결해야 한다. 제품 보유 snapshot/API의 NotReady 경계도 유지한다.
+
+`Run-RidingFoundationTests.ps1 -IncludeWorld`는 실제 지역 코드와 기반/세션/Actor를 최소 모듈로 컴파일·링크하고 기본 Deny/수명, 고속·회전 Box/캡슐 여유, 제한 태그 교집합, 실제 서버 탑승 거절/경계 하차를 검사한다. `Run-RidingIntegrationCompile.ps1 -IncludeWorld`는 게시 전체 프로젝트 사본의 UHT와 실제 CMC/Component/WorldPolicy/Volume CPP4를 집중 컴파일한다. 이는 전체 게임 모듈 링크나 현재 CMC DLL의 실행 검사가 아니다. 이전14절의 전체 Editor/이동 실행 근거와도 별도다.
+
+최종 근거는 `Saved/BuildChecks/RidingRegions-20261108/Completion.json`이다. 게시 `fb5b0176`+본인 고정 입력의 native `c82c4915e02b4706ac687c7b543720f6`에서 UHT/23단계 빌드·링크0·같은 `A2376D59…422571A` DLL의 기존15+구역4 **19 Success·검사 오류/경고0·UE0**, 하차 callback의 위치 변경 후 과거 이동 비율 무효화까지 확인했다. `Integration-50f16a9e8e07444e9e4def2fa4f10c99`는 전체 프로젝트 UHT/실제 CPP4 컴파일0이며 실행 DLL을 만들지 않았다. 두 최종 cohort의 고유 입력30 SHA가 현재 원본과 모두 일치했다.
+
+첫 native19는 모두 Success였지만 월드 컨텍스트 없는 DestroyActor 경고6으로 strict gate가 실패했다. 컨텍스트 보완 후 두 번째19는 오류/경고0이었으나 검증 도중 보강한 callback 보호와 소스가 달라 input gate가 실패했다. 위 마지막19를 별도 최종 근거로 사용하며 앞선 통과 컴파일도 당시 소스와 구분한다. 자기6회 사본/PCH/OBJ/DLL/PDB/runtime/cache **8,537,945,925 bytes(약7.95GiB)**를 finally 폐기했고 실행/Temp/새 정리 예외0이다. 원본 DLL·에셋·공유 출력/trace/cache·이전 로그 정리 예외·타 담당 소스는 보존했고, 작은 결과/명령/해시/원인 로그만 남겼다. 폐기한 DLL 해시는 당시 증거다.

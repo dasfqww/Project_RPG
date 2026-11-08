@@ -1,14 +1,15 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation)
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation, [switch]$IncludeWorld)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
 if ($IncludePresentation) { $IncludeActors = $true }
+if ($IncludeWorld) { $IncludeActors = $true }
 if ($IncludeActors) { $IncludeSession = $true }
-$suite = if ($IncludePresentation) { 'RidingPresentation' } elseif ($IncludeActors) { 'RidingActors' } elseif ($IncludeSession) { 'RidingSession' } else { 'RidingFoundation' }
-$reservation = if ($IncludePresentation) { 'riding-presentation-20261108' } elseif ($IncludeActors) { 'riding-actors-20261106' } elseif ($IncludeSession) { 'riding-session-20261106' } else { 'riding-foundation-20261106' }
+$suite = if ($IncludeWorld) { 'RidingRegions' } elseif ($IncludePresentation) { 'RidingPresentation' } elseif ($IncludeActors) { 'RidingActors' } elseif ($IncludeSession) { 'RidingSession' } else { 'RidingFoundation' }
+$reservation = if ($IncludeWorld) { 'riding-regions-20261108' } elseif ($IncludePresentation) { 'riding-presentation-20261108' } elseif ($IncludeActors) { 'riding-actors-20261106' } elseif ($IncludeSession) { 'riding-session-20261106' } else { 'riding-foundation-20261106' }
 $testFilter = if ($IncludeSession) { 'ProjectRPG.Riding' } else { 'ProjectRPG.Riding.Foundation' }
-$proofDate = if ($IncludePresentation) { '20261108' } else { '20261106' }
+$proofDate = if ($IncludePresentation -or $IncludeWorld) { '20261108' } else { '20261106' }
 $proofRoot = Join-Path $workspace ('Saved/BuildChecks/' + $suite + '-' + $proofDate + '/' + $id)
 $tempRoot = Join-Path $workspace 'Saved/RF'
 $temp = Join-Path $tempRoot $id.Substring(0,8)
@@ -51,11 +52,12 @@ try {
     }
     if ($IncludeActors) {
         $files += @('Source/Project_RPG/Private/Tests/RPGRidingActorTests.h','Source/Project_RPG/Private/Tests/RPGRidingActorTests.cpp','Source/Project_RPG/Public/Component/PawnExtensionComponentBase.h','Source/Project_RPG/Private/Component/PawnExtensionComponentBase.cpp')
-        foreach ($name in @('RPGRidingSessionComponent','RPGRidingComponent')) {
+        foreach ($name in @('RPGRidingSessionComponent','RPGRidingComponent','RPGRidingWorldPolicy','RPGRidingRegionVolume')) {
             $files += 'Source/Project_RPG/Public/Riding/' + $name + '.h'
             $files += 'Source/Project_RPG/Private/Riding/' + $name + '.cpp'
         }
     }
+    if ($IncludeWorld) { $files += 'Source/Project_RPG/Private/Tests/RPGRidingWorldTests.cpp' }
     if ($IncludePresentation) {
         $files += @('Source/Project_RPG/Public/Riding/RPGRidingPresentationComponent.h','Source/Project_RPG/Private/Riding/RPGRidingPresentationComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingPresentationTests.cpp')
     }
@@ -76,6 +78,14 @@ try {
     if ($IncludeActors) {
         $cuePath = if ($IncludePresentation) { '/Game/GreatswordComboPack' } else { '/Game/' }
         Write-Utf8 (Join-Path $project 'Config/DefaultGame.ini') ("[/Script/GameplayAbilities.AbilitySystemGlobals]`n+GameplayCueNotifyPaths="+$cuePath+"`n")
+    }
+    if ($IncludeWorld) {
+        Write-Utf8 (Join-Path $project 'Config/DefaultGameplayTags.ini') @'
+[/Script/GameplayTags.GameplayTagsSettings]
+ImportTagsFromConfig=True
++GameplayTagList=(Tag="Riding.Test.A",DevComment="Test only")
++GameplayTagList=(Tag="Riding.Test.B",DevComment="Test only")
+'@
     }
     Write-Utf8 (Join-Path $project 'Source/RidingFoundationEditor.Target.cs') @'
 using UnrealBuildTool;
@@ -148,6 +158,9 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingFounda
     }
     if ($IncludePresentation) {
         $expected += @('Async','Lifecycle','Replacement','Failure','Reentry') | ForEach-Object {'ProjectRPG.Riding.Presentation.'+$_}
+    }
+    if ($IncludeWorld) {
+        $expected += @('DefaultAndLifecycle','SweptPath','RestrictionIntersection','AuthorityTransitions') | ForEach-Object {'ProjectRPG.Riding.World.'+$_}
     }
     if ((Compare-Object $expected @($proof.Tests.fullTestPath)) -or @($proof.Tests | Where-Object {$_.state -ne 'Success' -or $_.errors -ne 0 -or $_.warnings -ne 0}).Count) { throw 'Missing or failing native cases' }
     foreach ($inputFile in $proof.Inputs) {

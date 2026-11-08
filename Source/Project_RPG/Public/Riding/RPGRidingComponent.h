@@ -36,6 +36,8 @@ public:
     bool TryBuildMovementProfile(FRPGRidingMovementProfile& Out) const;
     /** Server movement entrypoints revalidate guards before simulating an accepted move. */
     void ValidateServerMovementContext();
+    /** Server CMC: fraction of a proposed capsule segment permitted while mounted; may end Riding. */
+    double ConstrainServerMovement(const FVector& Start, const FVector& End);
 
 private:
     friend class URPGRidingSessionComponent;
@@ -56,6 +58,7 @@ private:
     bool ApplyMovementCorrection(const FRPGRidingRepState& Incoming);
     void MakeOnFoot(ERPGRidingEndReason Reason);
     void BuildGuards(FRPGRidingEvaluationContext& Out) const;
+    bool IsRegionAllowed(const URPGMountDefinition& Definition) const;
     const URPGMountDefinition* FindDefinition(const FString& Id) const;
     TWeakObjectPtr<URPGRidingSessionComponent> Session;
     TWeakObjectPtr<AController> Controller;

@@ -10,6 +10,32 @@ URPGPlayerMovementComponent::URPGPlayerMovementComponent()
     SetMoveResponseDataContainer(RidingResponse);
 }
 
+bool URPGPlayerMovementComponent::MoveUpdatedComponentImpl(const FVector& Delta, const FQuat& NewRotation,
+    bool bSweep, FHitResult* OutHit, ETeleportType Teleport)
+{
+    if (IsRevokedOnServer()) { if (OutHit) *OutHit = FHitResult(); return false; }
+    FVector AllowedDelta = Delta;
+    if (CharacterOwner && CharacterOwner->HasAuthority() && UpdatedComponent)
+        if (auto* Riding = CharacterOwner->FindComponentByClass<URPGRidingComponent>())
+        {
+            const TWeakObjectPtr<USceneComponent> OriginalComponent = UpdatedComponent;
+            const auto* OriginalController = CharacterOwner->GetController();
+            const FGuid OriginalEpoch = Riding->GetRidingState().Key.RiderEpoch;
+            const FVector Start = UpdatedComponent->GetComponentLocation();
+            const double Fraction = Riding->ConstrainServerMovement(Start, Start + Delta);
+            // Region dismount publishes callbacks: do not apply old input/rotation to a revoked or replaced context.
+            if (IsRevokedOnServer() || !IsValid(CharacterOwner) || !IsValid(Riding) || !OriginalComponent.IsValid()
+                || UpdatedComponent != OriginalComponent.Get() || CharacterOwner->GetController() != OriginalController
+                || Riding->GetRidingState().Key.RiderEpoch != OriginalEpoch
+                || !UpdatedComponent->GetComponentLocation().Equals(Start, 0.001))
+            { if (OutHit) *OutHit = FHitResult(); return false; }
+            AllowedDelta = Delta * Fraction;
+            if (bEvaluatingRidingMove && (!bHasRidingStamp || !(EvaluatedStamp == FRPGRidingMoveStamp::FromState(Riding->GetRidingState()))))
+                GetPredictionData_Server_Character()->bForceClientUpdate = true;
+        }
+    return Super::MoveUpdatedComponentImpl(AllowedDelta, NewRotation, bSweep, OutHit, Teleport);
+}
+
 bool URPGPlayerMovementComponent::TryGetRidingProfile(FRPGRidingMovementProfile& Out) const
 {
     Out = {};

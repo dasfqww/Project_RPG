@@ -3,6 +3,8 @@
 #include "Riding/RPGRidingSession.h"
 #include "Riding/RPGRidingStatePolicy.h"
 #include "Riding/RPGMountDefinition.h"
+#include "Riding/RPGRidingWorldPolicy.h"
+#include "Components/CapsuleComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "Abilities/GameplayAbility.h"
@@ -129,9 +131,20 @@ bool URPGRidingComponent::TryBuildMovementProfile(FRPGRidingMovementProfile& Out
         if (!IsBindingCurrent()) return false;
         FRPGRidingEvaluationContext Guards; BuildGuards(Guards);
         if (!Guards.bReady || !Guards.bAlive || Guards.bActionBlocked || Guards.bSlowActive || !Guards.bOnGround) return false;
+        const auto* Definition = FindDefinition(State.MountId);
+        if (!Definition || !IsRegionAllowed(*Definition)) return false;
     }
     Out = State.Movement;
     return true;
+}
+
+bool URPGRidingComponent::IsRegionAllowed(const URPGMountDefinition& Definition) const
+{
+    const auto* Character = Cast<ACharacter>(GetOwner());
+    const auto* Policy = GetWorld() ? GetWorld()->GetSubsystem<URPGRidingWorldPolicy>() : nullptr;
+    if (!Character || !Policy) return false;
+    const FVector Location = Character->GetCapsuleComponent()->GetComponentLocation();
+    return Policy->EvaluatePath(*Character, Location, Location, Definition.RegionTags).bAllowed;
 }
 
 bool URPGRidingComponent::ApplyMovementCorrection(const FRPGRidingRepState& Incoming)
@@ -223,7 +236,7 @@ void URPGRidingComponent::ServerSetRiding_Implementation(FRPGRidingSetCommand Co
             {
                 TArray<FString> Eligible;
                 for (const auto& Favorite : Owned.Favorites)
-                    if (const auto* Definition = FindDefinition(Favorite); Definition && Definition->RegionTags.IsEmpty()) Eligible.Add(Favorite);
+                    if (const auto* Definition = FindDefinition(Favorite); Definition && IsRegionAllowed(*Definition)) Eligible.Add(Favorite);
                 Id = Eligible.IsEmpty() ? FString() : Eligible[FMath::RandHelper(Eligible.Num())];
             }
             Context.CandidateMountId = Id;
@@ -232,8 +245,7 @@ void URPGRidingComponent::ServerSetRiding_Implementation(FRPGRidingSetCommand Co
             {
                 Context.CandidateDefinitionVersion = Definition->DefinitionVersion;
                 Context.bDefinitionCompatible = true;
-                // Restricted definitions fail closed until the authoritative region adapter is connected in M1b.
-                Context.bRegionAllowed = Definition->RegionTags.IsEmpty();
+                Context.bRegionAllowed = IsRegionAllowed(*Definition);
             }
         }
         const auto Decision = RPGRidingStatePolicy::Evaluate(Context, Command);
@@ -319,6 +331,30 @@ void URPGRidingComponent::ValidateServerMovementContext()
     else if (!Context.bReady) ForceDismount(ERPGRidingEndReason::ContextLost);
     else if (Context.bActionBlocked || Context.bSlowActive) ForceDismount(ERPGRidingEndReason::Control);
     else if (!Context.bOnGround) ForceDismount(ERPGRidingEndReason::MovementMode);
+    else if (const auto* Definition = FindDefinition(State.MountId); !Definition || !IsRegionAllowed(*Definition))
+        ForceDismount(ERPGRidingEndReason::Region);
+}
+
+double URPGRidingComponent::ConstrainServerMovement(const FVector& Start, const FVector& End)
+{
+    const auto* Character = Cast<ACharacter>(GetOwner());
+    if (!Character || !Character->HasAuthority() || State.Mode != ERPGRidingMode::Mounted) return 1;
+    ValidateServerMovementContext();
+    if (State.Mode != ERPGRidingMode::Mounted) return 0;
+    if (Start.ContainsNaN() || End.ContainsNaN()
+        || !Start.Equals(Character->GetCapsuleComponent()->GetComponentLocation(), 0.01))
+    { ForceDismount(ERPGRidingEndReason::Region); return 0; }
+    const auto* Definition = FindDefinition(State.MountId);
+    const auto* Policy = GetWorld()->GetSubsystem<URPGRidingWorldPolicy>();
+    const auto Result = Definition && Policy ? Policy->EvaluatePath(*Character, Start, End, Definition->RegionTags) : FRPGRidingPathPermission{};
+    if (!Result.bAllowed)
+    {
+        const auto Epoch = State.Key.RiderEpoch;
+        ForceDismount(ERPGRidingEndReason::Region);
+        if (!IsBindingCurrent() || State.Key.RiderEpoch != Epoch
+            || !Start.Equals(Character->GetCapsuleComponent()->GetComponentLocation(), 0.01)) return 0;
+    }
+    return Result.bAllowed ? 1 : FMath::Clamp(Result.SafeFraction, 0., 1.);
 }
 void URPGRidingComponent::EndPlay(const EEndPlayReason::Type Reason)
 {

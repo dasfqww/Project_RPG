@@ -23,6 +23,8 @@ public:
         const FVector& RelativeLocation, FMovementBaseInterfaceData* Base, FName Bone, uint8 Mode) override;
 protected:
     virtual bool TryGetRidingProfile(FRPGRidingMovementProfile& Out) const override;
+    virtual bool MoveUpdatedComponentImpl(const FVector& Delta, const FQuat& NewRotation, bool bSweep,
+        FHitResult* OutHit = nullptr, ETeleportType Teleport = ETeleportType::None) override;
 private:
 #if WITH_DEV_AUTOMATION_TESTS
     friend struct FRPGRidingMovementTestAccess;

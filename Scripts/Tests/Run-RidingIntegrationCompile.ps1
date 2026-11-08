@@ -1,10 +1,10 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $run=[Guid]::NewGuid().ToString('N')
-$proofFolder = if ($IncludePresentation) { 'RidingPresentation-20261108' } else { 'RidingActors-20261106' }
-$reservation = if ($IncludePresentation) { 'riding-presentation-20261108' } else { 'riding-actors-20261106' }
+$proofFolder = if ($IncludeWorld) { 'RidingRegions-20261108' } elseif ($IncludePresentation) { 'RidingPresentation-20261108' } else { 'RidingActors-20261106' }
+$reservation = if ($IncludeWorld) { 'riding-regions-20261108' } elseif ($IncludePresentation) { 'riding-presentation-20261108' } else { 'riding-actors-20261106' }
 $proofRoot=Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/Integration-'+$run)
 $tempRoot=Join-Path $workspace 'Saved/RF'
 $temp=Join-Path $tempRoot $run.Substring(0,8)
@@ -50,6 +50,14 @@ try {
             $files+='Source/Project_RPG/Private/Riding/'+$name+'.cpp'
         }
     }
+    if ($IncludeWorld) {
+        $files=@()
+        foreach($name in @('RPGRidingComponent','RPGRidingWorldPolicy','RPGRidingRegionVolume')) {
+            $files+='Source/Project_RPG/Public/Riding/'+$name+'.h'
+            $files+='Source/Project_RPG/Private/Riding/'+$name+'.cpp'
+        }
+        $files+=@('Source/Project_RPG/Public/Component/RPGPlayerMovementComponent.h','Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingActorTests.cpp')
+    }
     foreach($relative in $files) {
         $source=Join-Path $workspace $relative
         $destination=Join-Path $project $relative
@@ -64,6 +72,7 @@ try {
     $compile=@('Source/Project_RPG/Private/Character/RPGPlayer.cpp','Source/Project_RPG/Private/Player/RPGPlayerState.cpp',
         'Source/Project_RPG/Private/GameMode/RPGGameModeBase.cpp','Source/Project_RPG/Private/GameMode/RPGGameModeRiding.cpp')
     if ($IncludePresentation) { $compile=@('Source/Project_RPG/Private/Character/RPGPlayer.cpp') }
+    if ($IncludeWorld) { $compile=@('Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Riding/RPGRidingWorldPolicy.cpp','Source/Project_RPG/Private/Riding/RPGRidingRegionVolume.cpp') }
     [IO.File]::WriteAllLines($fileList,@($compile|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
     $dotnet=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
     $ubt=Join-Path $EngineRoot 'Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll'

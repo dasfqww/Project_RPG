@@ -3,6 +3,8 @@
 #include "Riding/RPGRidingSessionComponent.h"
 #include "Riding/RPGRidingSession.h"
 #include "Riding/RPGMountDefinition.h"
+#include "Riding/RPGRidingRegionVolume.h"
+#include "Components/BoxComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
@@ -86,6 +88,8 @@ void RPGSetRidingVisualTestState(URPGRidingComponent& Component, const FRPGRidin
 
 void RPGPrepareRidingMovementTestSession(URPGRidingSessionComponent& Session, URPGRidingComponent& Riding)
 {
+    auto* Area = Riding.GetWorld()->SpawnActor<ARPGRidingRegionVolume>();
+    Area->Bounds->SetBoxExtent(FVector(10000));
     FRPGRidingActorTestAccess::Configure(Session);
     FRPGRidingActorTestAccess::Define(Riding);
     Riding.RefreshBinding();
@@ -110,6 +114,8 @@ namespace
         {
             const auto Init = UWorld::InitializationValues().AllowAudioPlayback(false).CreatePhysicsScene(false).CreateNavigation(false).CreateAISystem(false).ShouldSimulatePhysics(false);
             World = UWorld::CreateWorld(EWorldType::Game, false, NAME_None, nullptr, true, ERHIFeatureLevel::Num, &Init);
+            auto* Area = World->SpawnActor<ARPGRidingRegionVolume>();
+            Area->Bounds->SetBoxExtent(FVector(10000));
             Controller = World->SpawnActor<APlayerController>();
             PlayerState = World->SpawnActor<APlayerState>();
             Controller->SetPlayerState(PlayerState); PlayerState->SetOwner(Controller);
