@@ -18,13 +18,22 @@ public sealed class OperationsEventRecorder(OperationsLogStore store, Operations
     {
         Activity? activity = Activity.Current;
         bool hasTrace = activity is not null && activity.TraceId != default;
+        string operation = observation.Kind switch
+        {
+            GameTransactionKind.Item => "ItemTransaction.Commit",
+            GameTransactionKind.Currency => "CurrencyTransaction.Commit",
+            GameTransactionKind.DungeonPickup => "DungeonPickup.Commit",
+            _ => throw new ArgumentOutOfRangeException(nameof(observation))
+        };
         Write(new(1,Guid.NewGuid(),observation.Disposition == GameTransactionDisposition.Committed
                 ? "game.transaction.receipt.committed" : "game.transaction.receipt.replayed",
             clock.GetUtcNow(),"Information",options.EnvironmentId,"ProjectRpg.Backend",store.BootId,BuildVersion,httpRequestId,
             hasTrace ? activity!.TraceId.ToString() : null,hasTrace && activity!.SpanId != default ? activity.SpanId.ToString() : null,
             hasTrace && activity!.ParentSpanId != default ? activity.ParentSpanId.ToString() : null,
-            observation.Kind == GameTransactionKind.Item ? "ItemTransaction.Commit" : "CurrencyTransaction.Commit",null,
-            null,observation.CharacterId,null,null,null,observation.TransactionRequestId,null,null,
+            operation,null,null,observation.CharacterId,null,
+            observation.Kind == GameTransactionKind.DungeonPickup ? observation.DungeonSessionId : null,
+            null,observation.TransactionRequestId,
+            observation.Kind == GameTransactionKind.DungeonPickup ? observation.ItemId : null,null,
             observation.Disposition.ToString(),null,null,"GameTransaction"));
     }
     public void Observe(GameHttpObservation observation)

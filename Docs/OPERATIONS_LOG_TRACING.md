@@ -1,6 +1,6 @@
 # 운영툴 로그 추적 계약
 
-작성일: 2026-11-04 · 상세 확정: 2026-11-05 · 게임 HTTP/거래 영수증·화면 연결 탐색 반영: 2026-11-08 · 설계 v1.4 · 상태: 공통 계약과 구현 경계를 함께 기록, 모든 게임/UE 사건의 계측 완료를 뜻하지 않음
+작성일: 2026-11-04 · 상세 확정: 2026-11-05 · 게임 HTTP/거래·픽업 영수증·화면 연결 탐색 반영: 2026-11-08 · 설계 v1.5 · 상태: 공통 계약과 구현 경계를 함께 기록, 모든 게임/UE 사건의 계측 완료를 뜻하지 않음
 
 상위 문서: [운영툴 아키텍처](OPERATIONS_TOOL_ARCHITECTURE.md), [1인 개발 제작 계획](SOLO_OPERATIONS_TOOL_PLAN.md). 실제 sink·물리 JSON·버퍼·검색 알고리즘은 [구현 계약 §6](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md#6-로그의-실제-기록회전검색-구현)에서 확정한다.
 
@@ -85,7 +85,7 @@
 |---|---|
 | `ops.http.started/completed` | 요청 수신/최종 응답, 미인증/잘못된 입력 포함 |
 | `game.http.started/completed` — 선택 활성화 | `/api`의 서버 생성 시도 번호·실제 Activity·고정 라우트·최종 상태/소요 시간. 업무 ID와 UE 관측을 합성하지 않음 |
-| `game.transaction.receipt.committed/replayed` — 선택 활성화 | 두 거래 서비스가 확인한 확정/재생 영수증의 거래 ID → 실제 HTTP 시도/trace. 새 지급과 재생을 구분 |
+| `game.transaction.receipt.committed/replayed` — 선택 활성화 | 일반 아이템/재화·원자 픽업 서비스가 확인한 확정/재생 영수증의 거래 ID → 실제 HTTP 시도/trace. 새 지급과 재생을 구분 |
 | `ops.access.denied` | 운영 인증/권한 거절. 로그인 시도 원문/비밀번호 제외 |
 | `ops.character.query.completed/failed` | 캐릭터 검색·상세의 결과와 지연 |
 | `ops.storage.query.completed/failed` | 필요한 DB 조회 구간. SQL 원문·파라미터 덤프 제외 |
@@ -109,6 +109,12 @@ HTTP 어댑터 → 순수 Core `IGameHttpObserver` → Infrastructure writer 순
 `ItemTransactionService`와 `CurrencyTransactionService`는 저장소의 확정 또는 동일 명령 재생 결과를 받은 뒤에만 순수 Application `IGameTransactionObserver`를 호출한다. 기록 어댑터가 현재 게임 HTTP 경계와 연결하며 관측기 예외는 결과를 바꾸지 않는다. 호출 본문에서 로그 맥락을 추출하거나 로그를 위해 권위 저장소를 다시 조회하지 않는다. 두 이벤트는 같은 schemaVersion 1에 추가하며 기존 JSON 필드는 유지한다.
 
 `TransactionRequestId`는 반환된 영수증, 재화의 `CharacterId`는 확정 결과에서 가져온다. 아이템 actor·원래 세션/소유자·클라이언트 반영 여부를 추정하지 않는다. caller operation/reason/fingerprint/수량/잔액/품목/자격은 기록하지 않는다. 거절과 저장 예외에는 확정 영수증 이벤트를 만들지 않으며, 부재가 롤백 증거는 아니다. HTTP 밖의 호출이나 다른 직접 저장 경로로 계측 범위를 확대하지 않는다. [실행·검색·검증 경계](OPERATIONS_TOOL_RUNTIME.md#아이템재화-영수증과-http-연결)를 따른다.
+
+### 구현된 원자 픽업 연결 (2026-11-08)
+
+`DungeonPickupCommitService`는 같은 Application 관측 포트의 `DungeonPickup` 종류를 사용한다. 저장소가 검증한 예약/수령인/서버·세션 범위에서 실제 커밋 또는 정확한 재생 결과가 돌아온 뒤, 단일 영수증의 거래·캐릭터·아이템 ID와 성공한 세션을 연결한다. 작업 이름은 `DungeonPickup.Commit`, 사건 이름과 JSON schemaVersion 1은 유지한다. 일반 거래에 없는 세션/아이템 필드는 여전히 null이다.
+
+준비 기록·미확정/거절·예외/취소는 확정 사건이 아니다. 관측기 실패는 기존 픽업의 오류 매핑에 들어가지 않으며, 과거 영수증 재생을 새 지급/현재 위치의 재적용으로 계산하지 않는다. 추가 권위 조회나 미검증 본문 파싱 없이 저장된 결과만 사용한다. [실행·증거 경계](OPERATIONS_TOOL_RUNTIME.md#던전-픽업-영수증-연결)는 실제 백엔드 2인 세션/HTTPS/PG·영수증→로그→Razor 연결을 다루며 UE/Steam·클라이언트 표시 관측을 대신하지 않는다.
 
 ## 4. 생성·수집·검색의 의존 분리
 

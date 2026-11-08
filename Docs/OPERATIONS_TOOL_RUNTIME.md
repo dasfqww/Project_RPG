@@ -47,9 +47,22 @@ Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복
 - 저장소가 `Committed`를 반환하면 `game.transaction.receipt.committed`, 같은 명령의 확정 결과를 재생한 `AlreadyCommitted`이면 `game.transaction.receipt.replayed`를 한 건 남긴다. 재생 로그를 새 지급으로 계산하지 않는다. `transactionRequestId`는 반환된 영수증의 ID이며, 각 재시도의 `httpRequestId`는 별개다. 작업 이름은 `ItemTransaction.Commit`/`CurrencyTransaction.Commit`으로 고정한다.
 - 재화의 `characterId`만 확정 결과에서 가져온다. 아이템의 actor/소유자 문자열을 캐릭터로 추정하지 않는다. 영수증에 원래 세션 정보가 없으므로 호출 본문의 `dungeonSessionId`를 재생된 영수증의 원래 세션처럼 기록하지 않는다. item/운영 요청/운영자 ID와 HTTP 상태도 이 이벤트에 합성하지 않는다. 여러 아이템은 거래당 한 이벤트로 묶으며 품목/수량/잔액·reason/fingerprint/임의 operation·자격/본문은 전달하지 않는다.
 - 거절·충돌·권한 실패는 영수증 이벤트를 생성하지 않으며 공통 HTTP 경계에서 상태를 관측한다. 저장 예외 등으로 확정 결과를 받지 못한 경우에도 로그 부재가 미반영 증거는 아니다. 기존 DB 영수증을 원래 요청 번호로 재조회한다. 관측기 예외는 이미 확정된 결과·재생·기존 업무 예외를 변경하지 않는다. 추가 조회·트랜잭션·잠금은 만들지 않는다.
-- `/ops/diagnostics`의 거래 요청 번호 또는 `GET /ops/api/logs?transactionRequestId=<GUID>`에서 확정/재생 → 해당 HTTP 시도 → trace를 조사한다. 번호를 알아도 기존 운영자 인증/진단 권한이 필요하다. HTTP 범위 밖의 직접 서비스 호출에는 가상의 HTTP 기록을 만들지 않는다. worker·장비/픽업/우편/개인 거래 등 저장소를 직접 호출하는 다른 경로는 이 두 서비스의 계측 범위에 포함되지 않는다. 기존 worker의 별도 관측 계약은 유지한다.
+- `/ops/diagnostics`의 거래 요청 번호 또는 `GET /ops/api/logs?transactionRequestId=<GUID>`에서 확정/재생 → 해당 HTTP 시도 → trace를 조사한다. 번호를 알아도 기존 운영자 인증/진단 권한이 필요하다. HTTP 범위 밖의 직접 서비스 호출에는 가상의 HTTP 기록을 만들지 않는다. 원자 픽업은 아래 별도 경계에서 같은 관측 포트를 사용한다. worker·장비/우편/개인 거래 등 다른 직접 저장 경로는 이 두 일반 거래 서비스의 계측 범위에 포함되지 않는다. 기존 worker의 별도 관측 계약은 유지한다.
 
 `Scripts/Tests/Run-OperationsGameTransactionTests.ps1 -Postgres`는 게시 Backend+본인 9개 C# 입력만 고정한 독립 Release, 실제 loopback HTTPS/모의 OAuth·Memory/자기 tmpfs PostgreSQL에서 실제 두 API의 확정/재생·충돌·미인증/관리자/멤버 권한 거절·영수증→HTTP/실제 trace 검색·게임 상태/불변 영수증 보존·비밀 제외를 검사한다. 별도 Memory HTTPS에서 관측기가 매번 예외를 던져도 두 거래의 효과가 한 번만 반영되고 재생/거절 응답이 유지되는지 확인한다. 저장 예외는 서비스 단위 검사다. `-FullSuite`는 운영툴 전체 Memory 회귀이며 2026-11-08 집중 PG와 전체 Memory 모두 0경고/0오류로 통과했다. 자기 빌드/실행 사본·DB는 finally 폐기한다. UE·실제 운영 배포/부하 검증과 구분한다.
+
+### 던전 픽업 영수증 연결
+
+`POST /api/dungeon-sessions/{sessionId}/pickup-intents/{requestId}/commit`의 [원자 픽업 서비스](../Backend/ProjectRpg.Backend/Application/DungeonPickupCommitService.cs)도 기존 `IGameTransactionObserver`를 재사용한다. 같은 `GameApiDiagnosticsEnabled` 설정으로 활성화하며 추가 API/자격/스키마는 없다. 저장소의 멤버·서버·세션/리스 검사와 예약 소비·지급 트랜잭션은 변경하지 않는다.
+
+- 실제 `Committed`/`AlreadyCommitted` 결과와 단일 아이템 영수증이 일치할 때만 기존 `game.transaction.receipt.committed/replayed`를 기록한다. 고정 작업 이름은 `DungeonPickup.Commit`이다. 예약 준비/조회, 미존재·본문/권한/위치 등 거절, 저장 오류/취소를 확정 영수증처럼 기록하지 않는다. 로그 부재는 미반영 증거가 아니며 기존 원래 요청 ID로 결과를 복구한다.
+- `transactionRequestId`, `characterId`, `itemId`는 동결 예약과 일치한 확정 영수증에서 가져온다. `dungeonSessionId`는 저장소가 이 원래 예약의 서버/세션 범위와 수령인 멤버십을 재검사하고 성공한 범위다. 미검증 route/body나 현재 이동한 아이템에서 연결 ID를 추정하지 않는다. 드롭 ID/동결 본문·fingerprint·정의/수량·계정·서버 자격은 기록하지 않는다.
+- 이후 아이템 이동/소비가 있어도 재생은 원래 영수증과 연결하며 아이템의 현재 위치/개수를 덮어쓰지 않는다. 재시도마다 HTTP 시도 번호는 다르고 같은 거래 번호로 모아 조사한다. 관측기 예외는 성공/재생을 `InternalError`로 바꾸지 않도록 별도로 격리한다. 추가 저장 조회·잠금·트랜잭션은 만들지 않는다. HTTP 범위 밖의 직접 호출에는 HTTP 기록을 합성하지 않는다.
+- 기존 8종 ID 검색/화면 링크로 거래→HTTP/trace와 캐릭터·아이템·던전 세션을 탐색한다. JSON schemaVersion 1과 사건 이름/기존 일반 거래의 필드는 유지하며, 일반 거래의 없는 세션/아이템 ID를 새로 채우지 않는다. UE 픽업 관측·실제 게임 소켓/Steam 연결이나 클라이언트 반영 완료를 뜻하지 않는다.
+
+`Scripts/Tests/Run-OperationsPickupTracingTests.ps1 -Postgres`는 게시 Backend+본인 5개 C# 입력만 고정한 독립 Release에서 기존 일반 거래 추적 회귀와 실제 픽업 API의 HTTPS/모의 OAuth·Memory/자기 tmpfs PostgreSQL 검증을 실행한다. 백엔드 2인 멤버 세션의 실제 준비→원자 소비·지급→후속 아이템 이동→정확한 재생/동시 재시도, 원래 영수증/현재 아이템 보존, 올바른 수령인/세션/아이템/HTTP/실제 trace 검색과 컴파일된 Razor 링크를 확인한다. 별도 Memory HTTPS의 매번 실패하는 관측기에서도 단일 반영·성공/재생 응답을 확인하고 저장 오류/취소는 서비스 단위 검사한다. 재생/운영 조회 후 PG 게임 표 지문 불변·비밀 제외를 검사한다. `-FullSuite`는 전체 운영툴 Memory 회귀다. 실제 UE/브라우저 시각·운영 배포/부하는 미포함이며 자기 사본/출력/격리 DB는 finally 폐기한다.
+
+2026-11-08 집중 Memory/PG와 전체 운영툴 Memory 회귀 모두 Release 0경고/0오류로 통과했다. 원자 저장소/API·DTO 변경 없이 기존 확정 거래 관측 포트를 확장한 범위다.
 
 ## 활성화와 배포 입력
 
