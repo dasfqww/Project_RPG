@@ -20,12 +20,14 @@ public:
           Profile(NewObject<URPGActionBarProfile>())
     {
         Profile->ProfileId = TEXT("Riding");
+        Profile->NativeSlotCount = 4;
         Profile->CenterWidgetClass = URPGActionBarIdentityWidget::StaticClass();
         FRPGActionBarEntry Entry;
         Entry.ActionId = TEXT("Dismount");
         Entry.Label = LOCTEXT("Dismount", "내리기");
         // Reuse the current fourth skill binding; never overwrite the player's physical key mapping.
         Entry.SkillSlot = 3;
+        Entry.DisplaySlot = 3;
         Profile->Actions.Add(Entry);
         RefreshIdentity();
     }

@@ -16,6 +16,8 @@ struct PROJECT_RPG_API FRPGActionBarEntry
     UPROPERTY(EditAnywhere, BlueprintReadOnly) FName ActionId;
     UPROPERTY(EditAnywhere, BlueprintReadOnly) FText Label;
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TObjectPtr<UTexture2D> Icon;
+    /** Native visual position, independent of input. INDEX_NONE fills the first unreserved position. */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="-1", ClampMax="7")) int32 DisplaySlot = INDEX_NONE;
     /** Optional existing combat-slot input. INDEX_NONE uses provider-owned input only. */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="-1", ClampMax="7")) int32 SkillSlot = INDEX_NONE;
     /** Optional existing ability-input tag. Additional contexts may call PressAction directly. */
@@ -30,9 +32,12 @@ class PROJECT_RPG_API URPGActionBarProfile : public UDataAsset
 public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly) FName ProfileId;
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TArray<FRPGActionBarEntry> Actions;
+    /** Zero infers the native row length. Positive values preserve empty positions, up to eight. */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0", ClampMax="8")) int32 NativeSlotCount = 0;
     /** Null selects the native action bar. */
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TSubclassOf<URPGActionBarWidget> LeftWidgetClass;
     /** Null hides the class identity region while this profile is active. */
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TSubclassOf<URPGActionBarWidget> CenterWidgetClass;
     bool IsValidProfile() const;
+    bool TryBuildDisplayOrder(TArray<int32>& OutOrder) const;
 };

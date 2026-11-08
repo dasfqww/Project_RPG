@@ -7,6 +7,7 @@
 - `UQuickSlotComponent::GetActionBarContext()`는 현재 Pawn에 귀속되는 공통 전환기다.
 - `IRPGActionBarProvider`는 C++ 어댑터다. `GetActionBarPawn`, `GetActionBarProfile`, `ReadAction`, `PressAction`, `ReleaseAction`을 구현한다. Pawn/feature component는 weak pointer로 참조한다.
 - `URPGActionBarProfile` Data Asset에는 ProfileId, Actions(최대 8개), LeftWidgetClass, CenterWidgetClass가 있다. 각 액션은 안정 ActionId, Label/Icon과 선택적 SkillSlot/InputTag를 가진다.
+- native 배치는 액션의 `DisplaySlot`(0~7, -1은 자동)과 프로필의 `NativeSlotCount`(0은 자동, 고정1~8)로 정한다. 명시한 위치를 먼저 예약하고 나머지 액션을 배열 순서대로 빈 위치에 채운다. 고정 칸 수의 빈 위치는 클릭/키/제공자 호출이 없는 자리 표시다. 중복 위치·범위 초과·고정 칸 부족은 활성화 전에 거절한다. 기본값은 기존의 조밀한 순서 배치와 같다.
 - 서버 확정 상태를 수신한 feature가 `Context->Activate(Provider)`를 호출한다. 같은 provider/profile은 멱등. 교체는 먼저 기존 입력을 해제한다.
 - 하차/강제 종료 때 `Context->Deactivate(Provider)`. 다른 provider로 교체된 뒤 늦은 이전 해제는 무시한다. Pawn 종료는 공통 Shutdown.
 - 상태를 중복 복제하지 않는다. 공통 전환기는 승인을 발급하거나 RPC를 보내지 않는다. Riding의 서버 상태/복제/리비전 가드가 유효할 때만 설치한다.
@@ -41,6 +42,8 @@
 `URPGRidingActionBarSubsystem`은 로컬 플레이어에 자동 생성되는 UI 어댑터다. 현재 Controller/Pawn의 `URPGRidingComponent::OnChanged`를 구독하고 **컴포넌트의 현재 canonical 상태**를 다시 읽는다. Mounted에서는 공통 context에 Riding 프로필을 설치하고 OnFoot/소유 변경/종료에서는 자신이 설치한 제공자만 해제한다. 결과 영수증으로 상태를 추정하거나 복제 상태를 직접 쓰지 않는다.
 
 현재 실제 서버 API가 있는 **Dismount 한 개**를 제공한다. 셀 클릭과 기존 네 번째 스킬 슬롯 입력은 모두 `RequestSetMounted(false, ...)`로 이어진다. 물리 키는 해당 슬롯의 현재 설정을 조회하며 별도 IMC나 기본 키 덮어쓰기를 추가하지 않는다. Dash/Emote와 탑승 호출/보관함·RidingShortcut 배정은 이 어댑터의 구현 범위가 아니다.
+
+Riding의 native 좌측 바는 네 칸을 유지하며 하차를 네 번째 표시 위치에 둔다(`NativeSlotCount=4`, `DisplaySlot=3`, `SkillSlot=3`). 앞의 세 빈 칸에 실행할 수 없는 Dash/Emote를 추가하지 않는다. 표시 위치를 바꿔도 `SkillSlot`/`InputTag`·ActionId나 현재 물리 키 배정은 바뀌지 않는다. 사용자 직업 편성/우측 아이템 배열을 수정하지 않는다.
 
 중앙에는 현재 정의의 표시 이름·“탑승 중”·“기본 이동 속도”를 제공한다. 이름은 현재 MountId/DefinitionVersion에 맞는 `GetPresentationDefinition()`의 메타데이터를 읽고, 없으면 공통 “탈것” 문구를 사용한다. 기본 속도는 canonical 복제 상태의 `Movement.Speed`이며, GAS 감속/외부 제한을 적용한 최종 속도나 실제 이동량을 뜻하지 않는다. UI에서 이동 프로필을 만들거나 보정 값을 수정하지 않는다. 하차/다른 프로필 전환에서는 원래 직업 아이덴티티를 복원한다.
 
@@ -92,3 +95,11 @@ Riding 프로필은 `URPGActionBarIdentityWidget`을 중앙 영역에 설치한�
 게시 `c04bdda7` + 명시 입력7 고정 사본에서 독립 UHT/10단계 빌드·링크, native 셀4 Success/검사 오류·경고0/실행0을 확인했다. 원본 브러시 변조/수명 종료와 부모 셀 제거 뒤에도 이미지 크기36×36·GC 후 텍스처 유지, 아이콘 없는 셀 및 기존 비활성 툴팁/쿨타임/입력 해제를 검사했다. 실제 프로젝트 전체 UHT와 Widget/Cell/Context/검사 CPP4 집중 컴파일도 통과했고 입력7 SHA는 전후 일치했다. 기동 `Condition failed`15개는 별도 기록했다. 실제 GPU 렌더 완료나 전체 게임 링크/네트워크 재검증은 이 집중 검사에 포함하지 않는다.
 
 자기 사본/OBJ/DLL/PDB/UserDir/cache 2,815,238,659 bytes(약2.62GiB)를 폐기했고 정리 예외는 없다. 원본 게임 DLL/에셋과 공유 UBT trace는 보존했다. 로컬 최소 요약은 `Saved/BuildChecks/ActionBarIconLifetime-20261108/Completion.json`이며 폐기한 DLL 해시는 당시 증거다. 유지할 회귀는 `Scripts/Tests/Run-ActionBarCellTests.ps1 -IconLifetime`으로 실행한다.
+
+## 프로필별 표시 위치와 빈 칸 — 2026-11-08
+
+`DisplaySlot`은 표시 위치, `SkillSlot`/`InputTag`는 입력 배정이다. `TryBuildDisplayOrder`의 결과는 표시 위치→액션 배열 인덱스이며 빈 칸은 `INDEX_NONE`이다. 프로필 검증과 native 위젯이 같은 배치 판정을 사용하고, 실제 행 생성기는 빈 칸에 버튼/제공자 콜백을 만들지 않는다. 액션은 시각적 순서 대신 원래 ActionId로 실행된다. 고정 칸 수가0이면 필요한 만큼만 추론하고 기존 기본값(-1/0)은 이전 순서를 유지한다. 별도 저작 WidgetTree는 기존 표시 책임을 유지한다.
+
+게시 `88e1021d` + 명시 입력12의 고정 사본에서 독립 UHT/12단계 빌드·링크와 native7 Success/검사 오류·경고0/실행0을 확인했다. 새 배치3개는 기본 순서 호환·명시 위치 우선/자동 혼합·뒤 빈 칸·빈 전체 행·중복/범위/칸 부족 거절 및 실제 Slate의 네 번째 버튼 위치/앞 세 빈 칸의 hit-test 제외·클릭 액션 인덱스를 검사한다. 기존 셀4개도 통과했다. 실제 프로젝트 전체 UHT와 관련 CPP7 집중 컴파일0·입력12 SHA 전후 일치를 확인했고 기동 `Condition failed`15개는 별도 기록했다. 전체 게임 링크·실제 HUD/GPU/소켓 RPC 재검증은 이 집중 검사에 포함하지 않는다.
+
+자기 사본/OBJ/DLL/PDB/UserDir/cache 2,841,788,927 bytes(약2.65GiB)와 중복 proof를 폐기했고 정리 예외는 없다. 원본 게임 DLL/에셋과 공유 UBT trace는 보존했다. 폐기한 모듈 해시는 당시 증거다. 로컬 최소 요약은 `Saved/BuildChecks/ActionBarLayout-20261108/Completion.json`, 유지할 회귀는 `Scripts/Tests/Run-ActionBarCellTests.ps1 -SlotLayout`이다.

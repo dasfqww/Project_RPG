@@ -1,16 +1,16 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IconLifetime)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IconLifetime, [switch]$SlotLayout)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id=[Guid]::NewGuid().ToString('N')
-$suite=if($IconLifetime){'ActionBarIconLifetime-20261108'}else{'ActionBarFeedback-20261108'}
-$reservation=if($IconLifetime){'actionbar-icon-lifetime-20261108'}else{'actionbar-feedback-20261108'}
+$suite=if($SlotLayout){'ActionBarLayout-20261108'}elseif($IconLifetime){'ActionBarIconLifetime-20261108'}else{'ActionBarFeedback-20261108'}
+$reservation=if($SlotLayout){'actionbar-layout-20261108'}elseif($IconLifetime){'actionbar-icon-lifetime-20261108'}else{'actionbar-feedback-20261108'}
 $root=Join-Path $workspace ('Saved/BuildChecks/'+$suite+'/'+$id)
-$tempRoot=Join-Path $workspace $(if($IconLifetime){'Saved/AI'}else{'Saved/AF'})
+$tempRoot=Join-Path $workspace $(if($SlotLayout){'Saved/AL'}elseif($IconLifetime){'Saved/AI'}else{'Saved/AF'})
 $temp=Join-Path $tempRoot $id.Substring(0,8)
 $project=Join-Path $temp 'Cell'
 $process=$null
-$proof=[ordered]@{Passed=$false;Scope='Actual native Slate cell tests, followed by published project UHT and focused CPP compile; no full game link/runtime';Head='';Inputs=@();Tests=@();Cleanup=$null;Failure=$null}
+$proof=[ordered]@{Passed=$false;Scope='Actual native Slate cell/layout tests, followed by published project UHT and focused CPP compile; no full game link/runtime';Head='';Inputs=@();Tests=@();Cleanup=$null;Failure=$null}
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Write-Utf8([string]$Path,[string]$Text) {
     $null=[IO.Directory]::CreateDirectory((Split-Path -Parent $Path))
@@ -40,7 +40,13 @@ try {
         'Source/Project_RPG/Private/Tests/RPGActionBarCellTests.cpp',
         'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarProfile.h',
         'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarWidget.cpp',
-        'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarWidget.h')
+        'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarWidget.h',
+        'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarLayout.h',
+        'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarLayout.cpp',
+        'Source/Project_RPG/Private/Tests/RPGActionBarLayoutTests.cpp',
+        'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarContext.cpp',
+        'Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp')
+    $nativeFiles=@($files|Select-Object -First 4)+@($files[7],$files[8],$files[9])
     # Freeze the exact real product/test inputs once; both phases consume these same copies.
     $frozen=Join-Path $temp 'Inputs'
     foreach($relative in $files){
@@ -52,7 +58,7 @@ try {
         if((Get-FileHash -LiteralPath $source).Hash-ne$sha-or(Get-FileHash -LiteralPath $destination).Hash-ne$sha){throw 'Input changed during capture'}
         $proof.Inputs+=@{Path=$relative;SHA256=$sha}
     }
-    foreach($relative in $files|Select-Object -First 4){
+    foreach($relative in $nativeFiles){
         $destination=Join-Path $project $relative
         $null=[IO.Directory]::CreateDirectory((Split-Path -Parent $destination))
         Copy-Item -LiteralPath (Join-Path $frozen $relative) -Destination $destination
@@ -93,7 +99,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "ActionBarCel
     if($LASTEXITCODE-ne0){throw 'Target query failed'}
     $report=Join-Path $temp 'Report'
     $editor=Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe'
-    $arguments=@(('"'+$uproject+'"'),'/Engine/Maps/Entry','-ExecCmds="Automation RunTests ProjectRPG.UI.ActionBar.Cell"','-TestExit="Automation Test Queue Empty"','-unattended','-nullrhi','-nosound','-nosteam','-nop4','-nosplash','-NoLiveCoding','-DisablePython','-Multiprocess','-DDC=(InstalledEnginePak,Local)',('-LocalDataCachePath="'+(Join-Path $temp 'Cache')+'"'),('-UserDir="'+(Join-Path $temp 'User')+'"'),('-abslog="'+(Join-Path $root 'Native.log')+'"'),('-ReportExportPath="'+$report+'"'))
+    $arguments=@(('"'+$uproject+'"'),'/Engine/Maps/Entry','-ExecCmds="Automation RunTests ProjectRPG.UI.ActionBar.Cell+ProjectRPG.UI.ActionBar.Layout"','-TestExit="Automation Test Queue Empty"','-unattended','-nullrhi','-nosound','-nosteam','-nop4','-nosplash','-NoLiveCoding','-DisablePython','-Multiprocess','-DDC=(InstalledEnginePak,Local)',('-LocalDataCachePath="'+(Join-Path $temp 'Cache')+'"'),('-UserDir="'+(Join-Path $temp 'User')+'"'),('-abslog="'+(Join-Path $root 'Native.log')+'"'),('-ReportExportPath="'+$report+'"'))
     $proof.NativeCommand=@($editor)+$arguments
     Save-Proof
     $process=Start-Process $editor -ArgumentList $arguments -WindowStyle Hidden -PassThru
@@ -109,6 +115,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "ActionBarCel
     $data=Get-Content -LiteralPath (Join-Path $report 'index.json') -Raw -Encoding UTF8|ConvertFrom-Json
     $proof.Tests=@($data.tests|Select-Object fullTestPath,state,errors,warnings)
     $expected=@('DisabledTooltip','LiveFeedback','CooldownAndRelease','IconLifetime')|ForEach-Object{'ProjectRPG.UI.ActionBar.Cell.'+$_}
+    $expected+=@('Validation','Compatibility','SparseRowAndInput')|ForEach-Object{'ProjectRPG.UI.ActionBar.Layout.'+$_}
     if((Compare-Object $expected @($proof.Tests.fullTestPath))-or@($proof.Tests|Where-Object{$_.state-ne'Success'-or$_.errors-ne0-or$_.warnings-ne0}).Count){throw 'Missing or failing cell cases'}
     foreach($entry in $proof.Inputs){
         if((Get-FileHash -LiteralPath (Join-Path $workspace $entry.Path)).Hash-ne$entry.SHA256){throw 'Input changed after native validation'}
@@ -140,7 +147,10 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "ActionBarCel
     $compileFiles=@('Source/Project_RPG/Private/UI/ActionBar/RPGActionBarWidget.cpp',
         'Source/Project_RPG/Private/UI/ActionBar/SRPGActionBarCell.cpp',
         'Source/Project_RPG/Private/Tests/RPGActionBarCellTests.cpp',
-        'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarContext.cpp')
+        'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarContext.cpp',
+        'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarLayout.cpp',
+        'Source/Project_RPG/Private/Tests/RPGActionBarLayoutTests.cpp',
+        'Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp')
     $fileList=Join-Path $temp 'CompileFiles.txt'
     [IO.File]::WriteAllLines($fileList,@($compileFiles|ForEach-Object{Join-Path $integration $_}),[Text.UTF8Encoding]::new($false))
     Build-Project 'Project_RPGEditor' (Join-Path $integration 'Project_RPG.uproject') 'IntegrationBuild' @(('-FileList='+$fileList))

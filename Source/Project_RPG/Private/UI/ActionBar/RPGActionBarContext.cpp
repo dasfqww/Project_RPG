@@ -1,4 +1,5 @@
 #include "UI/ActionBar/RPGActionBarContext.h"
+#include "UI/ActionBar/RPGActionBarLayout.h"
 #include "Component/UI/QuickSlotComponent.h"
 #include "GameFramework/Pawn.h"
 #include "AbilitySystemBlueprintLibrary.h"
@@ -29,7 +30,15 @@ bool URPGActionBarProfile::IsValidProfile() const
             Tags.AddTag(Entry.InputTag);
         }
     }
-    return true;
+    TArray<int32> Order;
+    return TryBuildDisplayOrder(Order);
+}
+
+bool URPGActionBarProfile::TryBuildDisplayOrder(TArray<int32>& OutOrder) const
+{
+    TArray<int32> DisplaySlots;
+    for (const auto& Entry : Actions) DisplaySlots.Add(Entry.DisplaySlot);
+    return RPGActionBarLayout::Resolve(DisplaySlots, NativeSlotCount, OutOrder);
 }
 
 namespace
