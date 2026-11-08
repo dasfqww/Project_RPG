@@ -10,11 +10,31 @@ public sealed record NarrativeChoiceRequest(Guid RequestId, string ExpectedRevis
 public sealed record NarrativeDungeonObjectiveRequest(Guid RequestId, string ExpectedRevision, int CatalogVersion,
     Guid DungeonSessionId, string QuestId, string ObjectiveId);
 public sealed record NarrativeInteractionRequest(Guid EventId, string TargetId, string ConnectionGeneration, DateTimeOffset ObservedAtUtc);
+public sealed record NarrativeKillRequest(Guid EventId, string EnemyId, string ConnectionGeneration, DateTimeOffset ObservedAtUtc);
 
 public static class NarrativeApiEndpoints
 {
     public static void MapNarrativeApi(this WebApplication app)
     {
+        app.MapPost("/api/dungeon-sessions/{sessionId:guid}/narrative/kills/{characterId:guid}", async (
+            Guid sessionId, Guid characterId, NarrativeKillRequest request, HttpContext context,
+            [Microsoft.AspNetCore.Mvc.FromServices] NarrativeKillCoordinator coordinator, CancellationToken ct) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            var principal = context.GetProjectRpgPrincipal();
+            if (!principal.IsGameServer || principal.IsSecurityTelemetryOnly || principal.ServerId is null
+                || principal.DungeonSessionId != sessionId) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (!long.TryParse(request.ConnectionGeneration, NumberStyles.None, CultureInfo.InvariantCulture, out long generation))
+                return Results.BadRequest(new { error = "invalid_kill_event" });
+            try
+            {
+                var result = await coordinator.RecordAsync(sessionId, characterId, principal.ServerId,
+                    new(request.EventId, request.EnemyId, generation, request.ObservedAtUtc), ct);
+                return Results.Ok(new { result.EventId, result.CharacterId,
+                    Revision = result.Revision.ToString(CultureInfo.InvariantCulture), result.AppliedObjectives });
+            }
+            catch (NarrativeConflictException error) { return Failure(error); }
+        });
         app.MapPost("/api/dungeon-sessions/{sessionId:guid}/narrative/interactions/{characterId:guid}", async (
             Guid sessionId, Guid characterId, NarrativeInteractionRequest request, HttpContext context,
             [Microsoft.AspNetCore.Mvc.FromServices] NarrativeInteractionCoordinator coordinator, CancellationToken ct) =>
@@ -86,6 +106,8 @@ public static class NarrativeApiEndpoints
     {
         "character_not_owned" => Results.StatusCode(StatusCodes.Status403Forbidden),
         "interaction_not_authorized" => Results.StatusCode(StatusCodes.Status403Forbidden),
+        "kill_not_authorized" => Results.StatusCode(StatusCodes.Status403Forbidden),
+        "invalid_kill_event" => Results.BadRequest(new { error = error.Message }),
         "invalid_interaction_event" => Results.BadRequest(new { error = error.Message }),
         "dungeon_clear_evidence_not_authorized" => Results.StatusCode(StatusCodes.Status403Forbidden),
         "invalid_narrative_command" => Results.BadRequest(new { error = error.Message }),

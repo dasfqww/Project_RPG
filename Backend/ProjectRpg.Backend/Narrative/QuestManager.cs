@@ -28,6 +28,8 @@ public sealed class QuestManager
                 updated = new(definition.Id, definition.Version, QuestStatus.Active, []);
                 return state with { Quests = state.Quests.Add(ActivateDungeonObjectives(updated, definition, now ?? DateTimeOffset.UtcNow)) };
             case DialogueEffect.RecordObjective:
+                if (choice.ObjectiveId is { } kill && definition.KillObjectives?.ContainsKey(kill) == true)
+                    throw new NarrativeConflictException("kill_objective_requires_event");
                 if (choice.ObjectiveId is { } target && definition.DungeonObjectives?.ContainsKey(target) == true)
                     throw new NarrativeConflictException("dungeon_objective_requires_evidence");
                 if (choice.ObjectiveId is { } interaction && definition.InteractionObjectives?.ContainsKey(interaction) == true)
@@ -98,6 +100,14 @@ public sealed class QuestManager
                     activated = activated.Add(id, new(now));
             progress = progress with { InteractionObjectives = activated };
         }
+        if (definition.KillObjectives is { Count: > 0 })
+        {
+            var activated = progress.KillObjectives ?? ImmutableDictionary<string, KillObjectiveProgress>.Empty;
+            foreach (string id in definition.KillObjectives.Keys)
+                if (!activated.ContainsKey(id) && definition.RequiredObjectives(id).All(progress.CompletedObjectives.Contains))
+                    activated = activated.Add(id, new(now, definition.KillObjectives[id].RequiredCount));
+            progress = progress with { KillObjectives = activated };
+        }
         return progress;
     }
 
@@ -120,6 +130,35 @@ public sealed class QuestManager
             var evidence = current.InteractionObjectives;
             foreach (string id in matches) evidence = evidence.SetItem(id, evidence[id] with { EventId = command.EventId });
             var progress = current with { CompletedObjectives = completed, InteractionObjectives = evidence,
+                Status = completed.Length == definition.Objectives.Length ? QuestStatus.ReadyToReport : QuestStatus.Active };
+            updated = updated with { Quests = updated.Quests.Replace(current, ActivateDungeonObjectives(progress, definition, context.ReceivedAt)) };
+        }
+        return updated;
+    }
+
+    internal NarrativeState RecordKill(NarrativeState state, NarrativeCatalog catalog, NarrativeKillCommand command,
+        NarrativeInteractionContext context)
+    {
+        var updated = state;
+        // One death counts once for each eligible parallel goal in the PRE-event snapshot.
+        foreach (var current in state.Quests.Where(q => q.Status == QuestStatus.Active))
+        {
+            var definition = catalog.Quests[current.QuestId];
+            if (definition.KillObjectives is null || current.KillObjectives is null) continue;
+            string[] matches = [.. definition.Objectives.Where(id =>
+                definition.KillObjectives.TryGetValue(id, out var target) && target.DungeonId == context.DungeonId
+                && target.Difficulty == context.Difficulty && target.EnemyId == command.EnemyId
+                && CanRecordObjective(current, definition, id) && current.KillObjectives.TryGetValue(id, out var activation)
+                && activation.ActivatedAt <= command.ObservedAtUtc)];
+            if (matches.Length == 0) continue;
+            var counts = current.KillObjectives; var completed = current.CompletedObjectives;
+            foreach (string id in matches)
+            {
+                int count = checked(counts[id].Count + 1);
+                counts = counts.SetItem(id, counts[id] with { Count = count, LastEventId = command.EventId });
+                if (count == definition.KillObjectives[id].RequiredCount) completed = completed.Add(id);
+            }
+            var progress = current with { KillObjectives = counts, CompletedObjectives = completed,
                 Status = completed.Length == definition.Objectives.Length ? QuestStatus.ReadyToReport : QuestStatus.Active };
             updated = updated with { Quests = updated.Quests.Replace(current, ActivateDungeonObjectives(progress, definition, context.ReceivedAt)) };
         }

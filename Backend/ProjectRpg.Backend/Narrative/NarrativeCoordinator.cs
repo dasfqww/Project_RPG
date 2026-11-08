@@ -99,6 +99,32 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
                     definition.RequiredObjectives(id).All(progress.CompletedObjectives.Contains) && entries?.ContainsKey(id) != true))
                 throw new NarrativeConflictException("incompatible_interaction_objective_state");
         }
+        foreach (QuestProgress progress in state.Quests)
+        {
+            var definition = catalog.Quests[progress.QuestId]; var entries = progress.KillObjectives;
+            bool ReusedAncestor(string id, Guid eventId)
+            {
+                Stack<string> pending = new(definition.RequiredObjectives(id)); HashSet<string> seen = new(StringComparer.Ordinal);
+                while (pending.TryPop(out string? parent))
+                {
+                    if (!seen.Add(parent)) continue;
+                    if (entries?.GetValueOrDefault(parent)?.LastEventId == eventId) return true;
+                    foreach (string ancestor in definition.RequiredObjectives(parent)) pending.Push(ancestor);
+                }
+                return false;
+            }
+            if (entries is not null && entries.Any(pair => pair.Value is null
+                    || definition.KillObjectives?.GetValueOrDefault(pair.Key) is not { } target
+                    || !definition.RequiredObjectives(pair.Key).All(progress.CompletedObjectives.Contains)
+                    || pair.Value.ActivatedAt == default || pair.Value.RequiredCount != target.RequiredCount
+                    || pair.Value.Count < 0 || pair.Value.Count > target.RequiredCount
+                    || pair.Value.LastEventId == Guid.Empty || (pair.Value.Count > 0) != pair.Value.LastEventId.HasValue
+                    || progress.CompletedObjectives.Contains(pair.Key) != (pair.Value.Count == target.RequiredCount)
+                    || pair.Value.LastEventId is { } eventId && ReusedAncestor(pair.Key, eventId))
+                || definition.KillObjectives is not null && definition.KillObjectives.Keys.Any(id =>
+                    definition.RequiredObjectives(id).All(progress.CompletedObjectives.Contains) && entries?.ContainsKey(id) != true))
+                throw new NarrativeConflictException("incompatible_kill_objective_state");
+        }
         NarrativeState projected = new ScenarioManager().Project(state, catalog);
         if (!state.CompletedChapters.SequenceEqual(projected.CompletedChapters)
             || !state.StoryUnlocks.SequenceEqual(projected.StoryUnlocks))

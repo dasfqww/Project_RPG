@@ -7,6 +7,8 @@ namespace ProjectRpg.Backend.Narrative;
 
 public sealed record NarrativeInteractionCommand(Guid EventId, string TargetId, long ConnectionGeneration, DateTimeOffset ObservedAtUtc)
 {
+    // Internal adapter only: HTTP interaction requests cannot select another evidence domain.
+    internal bool IsKillEvent { get; init; }
     public void Validate()
     {
         if (EventId == Guid.Empty || !NarrativeCommand.ValidId(TargetId) || ConnectionGeneration <= 0 || ObservedAtUtc == default)
@@ -16,7 +18,7 @@ public sealed record NarrativeInteractionCommand(Guid EventId, string TargetId, 
     {
         Validate();
         return Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new {
-            Kind = "personal_interaction_v1", SessionId = sessionId, CharacterId = characterId,
+            Kind = IsKillEvent ? "personal_kill_v1" : "personal_interaction_v1", SessionId = sessionId, CharacterId = characterId,
             TargetId, ConnectionGeneration, ObservedTicks = ObservedAtUtc.UtcTicks })));
     }
 }
