@@ -112,17 +112,23 @@ FRPGActionBarActionView URPGActionBarContext::ReadAction(FName Id) const
 {
     if (bTransitioning || bShuttingDown || !IsProviderCurrent() || !FindAction(Id)) return {};
     const APawn* Pawn = Provider->GetActionBarPawn();
-    if (!Pawn || !Pawn->IsLocallyControlled()) return {};
-    const auto* PC = Cast<APlayerController>(Pawn->GetController());
-    const auto* Windows = PC ? PC->FindComponentByClass<URPGSkillWindowComponent>() : nullptr;
-    const auto InputState = Windows ? Windows->GetWindowInputState() : nullptr;
-    if (InputState && InputState->HasOpenWindows()) return {};
+    const AController* ControllerBefore = Pawn ? Pawn->GetController() : nullptr;
+    const auto CanRead = [Pawn, ControllerBefore] {
+        if (!IsValid(Pawn) || Pawn->IsActorBeingDestroyed() || !Pawn->IsLocallyControlled()
+            || !IsValid(ControllerBefore) || ControllerBefore->IsActorBeingDestroyed()
+            || Pawn->GetController() != ControllerBefore) return false;
+        const auto* PC = Cast<APlayerController>(ControllerBefore);
+        const auto* Windows = PC ? PC->FindComponentByClass<URPGSkillWindowComponent>() : nullptr;
+        const auto State = Windows ? Windows->GetWindowInputState() : nullptr;
+        return !State || !State->HasOpenWindows();
+    };
+    if (!CanRead()) return {};
     const auto Current = Provider;
     const uint64 ReadRevision = Revision;
     auto View = Current->ReadAction(Id);
     View.CooldownRemaining = FMath::IsFinite(View.CooldownRemaining) ? FMath::Max(0.f, View.CooldownRemaining) : 0.f;
     View.CooldownDuration = FMath::IsFinite(View.CooldownDuration) ? FMath::Max(0.f, View.CooldownDuration) : 0.f;
-    if (Provider != Current || Revision != ReadRevision || !IsProviderCurrent()) return {};
+    if (Provider != Current || Revision != ReadRevision || !IsProviderCurrent() || !CanRead()) return {};
     return View;
 }
 
@@ -144,8 +150,13 @@ void URPGActionBarContext::PressAction(FName Source, FName Id, uint64 ExpectedRe
 {
     if (Source.IsNone() || bTransitioning || bShuttingDown || Revision != ExpectedRevision
         || DownInputs.Contains(Source)) return;
-    DownInputs.Add(Source);
+    const uint64 Token = ++InputSerial;
+    const uint64 CancelRevision = CancellationRevision;
+    DownInputs.Add(Source, Token);
     if (!IsProviderCurrent() || !FindAction(Id) || !ReadAction(Id).bAvailable || Revision != ExpectedRevision) return;
+    // A read may synchronously cancel input, or release and reuse this source for a different action.
+    const uint64* CurrentToken = DownInputs.Find(Source);
+    if (!CurrentToken || *CurrentToken != Token || CancellationRevision != CancelRevision) return;
     const bool bAlreadyPressed = PressedActions.FindKey(Id) != nullptr;
     PressedActions.Add(Source, Id);
     const auto Current = Provider;
@@ -163,6 +174,7 @@ void URPGActionBarContext::ReleaseInput(FName Source)
 
 void URPGActionBarContext::ReleaseAll(bool bKeepPhysicalState)
 {
+    ++CancellationRevision;
     if (!bKeepPhysicalState) DownInputs.Reset();
     TSet<FName> Ids;
     for (const auto& Pair : PressedActions) Ids.Add(Pair.Value);

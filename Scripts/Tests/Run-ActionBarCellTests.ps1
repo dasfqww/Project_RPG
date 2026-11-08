@@ -1,12 +1,12 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IconLifetime, [switch]$SlotLayout, [switch]$Cooldown)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IconLifetime, [switch]$SlotLayout, [switch]$Cooldown, [switch]$InputBoundary)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id=[Guid]::NewGuid().ToString('N')
-$suite=if($Cooldown){'ActionBarCooldown-20261109'}elseif($SlotLayout){'ActionBarLayout-20261108'}elseif($IconLifetime){'ActionBarIconLifetime-20261108'}else{'ActionBarFeedback-20261108'}
-$reservation=if($Cooldown){'actionbar-cooldown-20261109'}elseif($SlotLayout){'actionbar-layout-20261108'}elseif($IconLifetime){'actionbar-icon-lifetime-20261108'}else{'actionbar-feedback-20261108'}
+$suite=if($InputBoundary){'ActionBarInputBoundary-20261109'}elseif($Cooldown){'ActionBarCooldown-20261109'}elseif($SlotLayout){'ActionBarLayout-20261108'}elseif($IconLifetime){'ActionBarIconLifetime-20261108'}else{'ActionBarFeedback-20261108'}
+$reservation=if($InputBoundary){'actionbar-input-boundary-20261109'}elseif($Cooldown){'actionbar-cooldown-20261109'}elseif($SlotLayout){'actionbar-layout-20261108'}elseif($IconLifetime){'actionbar-icon-lifetime-20261108'}else{'actionbar-feedback-20261108'}
 $root=Join-Path $workspace ('Saved/BuildChecks/'+$suite+'/'+$id)
-$tempRoot=Join-Path $workspace $(if($Cooldown){'Saved/AC'}elseif($SlotLayout){'Saved/AL'}elseif($IconLifetime){'Saved/AI'}else{'Saved/AF'})
+$tempRoot=Join-Path $workspace $(if($InputBoundary){'Saved/AX'}elseif($Cooldown){'Saved/AC'}elseif($SlotLayout){'Saved/AL'}elseif($IconLifetime){'Saved/AI'}else{'Saved/AF'})
 $temp=Join-Path $tempRoot $id.Substring(0,8)
 $project=Join-Path $temp 'Cell'
 $process=$null
@@ -47,6 +47,19 @@ try {
         'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarContext.cpp',
         'Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp')
     $nativeFiles=@($files|Select-Object -First 4)+@($files[7],$files[8],$files[9])
+    if($InputBoundary){
+        $files+=@('Source/Project_RPG/Public/UI/ActionBar/RPGActionBarContext.h',
+            'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarProvider.h',
+            'Source/Project_RPG/Public/UI/RPGWindowInputState.h',
+            'Source/Project_RPG/Private/UI/RPGWindowInputState.cpp',
+            'Source/Project_RPG/Public/Skill/QuickSlot/RPGQuickSlotInputBindings.h',
+            'Source/Project_RPG/Private/Tests/RPGActionBarInputTests.cpp')
+        $nativeFiles=@($files|Where-Object{$_-notlike'*RPGRidingActionBarSubsystem.cpp'})
+        $proof.DependencyPorts=@('QuickSlot stores the real context and forwards cancellation only; no saved skills/GAS routing.',
+            'ASC is an unused UAbilitySystemComponent subclass; real GAS input release is outside this harness.',
+            'Window component stores the real FRPGWindowInputState only; no input bindings or menu lifetime.',
+            'Key label lookup returns empty; real controller mapping is outside this harness.')
+    }
     # Freeze the exact real product/test inputs once; both phases consume these same copies.
     $frozen=Join-Path $temp 'Inputs'
     foreach($relative in $files){
@@ -88,6 +101,67 @@ public class Project_RPG : ModuleRules {
 #include "Modules/ModuleManager.h"
 IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "ActionBarCell");
 '@
+    if($InputBoundary){
+        # These private dependency ports never enter the integration snapshot or the real project.
+        Write-Utf8 (Join-Path $project 'ActionBarCell.uproject') @'
+{"FileVersion":3,"EngineAssociation":"5.8","DisableEnginePluginsByDefault":true,"Modules":[{"Name":"Project_RPG","Type":"Runtime","LoadingPhase":"Default"}],"Plugins":[{"Name":"GameplayAbilities","Enabled":true}]}
+'@
+        $rulesPath=Join-Path $project 'Source/Project_RPG/Project_RPG.Build.cs'
+        $rules=[IO.File]::ReadAllText($rulesPath).Replace('"SlateCore"','"SlateCore","UMG","GameplayAbilities","GameplayTags","GameplayTasks"')
+        Write-Utf8 $rulesPath $rules
+        Write-Utf8 (Join-Path $project 'Config/DefaultGame.ini') @'
+[/Script/GameplayAbilities.AbilitySystemGlobals]
++GameplayCueNotifyPaths=/Game
+'@
+        Write-Utf8 (Join-Path $project 'Source/Project_RPG/Public/InputTestPorts.h') @'
+#pragma once
+#include "Components/ActorComponent.h"
+#include "AbilitySystemComponent.h"
+#include "UI/RPGWindowInputState.h"
+#include "InputTestPorts.generated.h"
+class URPGActionBarContext;
+UCLASS()
+class PROJECT_RPG_API UQuickSlotComponent : public UActorComponent {
+    GENERATED_BODY()
+public:
+    URPGActionBarContext* GetActionBarContext();
+    void ReleaseAllSkillInputs(bool bKeepPhysicalState = false);
+private:
+    UPROPERTY(Transient) TObjectPtr<URPGActionBarContext> Context;
+};
+UCLASS()
+class PROJECT_RPG_API URPGAbilitySystemComponent : public UAbilitySystemComponent {
+    GENERATED_BODY()
+public:
+    void OnAbilityInputReleased(FGameplayTag) {}
+};
+UCLASS()
+class PROJECT_RPG_API URPGSkillWindowComponent : public UActorComponent {
+    GENERATED_BODY()
+public:
+    void SetWindowInputState(const TSharedRef<FRPGWindowInputState>& InState) { State = InState; }
+    TSharedPtr<FRPGWindowInputState> GetWindowInputState() const { return State; }
+private:
+    TSharedPtr<FRPGWindowInputState> State;
+};
+'@
+        foreach($port in @('Component/UI/QuickSlotComponent.h','Component/RPGAbilitySystemComponent.h','Component/UI/RPGSkillWindowComponent.h')){
+            Write-Utf8 (Join-Path $project ('Source/Project_RPG/Public/'+$port)) "#pragma once`n#include `"InputTestPorts.h`"`n"
+        }
+        Write-Utf8 (Join-Path $project 'Source/Project_RPG/Private/InputTestPorts.cpp') @'
+#include "InputTestPorts.h"
+#include "UI/ActionBar/RPGActionBarContext.h"
+#include "Skill/QuickSlot/RPGQuickSlotInputBindings.h"
+URPGActionBarContext* UQuickSlotComponent::GetActionBarContext() {
+    if (!Context) Context = NewObject<URPGActionBarContext>(this);
+    return Context;
+}
+void UQuickSlotComponent::ReleaseAllSkillInputs(bool bKeepPhysicalState) {
+    if (Context) Context->ReleaseAll(bKeepPhysicalState);
+}
+FText FRPGQuickSlotInputBindings::ReadKeyLabel(const APlayerController*, bool, int32) { return FText::GetEmpty(); }
+'@
+    }
     if(!(Test-Path -LiteralPath (Join-Path $EngineRoot 'Engine/Build/InstalledBuild.txt'))){throw 'Installed engine required'}
     $dotnet=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
     $ubt=Join-Path $EngineRoot 'Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll'
@@ -99,7 +173,9 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "ActionBarCel
     if($LASTEXITCODE-ne0){throw 'Target query failed'}
     $report=Join-Path $temp 'Report'
     $editor=Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe'
-    $arguments=@(('"'+$uproject+'"'),'/Engine/Maps/Entry','-ExecCmds="Automation RunTests ProjectRPG.UI.ActionBar.Cell+ProjectRPG.UI.ActionBar.Layout"','-TestExit="Automation Test Queue Empty"','-unattended','-nullrhi','-nosound','-nosteam','-nop4','-nosplash','-NoLiveCoding','-DisablePython','-Multiprocess','-DDC=(InstalledEnginePak,Local)',('-LocalDataCachePath="'+(Join-Path $temp 'Cache')+'"'),('-UserDir="'+(Join-Path $temp 'User')+'"'),('-abslog="'+(Join-Path $root 'Native.log')+'"'),('-ReportExportPath="'+$report+'"'))
+    $selection='ProjectRPG.UI.ActionBar.Cell+ProjectRPG.UI.ActionBar.Layout'
+    if($InputBoundary){$selection+='+ProjectRPG.UI.ActionBar.InputBoundary'}
+    $arguments=@(('"'+$uproject+'"'),'/Engine/Maps/Entry',('-ExecCmds="Automation RunTests '+$selection+'"'),'-TestExit="Automation Test Queue Empty"','-unattended','-nullrhi','-nosound','-nosteam','-nop4','-nosplash','-NoLiveCoding','-DisablePython','-Multiprocess','-DDC=(InstalledEnginePak,Local)',('-LocalDataCachePath="'+(Join-Path $temp 'Cache')+'"'),('-UserDir="'+(Join-Path $temp 'User')+'"'),('-abslog="'+(Join-Path $root 'Native.log')+'"'),('-ReportExportPath="'+$report+'"'))
     $proof.NativeCommand=@($editor)+$arguments
     Save-Proof
     $process=Start-Process $editor -ArgumentList $arguments -WindowStyle Hidden -PassThru
@@ -116,6 +192,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "ActionBarCel
     $proof.Tests=@($data.tests|Select-Object fullTestPath,state,errors,warnings)
     $expected=@('DisabledTooltip','LiveFeedback','CooldownAndRelease','IconLifetime','CooldownPresentation')|ForEach-Object{'ProjectRPG.UI.ActionBar.Cell.'+$_}
     $expected+=@('Validation','Compatibility','SparseRowAndInput')|ForEach-Object{'ProjectRPG.UI.ActionBar.Layout.'+$_}
+    if($InputBoundary){$expected+=@('OwnershipAndWindows','Cancellation','SourceReuse')|ForEach-Object{'ProjectRPG.UI.ActionBar.InputBoundary.'+$_}}
     if((Compare-Object $expected @($proof.Tests.fullTestPath))-or@($proof.Tests|Where-Object{$_.state-ne'Success'-or$_.errors-ne0-or$_.warnings-ne0}).Count){throw 'Missing or failing cell cases'}
     foreach($entry in $proof.Inputs){
         if((Get-FileHash -LiteralPath (Join-Path $workspace $entry.Path)).Hash-ne$entry.SHA256){throw 'Input changed after native validation'}
@@ -151,6 +228,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "ActionBarCel
         'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarLayout.cpp',
         'Source/Project_RPG/Private/Tests/RPGActionBarLayoutTests.cpp',
         'Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp')
+    if($InputBoundary){$compileFiles+='Source/Project_RPG/Private/Tests/RPGActionBarInputTests.cpp'}
     $fileList=Join-Path $temp 'CompileFiles.txt'
     [IO.File]::WriteAllLines($fileList,@($compileFiles|ForEach-Object{Join-Path $integration $_}),[Text.UTF8Encoding]::new($false))
     Build-Project 'Project_RPGEditor' (Join-Path $integration 'Project_RPG.uproject') 'IntegrationBuild' @(('-FileList='+$fileList))

@@ -21,6 +21,7 @@
 - 기존 스킬 슬롯 키는 현재 프로필의 SkillSlot으로 전달된다. 기존 능력 입력 태그는 InputTag로 전달되며 프로필에 없는 전투/아이덴티티 입력은 override 중 소비된다.
 - Riding 전용 IMC/추가 키 제공자는 `PressAction(Source, ActionId, Context->GetRevision())` / `ReleaseInput(Source)`로 단일 경로에 합류한다. Source는 물리 입력별로 고유해야 한다. 동일 물리 키를 기존 슬롯과 전용 IMC 양쪽에서 실행하지 않는다.
 - 여러 입력이 같은 ActionId를 누르면 첫 Press와 마지막 Release만 제공자에 전달한다. 전환 후 누른 키를 새 동작으로 재생하지 않는다. 이전 위젯의 revision은 새로운 액션을 실행할 수 없다.
+- Press마다 Source의 입력 토큰을 고정하고 입력 취소 세대를 확인한다. 제공자의 읽기 콜백 도중 `ReleaseAll`(물리 상태 보존 포함)이나 같은 Source의 Release/새 Press가 발생하면 이전 판정은 실행·Release 소유권을 다시 쓰지 않는다. `ReadAction`은 읽기 전후의 동일한 로컬 소유 Controller와 창 차단 상태도 재확인한다. 취소가 프로필을 재설치하거나 HUD revision을 변경할 필요는 없다.
 - 제공자의 ReadAction은 실제 사용 가능 여부/쿨타임/현재 키 이름을 읽는다. 키 이름 미제공 시 기존 SkillSlot의 현재 설정으로 표시한다.
 - `FRPGActionBarActionView::UnavailableReason`은 제공자가 정한 지역화 표시 문구다. native 셀은 비활성 상태에서 액션 이름과 사유를 툴팁으로 표시하며, 사유가 비어 있으면 공통 사용 불가 문구를 표시한다. 활성 상태에서는 이전 사유를 숨긴다. 서버 내부 오류 문자열 대신 기능의 결과 enum을 표시 문구로 변환해 제공한다.
 - 기본 좌측은 native 버튼 바, 별도 저작 위젯은 URPGActionBarWidget 파생 클래스. 중앙 클래스가 없으면 기존 직업 아이덴티티를 숨긴다. 새 중앙/좌측 위젯은 같은 context를 읽는다.
@@ -112,3 +113,13 @@ native 셀은 대기 중에도 `R · 3`처럼 현재 키와 올림한 남은 시
 게시 `def31e2e` + 명시 입력12의 최종 고정 사본에서 독립 UHT/12단계 링크0·DLL `DBBAAB65…23933007` 실제 로드/native8 Success/검사 오류·경고0/실행0·실제 프로젝트 전체 UHT/관련 CPP7 컴파일0·입력12 SHA 전후 일치를 확인했다. 새 회귀는 동시 키/숫자·재배정/값 변경·전체 시간 미상/무한대/음수·완료/NaN·초과 시간·셀 제거 후 게이지 만료를 검사한다. 기존 셀/배치7개도 통과했다. 첫 사본은 검사 fixture에서 존재하지 않는 `TNumericLimits` API를 호출해 컴파일에 실패했고 `std::numeric_limits`로 수정 후 최종 사본을 검증했다. 기동 `Condition failed`15개는 별도 기록했다. 게이지의 GPU 픽셀/전체 게임 링크/Riding 서버 쿨타임·RPC 재검증은 이 집중 검사에 포함하지 않는다.
 
 두 회차의 자기 사본/OBJ/DLL/PDB/UserDir/cache 합계 5,504,591,094 bytes(약5.13GiB)와 중복 proof를 폐기했고 정리 예외는 없다. 원본 게임 DLL/에셋과 공유 UBT trace는 보존했다. 폐기한 모듈 해시는 당시 증거다. 로컬 최소 요약은 `Saved/BuildChecks/ActionBarCooldown-20261109/Completion.json`, 유지할 회귀는 `Scripts/Tests/Run-ActionBarCellTests.ps1 -Cooldown`이다.
+
+## 입력 판정 도중 취소/소유 변경 — 2026-11-09
+
+사용 가능 여부를 읽는 동안 빙의가 해제되거나 창이 열리면 기존 판정 결과를 폐기한다. Source의 Press마다 새 토큰을 저장하고 `ReleaseAll`은 물리 상태 보존 여부와 관계없이 취소 세대를 올린다. 읽는 도중 취소된 Press는 되살리지 않으며, 같은 Source를 Release 후 다른 액션에 재사용해도 이전 읽기가 새 Press/Release 소유권을 덮어쓰지 못한다. 프로필 revision과 물리 키 배정·서버 승인은 그대로다.
+
+게시 `5b8c0db7` + 입력18 고정 사본의 실제 Context/Widget/WindowState와 Engine World/빙의 코드에서 독립 UHT/17단계 링크0·DLL `67EC70A2…B9820F7C` native11 Success/검사 오류·경고0/실행0을 확인했다. 새 입력3개는 읽는 도중 빙의 해제/창 열기·취소(물리 상태 보존/제거)·같은 Source의 다른 액션 재사용과 정확한 Release를 검사하며 기존 셀/배치8개도 통과했다. 이 사설 실행 모듈에서 QuickSlot은 실제 context 저장/취소 전달만, ASC는 미사용 하위 클래스, 창 컴포넌트는 실제 창 상태 저장만 담당하고 키 조회는 빈 값인 대체 포트다. 제품 QuickSlot/GAS/Controller 파일은 수정하지 않았다. 실제 프로젝트 UHT/관련 CPP8 집중 컴파일도 통과했고 두 실행 사본의 입력18 SHA와 현재 소스가 모두 일치했다. 기동 `Condition failed`15개는 별도 기록했다. 실제 GAS 입력/직업 편성·소켓 RPC/GPU·전체 게임 링크 검증은 아니다.
+
+최초 집중 CPP9 중 변경하지 않은 `RPGWindowInputState.cpp`만 기존 헤더의 PCH 의존(`FWeakObjectPtr` 불완전 형식)으로 실패했다. 해당 원본은 수정하지 않고 집중 목록을 변경 코드/연결부8개로 제한한 후 별도 컴파일을 통과했다. 창 상태 코드는 사설 실행 모듈에서 정상 PCH로 컴파일·실행했고 제품/검사 입력이 같아 native11을 반복하지 않았다. 원래 실패 결과와 후속 컴파일 전용 결과는 구분해 보존했다.
+
+두 사본/OBJ/DLL/PDB/UserDir/cache 합계 3,012,363,200 bytes(약2.81GiB)와 중복 proof를 폐기했고 정리 예외는 없다. 원본 게임 DLL/에셋과 공유 UBT trace는 보존했다. 폐기한 모듈 해시는 당시 증거다. 로컬 최소 요약은 `Saved/BuildChecks/ActionBarInputBoundary-20261109/Completion.json`, 유지할 회귀는 `Scripts/Tests/Run-ActionBarCellTests.ps1 -InputBoundary`다.

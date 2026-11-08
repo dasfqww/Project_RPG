@@ -40,10 +40,12 @@ private:
     UQuickSlotComponent* GetSlots() const;
     TSharedPtr<IRPGActionBarProvider> Provider;
     UPROPERTY(Transient) TObjectPtr<URPGActionBarProfile> Profile;
-    TSet<FName> DownInputs;
+    TMap<FName, uint64> DownInputs;
     TSet<FGameplayTag> BaseHeldTags;
     TMap<FName, FName> PressedActions;
     uint64 Revision = 0;
+    uint64 InputSerial = 0;
+    uint64 CancellationRevision = 0;
     bool bTransitioning = false;
     bool bShuttingDown = false;
 };
