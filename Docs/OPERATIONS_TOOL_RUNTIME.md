@@ -98,6 +98,17 @@ GitHub 앱 callback은 정확히 `<ManagementOrigin>/ops/auth/github-callback`�
 
 화면 하단의 추적 번호를 누르면 `/ops/diagnostics`에서 해당 요청 로그를 검색한다. API는 응답 `meta.httpRequestId`, `traceId`와 `X-Ops-Request-Id`를 제공한다. 로그 검색은 정확한 ID 또는 허용된 이벤트 필터가 필요하며 기본 최근 1시간, 최대 24시간이다. JSON API와 페이지/오류/필터 목록은 [구현 계약 §3](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md#3-s1-화면과-호출-계약)을 따른다.
 
+### 로그 화면의 연결 탐색
+
+`/ops/diagnostics`에서 HTTP 요청 번호, trace, 운영 요청, 조사 사건, 거래 요청, 캐릭터, 던전 세션, 아이템의 8종 ID를 입력한다. 여러 조건은 AND 검색이다. 이벤트 제안은 `OperationLogQuery.EventNames`의 등록 목록을 사용하므로 게임 HTTP·거래 영수증·worker 이벤트가 같은 화면에 나온다. 결과에는 수준/결과, 실제 값이 있는 HTTP 상태/소요 시간, 환경·서비스·인스턴스·빌드·span/부모 정보를 표시한다. HTML 본문과 폼 값은 Razor가 인코딩한다.
+
+- 결과에 있는 유효한 ID를 누르면 해당 번호 하나로 새 검색을 한다. 실제 검색한 UTC 기간과 등록 원본을 유지하고 이전의 다른 ID·eventName·level·limit·cursor는 가져오지 않는다. 같은 거래의 다른 HTTP 시도나 같은 trace의 다른 사건이 이전 AND 조건에 가려지지 않게 한다. 기간을 입력하지 않았던 최초 검색도 당시의 기본 1시간을 고정한다.
+- **계속 검색**은 같은 검색의 다음 페이지다. 원래 모든 조건·페이지 크기·고정 기간·보호 커서를 유지한다. 새로 추가된 로그를 기존 페이지 체인에 끼워 넣지 않는 EOF 계약도 유지한다. ID 링크로 새 검색할 때는 새 시점의 보존 원본을 읽는다.
+- ID는 해당 이벤트에 저장된 값만 사용한다. null/빈 GUID/잘못된 trace에는 링크를 만들지 않고, 조회 원본이 없거나 여러 개여서 한 원본을 정할 수 없으면 추정하지 않는다. span/부모는 표시만 하며 지원하지 않는 검색 필터를 합성하지 않는다. 링크는 같은 관리 호스트의 `/ops/diagnostics`로만 향한다.
+- [연결 링크 생성기](../Backend/ProjectRpg.Backend/Operations/Web/OperationsLogNavigation.cs)는 표시 필드와 새 검색 URL만 담당한다. [PageModel](../Backend/ProjectRpg.Backend/Pages/Ops/Diagnostics.cshtml.cs)은 기존 읽기 facade를 사용하고 [Razor](../Backend/ProjectRpg.Backend/Pages/Ops/Diagnostics.cshtml)는 표시만 한다. API/권한/검색 예산/보존 계약은 유지한다. 페이지는 미인증 시 기존 로그인으로 안내하고 JSON API는 401을 반환한다. 게임 관리자 Bearer로 운영 로그를 읽을 수 없다.
+
+`Scripts/Tests/Run-OperationsLogNavigationTests.ps1 -Postgres`는 게시 Backend+본인 5개 C#/Razor 입력의 독립 Release, 실제 HTTPS/모의 OAuth·JSONL에서 8종 ID/현재 이벤트 제안, HTTP·trace 링크 실행, 기본 UTC 기간 고정/원본 유지·이전 AND 조건 제거, 이어보기/추가 행/커서 필터 불일치, 권한/경로 제한·저장/입력 HTML 인코딩·PG 게임 표 지문 불변을 확인한다. 풍부한 연결 관계는 합성 JSONL fixture이며, 별도로 실제 `/api/service-status`가 남긴 요청 번호→영속 HTTP 이벤트→실제 trace 링크를 확인한다. 합성 행을 실제 거래/게임 반영의 증거로 취급하지 않는다. `-FullSuite`는 운영툴 전체 Memory 회귀다. 2026-11-08 집중 PG와 전체 Memory 모두 Release 0경고/0오류로 통과했다. 실제 브라우저 시각 검증·UE 실행·운영 배포는 포함하지 않는다. 자기 사본/출력/격리 DB는 finally 폐기한다.
+
 커서는 환경·운영자·입력/정렬·페이지 크기에 묶인 보호 token이며 15분 뒤 만료한다. 이어보기 시 첫 검색의 기간을 유지한다. 커서 만료 또는 보존 파일 삭제 시 처음부터 다시 조회한다. 로그 검색은 최대 200건·3초·64MiB, 역방향 JSONL 읽기다. 손상/미완성/과대 행과 보존 유실은 Partial/Unknown으로 표시한다. 부분 결과나 0건은 게임 처리 성공/실패의 증거가 아니다.
 
 기술 로그는 하루 또는 32MiB마다 회전하고 최대 30파일/14일을 보존한다. 4096개 비동기 큐가 넘치면 요청을 막지 않고 drop 수를 기록한다. 종료 flush 한도는 5초다. `catalogue.json`은 파일 관측/부팅/유실 정보를 담고, 실제 기록은 `ops-*.jsonl`이다. Windows에서 쓰는 중인 파일의 길이는 읽기 handle에서 확인한다. 기술 로그는 감사 원장이나 지급 영수증이 아니다. cookie/token/code/요청 body/SQL·예외 원문은 기록하지 않는다.

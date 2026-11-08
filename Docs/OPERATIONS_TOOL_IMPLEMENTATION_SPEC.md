@@ -74,7 +74,7 @@ Razor PageModel은 Core 유스케이스를 직접 호출한다. 아래 읽기 AP
 |---|---|---|
 | `GET /ops` | 없음 | 검색 폼·환경/빌드 표시 |
 | `GET /ops/characters/{id}` | 캐릭터 GUID | 기본 상세 + 독립 패널 링크/조회 |
-| `GET /ops/diagnostics` | 아래 로그 필터 | 로그 검색 폼/결과 |
+| `GET /ops/diagnostics` | 아래 로그 필터 | 8종 ID/등록 이벤트 검색·ID 연결 탐색·기존 조건의 이어보기 |
 | `GET /ops/api/characters` | `kind=SteamId\|CharacterId`, `value`, `limit`, `cursor?` | `SearchCharacters` → Page<CharacterHeader> |
 | `GET /ops/api/characters/{id}` | GUID | `GetCharacterSummary` → CharacterHeader |
 | `GET /ops/api/characters/{id}/inventory` | `container=Inventory\|Equipment\|Mail`, `limit`, `cursor?` | `GetInventoryPage` → Page<ItemSummary> |
@@ -83,6 +83,8 @@ Razor PageModel은 Core 유스케이스를 직접 호출한다. 아래 읽기 AP
 | `GET /ops/api/logs` | `fromUtc`, `toUtc`, `sourceId?`, 정확한 ID/이벤트 필터, `limit`, `cursor?` | `SearchOperationLogs` → OperationLogPage |
 
 첫 버전에서 이름 부분 검색·현재 값 수정 폼·자동 polling은 제공하지 않는다. 결과에 안정 ID를 표시하고 사용자 선택을 거쳐 상세로 이동한다. 기본 상세 실패는 페이지 오류, 개별 패널 실패는 해당 패널 오류로 표시한다. 다른 패널을 빈 성공으로 덮거나 화면 전체를 자동 재시도하지 않는다.
+
+로그 화면의 [연결 탐색 구현](OPERATIONS_TOOL_RUNTIME.md#로그-화면의-연결-탐색)은 Web의 표시/URL 생성기와 PageModel·Razor를 분리한다. 지원하는 모든 ID 필드와 등록 이벤트 목록을 사용하고 실제 검색 UTC 기간/등록 원본을 고정한다. ID를 누를 때는 해당 ID만으로 새 검색해 이전 AND 조건·커서를 제거한다. 계속 검색은 같은 조건/페이지 크기·보호 커서를 유지한다. 실제 저장 값과 기존 권한/검색 계약만 사용하며 없는 연결·새 검색 권한을 만들지 않는다.
 
 ### 3.1 공통 형식과 검증
 
