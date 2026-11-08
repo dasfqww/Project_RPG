@@ -53,9 +53,25 @@ UE의 던전 결과 자동 반영은 아래 절의 읽기·별도 POST 절차를
 
 응답은 `eventId`, `characterId`, 문자열 `revision`, `appliedObjectives`(퀘스트/목표 ID)와 `no-store`이며 대화/전체 저널을 서버 사건 응답에 노출하지 않는다. 이 기록은 목표 달성까지만 처리하고 보고·보상·해금은 기존 흐름을 따른다. 전체 파티로 사건을 복제하지 않는다.
 
-이 단위는 저작·서버 API·Memory/PostgreSQL 저장까지 구현한다. UE 현장 조사 액터/서버 승인 이벤트 전송과 즉시 UI 갱신 알림은 후속 작업이다. 검증 러너는 `Scripts/Tests/Run-NarrativeInteractionTests.ps1 -Postgres`이며 전용 DB·실제 Bearer HTTP·동시 재전송·무효과 영수증·세대/종료/시점·기존 이야기 회귀를 확인한다. 실제 맵 조사·전투 네트워크 검증과 구분한다.
+서버 저장 단위의 검증 러너는 `Scripts/Tests/Run-NarrativeInteractionTests.ps1 -Postgres`이며 전용 DB·실제 Bearer HTTP·동시 재전송·무효과 영수증·세대/종료/시점·기존 이야기 회귀를 확인한다. 이어지는 UE 연결의 범위와 검증은 아래 절을 따른다.
 
 2026-11-08 검증: 게시 `fbb7d5ab`와 본인13입력의 독립 Release 빌드·기존 이야기 빌드가 모두 경고/오류0이다. Memory/실제 PostgreSQL의 신규/무효과 사건·동시 재전송·여러 개인 의뢰·순차 단계/시점·입장 확인/접속 세대·소유권·카탈로그 변경 후 영수증·손상 저장 거절과 실제 Bearer HTTP 역할/종료 후 제한을 통과했다. 기존 저작·대화·정보·던전 목표·입장·소유권/리비전 회귀도 통과했다. 근거는 `Saved/BuildChecks/NarrativeInteraction-20261108/2f33eb09bce9483a83daf235826eed3c/Result.json`과 `CompletionAudit.json`이다. 초기 시각 fixture의 거절 분류 오류는 수정 후 결과와 구분해 보존했다. 모든 시도 자기 임시100,609,409 bytes/전용 DB를 정리했고 Temp·예외0이다. 폐기한 사본의 해시는 당시 증거로만 사용한다.
+
+## UE 개인 조사 승인과 결과 복구
+
+`ARPGNarrativeInvestigation`은 기존 WorldDynamic 상호작용으로 배치하는 즉시 조사 액터다. 클라이언트는 소유 Controller의 복제 컴포넌트에 액터 참조와 입력 상관 ID만 보낸다. 서버는 현재 Controller/Pawn/PlayerState 관계·생존 체력·최종 입장 확인·개인 인증과 양수 접속 세대·거리/Visibility 시야를 검사한다. 승인 뒤 서버가 사건 GUID와 UTC 관측 시각을 만들고 서버의 논리 대상 ID를 고정한다. 대화의 목표 기록이나 클라이언트 타이머를 승인 근거로 사용하지 않는다.
+
+`UHttpWebManager::CreateServerNarrativeInteractionRequest`는 배정된 세션의 서버 인증만 사용한다. 세션·서버·endpoint·인증 값이 바뀐 콜백은 적용하지 않는다. 접속 세대는 int64 문자열, 응답은256KiB/목표256개 이하로 검사하고 성공 영수증의 사건/캐릭터·문자열 리비전·목표 중복도 대조한다. 사건은 Controller당 하나만 미해결 상태로 유지한다. 응답 유실·5xx·인증 오류·잘못된200은 성공 여부 미확정으로 남기며 최초 요청과 1/2/4초 후 재시도까지 최대4회 자동 전송한다. 이후 같은 액터 재상호작용 또는 `RetryPendingInvestigation()`은 같은 사건/대상/세대/시각/본문을 재전송한다. 다른 대상의 새 사건으로 대체하지 않는다.
+
+승인 이후 재전송은 Pawn의 이동·사망·대상 소멸로 관측 내용을 바꾸지 않는다. 원래의 PlayerState/개인 인증·세션/접속 세대·서버 문맥은 계속 일치해야 한다. 정확한 영수증 조회보다 뒤에서 검사하는409 `interaction_event_out_of_window`만 확정 거절로 처리하여 오래된 미저장 사건을 해제한다. 불확실한 요청의 시각/사건 ID를 새로 만들어 강행하지 않는다. 완료/확정 거절의 최근16개 입력 상관 ID를 보관해 중복 RPC가 새 사건을 만들지 않게 한다. 서버 프로세스/Controller 종료 시 미해결 전송 자체를 영속 복구하지는 않는다. 이미 저장된 진도는 기존 Player 이야기 GET으로 복원하며 저장되지 않은 조사는 새로 수행한다.
+
+완료 RPC는 해당 소유 Controller로만 보낸다. 클라이언트의 계정/endpoint/선택 캐릭터·PlayerState/세션을 확인하고 LocalPlayer의 `URPGNarrativeCoordinator`로 새 진도를 조회한다. 진행 중 대화/자동 던전 목표 명령이 있으면 완료될 때까지 기다린다. 부분 영수증을 전체 진도로 덮어쓰거나 다른 플레이어로 전파하지 않는다. 액터 이름표에 조사 중/완료/재확인 상태를 표시하고 `OnStatus`로 별도 HUD 연결도 지원한다. 목표가 없거나 이미 달성한 경우도 정상 조사 완료이며 자동 보고·보상·해금은 하지 않는다.
+
+`Scripts/Tests/Run-NarrativeInvestigationTests.ps1`은 본인 입력만 고정한 작은 UE 모듈에서 사건 인코딩·정밀도·영수증/무효과·잘못된 응답·동일 본문 재시도·상한/확정 거절을 검사하고, 게시 Git의 전체 Source/Config/플러그인 사본에 본인 입력만 얹어 실제 Controller/액터/RPC/HTTP CPP와 전체 UHT를 컴파일한다. 공유 DLL은 교체하지 않는다. 게임 모듈 전체 링크·실제 네트워크 RPC/맵·Steam/물리 입력·이번 UE에서 HTTP/PG까지 연결한 검증과는 구분한다. 자기 사본/OBJ/DLL/PDB/cache/UserDir는 종료 시 정리하며 작은 결과와 당시 입력 해시만 남긴다.
+
+문맥 변경으로 중단한 입력도 최근 입력 기록에 남겨 같은 입력을 새 사건으로 재승인하지 않는다. 중단은 이전 쓰기의 취소/미저장 확정을 뜻하지 않으며 원래 캐릭터의 저장 조회로 복구한다. Player 인증 갱신 중에도 계정/endpoint/캐릭터가 같으면 완료 알림과 조회 대기를 유지한다.
+
+2026-11-08 검증: 게시 `fa700fe8`+본인10입력의 작은 모듈 빌드/링크와 native5가 통과했다(검사 오류/경고0·실행0). 실제 전체 UHT와 관련 CPP6 집중 컴파일도 성공했고 입력/러너 SHA가 유지됐다. 기동 중 Engine 자동 검사 Error15/Warning4는 검사 구간과 분리했다. 최초 헤더 누락, 사설 대상 조회 준비 전 공유 Build.bat 대기, 숫자 리비전 자동 문자열 변환을 거절하는 검사 실패는 보완 후 결과와 구분해 보존한다. 자기4회 임시195,337,667 bytes를 정리했고 Saved/NI 잔여/정리 예외0이다. 근거 `Saved/BuildChecks/NarrativeInvestigation-20261108/d3f1364faae14dd9abc0b345147df868/Result.json`과 `CompletionAudit.json`; 폐기된 DLL 해시는 당시 증거다. 이 결과를 실제 RPC/맵 또는 UE→HTTP→PG 실행 검증으로 확대하지 않는다.
 
 ## 던전 목표 자동 반영과 복구
 

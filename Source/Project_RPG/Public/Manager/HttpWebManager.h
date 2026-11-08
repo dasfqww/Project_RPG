@@ -22,6 +22,8 @@ struct FRPGCharacterSkillConfiguration;
 struct FRPGEquipmentMutationCommand;
 struct FRPGEquipmentMutationHttpResult;
 struct FRPGNarrativeHttpResult;
+struct FRPGNarrativeInteractionCommand;
+struct FRPGNarrativeInteractionHttpResult;
 class IRPGTradeTransport;
 class FRPGDungeonDisconnectionJournal;
 class FRPGDungeonConsumeJournal;
@@ -312,6 +314,9 @@ public:
 	/** Build-only owner-scoped narrative GET/choice POST; player credentials remain private. */
 	FHttpRequestPtr CreatePlayerNarrativeRequest(FGuid CharacterId, const FString& ChoiceBody,
 		TFunction<void(FRPGNarrativeHttpResult)> Completion);
+	/** Build-only approved observation POST, using only the assigned game-server credential. */
+	FHttpRequestPtr CreateServerNarrativeInteractionRequest(const FRPGNarrativeInteractionCommand& Command, const FString& FrozenBody,
+		TFunction<void(FRPGNarrativeInteractionHttpResult)> Completion);
 	/** Build only; the intent owner must durably save before dispatching this request. */
 	FHttpRequestPtr CreatePlayerEquipmentMutationRequest(const FRPGEquipmentMutationCommand& Command,
 		TFunction<void(FRPGEquipmentMutationHttpResult)> Completion);

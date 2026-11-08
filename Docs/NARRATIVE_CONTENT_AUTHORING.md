@@ -25,6 +25,10 @@
 
 서버가 승인한 개인 조사/조작 완료를 `interactionObjectives`로 정의한다. 던전·난이도·논리 대상 ID를 정확히 지정한다. 대상 ID는 서버의 현장 액터/기믹과 공유할 저작 키이며 클라이언트가 고르는 완료 버튼 ID가 아니다.
 
+UE 맵에는 `ARPGNarrativeInvestigation`을 배치하고 `TargetId`를 아래 목표의 `targetId`와 정확히 맞춘다. `DisplayName`, 선택 `Appearance` 메시, 거리(50~1000cm, 기본250cm)를 설정한다. 액터의 QueryOnly/WorldDynamic 조사 영역을 기존 상호작용 탐색에 유지하고, 가림막은 Visibility를 차단하도록 저작한다. 이 액터는 즉시 조사이며 `InteractionDuration`은 BeginPlay에서0으로 고정한다. 길게 누르는 작업·아이템 소비는 추가 계약이 필요하다. 논리 대상 ID가 같으면 같은 종류의 조사로 인정하므로 서로 다른 유물을 구분하려면 서로 다른 키를 사용한다. 런타임에 소환하더라도 논리 대상 ID는 서버에서 읽으며 클라이언트 RPC 인자로 받지 않는다.
+
+입력은 기존 `ARPGPlayerController`의 상호작용과 기본 `URPGNarrativeInvestigationComponent`를 사용한다. 클라이언트는 액터 참조와 입력 상관 ID만 보내며 서버가 실제 `TargetId`, 생존 Pawn, 최종 입장 확인, 개인 인증/접속 세대, 거리/시야를 확인한다. 다른 캐릭터의 진도나 파티 전체 사건을 대신 기록하지 않는다. 미수락 상태의 조사도 무효과 영수증으로 확정되므로 수락 후 새로 조사해야 한다. 순차 목표의 다음 단계 역시 새 입력·새 사건을 요구한다.
+
 ```json
 {
   "id": "SAMPLE.Inspect", "version": 1, "prerequisites": [],

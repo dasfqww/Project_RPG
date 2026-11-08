@@ -72,12 +72,14 @@
 #include "Engine/GameInstance.h"
 #include "Engine/OverlapResult.h"
 #include "Component/UI/RPGInteractionProgressComponent.h"
+#include "Narrative/RPGNarrativeInvestigationComponent.h"
 #include "Widgets/Layout/Anchors.h"
 
 ARPGPlayerController::ARPGPlayerController()
 {
 	InputBindingTransactions = MakeShared<FRPGInputBindingTransactions>(*this);
 	InteractionProgress = CreateDefaultSubobject<URPGInteractionProgressComponent>(TEXT("InteractionProgress"));
+	CreateDefaultSubobject<URPGNarrativeInvestigationComponent>(TEXT("NarrativeInvestigation"));
 	PlayerTeamID = FGenericTeamId(0);
 	BossVictoryWidgetClass = TSoftClassPtr<URPGWidgetBase>(FSoftObjectPath(TEXT(
 		"/Game/Blueprints/UI/GameContents/BossBattle/WBP_VictoryWidget.WBP_VictoryWidget_C")));
