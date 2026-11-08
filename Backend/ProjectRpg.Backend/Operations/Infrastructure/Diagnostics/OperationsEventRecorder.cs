@@ -23,6 +23,10 @@ public sealed class OperationsEventRecorder(OperationsLogStore store, Operations
             GameTransactionKind.Item => "ItemTransaction.Commit",
             GameTransactionKind.Currency => "CurrencyTransaction.Commit",
             GameTransactionKind.DungeonPickup => "DungeonPickup.Commit",
+            GameTransactionKind.EquipmentCraft => "Equipment.Craft",
+            GameTransactionKind.EquipmentDismantle => "Equipment.Dismantle",
+            GameTransactionKind.EquipmentUpgrade => "Equipment.Upgrade",
+            GameTransactionKind.EquipmentTransfer => "Equipment.Transfer",
             _ => throw new ArgumentOutOfRangeException(nameof(observation))
         };
         Write(new(1,Guid.NewGuid(),observation.Disposition == GameTransactionDisposition.Committed

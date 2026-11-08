@@ -48,7 +48,7 @@ public static class EquipmentProgressionApiEndpoints
                     new(request.RequestId, characterId, version, request.TargetDefinitionName, definitionVersion, tokens), clock.GetUtcNow(), ct));
             }
             catch (EquipmentProgressionRuleException error) { return Failure(error); }
-        });
+        }).AddEndpointFilter<EquipmentReceiptObservationFilter>();
         app.MapPost("/api/characters/{characterId:guid}/equipment/dismantle", async (Guid characterId,
             HttpContext context, IEquipmentProgressionRepository repository, TimeProvider clock, CancellationToken ct) =>
         {
@@ -64,7 +64,7 @@ public static class EquipmentProgressionApiEndpoints
                     new(request.RequestId, characterId, version, equipment), clock.GetUtcNow(), ct));
             }
             catch (EquipmentProgressionRuleException error) { return Failure(error); }
-        });
+        }).AddEndpointFilter<EquipmentReceiptObservationFilter>();
         app.MapPost("/api/characters/{characterId:guid}/equipment/upgrade", async (Guid characterId,
             HttpContext context, IEquipmentProgressionRepository repository, TimeProvider clock, CancellationToken ct) =>
         {
@@ -89,7 +89,7 @@ public static class EquipmentProgressionApiEndpoints
                 return Response(result);
             }
             catch (EquipmentProgressionRuleException error) { return Failure(error); }
-        });
+        }).AddEndpointFilter<EquipmentReceiptObservationFilter>();
         app.MapPost("/api/characters/{characterId:guid}/equipment/transfer", async (Guid characterId,
             HttpContext context, IEquipmentProgressionRepository repository, TimeProvider clock, CancellationToken ct) =>
         {
@@ -107,7 +107,7 @@ public static class EquipmentProgressionApiEndpoints
                 return Response(result);
             }
             catch (EquipmentProgressionRuleException error) { return Failure(error); }
-        });
+        }).AddEndpointFilter<EquipmentReceiptObservationFilter>();
     }
 
     private static bool TryRevision(string? text, out long revision) => long.TryParse(text,

@@ -47,7 +47,7 @@ Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복
 - 저장소가 `Committed`를 반환하면 `game.transaction.receipt.committed`, 같은 명령의 확정 결과를 재생한 `AlreadyCommitted`이면 `game.transaction.receipt.replayed`를 한 건 남긴다. 재생 로그를 새 지급으로 계산하지 않는다. `transactionRequestId`는 반환된 영수증의 ID이며, 각 재시도의 `httpRequestId`는 별개다. 작업 이름은 `ItemTransaction.Commit`/`CurrencyTransaction.Commit`으로 고정한다.
 - 재화의 `characterId`만 확정 결과에서 가져온다. 아이템의 actor/소유자 문자열을 캐릭터로 추정하지 않는다. 영수증에 원래 세션 정보가 없으므로 호출 본문의 `dungeonSessionId`를 재생된 영수증의 원래 세션처럼 기록하지 않는다. item/운영 요청/운영자 ID와 HTTP 상태도 이 이벤트에 합성하지 않는다. 여러 아이템은 거래당 한 이벤트로 묶으며 품목/수량/잔액·reason/fingerprint/임의 operation·자격/본문은 전달하지 않는다.
 - 거절·충돌·권한 실패는 영수증 이벤트를 생성하지 않으며 공통 HTTP 경계에서 상태를 관측한다. 저장 예외 등으로 확정 결과를 받지 못한 경우에도 로그 부재가 미반영 증거는 아니다. 기존 DB 영수증을 원래 요청 번호로 재조회한다. 관측기 예외는 이미 확정된 결과·재생·기존 업무 예외를 변경하지 않는다. 추가 조회·트랜잭션·잠금은 만들지 않는다.
-- `/ops/diagnostics`의 거래 요청 번호 또는 `GET /ops/api/logs?transactionRequestId=<GUID>`에서 확정/재생 → 해당 HTTP 시도 → trace를 조사한다. 번호를 알아도 기존 운영자 인증/진단 권한이 필요하다. HTTP 범위 밖의 직접 서비스 호출에는 가상의 HTTP 기록을 만들지 않는다. 원자 픽업은 아래 별도 경계에서 같은 관측 포트를 사용한다. worker·장비/우편/개인 거래 등 다른 직접 저장 경로는 이 두 일반 거래 서비스의 계측 범위에 포함되지 않는다. 기존 worker의 별도 관측 계약은 유지한다.
+- `/ops/diagnostics`의 거래 요청 번호 또는 `GET /ops/api/logs?transactionRequestId=<GUID>`에서 확정/재생 → 해당 HTTP 시도 → trace를 조사한다. 번호를 알아도 기존 운영자 인증/진단 권한이 필요하다. HTTP 범위 밖의 직접 서비스 호출에는 가상의 HTTP 기록을 만들지 않는다. 원자 픽업과 장비 변경은 아래 별도 경계에서 같은 관측 포트를 사용한다. worker·우편/개인 거래 등 다른 직접 저장 경로는 이 두 일반 거래 서비스의 계측 범위에 포함되지 않는다. 기존 worker의 별도 관측 계약은 유지한다.
 
 `Scripts/Tests/Run-OperationsGameTransactionTests.ps1 -Postgres`는 게시 Backend+본인 9개 C# 입력만 고정한 독립 Release, 실제 loopback HTTPS/모의 OAuth·Memory/자기 tmpfs PostgreSQL에서 실제 두 API의 확정/재생·충돌·미인증/관리자/멤버 권한 거절·영수증→HTTP/실제 trace 검색·게임 상태/불변 영수증 보존·비밀 제외를 검사한다. 별도 Memory HTTPS에서 관측기가 매번 예외를 던져도 두 거래의 효과가 한 번만 반영되고 재생/거절 응답이 유지되는지 확인한다. 저장 예외는 서비스 단위 검사다. `-FullSuite`는 운영툴 전체 Memory 회귀이며 2026-11-08 집중 PG와 전체 Memory 모두 0경고/0오류로 통과했다. 자기 빌드/실행 사본·DB는 finally 폐기한다. UE·실제 운영 배포/부하 검증과 구분한다.
 
@@ -63,6 +63,19 @@ Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복
 `Scripts/Tests/Run-OperationsPickupTracingTests.ps1 -Postgres`는 게시 Backend+본인 5개 C# 입력만 고정한 독립 Release에서 기존 일반 거래 추적 회귀와 실제 픽업 API의 HTTPS/모의 OAuth·Memory/자기 tmpfs PostgreSQL 검증을 실행한다. 백엔드 2인 멤버 세션의 실제 준비→원자 소비·지급→후속 아이템 이동→정확한 재생/동시 재시도, 원래 영수증/현재 아이템 보존, 올바른 수령인/세션/아이템/HTTP/실제 trace 검색과 컴파일된 Razor 링크를 확인한다. 별도 Memory HTTPS의 매번 실패하는 관측기에서도 단일 반영·성공/재생 응답을 확인하고 저장 오류/취소는 서비스 단위 검사한다. 재생/운영 조회 후 PG 게임 표 지문 불변·비밀 제외를 검사한다. `-FullSuite`는 전체 운영툴 Memory 회귀다. 실제 UE/브라우저 시각·운영 배포/부하는 미포함이며 자기 사본/출력/격리 DB는 finally 폐기한다.
 
 2026-11-08 집중 Memory/PG와 전체 운영툴 Memory 회귀 모두 Release 0경고/0오류로 통과했다. 원자 저장소/API·DTO 변경 없이 기존 확정 거래 관측 포트를 확장한 범위다.
+
+### 장비 변경 영수증 연결
+
+`POST /api/characters/{characterId}/equipment/{craft|dismantle|upgrade|transfer}`에 공통 [장비 결과 관측 필터](../Backend/ProjectRpg.Backend/Api/EquipmentReceiptObservationFilter.cs)를 적용한다. 필터는 다음 핸들러가 반환한 서버 생성 `ItemCommitResponse`의 성공 상태/확정 영수증만 기존 `IGameTransactionObserver`에 전달한다. 요청 본문·route에서 업무 ID를 추출하지 않으며 장비 규칙·소유권/리스 검사·멱등/저장 트랜잭션·응답/오류 매핑은 기존 [장비 API](../Backend/ProjectRpg.Backend/Api/EquipmentProgressionApiEndpoints.cs)에 그대로 둔다. ASP.NET 결과 처리는 API에, 고정 관측 모델은 Application에, 로그 저장은 Infrastructure에 둔다.
+
+- 같은 `GameApiDiagnosticsEnabled` 설정을 사용한다. 비활성 상태에서는 관측 포트가 없어도 네 API가 동작한다. 추가 기동 자격·서비스 탐색·스키마 변경은 없다. 관측기 예외는 원래 결과 객체·응답 본문/상태를 변경하지 않으며 핸들러 예외/취소는 기존 경계로 전파한다.
+- `Committed`는 `game.transaction.receipt.committed`, 정확한 `AlreadyCommitted`는 `game.transaction.receipt.replayed`다. 작업 이름은 `Equipment.Craft`/`Equipment.Dismantle`/`Equipment.Upgrade`/`Equipment.Transfer`로 고정한다. `transactionRequestId`와 `characterId`는 저장 결과의 영수증/Character actor에서 가져온다. 소유 확인되지 않은 요청·규칙 실패·충돌·권한 거절·저장 예외를 확정 사건으로 만들지 않는다. 로그 부재를 미반영 증거로 취급하지 않는다.
+- 하나의 명령이 장비와 비용 스택 등 여러 아이템을 변경하므로 단일 `itemId`를 추정하지 않는다. 현재 던전 세션/운영자/전송 완료 HTTP 상태도 합성하지 않는다. 원문 fingerprint·품목/수량/잔액·계정/자격·요청/응답 body는 관측 모델로 전달하지 않는다. 기존 schemaVersion 1·사건 이름과 일반 거래/픽업의 맥락 의미는 유지한다.
+- 거래 번호로 원래 명령/재생의 서로 다른 HTTP 시도와 실제 trace를 검색한다. 장비가 추가 강화/전승되거나 재료·결과물이 소비된 뒤의 재생도 원래 영수증과 연결하며 현재 상태를 덮어쓰지 않는다. 저장소를 직접 호출하는 다른 경로·UE 관측이나 클라이언트 반영을 이 필터의 계측으로 간주하지 않는다.
+
+`Scripts/Tests/Run-OperationsEquipmentTracingTests.ps1 -Postgres`는 게시 Backend+본인 6개 C# 입력만 고정한 독립 Release, 실제 HTTPS/모의 OAuth·Memory/자기 tmpfs PostgreSQL에서 제작2→강화→전승→분해의 실제 다섯 커밋 및 상태 변경/소비 이후 각 재생을 실행한다. 보호 거래/HTTP/실제 trace 검색, 원래 영수증/비용·결과 상태/PG 게임 표 지문 보존, 역할·소유권·규칙·충돌 거절·비밀 제외를 검사한다. 별도 Memory HTTPS에서 관측기가 매번 실패하는 경우와 추적 비활성 상태의 네 API도 검증한다. 거절 결과의 동일 객체/핸들러 예외 전파는 필터 단위 검사다. `-FullSuite`는 전체 운영툴 Memory 회귀다. 자기 사본/출력/DB는 finally 폐기하며 UE/게임 소켓·브라우저 시각/운영 배포·부하 검증은 포함하지 않는다.
+
+2026-11-09 장비 추적의 집중 Memory/PG와 전체 운영툴 Memory 회귀 모두 Release 0경고/0오류로 통과했다. 최초 PG 시도의 Docker 미기동은 테스트 전 환경 실패이며 최종 격리 DB 성공과 구분한다.
 
 ## 활성화와 배포 입력
 

@@ -3,6 +3,7 @@ if (args.SequenceEqual(["--game-http"])) { await CoreTests.RunAsync(); await Gam
 if (args.SequenceEqual(["--game-transaction"])) { await CoreTests.RunAsync(); await GameHttpDiagnosticsTests.RunAsync(); await GameTransactionDiagnosticsTests.RunAsync(); return; }
 if (args.SequenceEqual(["--log-navigation"])) { await CoreTests.RunAsync(); await LogNavigationTests.RunAsync(); return; }
 if (args.SequenceEqual(["--pickup-tracing"])) { await CoreTests.RunAsync(); await GameTransactionDiagnosticsTests.RunAsync(); await PickupDiagnosticsTests.RunAsync(); return; }
+if (args.SequenceEqual(["--equipment-tracing"])) { await CoreTests.RunAsync(); await GameTransactionDiagnosticsTests.RunAsync(); await EquipmentDiagnosticsTests.RunAsync(); return; }
 if (args.SequenceEqual(["--monitoring"]))
 {
     await MonitoringPolicyTests.RunAsync();
@@ -26,6 +27,7 @@ await GameHttpDiagnosticsTests.RunAsync();
 await GameTransactionDiagnosticsTests.RunAsync();
 await LogNavigationTests.RunAsync();
 await PickupDiagnosticsTests.RunAsync();
+await EquipmentDiagnosticsTests.RunAsync();
 Console.WriteLine("Operations contract tests passed.");
 
 internal static class Check

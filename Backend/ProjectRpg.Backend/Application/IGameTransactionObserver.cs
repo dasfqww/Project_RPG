@@ -1,6 +1,6 @@
 namespace ProjectRpg.Backend.Application;
 
-public enum GameTransactionKind { Item, Currency, DungeonPickup }
+public enum GameTransactionKind { Item, Currency, DungeonPickup, EquipmentCraft, EquipmentDismantle, EquipmentUpgrade, EquipmentTransfer }
 public enum GameTransactionDisposition { Committed, Replayed }
 
 // Only confirmed repository results cross this boundary. No caller text or business payloads.
