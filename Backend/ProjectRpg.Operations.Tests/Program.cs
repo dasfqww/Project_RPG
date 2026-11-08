@@ -1,5 +1,6 @@
 if (args.SequenceEqual(["--service-status-ue-host"])) { await ServiceStatusUEHost.RunAsync(); return; }
 if (args.SequenceEqual(["--game-http"])) { await CoreTests.RunAsync(); await GameHttpDiagnosticsTests.RunAsync(); return; }
+if (args.SequenceEqual(["--game-transaction"])) { await CoreTests.RunAsync(); await GameHttpDiagnosticsTests.RunAsync(); await GameTransactionDiagnosticsTests.RunAsync(); return; }
 if (args.SequenceEqual(["--monitoring"]))
 {
     await MonitoringPolicyTests.RunAsync();
@@ -20,6 +21,7 @@ await ServiceControlTests.RunAsync();
 await DrainMonitoringTests.RunAsync();
 await BackupMonitoringTests.RunAsync();
 await GameHttpDiagnosticsTests.RunAsync();
+await GameTransactionDiagnosticsTests.RunAsync();
 Console.WriteLine("Operations contract tests passed.");
 
 internal static class Check

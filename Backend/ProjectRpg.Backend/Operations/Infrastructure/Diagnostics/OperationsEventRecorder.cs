@@ -14,6 +14,19 @@ public sealed class OperationsEventRecorder(OperationsLogStore store, Operations
     public static string BuildVersion { get; } = typeof(OperationsEventRecorder).Assembly.GetName().Version
         + "+" + typeof(OperationsEventRecorder).Module.ModuleVersionId.ToString("N");
     private readonly Microsoft.Extensions.Logging.ILogger logger = store.CreateLogger();
+    public void RecordGameTransaction(Guid httpRequestId, GameTransactionObservation observation)
+    {
+        Activity? activity = Activity.Current;
+        bool hasTrace = activity is not null && activity.TraceId != default;
+        Write(new(1,Guid.NewGuid(),observation.Disposition == GameTransactionDisposition.Committed
+                ? "game.transaction.receipt.committed" : "game.transaction.receipt.replayed",
+            clock.GetUtcNow(),"Information",options.EnvironmentId,"ProjectRpg.Backend",store.BootId,BuildVersion,httpRequestId,
+            hasTrace ? activity!.TraceId.ToString() : null,hasTrace && activity!.SpanId != default ? activity.SpanId.ToString() : null,
+            hasTrace && activity!.ParentSpanId != default ? activity.ParentSpanId.ToString() : null,
+            observation.Kind == GameTransactionKind.Item ? "ItemTransaction.Commit" : "CurrencyTransaction.Commit",null,
+            null,observation.CharacterId,null,null,null,observation.TransactionRequestId,null,null,
+            observation.Disposition.ToString(),null,null,"GameTransaction"));
+    }
     public void Observe(GameHttpObservation observation)
     {
         string? error = observation.Outcome switch

@@ -6,9 +6,29 @@ namespace ProjectRpg.Backend.Application;
 public sealed class CurrencyTransactionService(
     ICurrencyAuthorityRepository gameRepository,
     IEconomyRepository economyRepository,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IGameTransactionObserver? observer = null)
 {
     public async Task<CurrencyTransactionResult> CommitAsync(
+        CurrencyTransactionRequest request,
+        string serverId,
+        CancellationToken cancellationToken)
+    {
+        var result = await CommitCoreAsync(request, serverId, cancellationToken);
+        if (observer is not null && result.Status is CurrencyTransactionStatus.Committed or CurrencyTransactionStatus.AlreadyCommitted)
+        {
+            try
+            {
+                observer.Observe(new(GameTransactionKind.Currency,
+                    result.Status == CurrencyTransactionStatus.Committed ? GameTransactionDisposition.Committed : GameTransactionDisposition.Replayed,
+                    result.RequestId, result.CharacterId));
+            }
+            catch (Exception) { /* Technical log failure must not change a confirmed receipt. */ }
+        }
+        return result;
+    }
+
+    private async Task<CurrencyTransactionResult> CommitCoreAsync(
         CurrencyTransactionRequest request,
         string serverId,
         CancellationToken cancellationToken)

@@ -1,6 +1,6 @@
 # 운영툴 실행과 유지보수
 
-2026-11-08 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 조사, S3 개별 보상·기간 제재/해제, S4 런타임 감시·알림과 공지·Open/Drain의 Backend/운영 화면, UE 로비 공지·점검 연결·장기 Drain 경보·백업 상태 수집/경보·격리 복원/PITR 리허설 도구, 선택형 게임 API HTTP 추적을 구현했다. 운영 용량/외부 환경 복구 리허설·실제 운영 배포는 후속 범위다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md).
+2026-11-08 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 조사, S3 개별 보상·기간 제재/해제, S4 런타임 감시·알림과 공지·Open/Drain의 Backend/운영 화면, UE 로비 공지·점검 연결·장기 Drain 경보·백업 상태 수집/경보·격리 복원/PITR 리허설 도구, 선택형 게임 API HTTP 추적과 아이템·재화 거래 영수증 연결을 구현했다. 운영 용량/외부 환경 복구 리허설·실제 운영 배포는 후속 범위다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md).
 
 ## 공지·Open/Drain 서비스 제어
 
@@ -24,7 +24,7 @@ Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복
 - [Operations/Hosting](../Backend/ProjectRpg.Backend/Operations/Hosting/)은 DI·인증·관리망·요청 제한을 조립한다. [Web](../Backend/ProjectRpg.Backend/Operations/Web/)은 입력/커서/응답 변환을 담당하며 [Razor 화면](../Backend/ProjectRpg.Backend/Pages/Ops/)과 JSON API가 같은 유스케이스를 쓴다.
 - [읽기 어댑터](../Backend/ProjectRpg.Backend/Operations/Infrastructure/Reads/)는 저장된 데이터만 관측한다. PostgreSQL은 READ ONLY / REPEATABLE READ, 명령 3초·요청 5초 제한이다. 조회가 만료 리스 정리나 성장 보상 반영을 호출하지 않는다. 패널 간 동일 snapshot은 보장하지 않는다.
 - 운영 인증은 게임 Bearer와 별도다. GitHub 숫자 ID 한 개를 허용하고 PKCE/state·CSRF, Secure/HttpOnly cookie, 서버 세션을 사용한다. 세션은 유휴 30분/절대 8시간이며 로그아웃과 AuthEpoch 변경으로 무효화한다.
-- 로그 수집/저장 구현은 Infrastructure에만 둔다. 운영 조회는 요청 번호 → HTTP trace → PostgreSQL 읽기 child span을 연결한다. 게임 API는 아래 선택형 HTTP 관측 포트로 시도 번호·실제 Activity를 남긴다. 정산 worker는 별도 관측 포트로 원래 세션/거래 요청 ID·시도 trace를 남긴다. 게임 API의 업무 ID/저장 구간·UE 전체 사건 계측은 후속이며 같은 HTTP trace가 worker까지 전파됐다고 표시하지 않는다.
+- 로그 수집/저장 구현은 Infrastructure에만 둔다. 운영 조회는 요청 번호 → HTTP trace → PostgreSQL 읽기 child span을 연결한다. 게임 API는 아래 선택형 HTTP 관측 포트로 시도 번호·실제 Activity, 아이템·재화 거래 서비스의 확정/재생 영수증 번호를 연결한다. 정산 worker는 별도 관측 포트로 원래 세션/거래 요청 ID·시도 trace를 남긴다. 그 밖의 게임 업무 ID/저장 구간·UE 전체 사건 계측은 후속이며 같은 HTTP trace가 worker까지 전파됐다고 표시하지 않는다.
 
 인터페이스를 추가할 때는 교체할 외부 의존성 또는 실제 유스케이스 경계가 있어야 한다. 새로운 지급 기능을 읽기 포트나 PageModel에 넣지 않는다. 여러 책임을 묶는 공통 repository/manager로 합치지 않는다.
 
@@ -36,9 +36,20 @@ Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복
 - `game.http.started`와 `game.http.completed`에 시도 번호·실제 trace/span·배포/인스턴스·고정 라우트 템플릿·상태·단조 시계 소요 시간을 남긴다. 실제 URL 경로 값, query, 요청/응답 본문, 인증/사용자 헤더, 예외 원문은 관측 포트에 전달하지 않는다. 라우트가 없거나 템플릿이 112자를 넘으면 `GET GameApi.Unmatched` 같은 고정 이름을 사용한다. 인증 전에도 실행하므로 401과 처리된 Drain 503이 관측된다.
 - 정상 반환의 400 이상은 `Rejected`, 나머지는 `Succeeded`다. 밖으로 전파되는 예외는 `Faulted`이며 응답 시작 전에는 500, 이미 시작됐으면 상태를 null로 남긴다. 요청 취소는 `Canceled`/상태 null로 남겨 전송되지 않은 200/499를 합성하지 않는다. HTTP 성공은 게임 DB 반영 증거가 아니다.
 - [HTTP 어댑터](../Backend/ProjectRpg.Backend/Operations/Hosting/GameHttpDiagnostics.cs)는 [Core의 IGameHttpObserver](../Backend/ProjectRpg.Operations.Core/Diagnostics/GameHttpObservation.cs)에 고정 모델만 전달한다. Infrastructure가 기존 유계 JSONL writer로 저장한다. 관측기 예외는 HTTP 상태·본문·업무 예외를 바꾸지 않는다. 기존 비동기 큐/보존 한도를 공유하므로 게임 요청량에 맞춘 실제 용량 검증은 배포 전에 수행한다.
-- `/ops/diagnostics` 또는 `GET /ops/api/logs?httpRequestId=<GUID>`에서 같은 번호로 검색한다. `traceId`·두 이벤트 이름 필터도 기존 검색 권한/기간/예산을 적용한다. 이 단계는 주체·캐릭터·업무/거래 ID를 추정해 채우지 않는다. 게임 저장 child span, UE→HTTP 문맥, 업무 영수증과의 연결은 별도 계측이 필요하다. 검색 `Complete`는 선택 원본의 검색 완료이며 비활성 기간·과거·UE까지 수집됐다는 의미가 아니다.
+- `/ops/diagnostics` 또는 `GET /ops/api/logs?httpRequestId=<GUID>`에서 같은 번호로 검색한다. `traceId`·두 이벤트 이름 필터도 기존 검색 권한/기간/예산을 적용한다. HTTP 이벤트 자체에는 주체·캐릭터·업무/거래 ID를 추정해 채우지 않는다. 아래 별도 영수증 이벤트에 확인된 거래 ID만 연결한다. 게임 저장 child span, UE→HTTP 문맥, 그 밖의 업무 영수증 연결은 후속이다. 검색 `Complete`는 선택 원본의 검색 완료이며 비활성 기간·과거·UE까지 수집됐다는 의미가 아니다.
 
 `Scripts/Tests/Run-OperationsGameHttpTests.ps1 -Postgres`는 게시 Backend+본인 9개 C# 입력만 고정한 독립 빌드, 실제 loopback HTTPS/모의 OAuth, Memory·자기 tmpfs PostgreSQL에서 번호/실제 W3C 부모·재시도/동시성·권한 검색·라우트 마스킹·비밀 제외·게임 표 지문 불변을 검사한다. 예외/취소/관측기 실패는 경계 단위 검사다. `-FullSuite`는 운영툴 전체 Memory 회귀를 실행한다. 2026-11-08 두 모드 모두 빌드 0경고/0오류로 통과했다. finally로 사본·빌드 출력·런타임/DB를 폐기하며 작은 결과와 해시는 당시 실행 근거만 남긴다. 실제 UE 실행·운영 배포/부하 검증은 포함하지 않는다.
+
+### 아이템·재화 영수증과 HTTP 연결
+
+같은 `GameApiDiagnosticsEnabled` 설정으로 `POST /api/item-transactions/commit`과 `POST /api/economy/transactions/commit`의 확정 결과를 연결한다. [두 거래 서비스](../Backend/ProjectRpg.Backend/Application/)는 선택형 [IGameTransactionObserver](../Backend/ProjectRpg.Backend/Application/IGameTransactionObserver.cs)에 확인된 결과만 전달하며 ASP.NET·운영 로그 저장소를 참조하지 않는다. [Infrastructure 어댑터](../Backend/ProjectRpg.Backend/Operations/Infrastructure/Diagnostics/OperationsGameTransactionObserver.cs)가 현재 게임 HTTP 경계의 시도 번호와 실제 Activity를 붙인다. 기본값은 비활성이며 추가 migration은 없다.
+
+- 저장소가 `Committed`를 반환하면 `game.transaction.receipt.committed`, 같은 명령의 확정 결과를 재생한 `AlreadyCommitted`이면 `game.transaction.receipt.replayed`를 한 건 남긴다. 재생 로그를 새 지급으로 계산하지 않는다. `transactionRequestId`는 반환된 영수증의 ID이며, 각 재시도의 `httpRequestId`는 별개다. 작업 이름은 `ItemTransaction.Commit`/`CurrencyTransaction.Commit`으로 고정한다.
+- 재화의 `characterId`만 확정 결과에서 가져온다. 아이템의 actor/소유자 문자열을 캐릭터로 추정하지 않는다. 영수증에 원래 세션 정보가 없으므로 호출 본문의 `dungeonSessionId`를 재생된 영수증의 원래 세션처럼 기록하지 않는다. item/운영 요청/운영자 ID와 HTTP 상태도 이 이벤트에 합성하지 않는다. 여러 아이템은 거래당 한 이벤트로 묶으며 품목/수량/잔액·reason/fingerprint/임의 operation·자격/본문은 전달하지 않는다.
+- 거절·충돌·권한 실패는 영수증 이벤트를 생성하지 않으며 공통 HTTP 경계에서 상태를 관측한다. 저장 예외 등으로 확정 결과를 받지 못한 경우에도 로그 부재가 미반영 증거는 아니다. 기존 DB 영수증을 원래 요청 번호로 재조회한다. 관측기 예외는 이미 확정된 결과·재생·기존 업무 예외를 변경하지 않는다. 추가 조회·트랜잭션·잠금은 만들지 않는다.
+- `/ops/diagnostics`의 거래 요청 번호 또는 `GET /ops/api/logs?transactionRequestId=<GUID>`에서 확정/재생 → 해당 HTTP 시도 → trace를 조사한다. 번호를 알아도 기존 운영자 인증/진단 권한이 필요하다. HTTP 범위 밖의 직접 서비스 호출에는 가상의 HTTP 기록을 만들지 않는다. worker·장비/픽업/우편/개인 거래 등 저장소를 직접 호출하는 다른 경로는 이 두 서비스의 계측 범위에 포함되지 않는다. 기존 worker의 별도 관측 계약은 유지한다.
+
+`Scripts/Tests/Run-OperationsGameTransactionTests.ps1 -Postgres`는 게시 Backend+본인 9개 C# 입력만 고정한 독립 Release, 실제 loopback HTTPS/모의 OAuth·Memory/자기 tmpfs PostgreSQL에서 실제 두 API의 확정/재생·충돌·미인증/관리자/멤버 권한 거절·영수증→HTTP/실제 trace 검색·게임 상태/불변 영수증 보존·비밀 제외를 검사한다. 별도 Memory HTTPS에서 관측기가 매번 예외를 던져도 두 거래의 효과가 한 번만 반영되고 재생/거절 응답이 유지되는지 확인한다. 저장 예외는 서비스 단위 검사다. `-FullSuite`는 운영툴 전체 Memory 회귀이며 2026-11-08 집중 PG와 전체 Memory 모두 0경고/0오류로 통과했다. 자기 빌드/실행 사본·DB는 finally 폐기한다. UE·실제 운영 배포/부하 검증과 구분한다.
 
 ## 활성화와 배포 입력
 

@@ -5,9 +5,28 @@ namespace ProjectRpg.Backend.Application;
 
 public sealed class ItemTransactionService(
     IItemRepository repository,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IGameTransactionObserver? observer = null)
 {
     public async Task<ItemRepositoryCommitResult> CommitAsync(
+        ItemRepositoryCommitRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await CommitCoreAsync(request, cancellationToken);
+        if (observer is not null && result.Status is ItemRepositoryCommitStatus.Committed or ItemRepositoryCommitStatus.AlreadyCommitted)
+        {
+            try
+            {
+                observer.Observe(new(GameTransactionKind.Item,
+                    result.Status == ItemRepositoryCommitStatus.Committed ? GameTransactionDisposition.Committed : GameTransactionDisposition.Replayed,
+                    result.RequestId));
+            }
+            catch (Exception) { /* Technical log failure must not change a confirmed receipt. */ }
+        }
+        return result;
+    }
+
+    private async Task<ItemRepositoryCommitResult> CommitCoreAsync(
         ItemRepositoryCommitRequest request,
         CancellationToken cancellationToken)
     {

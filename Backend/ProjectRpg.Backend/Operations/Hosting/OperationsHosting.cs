@@ -106,6 +106,8 @@ public static class OperationsHosting
         services.AddSingleton<OperationsLogStore>();
         services.AddSingleton<OperationsEventRecorder>();
         services.AddSingleton<IGameHttpObserver>(p => p.GetRequiredService<OperationsEventRecorder>());
+        if (options.GameApiDiagnosticsEnabled)
+            services.AddSingleton<ProjectRpg.Backend.Application.IGameTransactionObserver, OperationsGameTransactionObserver>();
         services.AddSingleton<OperationsStorageTrace>();
         services.AddSingleton<ProjectRpg.Backend.Application.IDungeonSettlementObserver, OperationsSettlementObserver>();
         services.AddSingleton<IOperationLogReader, LocalJsonlOperationLogReader>();
