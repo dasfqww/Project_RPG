@@ -17,6 +17,7 @@ public:
     virtual APawn* GetActionBarPawn() const = 0;
     virtual const URPGActionBarProfile* GetActionBarProfile() const = 0;
     virtual FRPGActionBarActionView ReadAction(FName ActionId) const = 0;
+    virtual FRPGActionBarIdentityView ReadIdentity() const { return {}; }
     virtual void PressAction(FName ActionId) = 0;
     virtual void ReleaseAction(FName ActionId) = 0;
 };

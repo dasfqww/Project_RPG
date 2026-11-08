@@ -2,6 +2,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Styling/SlateBrush.h"
+#include "UI/ActionBar/RPGActionBarActionView.h"
 #include "RPGActionBarWidget.generated.h"
 
 class URPGActionBarContext;
@@ -15,6 +16,7 @@ public:
     void BindContext(URPGActionBarContext* InContext);
     void UnbindContext();
     UFUNCTION(BlueprintPure) URPGActionBarContext* GetActionBarContext() const { return Context; }
+    UFUNCTION(BlueprintPure) FRPGActionBarIdentityView ReadIdentity() const;
     UFUNCTION(BlueprintCallable) void PressAction(FName ActionId);
     UFUNCTION(BlueprintCallable) void ReleaseAction(FName ActionId);
     UFUNCTION(BlueprintImplementableEvent) void OnActionBarBound();

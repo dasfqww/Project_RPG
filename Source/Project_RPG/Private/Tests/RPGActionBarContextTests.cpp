@@ -26,6 +26,7 @@ struct FProvider : IRPGActionBarProvider
     TStrongObjectPtr<URPGActionBarProfile> Profile{NewObject<URPGActionBarProfile>()};
     TArray<FName> Presses, Releases;
     TFunction<void()> OnPress, OnRelease;
+    TFunction<void()> OnIdentityRead;
     bool bAvailable = true;
     FProvider(APawn* InPawn) : Pawn(InPawn)
     {
@@ -43,6 +44,13 @@ struct FProvider : IRPGActionBarProvider
         return View;
     }
     virtual void PressAction(FName Id) override { Presses.Add(Id); if (OnPress) OnPress(); }
+    virtual FRPGActionBarIdentityView ReadIdentity() const override
+    {
+        if (OnIdentityRead) OnIdentityRead();
+        FRPGActionBarIdentityView View;
+        View.bVisible = true; View.Title = FText::FromString(TEXT("Provider identity"));
+        return View;
+    }
     virtual void ReleaseAction(FName Id) override { Releases.Add(Id); if (OnRelease) OnRelease(); }
 };
 struct FFixture
@@ -266,6 +274,32 @@ bool FRPGActionBarAuthoredHUDTest::RunTest(const FString&)
     TestTrue(TEXT("Authored skill bar restored"), Left->GetVisibility() == LeftVisibility);
     TestTrue(TEXT("Authored identity restored"), Center->GetVisibility() == CenterVisibility);
     Presenter->Unbind();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGActionBarIdentityBoundaryTest, "ProjectRPG.UI.ActionBar.IdentityReadBoundary",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGActionBarIdentityBoundaryTest::RunTest(const FString&)
+{
+    using namespace RPGActionBarTests;
+    FFixture F;
+    if (!TestTrue(TEXT("Local fixture"), F.Initialize())) return false;
+    auto* C = F.Slots->GetActionBarContext();
+    auto A = MakeShared<FProvider>(F.Pawn), B = MakeShared<FProvider>(F.Pawn);
+    TestFalse(TEXT("Base mode has no override identity"), C->ReadIdentity().bVisible);
+    C->Activate(A);
+    TStrongObjectPtr<URPGActionBarWidget> Widget(CreateWidget<URPGActionBarWidget>(F.Controller));
+    Widget->BindContext(C);
+    TestTrue(TEXT("Bound identity is readable"), Widget->ReadIdentity().bVisible);
+    A->OnIdentityRead = [C, B] { C->Activate(B); };
+    TestFalse(TEXT("Reentrant replacement cannot leak old identity"), C->ReadIdentity().bVisible);
+    TestFalse(TEXT("Old widget cannot read replacement identity"), Widget->ReadIdentity().bVisible);
+    Widget->BindContext(C);
+    TestTrue(TEXT("Fresh binding reads current identity"), Widget->ReadIdentity().bVisible);
+    B->OnIdentityRead = [&F] { F.Controller->UnPossess(); };
+    TestFalse(TEXT("Ownership lost during a read cannot leak identity"), C->ReadIdentity().bVisible);
+    C->Shutdown();
+    TestFalse(TEXT("Shutdown retires identity"), Widget->ReadIdentity().bVisible);
     return true;
 }
 

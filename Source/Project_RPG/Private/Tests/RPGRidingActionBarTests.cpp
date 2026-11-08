@@ -13,6 +13,9 @@ ARPGRidingActionBarTestPawn::ARPGRidingActionBarTestPawn()
 #include "UI/ActionBar/RPGActionBarContext.h"
 #include "UI/ActionBar/RPGActionBarHUDPresenter.h"
 #include "UI/ActionBar/RPGActionBarWidget.h"
+#include "UI/ActionBar/RPGActionBarIdentityWidget.h"
+#include "Riding/RPGMountDefinition.h"
+#include "Tests/RPGRidingActorTests.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
 #include "Components/SizeBox.h"
@@ -26,6 +29,8 @@ ARPGRidingActionBarTestPawn::ARPGRidingActionBarTestPawn()
 #include "RPGInputTags.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UnrealType.h"
+#include "Widgets/Text/STextBlock.h"
+#include "Layout/ArrangedChildren.h"
 
 namespace RPGRidingActionBarTests
 {
@@ -69,6 +74,8 @@ FRPGRidingRepState Mounted()
     FRPGRidingRepState State;
     State.Key = {FGuid::NewGuid(), 1, 0};
     State.Mode = ERPGRidingMode::Mounted; State.MountId = TEXT("horse"); State.DefinitionVersion = 1;
+    State.Movement.Version = 1; State.Movement.Speed = 600;
+    State.Movement.Acceleration = 2000; State.Movement.Braking = 2000; State.Movement.YawRate = 360;
     return State;
 }
 // Emulate an accepted network property update through the real RepNotify. No authority/ownership bypass is shipped.
@@ -117,6 +124,36 @@ struct FOtherProvider : IRPGActionBarProvider
     virtual void PressAction(FName) override {}
     virtual void ReleaseAction(FName) override {}
 };
+URPGMountDefinition* DefineMount(const TCHAR* Id, const TCHAR* Name)
+{
+    auto* D = NewObject<URPGMountDefinition>();
+    D->MountId = Id; D->DisplayName = FText::FromString(Name); D->SaddleSocket = TEXT("saddle");
+    D->Icon = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(TEXT("/Game/Test/Icon.Icon")));
+    D->Mesh = TSoftObjectPtr<USkeletalMesh>(FSoftObjectPath(TEXT("/Game/Test/Mesh.Mesh")));
+    D->AnimClass = TSoftClassPtr<UAnimInstance>(FSoftObjectPath(TEXT("/Game/Test/Anim.Anim_C")));
+    D->RiderPoseLayer = D->AnimClass;
+    D->DashPresentation = TSoftObjectPtr<UAnimMontage>(FSoftObjectPath(TEXT("/Game/Test/Dash.Dash")));
+    D->EmotePresentation = D->DashPresentation;
+    return D;
+}
+FString ReadSlateText(const TSharedRef<SWidget>& Widget)
+{
+    Widget->UpdateAllAttributes();
+    FString Text;
+    if (Widget->GetType() == TEXT("STextBlock")) Text = StaticCastSharedRef<STextBlock>(Widget)->GetText().ToString();
+    auto* Children = Widget->GetChildren();
+    for (int32 I = 0; I < Children->Num(); ++I) Text += TEXT("|") + ReadSlateText(Children->GetChildAt(I));
+    return Text;
+}
+TSharedPtr<SWidget> FindSlateWidget(const TSharedRef<SWidget>& Widget, FName Type)
+{
+    Widget->UpdateAllAttributes();
+    if (Widget->GetType() == Type) return Widget;
+    auto* Children = Widget->GetChildren();
+    for (int32 I = 0; I < Children->Num(); ++I)
+        if (auto Found = FindSlateWidget(Children->GetChildAt(I), Type)) return Found;
+    return nullptr;
+}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGRidingActionBarTransitions, "ProjectRPG.UI.ActionBar.Riding.TransitionsAndCommand",
@@ -215,4 +252,56 @@ bool FRPGRidingActionBarArbitration::RunTest(const FString&)
     TestFalse(TEXT("Late callback after shutdown is inert"), C->HasOverride());
     return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGRidingActionBarIdentity, "ProjectRPG.UI.ActionBar.Riding.IdentityAndMovement",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGRidingActionBarIdentity::RunTest(const FString&)
+{
+    using namespace RPGRidingActionBarTests;
+    FFixture F; if (!TestTrue(TEXT("Local fixture"), F.Initialize())) return false;
+    FHUD HUD; if (!TestTrue(TEXT("HUD"), HUD.Initialize(F))) return false;
+    auto* C = F.Pawn->Slots->GetActionBarContext();
+    auto State = Mounted();
+    TestTrue(TEXT("Fixture consumes the admitted movement contract"), RPGRiding::IsCanonical(State));
+    auto* Horse = DefineMount(TEXT("horse"), TEXT("First Mount"));
+    auto* Wolf = DefineMount(TEXT("wolf"), TEXT("Second Mount"));
+    TArray<URPGMountDefinition*> Definitions{Horse, Wolf};
+    RPGSetRidingVisualTestState(*F.Pawn->Riding, State, Definitions);
+    auto View = C->ReadIdentity();
+    TestTrue(TEXT("Identity is visible"), View.bVisible);
+    TestEqual(TEXT("Metadata display name"), View.Title.ToString(), FString(TEXT("First Mount")));
+    TestTrue(TEXT("Admitted base speed"), View.Detail.ToString().Contains(FText::AsNumber(600.f).ToString()));
+    auto* Canvas = Cast<UCanvasPanel>(HUD.Root->WidgetTree->RootWidget);
+    auto* Identity = Cast<URPGActionBarIdentityWidget>(Canvas->GetChildAt(4));
+    if (!TestNotNull(TEXT("Actual central identity replacement"), Identity)) return false;
+    TStrongObjectPtr<URPGActionBarIdentityWidget> OldIdentity(Identity);
+    const auto Slate = Identity->GetCachedWidget();
+    if (!TestTrue(TEXT("Native identity Slate tree"), Slate.IsValid())) return false;
+    TestTrue(TEXT("Actual rendered text includes name"), ReadSlateText(Slate.ToSharedRef()).Contains(TEXT("First Mount")));
+    auto Panel = FindSlateWidget(Slate.ToSharedRef(), TEXT("SVerticalBox"));
+    if (!TestTrue(TEXT("Native central layout"), Panel.IsValid())) return false;
+    Panel->SlatePrepass(1.f);
+    FArrangedChildren Arranged(EVisibility::Visible);
+    Panel->ArrangeChildren(FGeometry::MakeRoot(FVector2f(80.f, 100.f), FSlateLayoutTransform()), Arranged, true);
+    if (!TestEqual(TEXT("Three identity text rows"), Arranged.Num(), 3)) return false;
+    TestTrue(TEXT("Title wraps within narrow host"), Arranged[0].Geometry.GetLocalSize().X <= 80.01f);
+    TestTrue(TEXT("Speed wraps within narrow host"), Arranged[2].Geometry.GetLocalSize().X <= 80.01f);
+    const auto Revision = C->GetRevision();
+    State.Movement.Speed = 900; ++State.Key.StateRevision;
+    RPGSetRidingVisualTestState(*F.Pawn->Riding, State, Definitions);
+    TestEqual(TEXT("Value update keeps profile/input revision"), C->GetRevision(), Revision);
+    TestTrue(TEXT("Same native tree reads changed speed"), ReadSlateText(Slate.ToSharedRef()).Contains(FText::AsNumber(900.f).ToString()));
+    State.MountId = TEXT("wolf"); ++State.Key.StateRevision;
+    RPGSetRidingVisualTestState(*F.Pawn->Riding, State, Definitions);
+    TestTrue(TEXT("Replacement mount updates the same identity widget"), ReadSlateText(Slate.ToSharedRef()).Contains(TEXT("Second Mount")));
+    State.Key.RiderEpoch = FGuid::NewGuid(); State.Key.StateRevision = 1;
+    RPGSetRidingVisualTestState(*F.Pawn->Riding, State, Definitions);
+    TestFalse(TEXT("Retired epoch widget cannot expose new identity"), OldIdentity->ReadIdentity().bVisible);
+    FRPGRidingRepState OnFoot; OnFoot.Key = State.Key; ++OnFoot.Key.StateRevision;
+    Replicate(*F.Pawn->Riding, OnFoot);
+    TestFalse(TEXT("Dismount clears override identity"), C->ReadIdentity().bVisible);
+    TestTrue(TEXT("Original class identity restored"), HUD.Center->GetVisibility() != ESlateVisibility::Collapsed);
+    TestTrue(TEXT("Right utility remains visible"), HUD.Right->GetVisibility() != ESlateVisibility::Collapsed);
+    return true;
+}
+
 #endif

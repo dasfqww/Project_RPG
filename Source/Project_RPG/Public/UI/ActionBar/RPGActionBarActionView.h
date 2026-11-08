@@ -15,3 +15,14 @@ struct PROJECT_RPG_API FRPGActionBarActionView
     /** Displayed only while unavailable. Empty selects the common fallback message. */
     UPROPERTY(BlueprintReadOnly) FText UnavailableReason;
 };
+
+/** Optional read-only content for a profile's central identity region. */
+USTRUCT(BlueprintType)
+struct PROJECT_RPG_API FRPGActionBarIdentityView
+{
+    GENERATED_BODY()
+    UPROPERTY(BlueprintReadOnly) bool bVisible = false;
+    UPROPERTY(BlueprintReadOnly) FText Title;
+    UPROPERTY(BlueprintReadOnly) FText Status;
+    UPROPERTY(BlueprintReadOnly) FText Detail;
+};

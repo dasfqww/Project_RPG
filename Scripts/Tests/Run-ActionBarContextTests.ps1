@@ -1,10 +1,13 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [int]$RepairWindowSeconds=600, [switch]$IncludeRidingBridge)
+param([string]$EngineRoot='D:/UE_5.8', [int]$RepairWindowSeconds=600,
+    [switch]$IncludeRidingBridge, [switch]$IncludeIdentity,
+    [ValidateRange(1,4)][int]$MaxParallelActions=2)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id=[Guid]::NewGuid().ToString('N')
-$suite=if($IncludeRidingBridge){'ActionBarRiding-20261108'}else{'ActionBarContext-20261106'}
-$reservation=if($IncludeRidingBridge){'actionbar-riding-20261108'}else{'actionbar-context-20261106'}
+if($IncludeIdentity){$IncludeRidingBridge=$true}
+$suite=if($IncludeIdentity){'ActionBarIdentity-20261108'}elseif($IncludeRidingBridge){'ActionBarRiding-20261108'}else{'ActionBarContext-20261106'}
+$reservation=if($IncludeIdentity){'actionbar-identity-20261108'}elseif($IncludeRidingBridge){'actionbar-riding-20261108'}else{'actionbar-context-20261106'}
 $root=Join-Path $workspace ('Saved/BuildChecks/'+$suite+'/'+$id)
 $tempRoot=Join-Path $workspace 'Saved/AB'
 $temp=Join-Path $tempRoot $id.Substring(0,8)
@@ -21,8 +24,10 @@ function Copy-Overlay {
         $destination=Join-Path $project $relative
         $hash=(Get-FileHash -LiteralPath $source).Hash
         $null=[IO.Directory]::CreateDirectory((Split-Path -Parent $destination))
-        Copy-Item -LiteralPath $source -Destination $destination
-        [IO.File]::SetLastWriteTimeUtc($destination,[DateTime]::UtcNow)
+        if(!(Test-Path -LiteralPath $destination)-or(Get-FileHash -LiteralPath $destination).Hash-ne$hash){
+            Copy-Item -LiteralPath $source -Destination $destination
+            [IO.File]::SetLastWriteTimeUtc($destination,[DateTime]::UtcNow)
+        }
         if((Get-FileHash -LiteralPath $source).Hash-ne$hash-or(Get-FileHash -LiteralPath $destination).Hash-ne$hash){throw 'Overlay changed during capture'}
         $proof.Overlay+=@{Path=$relative;SHA256=$hash}
     }
@@ -50,22 +55,40 @@ try {
     if($LASTEXITCODE-ne0){throw 'Archive failed'}
     & tar -xf $archive -C $project
     if($LASTEXITCODE-ne0){throw 'Extraction failed'}
-    $overlay=@(
-        'Source/Project_RPG/Public/Component/UI/QuickSlotComponent.h',
-        'Source/Project_RPG/Private/Component/UI/QuickSlotComponent.cpp',
-        'Source/Project_RPG/Public/UI/HUD/RPGHUD.h',
-        'Source/Project_RPG/Private/UI/HUD/RPGHUD.cpp',
-        'Source/Project_RPG/Private/Controller/RPGPlayerController.cpp',
-        'Source/Project_RPG/Private/Tests/RPGActionBarContextTests.cpp',
-        'Source/Project_RPG/Private/Tests/RPGActionBarCellTests.cpp'
-    )
-    if($IncludeRidingBridge){
-        $overlay+=@('Source/Project_RPG/Private/Tests/RPGRidingActionBarTests.h','Source/Project_RPG/Private/Tests/RPGRidingActionBarTests.cpp')
-    }
-    foreach($kind in @('Public','Private')){
-        $folder=Join-Path $workspace ('Source/Project_RPG/'+$kind+'/UI/ActionBar')
-        foreach($file in Get-ChildItem -LiteralPath $folder -File){
-            $overlay+=$file.FullName.Substring($workspace.Length+1).Replace('\','/')
+    # Identity validation overlays only this feature's owned inputs. Common callers
+    # and existing tests stay at the archived HEAD, including after a repair retry.
+    if($IncludeIdentity){
+        $overlay=@(
+            'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarActionView.h',
+            'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarProvider.h',
+            'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarContext.h',
+            'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarWidget.h',
+            'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarIdentityWidget.h',
+            'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarContext.cpp',
+            'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarWidget.cpp',
+            'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarIdentityWidget.cpp',
+            'Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp',
+            'Source/Project_RPG/Private/Tests/RPGActionBarContextTests.cpp',
+            'Source/Project_RPG/Private/Tests/RPGRidingActionBarTests.cpp'
+        )
+    }else{
+        $overlay=@(
+            'Source/Project_RPG/Public/Component/UI/QuickSlotComponent.h',
+            'Source/Project_RPG/Private/Component/UI/QuickSlotComponent.cpp',
+            'Source/Project_RPG/Public/UI/HUD/RPGHUD.h',
+            'Source/Project_RPG/Private/UI/HUD/RPGHUD.cpp',
+            'Source/Project_RPG/Private/Controller/RPGPlayerController.cpp',
+            'Source/Project_RPG/Private/Tests/RPGActionBarContextTests.cpp',
+            'Source/Project_RPG/Private/Tests/RPGActionBarCellTests.cpp'
+        )
+        if($IncludeRidingBridge){
+            $overlay+=@('Source/Project_RPG/Private/Tests/RPGRidingActionBarTests.h','Source/Project_RPG/Private/Tests/RPGRidingActionBarTests.cpp')
+        }
+        foreach($kind in @('Public','Private')){
+            $folder=Join-Path $workspace ('Source/Project_RPG/'+$kind+'/UI/ActionBar')
+            foreach($file in Get-ChildItem -LiteralPath $folder -File){
+                $overlay+=$file.FullName.Substring($workspace.Length+1).Replace('\','/')
+            }
         }
     }
     Copy-Overlay
@@ -87,7 +110,24 @@ try {
             $build=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
             $ubt=Join-Path $EngineRoot 'Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll'
             # Project rules, UHT, objects and UBA cache are private. UBT may still write its shared diagnostic trace.
-            $args=@($ubt,'Project_RPGEditor','Win64','Development',$uproject,'-NoMutex','-NoEngineChanges','-NoUBA','-UBADisableRemote',('-UBARootDir='+(Join-Path $temp 'Uba')),('-UBATraceOutputFile='+(Join-Path $temp ('Build-'+$attempt+'.uba'))),'-NoHotReloadFromIDE','-MaxParallelActions=2',('-log='+(Join-Path $root ('Build-'+$attempt+'.log'))))
+            $args=@($ubt,'Project_RPGEditor','Win64','Development',$uproject,'-NoMutex','-NoEngineChanges','-NoUBA','-UBADisableRemote',('-UBARootDir='+(Join-Path $temp 'Uba')),('-UBATraceOutputFile='+(Join-Path $temp ('Build-'+$attempt+'.uba'))),'-NoHotReloadFromIDE',('-MaxParallelActions='+$MaxParallelActions),('-log='+(Join-Path $root ('Build-'+$attempt+'.log'))))
+            if($IncludeIdentity){
+                $list=Join-Path $temp 'IdentityCompileFiles.txt'
+                $compile=@('Source/Project_RPG/Private/UI/ActionBar/RPGActionBarContext.cpp',
+                    'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarWidget.cpp',
+                    'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarIdentityWidget.cpp',
+                    'Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp',
+                    'Source/Project_RPG/Private/Tests/RPGActionBarContextTests.cpp',
+                    'Source/Project_RPG/Private/Tests/RPGRidingActionBarTests.cpp')
+                [IO.File]::WriteAllLines($list,@($compile|ForEach-Object{Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
+                $preflight=@($args|Where-Object{!$_.StartsWith('-log=')})+@(('-FileList='+$list),('-log='+(Join-Path $root ('Preflight-'+$attempt+'.log'))))
+                $proof.PreflightCommand=@($build)+$preflight
+                Save-Proof
+                Write-Output ('Compiling identity inputs '+$root+' attempt '+$attempt)
+                & $build @preflight *> (Join-Path $root ('PreflightConsole-'+$attempt+'.log'))
+                $proof.PreflightExit=$LASTEXITCODE
+                if($LASTEXITCODE-ne0){throw 'Identity input compile failed'}
+            }
             $proof.BuildCommand=@($build)+$args
             Save-Proof
             Write-Output ('Building '+$root+' attempt '+$attempt)
@@ -119,7 +159,10 @@ try {
             $data=Get-Content -LiteralPath (Join-Path $report 'index.json') -Raw -Encoding UTF8|ConvertFrom-Json
             $proof.Tests=@($data.tests|Select-Object fullTestPath,state,errors,warnings)
             if(@($proof.Tests|Where-Object{$_.fullTestPath-like'ProjectRPG.UI.ActionBar.*'}).Count-lt7-or$proof.Tests.Count-lt8-or@($proof.Tests|Where-Object state -ne 'Success').Count){throw 'Missing or failing automation cases'}
-            if($IncludeRidingBridge-and@($proof.Tests|Where-Object{$_.fullTestPath-like'ProjectRPG.UI.ActionBar.Riding.*'}).Count-ne3){throw 'Missing Riding bridge cases'}
+            $expected=@()
+            if($IncludeRidingBridge){$expected+=@('OwnershipAndCleanup','PossessionAndHUDLifetime','TransitionsAndCommand')|ForEach-Object{'ProjectRPG.UI.ActionBar.Riding.'+$_}}
+            if($IncludeIdentity){$expected+=@('ProjectRPG.UI.ActionBar.Riding.IdentityAndMovement','ProjectRPG.UI.ActionBar.IdentityReadBoundary')}
+            if(@($expected|Where-Object{$_-notin$proof.Tests.fullTestPath}).Count){throw 'Missing Riding/identity cases'}
             foreach($entry in $proof.Overlay){
                 if((Get-FileHash -LiteralPath (Join-Path $workspace $entry.Path)).Hash-ne$entry.SHA256){throw 'Source changed after validation'}
             }

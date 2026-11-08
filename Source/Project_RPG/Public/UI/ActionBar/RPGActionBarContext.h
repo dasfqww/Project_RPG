@@ -23,6 +23,7 @@ public:
     uint64 GetRevision() const { return Revision; }
     UFUNCTION(BlueprintPure) const URPGActionBarProfile* GetProfile() const { return Profile; }
     UFUNCTION(BlueprintPure) FRPGActionBarActionView ReadAction(FName ActionId) const;
+    UFUNCTION(BlueprintPure) FRPGActionBarIdentityView ReadIdentity() const;
     /** Unique Source per physical input/pointer; ExpectedRevision prevents stale widgets executing. */
     void PressAction(FName Source, FName ActionId, uint64 ExpectedRevision);
     void ReleaseInput(FName Source);

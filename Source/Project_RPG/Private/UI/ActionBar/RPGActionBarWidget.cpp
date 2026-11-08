@@ -15,6 +15,11 @@ void URPGActionBarWidget::BindContext(URPGActionBarContext* InContext)
     OnActionBarBound();
 }
 
+FRPGActionBarIdentityView URPGActionBarWidget::ReadIdentity() const
+{
+    return Context && BindingRevision == Context->GetRevision() ? Context->ReadIdentity() : FRPGActionBarIdentityView{};
+}
+
 FName URPGActionBarWidget::SourceFor(FName Id) const
 {
     return FName(*FString::Printf(TEXT("Pointer.%u.%s"), GetUniqueID(), *Id.ToString()));

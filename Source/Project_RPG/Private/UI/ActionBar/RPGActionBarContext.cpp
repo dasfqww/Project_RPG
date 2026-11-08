@@ -117,6 +117,20 @@ FRPGActionBarActionView URPGActionBarContext::ReadAction(FName Id) const
     return View;
 }
 
+FRPGActionBarIdentityView URPGActionBarContext::ReadIdentity() const
+{
+    if (bTransitioning || bShuttingDown || !IsProviderCurrent()) return {};
+    const APawn* Pawn = Provider->GetActionBarPawn();
+    if (!Pawn || !Pawn->IsLocallyControlled()) return {};
+    const AController* ControllerBefore = Pawn->GetController();
+    const auto Current = Provider;
+    const uint64 ReadRevision = Revision;
+    auto View = Current->ReadIdentity();
+    if (Provider != Current || Revision != ReadRevision || !IsProviderCurrent()
+        || !Pawn->IsLocallyControlled() || Pawn->GetController() != ControllerBefore) return {};
+    return View;
+}
+
 void URPGActionBarContext::PressAction(FName Source, FName Id, uint64 ExpectedRevision)
 {
     if (Source.IsNone() || bTransitioning || bShuttingDown || Revision != ExpectedRevision

@@ -1,7 +1,9 @@
 #include "UI/ActionBar/RPGRidingActionBarSubsystem.h"
 #include "UI/ActionBar/RPGActionBarContext.h"
+#include "UI/ActionBar/RPGActionBarIdentityWidget.h"
 #include "Component/UI/QuickSlotComponent.h"
 #include "Riding/RPGRidingComponent.h"
+#include "Riding/RPGMountDefinition.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
@@ -18,12 +20,21 @@ public:
           Profile(NewObject<URPGActionBarProfile>())
     {
         Profile->ProfileId = TEXT("Riding");
+        Profile->CenterWidgetClass = URPGActionBarIdentityWidget::StaticClass();
         FRPGActionBarEntry Entry;
         Entry.ActionId = TEXT("Dismount");
         Entry.Label = LOCTEXT("Dismount", "내리기");
         // Reuse the current fourth skill binding; never overwrite the player's physical key mapping.
         Entry.SkillSlot = 3;
         Profile->Actions.Add(Entry);
+        RefreshIdentity();
+    }
+    void RefreshIdentity()
+    {
+        const auto* C = Riding.Get();
+        const auto* Definition = C ? C->GetPresentationDefinition() : nullptr;
+        DisplayName = Definition && !Definition->DisplayName.IsEmpty()
+            ? Definition->DisplayName : LOCTEXT("Mount", "탈것");
     }
     FGuid GetEpoch() const { return Epoch; }
     virtual APawn* GetActionBarPawn() const override { return Riding.IsValid() ? Cast<APawn>(Riding->GetOwner()) : nullptr; }
@@ -46,6 +57,17 @@ public:
         if (!View.bAvailable) View.UnavailableReason = LOCTEXT("StateChanged", "탑승 상태를 다시 확인 중입니다.");
         return View;
     }
+    virtual FRPGActionBarIdentityView ReadIdentity() const override
+    {
+        FRPGActionBarIdentityView View;
+        if (!ReadAction(TEXT("Dismount")).bAvailable) return View;
+        const auto State = Riding->GetRidingState();
+        View.bVisible = true;
+        View.Title = DisplayName;
+        View.Status = LOCTEXT("Mounted", "탑승 중");
+        View.Detail = FText::Format(LOCTEXT("BaseSpeed", "기본 이동 속도 {0}"), FText::AsNumber(State.Movement.Speed));
+        return View;
+    }
     virtual void PressAction(FName Id) override
     {
         if (ReadAction(Id).bAvailable)
@@ -57,6 +79,7 @@ private:
     TWeakObjectPtr<APlayerController> Controller;
     FGuid Epoch;
     TStrongObjectPtr<URPGActionBarProfile> Profile;
+    FText DisplayName;
 };
 
 void URPGRidingActionBarSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -158,6 +181,7 @@ void URPGRidingActionBarSubsystem::Reconcile()
     if (!C->HasOverride() && C->ConsumesCombatInput()) return;
     if (!Provider || Provider->GetEpoch() != State.Key.RiderEpoch)
         Provider = MakeShared<FRPGRidingActionBarProvider>(R, Controller.Get());
+    Provider->RefreshIdentity();
     C->Activate(Provider.ToSharedRef());
 }
 
