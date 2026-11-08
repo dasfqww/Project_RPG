@@ -1,11 +1,15 @@
 #pragma once
 #include "Blueprint/UserWidget.h"
+#include "Components/ComboBoxString.h"
 #include "Trading/RPGTradeLobbyOwner.h"
 #include "RPGTradeWidget.generated.h"
 
 class UButton;
 class UTextBlock;
 class UCheckBox;
+class UComboBoxString;
+class UEditableTextBox;
+class UVerticalBox;
 
 /** Read/accept/cancel view. Asset consent controls require the subsequent exact-item preview flow. */
 UCLASS()
@@ -23,6 +27,7 @@ protected:
     virtual FReply NativeOnKeyDown(const FGeometry&, const FKeyEvent&) override;
 private:
     friend struct FRPGTradeWidgetTestAccess;
+    friend struct FRPGTradeOfferWidgetAccess;
     void RefreshView();
     void Subscribe();
     UFUNCTION() void RefreshTrade();
@@ -34,6 +39,17 @@ private:
     UFUNCTION() void ReviewChanged(bool bChecked);
     UFUNCTION() void ReadyTrade();
     UFUNCTION() void ConfirmTrade();
+    UFUNCTION() void ReloadBag();
+    UFUNCTION() void BeginOfferEdit();
+    UFUNCTION() void DiscardOfferEdit();
+    UFUNCTION() void SendOfferEdit();
+    UFUNCTION() void AmountEdited(const FText& Text);
+    UFUNCTION() void QuantityEdited(const FText& Text);
+    UFUNCTION() void AddOfferItem();
+    UFUNCTION() void RemoveOfferItem();
+    UFUNCTION() void SelectBagItem(FString Option, ESelectInfo::Type Type);
+    UFUNCTION() void SelectOfferItem(FString Option, ESelectInfo::Type Type);
+    void RefreshDraft();
     TWeakPtr<FRPGTradeLobbyOwner> TradeOwner;
     FDelegateHandle ChangeHandle;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> StatusText;
@@ -51,4 +67,21 @@ private:
     UPROPERTY(Transient) TObjectPtr<UButton> ReadyButton;
     UPROPERTY(Transient) TObjectPtr<UButton> ConfirmButton;
     FGuid DisplayedReviewToken, ReviewedToken;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> DraftStatusText;
+    UPROPERTY(Transient) TObjectPtr<UVerticalBox> DraftPanel;
+    UPROPERTY(Transient) TObjectPtr<UButton> ReloadBagButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> BeginDraftButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> DiscardDraftButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> SendDraftButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> AddDraftButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> RemoveDraftButton;
+    UPROPERTY(Transient) TObjectPtr<UComboBoxString> BagBox;
+    UPROPERTY(Transient) TObjectPtr<UComboBoxString> OfferBox;
+    UPROPERTY(Transient) TObjectPtr<UEditableTextBox> AmountBox;
+    UPROPERTY(Transient) TObjectPtr<UEditableTextBox> QuantityBox;
+    TArray<FString> BagLabels, OfferLabels;
+    TArray<FGuid> BagIds, OfferIds;
+    FGuid DisplayedDraftToken, DisplayedBagToken, SelectedBagItem, SelectedOfferItem;
+    bool bUpdatingDraft = false;
+    FText DraftInputError;
 };

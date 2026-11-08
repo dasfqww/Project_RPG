@@ -1,5 +1,6 @@
 #pragma once
 #include "Trading/RPGTradeCoordinator.h"
+#include "Trading/RPGTradeOfferDraft.h"
 
 struct PROJECT_RPG_API FRPGTradeLobbyContext
 {
@@ -15,6 +16,15 @@ struct PROJECT_RPG_API FRPGTradeLobbyView
     FGuid ReviewToken;
     bool bCanReview = false, bReady = false, bConfirm = false;
     bool bAccept = false, bCancel = false, bWithdraw = false, bRetry = false, bRefresh = false;
+};
+struct PROJECT_RPG_API FRPGTradeDraftView
+{
+    FGuid Token, BagToken;
+    FString AmountText;
+    FText Status;
+    TArray<FRPGTradeBagItem> BagItems;
+    TArray<FRPGTradeBagItem> SelectedItems;
+    bool bCanReload = false, bCanBegin = false, bCanEdit = false, bCanSend = false;
 };
 DECLARE_MULTICAST_DELEGATE(FRPGTradeLobbyChanged);
 
@@ -36,6 +46,16 @@ public:
     bool SubmitConsent(ERPGTradeAction Action, FGuid ReviewedToken);
     using FDefinitionResolver = TFunction<bool(const FRPGTradeItemDetails&, FText&, FText&)>;
     void SetDefinitionResolver(FDefinitionResolver Resolver) { ResolveDefinition = MoveTemp(Resolver); }
+    void SetBagSource(TFunction<FRPGTradeBagSnapshot()> Read, TFunction<bool()> Reload);
+    void NotifyBagChanged() { Changed(); }
+    FRPGTradeDraftView GetDraftView() const;
+    bool ReloadBag();
+    bool BeginDraft();
+    void DiscardDraft();
+    bool SetDraftAmount(FGuid Token, const FString& Amount);
+    bool SetDraftItem(FGuid Token, FGuid Item, const FString& Quantity);
+    bool RemoveDraftItem(FGuid Token, FGuid Item);
+    bool SendDraft(FGuid Token);
     void DismissClosed();
     FRPGTradeLobbyView GetView() const;
     const FRPGTradeClient& GetClient() const { return Coordinator->GetClient(); }
@@ -55,4 +75,11 @@ private:
     FDefinitionResolver ResolveDefinition;
     mutable FGuid LastPreviewToken, DisplayReviewToken;
     mutable FString LastReviewText;
+    bool ReadBag(FRPGTradeBagSnapshot& Out) const;
+    bool CanEditOffer() const;
+    TFunction<FRPGTradeBagSnapshot()> BagReader;
+    TFunction<bool()> BagReloader;
+    FRPGTradeOfferDraft Draft;
+    mutable double BagNow = 0;
+    bool bSubmittingDraft = false;
 };

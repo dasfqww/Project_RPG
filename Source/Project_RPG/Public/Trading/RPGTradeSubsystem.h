@@ -4,6 +4,7 @@
 #include "Containers/Ticker.h"
 #include "Trading/RPGTradeLobbyOwner.h"
 #include "RPGTradeSubsystem.generated.h"
+class URPGEquipmentMutationSubsystem;
 
 /** One primary local-player owner; closing/recreating a widget never resets the coordinator. */
 UCLASS(Config=Game)
@@ -28,4 +29,12 @@ private:
     TSharedPtr<FRPGTradeLobbyOwner> Owner;
     FTSTicker::FDelegateHandle TickHandle;
     bool bEnding = false;
+    bool ReloadTradeBag();
+    FRPGTradeBagSnapshot ReadTradeBag();
+    void UpdateTradeBag();
+    UFUNCTION() void HandleTradeBagChanged();
+    TWeakObjectPtr<URPGEquipmentMutationSubsystem> EquipmentReader;
+    FRPGTradeBagSnapshot CachedBag;
+    bool bBagWaiting = false, bBagSawLoading = false;
+    double BagReadDeadline = 0;
 };

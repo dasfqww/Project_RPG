@@ -19,7 +19,7 @@ TSharedRef<FRPGTradeLobbyOwner> FRPGTradeLobbyOwner::Create(TSharedRef<IRPGTrade
 FRPGTradeLobbyOwner::~FRPGTradeLobbyOwner() { Shutdown(); }
 void FRPGTradeLobbyOwner::Shutdown()
 {
-    bEnding = true; Coordinator->OnChanged = {}; Coordinator->Reset(); OnChanged.Clear();
+    bEnding = true; Coordinator->OnChanged = {}; Coordinator->Reset(); Draft.Reset(); OnChanged.Clear();
 }
 void FRPGTradeLobbyOwner::Changed() { if (!bEnding) OnChanged.Broadcast(); }
 bool FRPGTradeLobbyOwner::HasLiveTrade() const
@@ -36,7 +36,7 @@ bool FRPGTradeLobbyOwner::Update(bool bPoll)
     if (Current.Account != Account || Current.Endpoint != Endpoint)
     {
         if (!Account.IsEmpty()) BlockedSelection = Current.Character;
-        Coordinator->Reset(); BoundCharacter.Invalidate();
+        Coordinator->Reset(); Draft.Reset(); BoundCharacter.Invalidate();
         Account = Current.Account; Endpoint = Current.Endpoint; NextPoll = 0;
         Changed();
         if (bEnding) return false;
@@ -46,7 +46,7 @@ bool FRPGTradeLobbyOwner::Update(bool bPoll)
     const bool bCanBind = Current.bEnabled && Current.bEligible && Current.Character.IsValid() && Current.Character != BlockedSelection;
     if (bCanBind && Current.Character != BoundCharacter && !HasLiveTrade() && !Coordinator->IsBusy())
     {
-        BoundCharacter = Current.Character;
+        Draft.Reset(); BoundCharacter = Current.Character;
         if (!Coordinator->SelectCharacter(BoundCharacter)) { BoundCharacter.Invalidate(); return false; }
         NextPoll = 0;
     }
@@ -94,7 +94,7 @@ bool FRPGTradeLobbyOwner::Submit(ERPGTradeAction Action)
 void FRPGTradeLobbyOwner::DismissClosed()
 {
     const auto* S = GetClient().GetSession();
-    if (S && !S->IsOpen() && Coordinator->ClearClosedSession()) { NextPoll = 0; Changed(); }
+    if (S && !S->IsOpen() && Coordinator->ClearClosedSession()) { Draft.Reset(); NextPoll = 0; Changed(); }
 }
 bool FRPGTradeLobbyOwner::SubmitConsent(ERPGTradeAction Action, FGuid ReviewedToken)
 {
@@ -103,6 +103,82 @@ bool FRPGTradeLobbyOwner::SubmitConsent(ERPGTradeAction Action, FGuid ReviewedTo
     if (View.ReviewToken != ReviewedToken || !((Action == ERPGTradeAction::Ready && View.bReady)
         || (Action == ERPGTradeAction::Confirm && View.bConfirm))) return false;
     const bool Sent = Coordinator->Submit(Action); Changed(); return Sent;
+}
+void FRPGTradeLobbyOwner::SetBagSource(TFunction<FRPGTradeBagSnapshot()> Read, TFunction<bool()> Reload)
+{ BagReader = MoveTemp(Read); BagReloader = MoveTemp(Reload); Draft.Reset(); }
+bool FRPGTradeLobbyOwner::CanEditOffer() const
+{
+    const auto* S = GetClient().GetSession();
+    return !bEnding && !bSubmittingDraft && Current.bEnabled && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible
+        && BoundCharacter.IsValid() && Current.Character == BoundCharacter && S && S->Status == ERPGTradeStatus::Negotiating
+        && S->CurrencyCode == TEXT("Gold") && !Coordinator->IsBusy() && !GetClient().GetPending();
+}
+bool FRPGTradeLobbyOwner::ReadBag(FRPGTradeBagSnapshot& Out) const
+{
+    if (!BagReader) return false;
+    Out = BagReader(); const double Now = Clock();
+    if (!FMath::IsFinite(Now) || Now < 0) return false;
+    BagNow = FMath::Max(BagNow,Now);
+    return Out.Endpoint == Endpoint && Out.Account == Account && Out.Character == BoundCharacter && Out.IsUsable(BagNow);
+}
+FRPGTradeDraftView FRPGTradeLobbyOwner::GetDraftView() const
+{
+    FRPGTradeDraftView V; V.Token = Draft.GetToken(); V.AmountText = Draft.GetAmountText();
+    V.bCanReload = CanEditOffer() && bool(BagReloader);
+    FRPGTradeBagSnapshot Bag; const bool Ready = ReadBag(Bag);
+    V.bCanReload &= !Bag.bLoading;
+    if (Ready) { V.BagToken = Bag.Token; V.BagItems = Bag.Items; }
+    V.bCanBegin = CanEditOffer() && Ready;
+    V.bCanEdit = V.bCanBegin && Draft.IsCurrent(*GetClient().GetSession(),BoundCharacter,Bag);
+    FRPGTradeOffer Offer;
+    V.bCanSend = V.bCanEdit && Draft.Build(*GetClient().GetSession(),BoundCharacter,Bag,Offer);
+    for (const auto& Selected : Draft.GetItems())
+    {
+        const auto* Found = Ready ? Bag.Find(Selected.ItemId) : nullptr;
+        FRPGTradeBagItem Row; Row.ItemId = Selected.ItemId; Row.Revision = Selected.ExpectedRevision; Row.Quantity = Selected.Quantity;
+        Row.Label = Found && Found->Revision == Selected.ExpectedRevision ? Found->Label : NSLOCTEXT("RPGTrade", "StaleDraftItem", "가방에서 확인할 수 없는 제안 물품");
+        V.SelectedItems.Add(MoveTemp(Row));
+    }
+    V.Status = Bag.bLoading ? NSLOCTEXT("RPGTrade", "BagLoading", "가방을 확인하고 있습니다.")
+        : !Ready ? NSLOCTEXT("RPGTrade", "BagReadRequired", "최신 가방을 불러와 제안을 편집하세요.")
+        : !V.Token.IsValid() ? NSLOCTEXT("RPGTrade", "BeginDraft", "현재 내 제안을 불러와 편집할 수 있습니다.")
+        : !V.bCanEdit ? NSLOCTEXT("RPGTrade", "StaleDraft", "가방 또는 거래 상태가 바뀌었습니다. 현재 제안을 다시 불러오세요.")
+        : !V.bCanSend ? NSLOCTEXT("RPGTrade", "InvalidDraft", "골드와 물품 수량을 확인하세요. 확인할 수 없는 물품은 제안에서 삭제한 뒤 다시 선택하세요.")
+        : NSLOCTEXT("RPGTrade", "DraftReady", "수정한 제안을 보내면 양쪽의 준비와 확인이 해제됩니다.");
+    return V;
+}
+bool FRPGTradeLobbyOwner::ReloadBag()
+{ if (!Update(false) || !CanEditOffer() || !BagReloader) return false; const bool Sent = BagReloader(); Changed(); return Sent; }
+bool FRPGTradeLobbyOwner::BeginDraft()
+{
+    FRPGTradeBagSnapshot Bag;
+    if (!Update(false) || !CanEditOffer() || !ReadBag(Bag)) return false;
+    const bool Began = Draft.Begin(*GetClient().GetSession(),BoundCharacter,Bag); Changed(); return Began;
+}
+void FRPGTradeLobbyOwner::DiscardDraft() { Draft.Reset(); Changed(); }
+bool FRPGTradeLobbyOwner::SetDraftAmount(FGuid Token, const FString& Amount)
+{
+    if (!Update(false) || Token != Draft.GetToken() || !GetDraftView().bCanEdit) return false;
+    const bool Valid = Draft.SetAmount(Amount); Changed(); return Valid;
+}
+bool FRPGTradeLobbyOwner::SetDraftItem(FGuid Token, FGuid Item, const FString& Quantity)
+{
+    FRPGTradeBagSnapshot Bag; int64 N;
+    if (!Update(false) || Token != Draft.GetToken() || !GetDraftView().bCanEdit || !ReadBag(Bag)
+        || !FRPGTradeOfferDraft::ParseInteger(Quantity,N) || N < 1 || N > MAX_int32) return false;
+    const bool Set = Draft.SetItem(Item,static_cast<int32>(N),Bag); Changed(); return Set;
+}
+bool FRPGTradeLobbyOwner::RemoveDraftItem(FGuid Token, FGuid Item)
+{ if (!Update(false) || Token != Draft.GetToken() || !GetDraftView().bCanEdit) return false; const bool Removed = Draft.RemoveItem(Item); Changed(); return Removed; }
+bool FRPGTradeLobbyOwner::SendDraft(FGuid Token)
+{
+    FRPGTradeBagSnapshot Bag; FRPGTradeOffer Offer;
+    if (!Update(false) || !CanEditOffer() || !Token.IsValid() || Token != Draft.GetToken() || !ReadBag(Bag)
+        || !Draft.Build(*GetClient().GetSession(),BoundCharacter,Bag,Offer)) return false;
+    bool Sent;
+    { TGuardValue<bool> Guard(bSubmittingDraft,true); Sent = Coordinator->Submit(ERPGTradeAction::Offer,&Offer); }
+    if (Sent) Draft.Reset();
+    Changed(); return Sent;
 }
 FRPGTradeLobbyView FRPGTradeLobbyOwner::GetView() const
 {
@@ -165,7 +241,7 @@ FRPGTradeLobbyView FRPGTradeLobbyOwner::GetView() const
     else if (S && S->Status == ERPGTradeStatus::Negotiating)
         V.MyDetails = V.OtherDetails = NSLOCTEXT("RPGTrade", "PreviewRequired", "최신 물품 상세를 확인하고 있습니다.");
     const FGuid PreviewIdentity = Coordinator->GetPreviewToken();
-    const bool CanReview = Resolved && PreviewIdentity.IsValid() && S && S->Status == ERPGTradeStatus::Negotiating && Current.bEnabled && Eligible
+    const bool CanReview = !Draft.GetToken().IsValid() && Resolved && PreviewIdentity.IsValid() && S && S->Status == ERPGTradeStatus::Negotiating && Current.bEnabled && Eligible
         && Current.Character == BoundCharacter && S->CurrencyCode == TEXT("Gold") && !P && !(S->InitiatorOffer.IsEmpty() && S->InviteeOffer.IsEmpty());
     if (CanReview)
     {
