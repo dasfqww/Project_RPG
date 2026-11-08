@@ -1,4 +1,5 @@
 #include "Component/Combat/RPGCombatControlComponent.h"
+#include "Riding/RPGRidingDamageScope.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "Animation/AnimInstance.h"
@@ -35,6 +36,7 @@ FActiveGameplayEffectHandle URPGCombatControlComponent::ApplyApprovedDamageStagg
 	if(IsImmuneTo(ERPGCombatEffectKind::Stagger)||RPGStagger::HasHigherControl(Owner)
 		||HasUncancellableCombatAbility()||OwnedStaggers.Num()>=16)return {};
 	TGuardValue<bool> Applying(bApplyingStagger,true);
+	FRPGRidingDamageScope RidingOutcome(UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Source), ASC);
 	auto Context=ASC->MakeEffectContext();Context.AddInstigator(Source,Source);Context.AddSourceObject(this);Context.AddHitResult(Hit);
 	FGameplayEffectSpec Spec(GetDefault<URPGStaggerEffect>(),Context,1);Spec.SetDuration(Settings.Duration,true);
 	const auto Handle=ASC->ApplyGameplayEffectSpecToSelf(Spec);const auto* Active=ASC->GetActiveGameplayEffect(Handle);
@@ -48,6 +50,7 @@ FActiveGameplayEffectHandle URPGCombatControlComponent::ApplyApprovedDamageStagg
 	StaggerState.StartServerTime=GetWorld()->GetTimeSeconds();
 	StaggerState.Direction=RPGHitReaction::ResolveDirection(Owner->GetActorForwardVector(),-AwayDirection);
 	if(++StaggerSequence==0)++StaggerSequence;StaggerState.ExecutionId=StaggerSequence;
+	RidingOutcome.CompleteControl(Handle);
 	RefreshControl();return Handle;
 }
 bool URPGCombatControlComponent::RemoveOwnedStagger(FActiveGameplayEffectHandle Handle)

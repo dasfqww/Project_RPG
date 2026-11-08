@@ -1,7 +1,7 @@
 # Riding 코드 설계 — M1 상태·세션·탑승 기반
 
 - 작성: 2026-11-06 / 담당: `riding-code-design-20261106`
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 수동 능력·공격 입력 차단/소모품 준비 상호 배제·적대 피해 결과 연결 구현. 이동/기존 권한 폐기 실패는14절, 구역은15절, 능력/입력은16절, 소모품은17절, 피해는18절의 검증 범위를 따른다. 제품 보유 API·승인 제어 결과 잠금·Dash/Emote·실제 맵/다인 검증은 후속이다.**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 수동 능력·공격 입력 차단/소모품 준비 상호 배제·적대 피해/제어 결과 연결 구현. 이동/기존 권한 폐기 실패는14절, 구역은15절, 능력/입력은16절, 소모품은17절, 피해는18절, 제어는19절의 검증 범위를 따른다. 제품 보유 API·Dash/Emote·실제 맵/다인 검증은 후속이다.**
 - 기준: [기능 계약](RIDING_SYSTEM_DESIGN.md), [아키텍처와 HUD 인계](RIDING_SYSTEM_ARCHITECTURE.md), 게시 `d546e392`의 관련 기존 소스. 재개 시 게시 HEAD `2971c97c`와 별도 담당의 미커밋 `Docs/ACTION_BAR_CONTEXT.md`/`UI/ActionBar` 계약을 추가 대조했다. 공용 코드의 빌드/검증 완료 주장은 아니다.
 - 목적: 첫 구현에서 만들 타입, 접근 제한, 판정 순서, 상태 수명, 검사 기준을 정한다. M2 액션 실행/M3 영속 저장은 포트만 정의하고 구현 완료로 취급하지 않는다.
 
@@ -484,3 +484,20 @@ CMC는 기존 도보 속도/제약 계산과 SavedMove·packed move/response가 
 최종 근거는 `Saved/BuildChecks/RidingDamage-20261109/Completion.json`이다. native `660e8492ff6745af99f9eb789b1cbc7d`는 게시 `7aa3f48f`+본인 고정 입력의 UHT/29단계 빌드·링크0·같은 `4B9C94B1…22F6FBF9` DLL에서 기존27+피해4 **31 Success·검사 오류/경고0·UE0**이다. `Integration-26f2d161791e4eb8948106176d3bc3a8`는 게시 `def31e2e`+본인 고정 입력의 전체 UHT/실제 CPP4 컴파일0이다. 두 게시본 차이는 Backend/운영툴뿐이며 Source/Config/Plugins 차이0·최종 고유 입력41 SHA와 러너2 SHA가 현재 원본과 일치했다.
 
 첫 집중 컴파일은 기존 세션 헤더의 `AController` 전방 선언 누락으로 실패했다. 전방 선언과 양수 피해 입력 검사 보완 이전의 첫 native31은 모두 Success였지만 최종 입력 gate가 실패했으므로 위 최종31과 구분한다. 자기4회 사본/PCH/OBJ/DLL/PDB/runtime/cache **5,735,936,504 bytes(약5.34GiB)**를 finally 정리했고 실행/Temp/새 정리 예외0이다. 원본 DLL·에셋·공유 출력/trace/cache·타 담당 변경과 이전 로그 예외는 보존했다. 작은 결과/명령/해시/필요 로그만 남겼으며 폐기한 DLL 해시는 당시 증거다.
+
+## 19. M2 승인 제어 성공과 탑승 전투 잠금 — 2026-11-09
+
+기존 [DamageScope](../Source/Project_RPG/Public/Riding/RPGRidingDamageScope.h)에 `CompleteControl(ActiveHandle)`을 추가해 피해와 같은 원래 인증 세션의 예약/양측 전투 잠금/단일 완료 수명을 재사용한다. 성공 bool·클라이언트 이벤트·태그 변화만을 결과로 받지 않는다. 현재 양측 Pawn/ASC·서버 World와 원래 Source의 GE Context, 현재 Target ASC의 실제 활성 handle을 대조하고, 억제/제거 대기/기한 만료/분리/다른 source의 효과는 거절한다. 실제 제어 성공이면 양측의10초 잠금을 먼저 기록하고 원래 Riding Epoch에만 Control 하차를 요청한다.
+
+- 기존 기절/경직/감속의 승인 receipt·면역/중복·수명 검사 뒤, GE/상태 변경 callback 전에 scope를 시작한다. 살아 있는 활성 제어가 소유 목록에 들어간 뒤 완료한다. 기절/경직/감속의 원래 활성 효과·패시브/버프를 Riding 정리를 이유로 제거하지 않는다.
+- 넉백/공중제어는 교체 정리·GE 적용·이동 창/RMS 생성 동안 같은 세션의 탑승·교체를 막고, 실제 motion 생성까지 성공한 뒤 완료한다. 하차 callback이 정화/취소·사망/생명 교체를 일으키면 자기 handle/실행 수명을 재확인해 재시작하지 않는다. 살아 있는 제어/외부 이동 모드를 Riding이 복원하거나 다른 새 제어의 창을 정리하지 않는다.
+- 면역·거절/중도 반환·없는/억제/제거된 효과·지원하지 않는 이동 실패는 새 영구 잠금을 만들지 않는다. 성공 직후 정화돼도 이미 기록한10초 제한은 유지한다. 후속 Airborne→Downed→GettingUp phase나 정화/종료 callback에는 새 완료 호출이 없으며, 기존 receipt 중복 방지가 같은 적중의 재적용을 계속 막는다.
+- 피해/제어 어느 쪽으로든 scope 하나의 완료는 한 번만 소비한다. 피해와 제어가 함께 성공하는 기존 적중은 각 최종 적용 경계가 기존 타이머의 최댓값을 유지하며 추가 피해/아이템/새 영속 영수증을 만들지 않는다. 원래 Context/Pawn 교체·중첩 토큰 수명은18절과 같다.
+
+`Run-RidingFoundationTests.ps1 -IncludeControl -IncludeConsume -IncludeAbilities -IncludeWorld`는 실제 GAS duration GE를 사용해 무피해 Control 하차·10초 제한/효과 보존·정화 뒤 잠금 유지, 잘못된 handle/제거/억제/다른 Source/분리 ASC 거절, callback 정화·중첩/재탑승 거절을 기존 피해/Actor 회귀와 실행한다. 합성 duration GE와 실제 scope/Riding Actor 검사이며 제품 제어 컴포넌트 5종이나 실제 넉백/공중 RMS를 실행한 결과와 구분한다. `Run-RidingIntegrationCompile.ps1 -IncludeControl`는 게시 전체 UHT와 실제 제어5/Scope/Attribute CPP7를 컴파일한다. 전체 게임 DLL 링크·제품 제어 파이프라인/다인 RPC·HTTP/PG 실행은 이 단위에 포함하지 않았다.
+
+현재 연결은 성공한 외부 제어의 결과 경계다. 미래 Dash가 자기 RMS/보안 창을 보유한 상태에서 제어를 받는 경우, **Dash 취소/자기 창 회수 → 외부 제어의 이동 창 생성** 순서는 Dash 통합 때 연결·실행 검증해야 한다. 이 단위를 그 순서의 완료 근거로 쓰지 않는다. 제품 보유 API의 NotReady, Dash/Emote·실제 맵/다인 검증도 유지한다.
+
+최종 근거는 `Saved/BuildChecks/RidingControl-20261109/Completion.json`이다. 게시 `e9eff8ca`+본인 고정 입력의 native `c1e1d32b6f7244be85c2dc550dbbf20c`는 UHT/29단계 빌드·링크0·같은 `694F494D…4A790A2F` DLL의 기존31+제어3 **34 Success·검사 오류/경고0·UE0**이다. 같은 게시본의 `Integration-9a3d88766fd04cd0a6e07d513fa08ba4`는 전체 UHT/실제 CPP7 컴파일0이며 두 cohort의 고유 입력46 SHA와 러너2 SHA가 현재 원본과 일치했다.
+
+첫 CPP7도 통과했지만 넉백의 하차 callback 뒤 ASC 분리/생존 재검사를 보강해 최종 CPP7을 다시 컴파일했다. native 입력40은 그 보강의 영향 없이 동일하므로 위 native34를 유지하며 실제 넉백 runtime 재검증으로 표시하지 않는다. 세 시도 모두 통과했고 자기3회 사본/PCH/OBJ/DLL/PDB/runtime/cache **3,127,966,055 bytes(약2.91GiB)**를 finally 정리했다. 실행/Temp/새 정리 예외0·원본 DLL/에셋/공유 출력/trace/cache·타 담당 변경과 이전 로그 예외는 보존했다. 작은 결과/명령/해시/필요 로그만 남겼으며 폐기한 DLL 해시는 당시 증거다.

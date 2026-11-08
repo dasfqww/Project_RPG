@@ -1,6 +1,7 @@
 #pragma once
 #include "GameFramework/PlayerController.h"
 #include "GenericTeamAgentInterface.h"
+#include "GameplayEffect.h"
 #include "RPGRidingDamageTests.generated.h"
 
 UCLASS(Transient, NotBlueprintable)
@@ -10,4 +11,12 @@ class ARPGRidingDamageTestController : public APlayerController, public IGeneric
 public:
     virtual FGenericTeamId GetGenericTeamId() const override { return Team; }
     FGenericTeamId Team = FGenericTeamId(1);
+};
+
+UCLASS(Transient, NotBlueprintable)
+class URPGRidingTestControlEffect : public UGameplayEffect
+{
+    GENERATED_BODY()
+public:
+    URPGRidingTestControlEffect();
 };

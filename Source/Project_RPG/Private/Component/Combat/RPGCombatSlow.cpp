@@ -1,4 +1,5 @@
 #include "Component/Combat/RPGCombatControlComponent.h"
+#include "Riding/RPGRidingDamageScope.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "Combat/RPGApprovedHitContext.h"
@@ -26,6 +27,7 @@ FActiveGameplayEffectHandle URPGCombatControlComponent::ApplyApprovedDamageSlow(
 	RecentSlowHits.Add(Receipt);
 	if (IsImmuneTo(ERPGCombatEffectKind::Slow) || OwnedSlows.Num() >= 32) return {};
 	TGuardValue<bool> Applying(bApplyingSlow, true);
+	FRPGRidingDamageScope RidingOutcome(UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Source), ASC);
 	const FRPGApprovedHitContext Lifetime(Source, Character);
 	FGameplayEffectContextHandle Context = ASC->MakeEffectContext();
 	Context.AddInstigator(Source, Source); Context.AddSourceObject(this); Context.AddHitResult(Hit);
@@ -40,6 +42,7 @@ FActiveGameplayEffectHandle URPGCombatControlComponent::ApplyApprovedDamageSlow(
 	OwnedSlows.Add(Handle);
 	if (auto* Removed = ASC->OnGameplayEffectRemoved_InfoDelegate(Handle)) Removed->AddUObject(this, &ThisClass::HandleSlowRemoved);
 	if (auto* Inhibited = ASC->OnGameplayEffectInhibitionChangedDelegate(Handle)) Inhibited->AddUObject(this, &ThisClass::HandleSlowInhibited);
+	RidingOutcome.CompleteControl(Handle);
 	RefreshControl(); return Handle;
 }
 

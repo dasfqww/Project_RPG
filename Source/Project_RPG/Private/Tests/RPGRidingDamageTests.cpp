@@ -9,6 +9,12 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerState.h"
 
+URPGRidingTestControlEffect::URPGRidingTestControlEffect()
+{
+    DurationPolicy = EGameplayEffectDurationType::HasDuration;
+    DurationMagnitude = FScalableFloat(5.f);
+}
+
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
 namespace
@@ -165,6 +171,92 @@ bool FRidingDamageLifetimeTest::RunTest(const FString&)
     }
     TestTrue(TEXT("Same session replacement gets durable combat lock"), F.A.Session->GetOwnerState().CombatEndServerSeconds >= 9.9);
     TestFalse(TEXT("Replacement cannot mount after damage scope ends"), F.A.Mount());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingControlSuccessTest, "ProjectRPG.Riding.Control.ActiveEffect", Flags)
+bool FRidingControlSuccessTest::RunTest(const FString&)
+{
+    FFixture F;
+    if (!TestTrue(TEXT("Both fixtures mounted"), F.A.Mount() && F.B.Mount())) return false;
+    FActiveGameplayEffectHandle Handle;
+    {
+        FRPGRidingDamageScope Scope(F.A.Pawn->ASC, F.B.Pawn->ASC);
+        FGameplayEffectSpec Spec(GetDefault<URPGRidingTestControlEffect>(), F.A.Pawn->ASC->MakeEffectContext(), 1.f);
+        Handle = F.B.Pawn->ASC->ApplyGameplayEffectSpecToSelf(Spec);
+        if (!TestTrue(TEXT("Real GAS effect accepted without damage"), Handle.IsValid())) return false;
+        Scope.CompleteControl(Handle);
+        const double Deadline = F.A.Session->GetOwnerState().CombatEndServerSeconds;
+        Scope.Complete(25.f, 0.f);
+        Scope.CompleteControl(Handle);
+        TestEqual(TEXT("One outcome cannot replay across damage/control ports"), F.A.Session->GetOwnerState().CombatEndServerSeconds, Deadline);
+    }
+    TestTrue(TEXT("Control dismounts outgoing source"), F.A.Riding()->GetRidingState().LastEndReason == ERPGRidingEndReason::Control);
+    TestTrue(TEXT("Control dismounts victim"), F.B.Riding()->GetRidingState().LastEndReason == ERPGRidingEndReason::Control);
+    TestEqual(TEXT("No HP damage invented"), F.B.Pawn->Attributes->CurrentHealth.GetCurrentValue(), 100.f);
+    TestTrue(TEXT("Dismount preserves accepted control GE"), F.B.Pawn->ASC->GetActiveGameplayEffect(Handle) != nullptr);
+    F.B.Pawn->ASC->RemoveActiveGameplayEffect(Handle);
+    TestTrue(TEXT("Cleanse keeps both durable ten-second locks"), F.A.Session->GetOwnerState().CombatEndServerSeconds >= 9.9
+        && F.B.Session->GetOwnerState().CombatEndServerSeconds >= 9.9);
+    TestFalse(TEXT("Cleanse does not allow immediate mount"), F.B.Mount());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingControlRejectedTest, "ProjectRPG.Riding.Control.RejectedEffects", Flags)
+bool FRidingControlRejectedTest::RunTest(const FString&)
+{
+    for (int32 Case = 0; Case < 5; ++Case)
+    {
+        FFixture F;
+        {
+            FRPGRidingDamageScope Scope(F.A.Pawn->ASC, F.B.Pawn->ASC);
+            auto Context = Case == 3 ? F.B.Pawn->ASC->MakeEffectContext() : F.A.Pawn->ASC->MakeEffectContext();
+            FGameplayEffectSpec Spec(GetDefault<URPGRidingTestControlEffect>(), Context, 1.f);
+            auto Handle = F.B.Pawn->ASC->ApplyGameplayEffectSpecToSelf(Spec);
+            if (Case == 0) Handle = {};
+            if (Case == 1) F.B.Pawn->ASC->RemoveActiveGameplayEffect(Handle);
+            if (Case == 2) Handle = F.B.Pawn->ASC->SetActiveGameplayEffectInhibit(MoveTemp(Handle), true, false);
+            if (Case == 4) F.B.Pawn->ASC->ClearActorInfo();
+            Scope.CompleteControl(Handle);
+            if (Case == 4) F.B.Pawn->ASC->InitAbilityActorInfo(F.B.Pawn, F.B.Pawn);
+        }
+        TestTrue(TEXT("Missing/removed/inhibited/foreign/detached effect leaves no lock"), F.A.Mount() && F.B.Mount());
+        TestTrue(TEXT("Rejected result has no durable combat deadline"), F.A.Session->GetOwnerState().CombatEndServerSeconds <= 0.01);
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingControlCallbackTest, "ProjectRPG.Riding.Control.CallbackAndNesting", Flags)
+bool FRidingControlCallbackTest::RunTest(const FString&)
+{
+    FFixture F;
+    if (!TestTrue(TEXT("Both fixtures mounted"), F.A.Mount() && F.B.Mount())) return false;
+    FActiveGameplayEffectHandle Handle;
+    bool CallbackObserved = false;
+    ERPGRidingResultCode SourceMountResult = ERPGRidingResultCode::NoChange;
+    F.A.Riding()->OnResult.AddLambda([&](const FRPGRidingCommandResult& R) { SourceMountResult = R.Result; });
+    F.B.Riding()->OnChanged.AddLambda([&](const FRPGRidingRepState& State)
+    {
+        if (State.Mode != ERPGRidingMode::OnFoot) return;
+        F.B.Pawn->ASC->RemoveActiveGameplayEffect(Handle);
+        F.A.Riding()->RequestSetMounted(true, {});
+        CallbackObserved = SourceMountResult == ERPGRidingResultCode::ActionBlocked
+            && F.A.Session->GetOwnerState().CombatEndServerSeconds >= 9.9;
+    });
+    {
+        FRPGRidingDamageScope Outer(F.A.Pawn->ASC, F.B.Pawn->ASC);
+        FGameplayEffectSpec Spec(GetDefault<URPGRidingTestControlEffect>(), F.A.Pawn->ASC->MakeEffectContext(), 1.f);
+        Handle = F.B.Pawn->ASC->ApplyGameplayEffectSpecToSelf(Spec);
+        {
+            FRPGRidingDamageScope Inner(F.A.Pawn->ASC, F.B.Pawn->ASC);
+            Inner.CompleteControl(Handle);
+        }
+        TestTrue(TEXT("Control callback may cleanse but cannot remount"), CallbackObserved);
+        TestFalse(TEXT("Inner release cannot clear outer barrier"), F.A.Mount());
+        Outer.CompleteControl(Handle); // Already cleansed; cannot invent another successful outcome.
+    }
+    TestFalse(TEXT("Both scopes released; successful control lock remains"), F.A.Mount());
+    F.A.Riding()->OnResult.Clear(); F.B.Riding()->OnChanged.Clear();
     return true;
 }
 #endif

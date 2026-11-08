@@ -1,4 +1,5 @@
 #include "Component/Combat/RPGCombatControlComponent.h"
+#include "Riding/RPGRidingDamageScope.h"
 #include "Component/Combat/RPGCombatMotion.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
@@ -58,6 +59,7 @@ bool URPGCombatControlComponent::ApplyApprovedDamageAirborne(AActor* Source, con
 	RecentAirborneHits.Add(Receipt);
 	if (IsImmuneTo(ERPGCombatEffectKind::Airborne) || HasUncancellableCombatAbility()) return false;
 	TGuardValue<bool> Applying(bApplyingAirborne, true);
+	FRPGRidingDamageScope RidingOutcome(UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Source), ASC);
 	const FRPGApprovedHitContext Lifetime(Source, Character);
 	EndAirborne(ERPGAirborneEndReason::Replaced);
 	EndKnockback(ERPGKnockbackEndReason::Replaced);
@@ -115,6 +117,9 @@ bool URPGCombatControlComponent::ApplyApprovedDamageAirborne(AActor* Source, con
 	AirborneState.bMotionActive = true;
 	ApplyAirborneMotion();
 	if (!HasAirborneMotion()) { EndAirborne(ERPGAirborneEndReason::UnsupportedMovement); return false; }
+	RidingOutcome.CompleteControl(Handle);
+	if (bEnding || BoundASC.Get() != ASC || !Lifetime.IsCurrent(Source, Character) || !HasAirborneMotion())
+	{ if (OwnedAirborneSequence == Handle) EndAirborne(ERPGAirborneEndReason::LifeChanged); return false; }
 	PublishAirborneState();
 	return AirborneState.IsActive() && Lifetime.IsCurrent(Source, Character);
 }

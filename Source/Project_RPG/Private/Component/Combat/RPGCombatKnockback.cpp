@@ -1,4 +1,5 @@
 #include "Component/Combat/RPGCombatControlComponent.h"
+#include "Riding/RPGRidingDamageScope.h"
 #include "Component/Combat/RPGCombatMotion.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
@@ -47,6 +48,7 @@ bool URPGCombatControlComponent::ApplyApprovedDamageKnockback(AActor* Source, co
 	RecentKnockbackHits.Add(Receipt);
 	if (IsImmuneTo(ERPGCombatEffectKind::Knockback) || HasUncancellableCombatAbility()) return false;
 	TGuardValue<bool> Applying(bApplyingKnockback, true);
+	FRPGRidingDamageScope RidingOutcome(UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Source), ASC);
 	const uint32 Life = RecoveryRevision();
 	const uint32 Epoch = LifetimeEpoch;
 	EndKnockback(ERPGKnockbackEndReason::Replaced);
@@ -103,6 +105,11 @@ bool URPGCombatControlComponent::ApplyApprovedDamageKnockback(AActor* Source, co
 	KnockbackLastLocation = Character->GetActorLocation();
 	DisplacementLastBaseMovementTotal = Movement->GetServerBasedMovementTotal();
 	Character->OnCharacterMovementUpdated.AddUniqueDynamic(this, &ThisClass::OnKnockbackMovementUpdated);
+	RidingOutcome.CompleteControl(Handle);
+	// Dismount callbacks may cleanse/reset this already accepted control. Never restart its motion.
+	if (bEnding || LifetimeEpoch != Epoch || RecoveryRevision() != Life || BoundASC.Get() != ASC
+		|| !IsLivingAvatar(Character) || !HasKnockbackMotion())
+	{ if (OwnedKnockback == Handle) EndKnockback(ERPGKnockbackEndReason::LifeChanged); return false; }
 	GetOwner()->ForceNetUpdate();
 	SetComponentTickEnabled(true);
 	OnKnockbackStateChanged.Broadcast(KnockbackState);

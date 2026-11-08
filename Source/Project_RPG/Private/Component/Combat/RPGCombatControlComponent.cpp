@@ -1,5 +1,6 @@
 #include "Component/Combat/RPGCombatControlComponent.h"
 #include "Component/Combat/RPGShieldComponent.h"
+#include "Riding/RPGRidingDamageScope.h"
 #include "Ability/Skill/RPGGreatSwordResolveAbility.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
@@ -155,6 +156,7 @@ FActiveGameplayEffectHandle URPGCombatControlComponent::ApplyApprovedDamageStun(
 	if (bApplying || IsImmuneTo(ERPGCombatEffectKind::Stun)
 		|| HasUncancellableCombatAbility()) return {};
 	TGuardValue<bool> Guard(bApplying, true);
+	FRPGRidingDamageScope RidingOutcome(UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Source), ASC);
 	const uint32 Revision = RecoveryRevision();
 	const uint32 Epoch = LifetimeEpoch;
 	FGameplayEffectContextHandle Context = ASC->MakeEffectContext();
@@ -176,6 +178,7 @@ FActiveGameplayEffectHandle URPGCombatControlComponent::ApplyApprovedDamageStun(
 	if (auto* Removed = ASC->OnGameplayEffectRemoved_InfoDelegate(Handle)) Removed->AddUObject(this, &ThisClass::HandleStunRemoved);
 	if (auto* Inhibited = ASC->OnGameplayEffectInhibitionChangedDelegate(Handle)) Inhibited->AddUObject(this, &ThisClass::HandleStunInhibited);
 	BoundRecoveryRevision = Revision;
+	RidingOutcome.CompleteControl(Handle);
 	RefreshControl();
 	return Handle;
 }
