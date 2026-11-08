@@ -28,6 +28,7 @@
 - HUD가 교체되면 기존 presenter를 해제하고 현재 Pawn context를 다시 연결한다. 테스트용 HUD 등 두 canvas 영역이 없는 root는 교체 대상이 아니다.
 - `ReleaseAllSkillInputs()`는 창 열기/입력 해제 시 기존 스킬과 제공자의 누른 액션을 함께 해제한다. 모드 전환 내부에서는 물리적으로 누른 상태를 유지하여 키를 놓기 전 새 동작이 실행되지 않는다.
 - 사유/키/쿨타임은 같은 셀과 툴팁에서 현재 view를 읽어 갱신한다. 비활성 사유만 바뀔 때 프로필을 재설치하지 않는다. 포인터로 누르는 중 사용 가능 여부가 바뀌어도 Release는 전달하며, 제거된 셀의 툴팁/버튼 콜백은 weak 참조로 만료된다. 저작 위젯은 기존 `ReadAction` 반환값에서 같은 사유를 읽을 수 있다.
+- native 셀은 생성할 때 전달된 아이콘 브러시를 복사한다. 이전 이미지가 상태 전환/위젯 재생성 뒤에도 Slate에 남아 있으면 엔진 `FDeferredCleanupSlateBrush`가 브러시와 텍스처의 GC/렌더 수명을 유지한다. 호출자의 배열/스택 주소를 계속 참조하지 않으며 원본 브러시의 후속 변경은 이미 생성한 셀을 바꾸지 않는다. 아이콘 교체는 불변 프로필의 교체 규칙을 따른다.
 
 ## Riding 담당 인계
 
@@ -83,3 +84,11 @@ Riding 프로필은 `URPGActionBarIdentityWidget`을 중앙 영역에 설치한�
 첫 실행은 검사18개를 통과했지만 이후 소스 변경 때문에 최종 근거에서 제외했다. 두 번째 빌드는 러너가 공용 Controller의 다른 담당 변경을 다시 복사하여 고정 사본에 없는 Narrative 헤더를 참조해 실패했다. Identity 모드는 본인11경로만 갱신하도록 고쳤고, 사본의 공용13경로를 처음 게시본으로 복구한 후 세 번째 실행에서 최종 코드를 검증했다. 원본 공용 소스와 게임 DLL/에셋은 변경하지 않았다. 이후 게시본의 Riding 지역/능력 차단은 소비 중인 상태/정의 조회 API를 유지하지만 그 전체 통합 바이너리를 이번에 실행한 결과는 아니다. 실제 권한 성공/소켓 복제/GPU 외형은 별도다.
 
 자기 사본/OBJ/DLL/PDB/UserDir/cache 6,618,039,674 bytes(약6.16GiB)·Content 링크7개를 폐기했다. 공유 UBT trace는 보존하며 새 정리 예외는 없다. 폐기한 모듈/입력 해시는 당시 증거다. 로컬 최소 요약은 `Saved/BuildChecks/ActionBarIdentity-20261108/Completion.json`, 유지할 회귀 실행은 `Scripts/Tests/Run-ActionBarContextTests.ps1 -IncludeIdentity`다.
+
+## 전환 후 아이콘 수명 — 2026-11-08
+
+기존 native 바의 `IconBrushes` 배열 주소를 이미지에 넘기던 경로를 제거했다. 셀은 생성 중 아이콘을 엔진 `FDeferredCleanupSlateBrush`로 복사하고 이미지 속성이 이를 보유한다. 부모 셀/UMG 위젯이 먼저 제거돼도 남은 이미지가 잘못된 브러시 주소를 읽거나 텍스처를 GC로 잃지 않으며, 마지막 이미지 해제 후에는 엔진의 지연 렌더 정리로 자원을 반환한다. 프로필/입력/서버 상태와 아이콘의 외형·크기는 유지한다.
+
+게시 `c04bdda7` + 명시 입력7 고정 사본에서 독립 UHT/10단계 빌드·링크, native 셀4 Success/검사 오류·경고0/실행0을 확인했다. 원본 브러시 변조/수명 종료와 부모 셀 제거 뒤에도 이미지 크기36×36·GC 후 텍스처 유지, 아이콘 없는 셀 및 기존 비활성 툴팁/쿨타임/입력 해제를 검사했다. 실제 프로젝트 전체 UHT와 Widget/Cell/Context/검사 CPP4 집중 컴파일도 통과했고 입력7 SHA는 전후 일치했다. 기동 `Condition failed`15개는 별도 기록했다. 실제 GPU 렌더 완료나 전체 게임 링크/네트워크 재검증은 이 집중 검사에 포함하지 않는다.
+
+자기 사본/OBJ/DLL/PDB/UserDir/cache 2,815,238,659 bytes(약2.62GiB)를 폐기했고 정리 예외는 없다. 원본 게임 DLL/에셋과 공유 UBT trace는 보존했다. 로컬 최소 요약은 `Saved/BuildChecks/ActionBarIconLifetime-20261108/Completion.json`이며 폐기한 DLL 해시는 당시 증거다. 유지할 회귀는 `Scripts/Tests/Run-ActionBarCellTests.ps1 -IconLifetime`으로 실행한다.

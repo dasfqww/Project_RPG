@@ -1,10 +1,12 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8')
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IconLifetime)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id=[Guid]::NewGuid().ToString('N')
-$root=Join-Path $workspace ('Saved/BuildChecks/ActionBarFeedback-20261108/'+$id)
-$tempRoot=Join-Path $workspace 'Saved/AF'
+$suite=if($IconLifetime){'ActionBarIconLifetime-20261108'}else{'ActionBarFeedback-20261108'}
+$reservation=if($IconLifetime){'actionbar-icon-lifetime-20261108'}else{'actionbar-feedback-20261108'}
+$root=Join-Path $workspace ('Saved/BuildChecks/'+$suite+'/'+$id)
+$tempRoot=Join-Path $workspace $(if($IconLifetime){'Saved/AI'}else{'Saved/AF'})
 $temp=Join-Path $tempRoot $id.Substring(0,8)
 $project=Join-Path $temp 'Cell'
 $process=$null
@@ -16,7 +18,7 @@ function Write-Utf8([string]$Path,[string]$Text) {
 }
 function Save-Proof { Write-Utf8 (Join-Path $root 'Result.json') ($proof|ConvertTo-Json -Depth 12) }
 function Assert-Reservation {
-    if(@(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md')|Where-Object{$_-match'^\|[^|]* / actionbar-feedback-20261108 \|'}).Count-ne1){throw 'Feedback reservation missing'}
+    if(@(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md')|Where-Object{$_-match('^\|[^|]* / '+[regex]::Escape($reservation)+' \|')}).Count-ne1){throw 'Cell reservation missing'}
 }
 function Build-Project([string]$Name,[string]$UProject,[string]$Phase,[string[]]$Extra=@()) {
     $arguments=@($ubt,$Name,'Win64','Development',$UProject,'-NoMutex','-NoEngineChanges','-NoUBA','-UBADisableRemote',('-UBARootDir='+(Join-Path $temp 'Uba')),'-NoHotReloadFromIDE','-MaxParallelActions=2',('-log='+(Join-Path $root ($Phase+'.log'))))+$Extra
@@ -37,8 +39,9 @@ try {
         'Source/Project_RPG/Private/UI/ActionBar/SRPGActionBarCell.cpp',
         'Source/Project_RPG/Private/Tests/RPGActionBarCellTests.cpp',
         'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarProfile.h',
-        'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarWidget.cpp')
-    # Freeze the six real product/test inputs once; both phases consume these same copies.
+        'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarWidget.cpp',
+        'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarWidget.h')
+    # Freeze the exact real product/test inputs once; both phases consume these same copies.
     $frozen=Join-Path $temp 'Inputs'
     foreach($relative in $files){
         $source=Join-Path $workspace $relative
@@ -105,7 +108,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "ActionBarCel
     if($process.ExitCode-ne0){throw 'Native cell automation failed'}
     $data=Get-Content -LiteralPath (Join-Path $report 'index.json') -Raw -Encoding UTF8|ConvertFrom-Json
     $proof.Tests=@($data.tests|Select-Object fullTestPath,state,errors,warnings)
-    $expected=@('DisabledTooltip','LiveFeedback','CooldownAndRelease')|ForEach-Object{'ProjectRPG.UI.ActionBar.Cell.'+$_}
+    $expected=@('DisabledTooltip','LiveFeedback','CooldownAndRelease','IconLifetime')|ForEach-Object{'ProjectRPG.UI.ActionBar.Cell.'+$_}
     if((Compare-Object $expected @($proof.Tests.fullTestPath))-or@($proof.Tests|Where-Object{$_.state-ne'Success'-or$_.errors-ne0-or$_.warnings-ne0}).Count){throw 'Missing or failing cell cases'}
     foreach($entry in $proof.Inputs){
         if((Get-FileHash -LiteralPath (Join-Path $workspace $entry.Path)).Hash-ne$entry.SHA256){throw 'Input changed after native validation'}

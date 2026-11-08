@@ -1,7 +1,6 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "Styling/SlateBrush.h"
 #include "UI/ActionBar/RPGActionBarActionView.h"
 #include "RPGActionBarWidget.generated.h"
 
@@ -25,7 +24,6 @@ protected:
     virtual void NativeDestruct() override;
 private:
     UPROPERTY(Transient) TObjectPtr<URPGActionBarContext> Context;
-    TArray<FSlateBrush> IconBrushes;
     TSet<FName> PointerActions;
     uint64 BindingRevision = 0;
     FName SourceFor(FName ActionId) const;

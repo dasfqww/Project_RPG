@@ -5,6 +5,9 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Text/STextBlock.h"
 #include "InputCoreTypes.h"
+#include "Widgets/Images/SImage.h"
+#include "Engine/Texture2D.h"
+#include "UObject/GarbageCollection.h"
 
 namespace RPGActionBarCellTests
 {
@@ -123,6 +126,41 @@ bool FRPGActionBarCooldownReleaseTest::RunTest(const FString&)
     Button->UpdateAllAttributes();
     TestEqual(TEXT("Release reaches caller once"), Releases, 1);
     TestFalse(TEXT("Released unavailable button is disabled"), Button->IsEnabled());
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGActionBarIconLifetimeTest, "ProjectRPG.UI.ActionBar.Cell.IconLifetime",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGActionBarIconLifetimeTest::RunTest(const FString&)
+{
+    using namespace RPGActionBarCellTests;
+    TSharedPtr<SImage> RetainedImage;
+    TWeakObjectPtr<UTexture2D> Texture;
+    {
+        FSlateBrush AuthoringBrush;
+        Texture = NewObject<UTexture2D>();
+        AuthoringBrush.SetResourceObject(Texture.Get());
+        AuthoringBrush.ImageSize = FVector2D(36.f, 36.f);
+        auto Cell = SNew(SRPGActionBarCell).Icon(&AuthoringBrush);
+        RetainedImage = StaticCastSharedPtr<SImage>(FindWidget(Cell, TEXT("SImage")));
+        if (!TestTrue(TEXT("Actual icon image"), RetainedImage.IsValid())) return false;
+        AuthoringBrush.SetResourceObject(nullptr);
+        AuthoringBrush.ImageSize = FVector2D(1.f, 1.f);
+        RetainedImage->Invalidate(EInvalidateWidgetReason::Layout);
+        RetainedImage->SlatePrepass(1.f);
+        if (!TestTrue(TEXT("Caller mutation cannot change displayed size"), RetainedImage->GetDesiredSize().Equals(FVector2D(36.f, 36.f)))) return false;
+    }
+    // Only the old image remains: its original stack brush and parent cell are gone.
+    CollectGarbage(RF_NoFlags);
+    TestTrue(TEXT("Retained image protects the texture from GC"), Texture.IsValid());
+    RetainedImage->Invalidate(EInvalidateWidgetReason::Layout);
+    RetainedImage->SlatePrepass(1.f);
+    TestTrue(TEXT("Retained image can still measure its original icon"), RetainedImage->GetDesiredSize().Equals(FVector2D(36.f, 36.f)));
+    RetainedImage.Reset(); // The engine releases the brush/resource after rendering has finished.
+    auto Empty = SNew(SRPGActionBarCell);
+    auto EmptyImage = StaticCastSharedPtr<SImage>(FindWidget(Empty, TEXT("SImage")));
+    if (!TestTrue(TEXT("Absent icon still has an image slot"), EmptyImage.IsValid())) return false;
+    EmptyImage->SlatePrepass(1.f);
+    TestTrue(TEXT("An absent icon takes no image space"), EmptyImage->GetDesiredSize().IsNearlyZero());
     return true;
 }
 #endif

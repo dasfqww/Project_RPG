@@ -4,6 +4,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Skill/QuickSlot/RPGQuickSlotInputBindings.h"
 #include "Engine/Texture2D.h"
+#include "Styling/SlateBrush.h"
 #include "Widgets/SBoxPanel.h"
 
 void URPGActionBarWidget::BindContext(URPGActionBarContext* InContext)
@@ -54,16 +55,16 @@ TSharedRef<SWidget> URPGActionBarWidget::RebuildWidget()
     const auto* Profile = Context ? Context->GetProfile() : nullptr;
     auto Row = SNew(SHorizontalBox);
     if (!Profile) return Row;
-    IconBrushes.SetNum(Profile->Actions.Num());
     TWeakObjectPtr<URPGActionBarWidget> Weak(this);
     for (int32 Index = 0; Index < Profile->Actions.Num(); ++Index)
     {
         const auto Entry = Profile->Actions[Index];
         const FName Id = Entry.ActionId;
-        IconBrushes[Index].SetResourceObject(Entry.Icon);
-        IconBrushes[Index].ImageSize = FVector2D(36.f, 36.f);
+        FSlateBrush Icon;
+        Icon.SetResourceObject(Entry.Icon);
+        Icon.ImageSize = FVector2D(36.f, 36.f);
         Row->AddSlot().AutoWidth().Padding(3.f)[
-            SNew(SRPGActionBarCell).Label(Entry.Label).Icon(&IconBrushes[Index])
+            SNew(SRPGActionBarCell).Label(Entry.Label).Icon(&Icon)
             .View_Lambda([Weak, Id, Slot=Entry.SkillSlot] {
                 auto* W = Weak.Get();
                 if (!W || !W->Context || W->BindingRevision != W->Context->GetRevision()) return FRPGActionBarActionView{};

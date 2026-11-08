@@ -4,6 +4,7 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Slate/DeferredCleanupSlateBrush.h"
 
 #define LOCTEXT_NAMESPACE "RPGActionBar"
 
@@ -12,6 +13,10 @@ void SRPGActionBarCell::Construct(const FArguments& Args)
     Label = Args._Label;
     View = Args._View;
     IsHeld = Args._IsHeld;
+    // The image may outlive both its cell and the UMG bar during a profile change.
+    // Copy authoring data and retain its UObject resource through deferred render cleanup.
+    TSharedPtr<FDeferredCleanupSlateBrush> Icon;
+    if (Args._Icon) Icon = FDeferredCleanupSlateBrush::CreateBrush(*Args._Icon);
     const TWeakPtr<SRPGActionBarCell> WeakCell = SharedThis(this);
     SetToolTipText(TAttribute<FText>::CreateLambda([WeakCell] {
         const auto Cell = WeakCell.Pin();
@@ -32,7 +37,9 @@ void SRPGActionBarCell::Construct(const FArguments& Args)
             .OnPressed(Args._OnPressed)
             .OnReleased(Args._OnReleased)[
                 SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[SNew(SImage).Image(Args._Icon)]
+                + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[
+                    SNew(SImage).Image_Lambda([Icon] { return FDeferredCleanupSlateBrush::TrySlateBrush(Icon); })
+                ]
                 + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[SNew(STextBlock).Text(Label)]
                 + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[
                     SNew(STextBlock).Text_Lambda([WeakCell] {
