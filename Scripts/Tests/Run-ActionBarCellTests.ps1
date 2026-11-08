@@ -1,12 +1,12 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IconLifetime, [switch]$SlotLayout)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IconLifetime, [switch]$SlotLayout, [switch]$Cooldown)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id=[Guid]::NewGuid().ToString('N')
-$suite=if($SlotLayout){'ActionBarLayout-20261108'}elseif($IconLifetime){'ActionBarIconLifetime-20261108'}else{'ActionBarFeedback-20261108'}
-$reservation=if($SlotLayout){'actionbar-layout-20261108'}elseif($IconLifetime){'actionbar-icon-lifetime-20261108'}else{'actionbar-feedback-20261108'}
+$suite=if($Cooldown){'ActionBarCooldown-20261109'}elseif($SlotLayout){'ActionBarLayout-20261108'}elseif($IconLifetime){'ActionBarIconLifetime-20261108'}else{'ActionBarFeedback-20261108'}
+$reservation=if($Cooldown){'actionbar-cooldown-20261109'}elseif($SlotLayout){'actionbar-layout-20261108'}elseif($IconLifetime){'actionbar-icon-lifetime-20261108'}else{'actionbar-feedback-20261108'}
 $root=Join-Path $workspace ('Saved/BuildChecks/'+$suite+'/'+$id)
-$tempRoot=Join-Path $workspace $(if($SlotLayout){'Saved/AL'}elseif($IconLifetime){'Saved/AI'}else{'Saved/AF'})
+$tempRoot=Join-Path $workspace $(if($Cooldown){'Saved/AC'}elseif($SlotLayout){'Saved/AL'}elseif($IconLifetime){'Saved/AI'}else{'Saved/AF'})
 $temp=Join-Path $tempRoot $id.Substring(0,8)
 $project=Join-Path $temp 'Cell'
 $process=$null
@@ -114,7 +114,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "ActionBarCel
     if($process.ExitCode-ne0){throw 'Native cell automation failed'}
     $data=Get-Content -LiteralPath (Join-Path $report 'index.json') -Raw -Encoding UTF8|ConvertFrom-Json
     $proof.Tests=@($data.tests|Select-Object fullTestPath,state,errors,warnings)
-    $expected=@('DisabledTooltip','LiveFeedback','CooldownAndRelease','IconLifetime')|ForEach-Object{'ProjectRPG.UI.ActionBar.Cell.'+$_}
+    $expected=@('DisabledTooltip','LiveFeedback','CooldownAndRelease','IconLifetime','CooldownPresentation')|ForEach-Object{'ProjectRPG.UI.ActionBar.Cell.'+$_}
     $expected+=@('Validation','Compatibility','SparseRowAndInput')|ForEach-Object{'ProjectRPG.UI.ActionBar.Layout.'+$_}
     if((Compare-Object $expected @($proof.Tests.fullTestPath))-or@($proof.Tests|Where-Object{$_.state-ne'Success'-or$_.errors-ne0-or$_.warnings-ne0}).Count){throw 'Missing or failing cell cases'}
     foreach($entry in $proof.Inputs){

@@ -5,9 +5,19 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Notifications/SProgressBar.h"
 #include "Slate/DeferredCleanupSlateBrush.h"
 
 #define LOCTEXT_NAMESPACE "RPGActionBar"
+
+namespace
+{
+bool HasKnownCooldown(const FRPGActionBarActionView& View)
+{
+    return FMath::IsFinite(View.CooldownRemaining) && View.CooldownRemaining > 0.f
+        && FMath::IsFinite(View.CooldownDuration) && View.CooldownDuration > 0.f;
+}
+}
 
 void SRPGActionBarCell::Construct(const FArguments& Args)
 {
@@ -49,9 +59,30 @@ void SRPGActionBarCell::Construct(const FArguments& Args)
                         const auto Current = Cell->View.Get(FRPGActionBarActionView{});
                         // Provider views normally arrive sanitized by the context; avoid overflow for large values too.
                         if (FMath::IsFinite(Current.CooldownRemaining) && Current.CooldownRemaining > 0.f)
-                            return FText::AsNumber(FMath::CeilToDouble(static_cast<double>(Current.CooldownRemaining)));
+                        {
+                            const FText Remaining = FText::AsNumber(FMath::CeilToDouble(static_cast<double>(Current.CooldownRemaining)));
+                            return Current.KeyLabel.IsEmpty() ? Remaining
+                                : FText::Format(LOCTEXT("KeyAndCooldown", "{0} · {1}"), Current.KeyLabel, Remaining);
+                        }
                         return Current.KeyLabel;
                     })
+                ]
+                + SVerticalBox::Slot().AutoHeight()[
+                    SNew(SBox).HeightOverride(4.f)[
+                        SNew(SProgressBar).Style(&FCoreStyle::Get().GetWidgetStyle<FProgressBarStyle>("ProgressBar"))
+                        .Visibility_Lambda([WeakCell] {
+                            const auto Cell = WeakCell.Pin();
+                            return Cell && HasKnownCooldown(Cell->View.Get(FRPGActionBarActionView{}))
+                                ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+                        })
+                        .Percent_Lambda([WeakCell]() -> TOptional<float> {
+                            const auto Cell = WeakCell.Pin();
+                            const auto Current = Cell ? Cell->View.Get(FRPGActionBarActionView{}) : FRPGActionBarActionView{};
+                            if (!HasKnownCooldown(Current)) return 0.f; // Never select indeterminate/marquee mode.
+                            return static_cast<float>(FMath::Clamp(static_cast<double>(Current.CooldownRemaining)
+                                / static_cast<double>(Current.CooldownDuration), 0., 1.));
+                        })
+                    ]
                 ]
             ]
         ]

@@ -8,6 +8,8 @@
 #include "Widgets/Images/SImage.h"
 #include "Engine/Texture2D.h"
 #include "UObject/GarbageCollection.h"
+#include "Widgets/Notifications/SProgressBar.h"
+#include <limits>
 
 namespace RPGActionBarCellTests
 {
@@ -29,10 +31,10 @@ FString ToolTipText(const TSharedRef<SRPGActionBarCell>& Cell)
 }
 FString KeyText(const TSharedRef<SRPGActionBarCell>& Cell)
 {
-    // The key/cooldown block is the last child in the actual native button content.
+    // The key/cooldown text precedes the progress row in the actual button content.
     auto Button = FindWidget(Cell, TEXT("SButton"));
     auto Row = Button ? FindWidget(Button.ToSharedRef(), TEXT("SVerticalBox")) : nullptr;
-    if (!Row || Row->GetChildren()->Num() != 3) return {};
+    if (!Row || Row->GetChildren()->Num() < 3) return {};
     return StaticCastSharedRef<STextBlock>(Row->GetChildren()->GetChildAt(2))->GetText().ToString();
 }
 }
@@ -110,7 +112,8 @@ bool FRPGActionBarCooldownReleaseTest::RunTest(const FString&)
     auto Button = StaticCastSharedPtr<SButton>(FindWidget(Cell, TEXT("SButton")));
     TestEqual(TEXT("Current binding is visible"), KeyText(Cell), FString(TEXT("Q")));
     View.CooldownRemaining = 2.2f;
-    TestEqual(TEXT("Positive cooldown rounds up"), KeyText(Cell), FText::AsNumber(3.0).ToString());
+    TestTrue(TEXT("Positive cooldown rounds up while preserving the key"), KeyText(Cell).Contains(TEXT("Q"))
+        && KeyText(Cell).Contains(FText::AsNumber(3.0).ToString()));
     View.CooldownRemaining = 0.f; View.KeyLabel = FText::FromString(TEXT("E"));
     TestEqual(TEXT("Binding changes without rebuilding"), KeyText(Cell), FString(TEXT("E")));
     View.CooldownRemaining = TNumericLimits<float>::Max();
@@ -161,6 +164,44 @@ bool FRPGActionBarIconLifetimeTest::RunTest(const FString&)
     if (!TestTrue(TEXT("Absent icon still has an image slot"), EmptyImage.IsValid())) return false;
     EmptyImage->SlatePrepass(1.f);
     TestTrue(TEXT("An absent icon takes no image space"), EmptyImage->GetDesiredSize().IsNearlyZero());
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGActionBarCooldownPresentationTest, "ProjectRPG.UI.ActionBar.Cell.CooldownPresentation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGActionBarCooldownPresentationTest::RunTest(const FString&)
+{
+    using namespace RPGActionBarCellTests;
+    FRPGActionBarActionView View;
+    View.KeyLabel = FText::FromString(TEXT("R"));
+    View.CooldownRemaining = 2.2f; View.CooldownDuration = 10.f;
+    TSharedPtr<SRPGActionBarCell> Cell = SNew(SRPGActionBarCell).View_Lambda([&] { return View; });
+    const auto Progress = FindWidget(Cell.ToSharedRef(), TEXT("SProgressBar"));
+    if (!TestTrue(TEXT("Actual native cooldown gauge"), Progress.IsValid())) return false;
+    auto IsGaugeVisible = [&] { Progress->UpdateAllAttributes(); return Progress->GetVisibility().IsVisible(); };
+    TestTrue(TEXT("Known cooldown is visible even while unavailable"), IsGaugeVisible());
+    TestTrue(TEXT("Current key and rounded time share the same cell"), KeyText(Cell.ToSharedRef()).Contains(TEXT("R"))
+        && KeyText(Cell.ToSharedRef()).Contains(FText::AsNumber(3.0).ToString()));
+    View.KeyLabel = FText::FromString(TEXT("T")); View.CooldownRemaining = 1.1f;
+    TestTrue(TEXT("Existing text follows remapping and provider updates"), KeyText(Cell.ToSharedRef()).Contains(TEXT("T"))
+        && KeyText(Cell.ToSharedRef()).Contains(FText::AsNumber(2.0).ToString()));
+    View.CooldownDuration = 0.f;
+    TestFalse(TEXT("Unknown total duration has no invented fraction"), IsGaugeVisible());
+    TestTrue(TEXT("Unknown total preserves reported time and key"), KeyText(Cell.ToSharedRef()).Contains(TEXT("T"))
+        && KeyText(Cell.ToSharedRef()).Contains(FText::AsNumber(2.0).ToString()));
+    View.CooldownDuration = std::numeric_limits<float>::infinity();
+    TestFalse(TEXT("Infinite duration is hidden"), IsGaugeVisible());
+    View.CooldownDuration = -1.f;
+    TestFalse(TEXT("Negative duration is hidden"), IsGaugeVisible());
+    View.CooldownDuration = 10.f; View.CooldownRemaining = 0.f;
+    TestFalse(TEXT("Completed cooldown hides the gauge"), IsGaugeVisible());
+    TestEqual(TEXT("Completed cooldown keeps just the current key"), KeyText(Cell.ToSharedRef()), FString(TEXT("T")));
+    View.CooldownRemaining = std::numeric_limits<float>::quiet_NaN();
+    TestFalse(TEXT("Invalid remaining time is hidden"), IsGaugeVisible());
+    TestEqual(TEXT("Invalid remaining time cannot enter displayed text"), KeyText(Cell.ToSharedRef()), FString(TEXT("T")));
+    View.CooldownRemaining = 30.f;
+    TestTrue(TEXT("Overrun remains a known cooldown"), IsGaugeVisible());
+    Cell.Reset();
+    TestFalse(TEXT("Retained gauge is hidden after parent cell removal"), IsGaugeVisible());
     return true;
 }
 #endif
