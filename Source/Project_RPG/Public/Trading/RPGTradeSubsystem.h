@@ -20,6 +20,11 @@ private:
     FRPGTradeLobbyContext ReadContext() const;
     bool TickTrade(float);
     UPROPERTY(Config) bool bTradingUIEnabled = false;
+    // Explicit gameplay labels. Unknown metadata blocks consent instead of printing internal tags.
+    UPROPERTY(Config) TMap<FString, FText> TradeStatLabels;
+    UPROPERTY(Config) TMap<FString, FText> TradeTagLabels;
+    UPROPERTY(Config) TMap<FString, FText> TradeGrowthLabels;
+    bool ResolveItem(const FRPGTradeItemDetails& Item, FText& Name, FText& Description) const;
     TSharedPtr<FRPGTradeLobbyOwner> Owner;
     FTSTicker::FDelegateHandle TickHandle;
     bool bEnding = false;

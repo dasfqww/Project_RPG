@@ -11,6 +11,9 @@ struct PROJECT_RPG_API FRPGTradeLobbyContext
 struct PROJECT_RPG_API FRPGTradeLobbyView
 {
     FText Status, MyOffer, OtherOffer;
+    FText MyDetails, OtherDetails;
+    FGuid ReviewToken;
+    bool bCanReview = false, bReady = false, bConfirm = false;
     bool bAccept = false, bCancel = false, bWithdraw = false, bRetry = false, bRefresh = false;
 };
 DECLARE_MULTICAST_DELEGATE(FRPGTradeLobbyChanged);
@@ -30,6 +33,9 @@ public:
     bool Refresh();
     bool Retry();
     bool Submit(ERPGTradeAction Action);
+    bool SubmitConsent(ERPGTradeAction Action, FGuid ReviewedToken);
+    using FDefinitionResolver = TFunction<bool(const FRPGTradeItemDetails&, FText&, FText&)>;
+    void SetDefinitionResolver(FDefinitionResolver Resolver) { ResolveDefinition = MoveTemp(Resolver); }
     void DismissClosed();
     FRPGTradeLobbyView GetView() const;
     const FRPGTradeClient& GetClient() const { return Coordinator->GetClient(); }
@@ -46,4 +52,7 @@ private:
     FGuid BoundCharacter, BlockedSelection;
     double NextPoll = 0;
     bool bEnding = false;
+    FDefinitionResolver ResolveDefinition;
+    mutable FGuid LastPreviewToken, DisplayReviewToken;
+    mutable FString LastReviewText;
 };

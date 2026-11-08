@@ -61,7 +61,8 @@ bool FRPGTradeLobbyOwner::Update(bool bPoll)
         if (!S || S->IsOpen())
         {
             NextPoll = Now + 2.0;
-            Coordinator->Refresh(S ? S->TradeId : FGuid());
+            if (S && S->Status == ERPGTradeStatus::Negotiating) Coordinator->RefreshPreview();
+            else Coordinator->Refresh(S ? S->TradeId : FGuid());
             Changed();
         }
     }
@@ -74,7 +75,8 @@ bool FRPGTradeLobbyOwner::Refresh()
     if (!Update(false) || Coordinator->IsBusy()) return false;
     const auto* S = GetClient().GetSession();
     const auto* P = GetClient().GetPending();
-    const bool Sent = Coordinator->Refresh(S ? S->TradeId : P ? P->TradeId : FGuid());
+    const bool Sent = S && S->Status == ERPGTradeStatus::Negotiating && !P ? Coordinator->RefreshPreview()
+        : Coordinator->Refresh(S ? S->TradeId : P ? P->TradeId : FGuid());
     Changed(); return Sent;
 }
 bool FRPGTradeLobbyOwner::Retry()
@@ -93,6 +95,14 @@ void FRPGTradeLobbyOwner::DismissClosed()
 {
     const auto* S = GetClient().GetSession();
     if (S && !S->IsOpen() && Coordinator->ClearClosedSession()) { NextPoll = 0; Changed(); }
+}
+bool FRPGTradeLobbyOwner::SubmitConsent(ERPGTradeAction Action, FGuid ReviewedToken)
+{
+    if (!Update(false) || !ReviewedToken.IsValid()) return false;
+    const auto View = GetView();
+    if (View.ReviewToken != ReviewedToken || !((Action == ERPGTradeAction::Ready && View.bReady)
+        || (Action == ERPGTradeAction::Confirm && View.bConfirm))) return false;
+    const bool Sent = Coordinator->Submit(Action); Changed(); return Sent;
 }
 FRPGTradeLobbyView FRPGTradeLobbyOwner::GetView() const
 {
@@ -120,11 +130,54 @@ FRPGTradeLobbyView FRPGTradeLobbyOwner::GetView() const
         V.Status = NSLOCTEXT("RPGTrade", "Rejected", "거래 요청을 처리할 수 없습니다. 현재 상태를 다시 확인하세요.");
     if (S)
     {
-        auto Summary = [](const FRPGTradeOffer& O)
-        { return FText::Format(NSLOCTEXT("RPGTrade", "OfferSummary", "물품 {0}종 · 재화 {1}"), FText::AsNumber(O.Items.Num()), FText::AsNumber(O.CurrencyAmount)); };
+        auto Summary = [S](const FRPGTradeOffer& O)
+        { return FText::Format(S->CurrencyCode == TEXT("Gold") ? NSLOCTEXT("RPGTrade", "GoldSummary", "물품 {0}종 · 골드 {1}")
+            : NSLOCTEXT("RPGTrade", "UnknownCurrency", "물품 {0}종 · 확인할 수 없는 재화 {1}"), FText::AsNumber(O.Items.Num()), FText::AsNumber(O.CurrencyAmount)); };
         const bool First = BoundCharacter == S->InitiatorCharacterId;
         V.MyOffer = Summary(First ? S->InitiatorOffer : S->InviteeOffer);
         V.OtherOffer = Summary(First ? S->InviteeOffer : S->InitiatorOffer);
     }
+    const auto* Preview = Coordinator->GetPreview();
+    bool Resolved = Preview && Preview->bOpen && Preview->bAllAvailable;
+    auto Render = [&](const TArray<FRPGTradePreviewItem>& Items)
+    {
+        TArray<FText> Lines;
+        for (const auto& Item : Items)
+        {
+            FText Name, Description;
+            const bool Known = Item.Details.IsSet() && ResolveDefinition && ResolveDefinition(Item.Details.GetValue(),Name,Description) && !Name.IsEmpty();
+            Resolved &= Known;
+            if (Known)
+            {
+                Lines.Add(FText::Format(NSLOCTEXT("RPGTrade", "ItemQuantity", "{0} × {1}"),Name,FText::AsNumber(Item.Offered.Quantity)));
+                if (!Description.IsEmpty()) Lines.Add(Description);
+            }
+            else Lines.Add(NSLOCTEXT("RPGTrade", "UnresolvedItem", "상세를 확인할 수 없는 물품이 있습니다. 현재 내용을 다시 확인하세요."));
+        }
+        return FText::Join(FText::FromString(TEXT("\n")),Lines);
+    };
+    if (Preview && S)
+    {
+        const bool First = BoundCharacter == S->InitiatorCharacterId;
+        V.MyDetails = Render(First ? Preview->InitiatorItems : Preview->InviteeItems);
+        V.OtherDetails = Render(First ? Preview->InviteeItems : Preview->InitiatorItems);
+    }
+    else if (S && S->Status == ERPGTradeStatus::Negotiating)
+        V.MyDetails = V.OtherDetails = NSLOCTEXT("RPGTrade", "PreviewRequired", "최신 물품 상세를 확인하고 있습니다.");
+    const FGuid PreviewIdentity = Coordinator->GetPreviewToken();
+    const bool CanReview = Resolved && PreviewIdentity.IsValid() && S && S->Status == ERPGTradeStatus::Negotiating && Current.bEnabled && Eligible
+        && Current.Character == BoundCharacter && S->CurrencyCode == TEXT("Gold") && !P && !(S->InitiatorOffer.IsEmpty() && S->InviteeOffer.IsEmpty());
+    if (CanReview)
+    {
+        const auto Token = PreviewIdentity;
+        const FString Text = V.MyOffer.ToString()+TEXT("\n")+V.OtherOffer.ToString()+TEXT("\n")+V.MyDetails.ToString()+TEXT("\n")+V.OtherDetails.ToString();
+        if (LastPreviewToken != Token || LastReviewText != Text)
+        { LastPreviewToken = Token; LastReviewText = Text; DisplayReviewToken = FGuid::NewGuid(); }
+        V.ReviewToken = DisplayReviewToken; V.bCanReview = !Coordinator->IsBusy();
+        const bool First = BoundCharacter == S->InitiatorCharacterId;
+        V.bReady = Free && !(First ? S->bInitiatorReady : S->bInviteeReady);
+        V.bConfirm = Free && S->bInitiatorReady && S->bInviteeReady && !(First ? S->bInitiatorConfirmed : S->bInviteeConfirmed);
+    }
+    else { LastPreviewToken.Invalidate(); DisplayReviewToken.Invalidate(); LastReviewText.Reset(); }
     return V;
 }

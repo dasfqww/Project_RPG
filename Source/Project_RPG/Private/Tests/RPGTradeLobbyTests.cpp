@@ -137,8 +137,10 @@ bool FRPGTradeLobbyWidgetTest::RunTest(const FString&)
     using namespace RPGTradeLobbyTests;
     FSetup S; S.Invited();
     auto* View=FRPGTradeWidgetTestAccess::Make(S.Owner.ToSharedRef());
-    TestNull(TEXT("no unverified ready control"),View->GetWidgetFromName(TEXT("TradeReady")));
-    TestNull(TEXT("no unverified final-confirm control"),View->GetWidgetFromName(TEXT("TradeConfirm")));
+    const auto* Ready = Cast<UButton>(View->GetWidgetFromName(TEXT("TradeReady")));
+    const auto* Confirm = Cast<UButton>(View->GetWidgetFromName(TEXT("TradeConfirm")));
+    TestTrue(TEXT("unverified ready remains disabled"),Ready && !Ready->GetIsEnabled());
+    TestTrue(TEXT("unverified final-confirm remains disabled"),Confirm && !Confirm->GetIsEnabled());
     TestFalse(TEXT("status does not expose participant UUID"),FRPGTradeWidgetTestAccess::Text(*View).Contains(Id(First)));
     TestTrue(TEXT("cancel enabled"),FRPGTradeWidgetTestAccess::Cancel(*View)->GetIsEnabled());
     FRPGTradeWidgetTestAccess::Cancel(*View)->OnClicked.Broadcast();

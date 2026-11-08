@@ -1,6 +1,7 @@
 #pragma once
 #include "Trading/RPGTradeClient.h"
 #include "Trading/RPGTradeTransport.h"
+#include "Trading/RPGTradePreview.h"
 
 /** Local owner retains this across token refresh/reconnect. Call Pump on the game thread.
  * No autonomous polling or gameplay eligibility: the lobby/UI supplies selected character and reads.
@@ -14,6 +15,9 @@ public:
     bool SelectCharacter(FGuid Character);
     void Reset();
     bool Refresh(FGuid Trade = FGuid());
+    bool RefreshPreview();
+    const FRPGTradePreview* GetPreview() const;
+    FGuid GetPreviewToken() const { return GetPreview() ? PreviewToken : FGuid(); }
     bool Invite(FGuid Invitee);
     bool Submit(ERPGTradeAction Action, const FRPGTradeOffer* Offer = nullptr);
     bool Retry();
@@ -30,6 +34,7 @@ private:
     bool Dispatch();
     void Notify();
     void UpdateTime();
+    void InvalidatePreview();
     TFunction<double()> Clock;
     TSharedRef<IRPGTradeTransport> Transport;
     FRPGTradeClient Client;
@@ -40,4 +45,7 @@ private:
     double Now = 0, NextAttempt = 0;
     int32 Retries = 0;
     ERPGTradeResponse LastResponse = ERPGTradeResponse::Ignored;
+    TOptional<FRPGTradePreview> Preview;
+    FGuid PreviewToken;
+    double PreviewDeadline = 0;
 };

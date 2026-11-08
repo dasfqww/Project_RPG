@@ -26,7 +26,7 @@ try {
     $null = [IO.Directory]::CreateDirectory((Join-Path $project 'Content'))
     $ownsTemp = $true
     $proof.Head = (git -C $workspace rev-parse HEAD).Trim()
-    $files = @('Source/Project_RPG/Public/Trading/RPGTradeClient.h','Source/Project_RPG/Private/Trading/RPGTradeClient.cpp','Source/Project_RPG/Private/Tests/RPGTradeClientTests.cpp')
+    $files = @('Source/Project_RPG/Public/Trading/RPGTradeClient.h','Source/Project_RPG/Private/Trading/RPGTradeClient.cpp','Source/Project_RPG/Private/Tests/RPGTradeClientTests.cpp','Source/Project_RPG/Private/Trading/RPGTradeJson.h')
     foreach ($relative in $files) {
         $source = Join-Path $workspace $relative
         $destination = Join-Path $project $relative

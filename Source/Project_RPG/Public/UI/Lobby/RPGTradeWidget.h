@@ -5,6 +5,7 @@
 
 class UButton;
 class UTextBlock;
+class UCheckBox;
 
 /** Read/accept/cancel view. Asset consent controls require the subsequent exact-item preview flow. */
 UCLASS()
@@ -30,6 +31,9 @@ private:
     UFUNCTION() void CancelTrade();
     UFUNCTION() void WithdrawTrade();
     UFUNCTION() void CloseTrade();
+    UFUNCTION() void ReviewChanged(bool bChecked);
+    UFUNCTION() void ReadyTrade();
+    UFUNCTION() void ConfirmTrade();
     TWeakPtr<FRPGTradeLobbyOwner> TradeOwner;
     FDelegateHandle ChangeHandle;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> StatusText;
@@ -41,4 +45,10 @@ private:
     UPROPERTY(Transient) TObjectPtr<UButton> CancelButton;
     UPROPERTY(Transient) TObjectPtr<UButton> WithdrawButton;
     UPROPERTY(Transient) TObjectPtr<UButton> CloseButton;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> MyDetailsText;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> OtherDetailsText;
+    UPROPERTY(Transient) TObjectPtr<UCheckBox> ReviewCheck;
+    UPROPERTY(Transient) TObjectPtr<UButton> ReadyButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> ConfirmButton;
+    FGuid DisplayedReviewToken, ReviewedToken;
 };

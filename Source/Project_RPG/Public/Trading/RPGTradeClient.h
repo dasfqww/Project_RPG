@@ -75,7 +75,7 @@ public:
 
     // Invalid TradeId selects GET active. A null active read NEVER resolves an uncertain write.
     FRPGTradeTicket BeginRead(const FGuid& TradeId = FGuid());
-    ERPGTradeResponse CompleteRead(const FRPGTradeTicket& Ticket, int32 HttpStatus, const FString& Body);
+    ERPGTradeResponse CompleteRead(const FRPGTradeTicket& Ticket, int32 HttpStatus, const FString& Body, int32 MaximumBytes = 32768);
 
 private:
     bool MergeSession(const FRPGTradeSession& Incoming);

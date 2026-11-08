@@ -10,6 +10,7 @@ void FRPGTradeCoordinator::Reset()
     ++Operation; Transport->Cancel(); bBusy = false;
     Client.Reset(); Endpoint.Reset(); Account.Reset(); Character.Invalidate(); PendingAction.Reset();
     Retries = 0; NextAttempt = 0; LastResponse = ERPGTradeResponse::Ignored;
+    InvalidatePreview();
 }
 bool FRPGTradeCoordinator::SyncContext()
 {
@@ -43,6 +44,8 @@ bool FRPGTradeCoordinator::Refresh(FGuid Trade)
             if (!Self || Self->Operation != Expected || !Self->SyncContext()) return;
             Self->bBusy = false;
             Self->LastResponse = Self->Client.CompleteRead(Ticket, Result.bCurrentPlayerContext && Result.bTransportSuccessful ? Result.StatusCode : 0, Result.Body);
+            const auto* Current = Self->Client.GetSession();
+            if (Self->LastResponse != ERPGTradeResponse::Applied || !Current || (Self->Preview.IsSet() && !(Self->Preview->Session == *Current))) Self->InvalidatePreview();
             // A read cannot shorten a server-directed retry wait or resolve an uncertain write.
             Self->Notify();
         });
@@ -50,15 +53,62 @@ bool FRPGTradeCoordinator::Refresh(FGuid Trade)
     { bBusy = false; LastResponse = Client.CompleteRead(Ticket, 0, TEXT("")); Notify(); }
     return bSent;
 }
+void FRPGTradeCoordinator::InvalidatePreview()
+{ Preview.Reset(); PreviewToken.Invalidate(); PreviewDeadline = 0; }
+const FRPGTradePreview* FRPGTradeCoordinator::GetPreview() const
+{
+    const double RawTime = Clock();
+    const auto* Session = Client.GetSession();
+    return Preview.IsSet() && Session && !Client.GetPending() && Preview->Session == *Session
+        && FMath::IsFinite(RawTime) && FMath::Max(Now,RawTime) < PreviewDeadline ? &Preview.GetValue() : nullptr;
+}
+bool FRPGTradeCoordinator::RefreshPreview()
+{
+    if (!SyncContext() || bBusy || !Transport->CanSend() || Client.GetPending() || !Client.GetSession()) return false;
+    UpdateTime();
+    const auto Trade = Client.GetSession()->TradeId;
+    const auto Ticket = Client.BeginRead(Trade);
+    const auto Expected = ++Operation;
+    const double Started = Now;
+    bBusy = true;
+    TWeakPtr<FRPGTradeCoordinator> WeakThis = AsShared();
+    auto Completion = [WeakThis,Ticket,Expected,Started](FRPGTradeHttpResult Result)
+    {
+        auto Self = WeakThis.Pin();
+        if (!Self || Self->Operation != Expected || !Self->SyncContext()) return;
+        Self->bBusy = false; Self->UpdateTime();
+        Self->LastResponse = Self->Client.CompleteRead(Ticket, Result.bCurrentPlayerContext && Result.bTransportSuccessful ? Result.StatusCode : 0, Result.Body,131072);
+        const auto* Current = Self->Client.GetSession(); FRPGTradePreview Incoming;
+        if (Self->LastResponse == ERPGTradeResponse::Applied && Current
+            && FRPGTradePreview::Decode(Result.Body,Self->Character,*Current,Incoming))
+        {
+            double Window = FMath::Min(30.0,(Incoming.Session.ExpiresAt-Incoming.ObservedAt).GetTotalSeconds());
+            auto BoundExpiry = [&](const TArray<FRPGTradePreviewItem>& Items)
+            { for (const auto& Item : Items) if (Item.Details.IsSet() && Item.Details->ExpiresAt.IsSet()) Window = FMath::Min(Window,(Item.Details->ExpiresAt.GetValue()-Incoming.ObservedAt).GetTotalSeconds()); };
+            BoundExpiry(Incoming.InitiatorItems); BoundExpiry(Incoming.InviteeItems);
+            const bool Same = Self->Preview.IsSet() && Self->Preview->SameContent(Incoming);
+            Self->Preview = MoveTemp(Incoming);
+            if (!Same || !Self->PreviewToken.IsValid()) Self->PreviewToken = FGuid::NewGuid();
+            Self->PreviewDeadline = Self->Now + FMath::Max(0.0,Window-FMath::Max(0.0,Self->Now-Started)-.1);
+        }
+        else Self->InvalidatePreview();
+        Self->Notify();
+    };
+    const bool Sent = Transport->SendPreview(Character,Trade,Completion);
+    if (!Sent && Operation == Expected && bBusy) Completion(FRPGTradeHttpResult{});
+    return Sent;
+}
 bool FRPGTradeCoordinator::Invite(FGuid Invitee)
 {
     if (!SyncContext() || bBusy || !Client.PrepareInvite(Invitee)) return false;
+    InvalidatePreview();
     PendingAction = TEXT("invite"); Retries = 0; NextAttempt = Now;
     Dispatch(); return true;
 }
 bool FRPGTradeCoordinator::Submit(ERPGTradeAction Action, const FRPGTradeOffer* Offer)
 {
     if (!SyncContext() || bBusy || !Client.Prepare(Action, Offer)) return false;
+    InvalidatePreview();
     switch (Action)
     {
     case ERPGTradeAction::Accept: PendingAction = TEXT("accept"); break;

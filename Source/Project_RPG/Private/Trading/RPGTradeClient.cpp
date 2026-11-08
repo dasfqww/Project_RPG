@@ -1,4 +1,5 @@
 #include "Trading/RPGTradeClient.h"
+#include "RPGTradeJson.h"
 
 #include "Dom/JsonObject.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
@@ -8,15 +9,14 @@
 
 namespace RPGTradeClient
 {
-using FObject = TSharedPtr<FJsonObject>;
 
 FString Id(const FGuid& Value) { return Value.ToString(EGuidFormats::DigitsWithHyphensLower); }
 FString Decimal(int64 Value) { return LexToString(Value); }
 
 // Check depth/duplicate names before the DOM parser can collapse duplicate keys.
-bool ReadObject(const FString& Text, FObject& Out)
+bool ReadObject(const FString& Text, FObject& Out, int32 MaximumBytes)
 {
-    if (Text.IsEmpty() || Text.Len() > 32768 || FTCHARToUTF8(*Text).Length() > 32768) return false;
+    if (MaximumBytes < 1 || MaximumBytes > 131072 || Text.IsEmpty() || Text.Len() > MaximumBytes || FTCHARToUTF8(*Text).Length() > MaximumBytes) return false;
     struct FScope { bool bObject; TSet<FString> Keys; };
     TArray<FScope> Stack;
     auto Reader = TJsonReaderFactory<>::Create(Text);
@@ -328,13 +328,13 @@ FRPGTradeTicket FRPGTradeClient::BeginRead(const FGuid& TradeId)
     ReadTradeId = TradeId; ReadTicket = {Generation, ++Sequence};
     return ReadTicket;
 }
-ERPGTradeResponse FRPGTradeClient::CompleteRead(const FRPGTradeTicket& Ticket, int32 HttpStatus, const FString& Body)
+ERPGTradeResponse FRPGTradeClient::CompleteRead(const FRPGTradeTicket& Ticket, int32 HttpStatus, const FString& Body, int32 MaximumBytes)
 {
     using namespace RPGTradeClient;
     if (!BoundCharacter.IsValid() || Ticket.Generation != Generation || Ticket.Sequence == 0 || !(Ticket == ReadTicket)) return ERPGTradeResponse::Ignored;
     ReadTicket = {};
     FObject Obj;
-    if (HttpStatus != 200 || !ReadObject(Body, Obj)) return ERPGTradeResponse::Unknown;
+    if (HttpStatus != 200 || !ReadObject(Body, Obj, MaximumBytes)) return ERPGTradeResponse::Unknown;
     auto Value = Obj->TryGetField(TEXT("session"));
     if (!Value) return ERPGTradeResponse::Unknown;
     if (Value->Type == EJson::Null && !ReadTradeId.IsValid()) return ERPGTradeResponse::NoActiveTrade;
