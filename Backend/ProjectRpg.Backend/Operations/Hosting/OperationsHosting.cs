@@ -104,6 +104,7 @@ public static class OperationsHosting
         services.AddScoped<OperationsReadFacade>();
         services.AddSingleton<OperationsRequestLimits>();
         services.AddSingleton<OperationsLogStore>();
+        services.AddSingleton<ILogInstrumentationReader,ConfiguredLogInstrumentation>();
         services.AddSingleton<OperationsEventRecorder>();
         services.AddSingleton<IGameHttpObserver>(p => p.GetRequiredService<OperationsEventRecorder>());
         if (options.GameApiDiagnosticsEnabled)

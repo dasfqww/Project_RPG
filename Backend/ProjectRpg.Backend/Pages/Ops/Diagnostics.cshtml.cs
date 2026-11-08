@@ -7,8 +7,9 @@ using ProjectRpg.Operations.Core.Diagnostics;
 
 namespace ProjectRpg.Backend.Pages.Ops;
 
-public sealed class DiagnosticsModel(OperationsReadFacade reads, OperationsOptions options) : PageModel
+public sealed class DiagnosticsModel(OperationsReadFacade reads, OperationsOptions options, ILogInstrumentationReader instrumentation) : PageModel
 {
+    public LogInstrumentationSnapshot Instrumentation => Logs?.Instrumentation ?? instrumentation.Read();
     public IReadOnlyList<LogIdentifierField> IdentifierFields => OperationsLogNavigation.IdentifierFields;
     public IEnumerable<string> EventNames => OperationLogQuery.EventNames.Order(StringComparer.Ordinal);
     public WebLogPage? Logs { get; private set; }

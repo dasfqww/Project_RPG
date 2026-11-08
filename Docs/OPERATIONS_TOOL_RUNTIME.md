@@ -124,6 +124,20 @@ GitHub 앱 callback은 정확히 `<ManagementOrigin>/ops/auth/github-callback`�
 
 화면 하단의 추적 번호를 누르면 `/ops/diagnostics`에서 해당 요청 로그를 검색한다. API는 응답 `meta.httpRequestId`, `traceId`와 `X-Ops-Request-Id`를 제공한다. 로그 검색은 정확한 ID 또는 허용된 이벤트 필터가 필요하며 기본 최근 1시간, 최대 24시간이다. JSON API와 페이지/오류/필터 목록은 [구현 계약 §3](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md#3-s1-화면과-호출-계약)을 따른다.
 
+### 현재 계측 설정과 과거 로그
+
+로그 화면은 검색 전에도 **게임 HTTP**, **게임 확정 거래**, **정산 worker 관측**의 현재 계측 설정을 표시한다. 게임 HTTP/거래는 현재 `GameApiDiagnosticsEnabled` 값, 정산은 운영 호스트에 등록된 별도 관측 경계를 따른다. 거래의 범위는 일반 아이템/재화·원자 픽업·장비 제작/분해/강화/전승이며 UE와 그 밖의 직접 저장 경로를 전체 수집 중이라고 표현하지 않는다. 켜짐은 구성/등록 상태이며 실제 worker 실행·무손실 수집·sink 저장 성공의 증거가 아니다.
+
+성공한 `GET /ops/api/logs` 응답의 `data.instrumentation`에도 같은 [Core 모델/읽기 포트](../Backend/ProjectRpg.Operations.Core/Diagnostics/LogInstrumentation.cs)를 추가한다. `observedAtUtc`, 환경, 등록 `sourceId`, 현재 `bootId`/빌드, 세 생산 경계의 `key`/표시 이름/`configuredEnabled`/범위/등록 사건 이름을 담는다. [호스트 어댑터](../Backend/ProjectRpg.Backend/Operations/Infrastructure/Diagnostics/ConfiguredLogInstrumentation.cs)는 설정과 현재 writer 식별자만 읽으며 SQL·파일 재검색·자격/로컬 경로 노출을 하지 않는다. Web·Razor는 Core 포트에 의존한다. 기존 응답 필드와 권한/커서/검색 예산은 유지하며 새 설정 변경 API는 없다.
+
+- `scope=CurrentProcessOnly`, `historicalCoverage=Unknown`이다. 현재 호스트의 설정을 보존 기간 전체의 계측 이력처럼 표시하지 않는다. 기존 `coverage=Complete`도 선택 원본의 읽기 완료일 뿐 전체 사건 수집 완료가 아니다.
+- 이전 호스트가 남긴 게임 HTTP 로그를 보존한 채 추적을 끄고 재시작해도 과거 사건은 기존 ID/기간으로 검색된다. 현재 꺼짐 설정이 과거 사건을 지우거나 `NotInstrumented`로 단정하게 하지 않는다. 현재 metadata의 boot/빌드와 각 과거 사건의 `instanceId`/빌드는 별개다.
+- 초기 화면과 검색 결과 모두 현재 설정/검색 원본 읽기/과거 이력을 구분한다. 익명·게임 관리자·기계 감시 자격으로 이 보호된 로그 metadata를 조회할 수 없다. 행이 없거나 검색이 부분적이어도 현재 설정만으로 성공/실패·과거 미계측을 추정하지 않는다.
+
+`Scripts/Tests/Run-OperationsInstrumentationTests.ps1 -Postgres`는 게시 Backend+본인 8개 C#/Razor 입력의 독립 Release에서 실제 HTTPS/모의 OAuth·JSONL·Memory/자기 tmpfs PostgreSQL을 사용한다. 같은 검사 프로세스 안에서 독립 Web 호스트를 꺼짐→켜짐→꺼짐으로 재시작하고, 실제 `/api/service-status`가 남긴 HTTP 사건과 현재 metadata/새 boot/과거 ID·trace의 분리를 확인한다. 최초 검색 전 Razor 설정, 역할 경계·비밀 제외·등록 사건/범위 상한·PG 게임 표 지문 불변도 검사한다. `-FullSuite`는 전체 운영툴 Memory 회귀다. 실제 OS 프로세스 장애/UE·브라우저 시각/운영 배포·부하 검증과 구분하며 자기 사본/출력/DB는 finally 폐기한다.
+
+2026-11-09 현재 계측 표시의 집중 Memory/PG와 전체 운영툴 Memory 회귀 모두 Release 0경고/0오류로 통과했다. 현재 구성 표시는 과거 생산 경계 이력을 새로 수집/복원한 결과가 아니다.
+
 ### 로그 화면의 연결 탐색
 
 `/ops/diagnostics`에서 HTTP 요청 번호, trace, 운영 요청, 조사 사건, 거래 요청, 캐릭터, 던전 세션, 아이템의 8종 ID를 입력한다. 여러 조건은 AND 검색이다. 이벤트 제안은 `OperationLogQuery.EventNames`의 등록 목록을 사용하므로 게임 HTTP·거래 영수증·worker 이벤트가 같은 화면에 나온다. 결과에는 수준/결과, 실제 값이 있는 HTTP 상태/소요 시간, 환경·서비스·인스턴스·빌드·span/부모 정보를 표시한다. HTML 본문과 폼 값은 Razor가 인코딩한다.

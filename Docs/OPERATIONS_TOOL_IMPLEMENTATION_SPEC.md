@@ -219,6 +219,8 @@ S1의 source는 backend 하나다. S2에서 등록 source를 추가하되 source
 
 Complete는 고정한 보존 파일을 끝까지 검색했다는 뜻이다. 사건 전부의 수집/보존 성공을 뜻하지 않는다. 검색 요청 자체는 별도 이벤트로 기록하되 현재 검색 snapshot 이후에 추가되어 자기 결과를 무한히 늘리지 않는다.
 
+성공한 로그 검색 응답은 추가 필드 `data.instrumentation`에 현재 호스트의 관측 시각/환경/source/boot/빌드와 게임 관련 세 생산 경계의 구성 상태·범위·등록 사건 이름을 제공한다. `scope=CurrentProcessOnly`, `historicalCoverage=Unknown`이며 기존 파일 검색 `coverage`와 별개다. 현재 설정으로 과거 이력을 합성하거나 보존 결과를 제거하지 않는다. 검색 전 Razor에도 동일 Core 읽기 포트를 사용한다. [구현/재시작 검증 경계](OPERATIONS_TOOL_RUNTIME.md#현재-계측-설정과-과거-로그)를 따르며 자격/파일 경로·새 검색 권한은 노출하지 않는다.
+
 ## 7. S2 보상 조사 계약
 
 `GET /ops/api/characters/{id}/timeline?fromUtc&toUtc&limit&cursor`는 최근 7일/최대 30일·50/200건으로 제한한다. 출력 `EvidencePage={items,nextCursor,hasMore,coverage}`이고 각 항목은 `{sourceKind,sourceKey,occurredAtUtc,characterId?,ownerScope,ownerId,sessionId?,requestId?,itemIds[],status,linkReason}`다. linkReason은 DirectReceipt/SessionMembership/OwnerScope/TechnicalCorrelation 중 하나다.

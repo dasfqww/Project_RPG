@@ -11,12 +11,13 @@ namespace ProjectRpg.Backend.Operations.Web;
 public sealed record WebPage<T>(IReadOnlyList<T> Items, bool HasMore, string? NextCursor);
 public sealed record WebLogPage(IReadOnlyList<LogEvent> Events, string? NextCursor, LogCoverage Coverage,
     LogTruncation? TruncationReason, IReadOnlyList<string> SearchedSources, long ScannedBytes,
-    DateTimeOffset SearchedFromUtc, DateTimeOffset SearchedToUtc);
+    DateTimeOffset SearchedFromUtc, DateTimeOffset SearchedToUtc, LogInstrumentationSnapshot? Instrumentation = null);
 
 // Input/cursor/wire mapping shared by Razor and JSON adapters. All business access remains in Core.
 public sealed class OperationsReadFacade(SearchCharacters search, GetCharacterSummary character, GetInventoryPage inventory,
     GetWallet wallet, GetSessionEvidence sessions, SearchOperationLogs logs,
-    OperationsCursor cursors, OperationsOptions options, TimeProvider clock, IHttpContextAccessor contextAccessor)
+    OperationsCursor cursors, OperationsOptions options, TimeProvider clock, IHttpContextAccessor contextAccessor,
+    ILogInstrumentationReader instrumentation)
 {
     private void Mark(string kind, Guid? id = null)
     {
@@ -76,7 +77,7 @@ public sealed class OperationsReadFacade(SearchCharacters search, GetCharacterSu
         if (!result.IsSuccess) return Result<WebLogPage>.Fail(result.Error!);
         var p = result.Value;
         return Result<WebLogPage>.Success(new(p.Events, cursors.Write(p.Next, state.Value, options.OperatorId, key), p.Coverage,
-            p.TruncationReason, p.SearchedSources, p.ScannedBytes, p.SearchedFromUtc, p.SearchedToUtc));
+            p.TruncationReason, p.SearchedSources, p.ScannedBytes, p.SearchedFromUtc, p.SearchedToUtc,instrumentation.Read()));
     }
     private Result<WebPage<T>> Map<T>(Result<Page<T>> result, CursorState<PagePosition> state, string key) =>
         result.IsSuccess ? Result<WebPage<T>>.Success(new(result.Value.Items, result.Value.HasMore,
