@@ -37,7 +37,7 @@ internal static partial class ApiCases
         {
             await using var f = await Fixture.Create(mode != "--api-memory");
             if (mode == "--api-restart") { await ProgramRestart(f); }
-            else { await PreviewCases(f); await Contract(f); await AccessBoundaries(f); await Expiry(f); await Limits(f); }
+            else { await TargetCases(f); await PreviewCases(f); await Contract(f); await AccessBoundaries(f); await Expiry(f); await Limits(f); }
             Console.WriteLine($"PASS {mode}: {checks} assertions; actual bearer HTTP, isolated repositories/DB."); return 0;
         }
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }

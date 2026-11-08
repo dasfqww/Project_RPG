@@ -8,7 +8,8 @@ public sealed class TradeRequestLimiter : IAsyncDisposable
     private readonly PartitionedRateLimiter<string> limiter = PartitionedRateLimiter.Create<string, string>(key =>
         RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = key.StartsWith("invite:", StringComparison.Ordinal) ? 5
+            PermitLimit = key.StartsWith("search:", StringComparison.Ordinal) ? 30
+                : key.StartsWith("invite:", StringComparison.Ordinal) ? 5
                 : key.StartsWith("receive:", StringComparison.Ordinal) ? 10 : 120,
             Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
         }));
@@ -20,6 +21,12 @@ public sealed class TradeRequestLimiter : IAsyncDisposable
         if (recipient is null) return true;
         using var target = limiter.AttemptAcquire("receive:" + recipient);
         return target.IsAcquired;
+    }
+
+    public bool AcquireSearch(string account)
+    {
+        using var lease = limiter.AttemptAcquire("search:" + account);
+        return lease.IsAcquired;
     }
 
     public ValueTask DisposeAsync() => limiter.DisposeAsync();

@@ -21,6 +21,14 @@ public sealed class TradeApplication(IGameRepository game, ITradeSessionReposito
     public Task<TradeStoredSession?> FindAsync(Guid? tradeId, TradeParticipant actor, CancellationToken ct) =>
         tradeId is { } id ? store.FindAsync(id, actor, ct) : store.FindActiveAsync(actor, ct);
 
+    public Task<IReadOnlyList<TradeTarget>> FindTargetsAsync(TradeParticipant actor, string? input, CancellationToken ct)
+    {
+        if (!options.Value.Enabled) throw new TradeRuleException("trading_disabled");
+        string name = TradeTargetSearch.Name(input);
+        if (!limiter.AcquireSearch(actor.AccountId)) throw new TradeRuleException("trade_rate_limit");
+        return store.FindTargetsAsync(actor, name, ct);
+    }
+
     public async Task<TradeSessionResult> ExecuteAsync(TradeParticipant actor, Guid tradeId, Guid requestId,
         TradeCommandKind kind, long revision, long offerRevision, Guid? inviteeId, TradeOffer? offer, CancellationToken ct)
     {

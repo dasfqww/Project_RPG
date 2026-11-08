@@ -13,6 +13,19 @@ public static class TradeApiEndpoints
 
     public static void MapTradeApi(this WebApplication app)
     {
+        app.MapGet(Root + "/targets", async (Guid characterId, HttpContext context, TradeApplication service, CancellationToken ct) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            try
+            {
+                var actor = await service.ActorAsync(context.GetProjectRpgPrincipal(), characterId, ct);
+                if (context.Request.Query.Count != 1 || context.Request.Query["name"].Count != 1)
+                    throw new TradeRuleException("invalid_trade_target_query");
+                var targets = await service.FindTargetsAsync(actor, context.Request.Query["name"][0], ct);
+                return Results.Ok(new { targets });
+            }
+            catch (TradeRuleException e) { return Failure(context, e.Code); }
+        });
         app.MapGet(Root + "/{tradeId:guid}/preview", async (Guid characterId, Guid tradeId, HttpContext context,
             TradeApplication service, ITradeSessionRepository store, CancellationToken ct) =>
         {
@@ -73,7 +86,7 @@ public static class TradeApiEndpoints
         {
             "trade_player_required" or "character_not_owned" => 403,
             "trade_not_found" or "trade_participant_required" or "trade_target_unavailable" or "trading_disabled" => 404,
-            "invalid_trade_command" or "invalid_trade_invitation" or "invalid_offer" => 400,
+            "invalid_trade_command" or "invalid_trade_invitation" or "invalid_offer" or "invalid_trade_target_query" => 400,
             "trade_rate_limit" => 429,
             _ => 409
         };
