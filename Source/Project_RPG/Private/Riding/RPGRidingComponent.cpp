@@ -5,6 +5,7 @@
 #include "Riding/RPGMountDefinition.h"
 #include "Riding/RPGRidingWorldPolicy.h"
 #include "Riding/RPGRidingAbilityGate.h"
+#include "Riding/RPGRidingConsumeLease.h"
 #include "Components/CapsuleComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
@@ -191,6 +192,7 @@ void URPGRidingComponent::BuildGuards(FRPGRidingEvaluationContext& Out) const
         || Has(TEXT("Shared.Status.Control.Knockback")) || Has(TEXT("Shared.Status.Control.Airborne")) || Has(TEXT("Shared.Status.Control.Staggered"));
     Out.bSlowActive = Has(TEXT("Shared.Status.Movement.Slowed"));
     Out.bActionBlocked |= Has(TEXT("Player.Status.Rolling")) || Has(TEXT("Player.Status.Blocking"));
+    Out.bActionBlocked |= FRPGRidingConsumeLease::HasPending(Pawn);
     for (const auto& Spec : ASC->GetActivatableAbilities())
         if (Spec.IsActive() && FRPGRidingAbilityGate::BlocksMounting(Spec.Ability)) Out.bActionBlocked = true;
     const auto* Character = Cast<ACharacter>(Pawn);

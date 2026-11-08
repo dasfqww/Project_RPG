@@ -1,7 +1,7 @@
 # Riding 코드 설계 — M1 상태·세션·탑승 기반
 
 - 작성: 2026-11-06 / 담당: `riding-code-design-20261106`
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 수동 능력·공격 입력 차단 구현. 이동/기존 권한 폐기 실패는14절, 구역은15절, 능력/입력 검증은16절을 따른다. 제품 보유 API·피격 전투 잠금·Dash/Emote·실제 맵/다인 검증은 후속이다.**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 수동 능력·공격 입력 차단/소모품 준비 상호 배제 구현. 이동/기존 권한 폐기 실패는14절, 구역은15절, 능력/입력은16절, 소모품은17절의 검증 범위를 따른다. 제품 보유 API·피격 전투 잠금·Dash/Emote·실제 맵/다인 검증은 후속이다.**
 - 기준: [기능 계약](RIDING_SYSTEM_DESIGN.md), [아키텍처와 HUD 인계](RIDING_SYSTEM_ARCHITECTURE.md), 게시 `d546e392`의 관련 기존 소스. 재개 시 게시 HEAD `2971c97c`와 별도 담당의 미커밋 `Docs/ACTION_BAR_CONTEXT.md`/`UI/ActionBar` 계약을 추가 대조했다. 공용 코드의 빌드/검증 완료 주장은 아니다.
 - 목적: 첫 구현에서 만들 타입, 접근 제한, 판정 순서, 상태 수명, 검사 기준을 정한다. M2 액션 실행/M3 영속 저장은 포트만 정의하고 구현 완료로 취급하지 않는다.
 
@@ -450,3 +450,20 @@ CMC는 기존 도보 속도/제약 계산과 SavedMove·packed move/response가 
 최종 근거는 `Saved/BuildChecks/RidingAbilityGate-20261108/Completion.json`이다. 게시 `19965ce7`와 본인 고정 입력의 native `2e823126faa1454e991aee8fb5b86547`에서 UHT/25단계 빌드·링크0·같은 `39CE6CEB…98ADD63` DLL의 기존19+능력/입력4 **23 Success·검사 오류/경고0·UE0**을 확인했다. `Integration-78a6a693a7214024b4300f174444e0b3`의 전체 프로젝트 UHT/실제 CPP4 컴파일0·고유 입력37 SHA 일치다. 기본 능력에 원래 있던 NonInstanced 폐기 예정 API 컴파일 경고는 별도이며 무경고 전체 게임 빌드로 표시하지 않는다.
 
 첫 native23도 통과했으나 이후 공유 입력 그룹의 핸들 Release 균형을 보완했다. 위 최종23은 그 보완까지 포함한 소스이며 첫 결과/컴파일과 구분한다. 자기4회 사본/PCH/OBJ/DLL/PDB/runtime/cache **5,735,603,207 bytes(약5.34GiB)**를 finally 정리했고 실행/Temp/새 정리 예외0이다. 원본 DLL·에셋·공용 출력/trace/cache·타 담당 소스와 이전 로그 예외는 보존했다. 작은 결과/명령/해시/필요 로그만 남겼으며 DLL 해시는 폐기된 당시 증거다.
+
+## 17. M2 소모품 준비와 탑승의 상호 배제 — 2026-11-08
+
+[ConsumeLease](../Source/Project_RPG/Public/Riding/RPGRidingConsumeLease.h)는 서버 게임 스레드의 원래 Pawn에 귀속되는 native 준비 예약이다. 현재 Mounted이면 취득을 거절한다. 기존 ItemCommand의 인증/생존·정의/수량/리비전 검사를 통과한 뒤, GE spec을 만들기 전에 이 예약을 취득한다. 실패하면 기존 PreparationRejected 경로로 끝나 소비 commit을 전송하지 않는다. 정책/보유 snapshot의 Ready를 임의로 만들지 않는다.
+
+- 예약은 기존 `FConsumeEffectTarget`과 함께 소유한다. 기존 Orchestrator가 미확정/효과 대기 때문에 원래 대상을 보존하면 예약도 유지된다. 확정 거절/준비 실패의 Discard, 효과 전달 완료, 생명 변경에 따른 기존 무효과 봉인, 신원 폐기/종료의 대상 정리가 예약 소유권을 해제한다. 재전송 때 원래 요청·효과 대상을 새로 만들거나 아이템을 환불하지 않는다. 이미 적용된 최초 효과의 영수증 재생은 기존 처리대로 통과하며 새 소비 예약을 만들지 않는다.
+- 기존 효과 sink의 shared target pin이 GE/게임플레이 callback 동안 예약을 유지한다. callback이 map의 대상을 해제해도 마지막 pin이 끝나기 전에는 새 탑승이 승인되지 않는다. 준비 중 실패한 로컬 scope도 자동 해제한다. 여러 소비 요청은 각기 다른 토큰을 가져 하나의 해제가 다른 요청을 풀지 않는다.
+- Riding의 서버 행동 가드는 Pawn의 활성 예약을 조회해 새 탑승/교체를 거절한다. 컴포넌트 Epoch가 바뀌거나 Riding 컴포넌트가 나중에 준비돼도 원래 Pawn의 예약이 유지된다. 다른 Pawn은 이전 예약을 상속하지 않으며 기존 효과 sink의 Pawn/ASC/생명 검사가 후속 Pawn에 효과를 전달하지 않도록 계속 담당한다.
+- 예약 저장소는 weak Pawn·유일 토큰만 가지며 Actor를 살려 두지 않는다. Pawn당 토큰64/전체 Pawn1024 상한과 살아 있지 않은 키 정리를 적용한다. 클라이언트·파괴/월드 종료 중 취득과 게임 스레드 밖의 조회는 허용하지 않는다. 다른 스레드에서 마지막 소유권이 해제되면 게임 스레드로 해제를 전달한다. Blueprint/RPC setter와 별도 아이템/HTTP/DB 프로토콜은 추가하지 않는다.
+
+`Run-RidingFoundationTests.ps1 -IncludeConsume -IncludeAbilities -IncludeWorld`는 준비/하차·실제 서버 탑승 거절, 미확정 대상 보존과 pin, 독립 토큰/준비 실패·클라이언트 거절, Pawn 분리/상한을 native 예약과 Riding Actor로 검사한다. 실제 ItemCommand/소비 Orchestrator/GE 전달 파이프라인을 실행한 검사와 구분한다. `Run-RidingIntegrationCompile.ps1 -IncludeConsume`는 게시 전체 사본의 UHT와 실제 ItemCommand/RidingComponent/ConsumeLease CPP3를 집중 컴파일하며, 전체 게임 DLL 링크·실제 소비 회복/HTTP/PG E2E를 뜻하지 않는다. 기존 소비 프로토콜/영수증·복구 코드는 수정하지 않았다.
+
+제품 보유 API의 NotReady·비공개 경계는 유지한다. 승인 피해/보호막·제어 결과의 전투 잠금·즉시 하차, Dash/Emote와 실제 맵/다인 검증은 별도 후속이다.
+
+최종 근거는 `Saved/BuildChecks/RidingConsume-20261108/Completion.json`이다. 게시 `88e1021d`+본인 고정 입력의 native `6124b3dbe0f84b80ab8d86372cca636b`에서 UHT/27단계 빌드·링크0·같은 `5ED76BCA…AEC47B55` DLL의 기존23+소비4 **27 Success·검사 오류/경고0·UE0**을 확인했다. `Integration-d8fb28475a594fd981083ac60e2ca054`의 전체 프로젝트 UHT/실제 CPP3 컴파일0이며 두 최종 cohort의 고유 입력37 SHA가 현재 원본과 일치했다. 이후 게시된 ActionBar 배치 변경은 이 cohort의 실행 입력에 포함하지 않았다.
+
+첫 CPP3 컴파일은 standalone 헤더의 `FWeakObjectPtr` 정의 누락으로 실패했다. 명시 include 보완 이전의 첫 native27은 Success였지만 최종 소스 일치 gate가 실패했으므로 위 최종27/CPP3와 구분한다. 자기4회 사본/PCH/OBJ/DLL/PDB/runtime/cache **5,705,891,837 bytes(약5.31GiB)**를 finally 정리했고 실행/Temp/새 정리 예외0이다. 원본 DLL·에셋·공유 출력/trace/cache·타 담당 변경과 이전 로그 예외는 보존했다. 작은 결과/명령/해시/필요 로그만 남겼으며 폐기한 DLL 해시는 당시 증거다.

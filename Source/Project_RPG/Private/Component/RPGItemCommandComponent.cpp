@@ -8,6 +8,7 @@
 #include "Component/RPGInventoryProjectionComponent.h"
 #include "Component/RPGSecurityValidationComponent.h"
 #include "Component/RPGPickupGrantComponent.h"
+#include "Riding/RPGRidingConsumeLease.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -36,6 +37,7 @@
 
 struct URPGItemCommandComponent::FConsumeEffectTarget
 {
+    TSharedPtr<FRPGRidingConsumeLease> RidingLease;
 	TWeakObjectPtr<APawn> Pawn;
 	TWeakObjectPtr<URPGAbilitySystemComponent> AbilitySystem;
 	FGameplayEffectSpecHandle Effect;
@@ -974,7 +976,13 @@ bool URPGItemCommandComponent::PrepareConsumeEffectFromDefinition(const FRPGItem
 		OutError = TEXT("The original consume definition, quantity or revision is not ready.");
 		return false;
 	}
-	FGameplayEffectSpecHandle EffectSpec = AbilitySystem->MakeOutgoingSpec(
+    const auto RidingLease = FRPGRidingConsumeLease::TryAcquire(*Pawn);
+    if (!RidingLease)
+    {
+        OutError = TEXT("Consumables require an on-foot avatar and a free preparation reservation.");
+        return false;
+    }
+    FGameplayEffectSpecHandle EffectSpec = AbilitySystem->MakeOutgoingSpec(
 		Fragment->GameplayEffect, 1.0f, AbilitySystem->MakeEffectContext());
 	if (!EffectSpec.IsValid())
 	{
@@ -991,6 +999,7 @@ bool URPGItemCommandComponent::PrepareConsumeEffectFromDefinition(const FRPGItem
 		EffectSpec.Data->SetSetByCallerMagnitude(Pair.Key, Pair.Value);
 	}
 	auto Target = MakeShared<FConsumeEffectTarget>();
+    Target->RidingLease = RidingLease;
 	Target->Pawn = Pawn; Target->AbilitySystem = AbilitySystem; Target->Effect = MoveTemp(EffectSpec);
 	Target->RecoveryRevision = RPGItemCommandComponent::ConsumeRecoveryRevision(Pawn);
 	Target->EffectDefinition.Reset(const_cast<UGameplayEffect*>(Target->Effect.Data->Def.Get()));
