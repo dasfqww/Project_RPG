@@ -1,6 +1,8 @@
 #include "Trading/RPGTradeTransport.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
+#include "GenericPlatform/GenericPlatformHttp.h"
+#include "Trading/RPGTradeTargets.h"
 
 FRPGHttpTradeTransport::FRPGHttpTradeTransport(FContext InContext, FValidate InValidate, float Timeout)
     : Context(MoveTemp(InContext)), Validate(MoveTemp(InValidate)),
@@ -23,8 +25,13 @@ bool FRPGHttpTradeTransport::Send(FGuid Character, FGuid Trade, const FString& A
 { return SendRequest(Character,Trade,Action,Body,MoveTemp(Completion),false); }
 bool FRPGHttpTradeTransport::SendPreview(FGuid Character, FGuid Trade, TFunction<void(FRPGTradeHttpResult)> Completion)
 { return Trade.IsValid() && SendRequest(Character,Trade,TEXT(""),TEXT(""),MoveTemp(Completion),true); }
+bool FRPGHttpTradeTransport::SendTargets(FGuid Character, const FString& Name, TFunction<void(FRPGTradeHttpResult)> Completion)
+{
+    FString Normalized;
+    return RPGTradeTargets::NormalizeName(Name,Normalized) && SendRequest(Character,FGuid(),TEXT(""),TEXT(""),MoveTemp(Completion),false,Normalized);
+}
 bool FRPGHttpTradeTransport::SendRequest(FGuid Character, FGuid Trade, const FString& Action, const FString& Body,
-    TFunction<void(FRPGTradeHttpResult)> Completion, bool bPreview)
+    TFunction<void(FRPGTradeHttpResult)> Completion, bool bPreview, const FString& TargetName)
 {
     FRPGTradeHttpContext Value;
     if (!IsInGameThread() || Active || !Character.IsValid() || !Completion || !Context || !Validate
@@ -41,6 +48,7 @@ bool FRPGHttpTradeTransport::SendRequest(FGuid Character, FGuid Trade, const FSt
     if (Trade.IsValid()) Path += TEXT("/") + Trade.ToString(EGuidFormats::DigitsWithHyphensLower);
     if (bWrite) Path += TEXT("/") + Action;
     if (bPreview) Path += TEXT("/preview");
+    if (!TargetName.IsEmpty()) Path += TEXT("/targets?name=")+FGenericPlatformHttp::UrlEncode(TargetName);
     auto Request = FHttpModule::Get().CreateRequest();
     Request->SetDelegateThreadPolicy(EHttpRequestDelegateThreadPolicy::CompleteOnGameThread);
     Request->SetURL(Value.Endpoint / Path);

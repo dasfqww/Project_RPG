@@ -28,6 +28,7 @@ try {
     $ownsTemp = $true
     $proof.Head = (git -C $workspace rev-parse HEAD).Trim()
     $files = @('Source/Project_RPG/Public/Trading/RPGTradeClient.h','Source/Project_RPG/Private/Trading/RPGTradeClient.cpp','Source/Project_RPG/Private/Tests/RPGTradeClientTests.cpp','Source/Project_RPG/Public/Trading/RPGTradeTransport.h','Source/Project_RPG/Private/Trading/RPGTradeTransport.cpp','Source/Project_RPG/Public/Trading/RPGTradeCoordinator.h','Source/Project_RPG/Private/Trading/RPGTradeCoordinator.cpp','Source/Project_RPG/Private/Tests/RPGTradeTransportTests.cpp','Scripts/Tests/trade_http_fixture.py','Source/Project_RPG/Private/Trading/RPGTradeJson.h','Source/Project_RPG/Public/Trading/RPGTradePreview.h','Source/Project_RPG/Private/Trading/RPGTradePreview.cpp')
+    $files += @('Source/Project_RPG/Public/Trading/RPGTradeTargets.h','Source/Project_RPG/Private/Trading/RPGTradeTargets.cpp')
     foreach ($relative in $files) {
         $source = Join-Path $workspace $relative
         $destination = Join-Path $project $relative

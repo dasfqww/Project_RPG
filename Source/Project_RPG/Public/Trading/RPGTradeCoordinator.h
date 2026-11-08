@@ -2,6 +2,7 @@
 #include "Trading/RPGTradeClient.h"
 #include "Trading/RPGTradeTransport.h"
 #include "Trading/RPGTradePreview.h"
+#include "Trading/RPGTradeTargets.h"
 
 /** Local owner retains this across token refresh/reconnect. Call Pump on the game thread.
  * No autonomous polling or gameplay eligibility: the lobby/UI supplies selected character and reads.
@@ -19,6 +20,12 @@ public:
     const FRPGTradePreview* GetPreview() const;
     FGuid GetPreviewToken() const { return GetPreview() ? PreviewToken : FGuid(); }
     bool Invite(FGuid Invitee);
+    bool SearchTargets(const FString& Name);
+    void ClearTargets();
+    bool CanSearchTargets() const;
+    const TArray<FRPGTradeTarget>* GetTargets() const;
+    FGuid GetTargetToken() const { return GetTargets() && !Targets.IsEmpty() ? TargetToken : FGuid(); }
+    ERPGTradeTargetState GetTargetState() const { return TargetState; }
     bool Submit(ERPGTradeAction Action, const FRPGTradeOffer* Offer = nullptr);
     bool Retry();
     // Identity changes are still observed when lobby dispatch is paused.
@@ -48,4 +55,10 @@ private:
     TOptional<FRPGTradePreview> Preview;
     FGuid PreviewToken;
     double PreviewDeadline = 0;
+    TArray<FRPGTradeTarget> Targets;
+    FGuid TargetToken;
+    ERPGTradeTargetState TargetState = ERPGTradeTargetState::Idle;
+    uint64 TargetGeneration = 0;
+    double TargetDeadline = 0, NextSearch = 0;
+    mutable double TargetNow = 0;
 };

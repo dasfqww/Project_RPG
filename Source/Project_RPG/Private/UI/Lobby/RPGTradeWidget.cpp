@@ -38,6 +38,15 @@ TSharedRef<SWidget> URPGTradeWidget::RebuildWidget()
         { auto* B = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), FName(Name)); auto* T = WidgetTree->ConstructWidget<UTextBlock>(); T->SetText(Label); B->SetContent(T); Rows->AddChild(B); return B; };
         RefreshButton = Button(TEXT("TradeRefresh"), NSLOCTEXT("RPGTrade", "Refresh", "새로 고침"));
         RetryButton = Button(TEXT("TradeRetry"), NSLOCTEXT("RPGTrade", "Retry", "처리 결과 다시 확인"));
+        auto* OuterRows=Rows; TargetPanel=WidgetTree->ConstructWidget<UVerticalBox>();Rows->AddChild(TargetPanel);Rows=TargetPanel;
+        Text(TEXT("TradeTargetTitle"),NSLOCTEXT("RPGTrade","TargetTitle","거래 상대 찾기"));
+        TargetNameBox=WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(),TEXT("TradeTargetName"));
+        TargetNameBox->SetHintText(NSLOCTEXT("RPGTrade","TargetInput","상대 캐릭터의 정확한 이름"));Rows->AddChild(TargetNameBox);
+        SearchTargetButton=Button(TEXT("TradeTargetSearch"),NSLOCTEXT("RPGTrade","TargetSearch","이름으로 검색"));
+        TargetStatusText=Text(TEXT("TradeTargetStatus"),FText::GetEmpty());
+        TargetBox=WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(),TEXT("TradeTargetChoices"));Rows->AddChild(TargetBox);
+        InviteTargetButton=Button(TEXT("TradeTargetInvite"),NSLOCTEXT("RPGTrade","TargetInvite","선택한 상대에게 초대 보내기"));
+        Rows=OuterRows;
         AcceptButton = Button(TEXT("TradeAccept"), NSLOCTEXT("RPGTrade", "Accept", "초대 수락"));
         DraftPanel=WidgetTree->ConstructWidget<UVerticalBox>(); Rows->AddChild(DraftPanel);
         auto* MainRows=Rows; Rows=DraftPanel;
@@ -73,6 +82,9 @@ TSharedRef<SWidget> URPGTradeWidget::RebuildWidget()
         SendDraftButton->OnClicked.AddDynamic(this,&ThisClass::SendOfferEdit);DiscardDraftButton->OnClicked.AddDynamic(this,&ThisClass::DiscardOfferEdit);
         AmountBox->OnTextChanged.AddDynamic(this,&ThisClass::AmountEdited);QuantityBox->OnTextChanged.AddDynamic(this,&ThisClass::QuantityEdited);
         BagBox->OnSelectionChanged.AddDynamic(this,&ThisClass::SelectBagItem);OfferBox->OnSelectionChanged.AddDynamic(this,&ThisClass::SelectOfferItem);
+        TargetNameBox->OnTextChanged.AddDynamic(this,&ThisClass::TargetNameEdited);
+        SearchTargetButton->OnClicked.AddDynamic(this,&ThisClass::FindTarget);InviteTargetButton->OnClicked.AddDynamic(this,&ThisClass::InviteSelectedTarget);
+        TargetBox->OnSelectionChanged.AddDynamic(this,&ThisClass::SelectTarget);
     }
     SetIsFocusable(true); RefreshView(); return Super::RebuildWidget();
 }
@@ -91,6 +103,7 @@ void URPGTradeWidget::NativeDestruct()
     if (auto Owner = TradeOwner.Pin()) Owner->OnChanged.Remove(ChangeHandle);
     ChangeHandle.Reset(); Super::NativeDestruct();
     ReviewedToken.Invalidate(); DisplayedReviewToken.Invalidate();
+    SelectedTarget.Invalidate(); DisplayedTargetResult.Invalidate();
 }
 void URPGTradeWidget::RefreshView()
 {
@@ -111,7 +124,32 @@ void URPGTradeWidget::RefreshView()
     const bool Reviewed = View.ReviewToken.IsValid() && ReviewedToken == View.ReviewToken && ReviewCheck && ReviewCheck->IsChecked();
     if (ReadyButton) ReadyButton->SetIsEnabled(View.bReady && Reviewed); if (ConfirmButton) ConfirmButton->SetIsEnabled(View.bConfirm && Reviewed);
     RefreshDraft();
+    RefreshTargets();
 }
+void URPGTradeWidget::RefreshTargets()
+{
+    if (bUpdatingTargets || !TargetPanel) return;
+    TGuardValue<bool> Guard(bUpdatingTargets,true);
+    const auto Owner=TradeOwner.Pin(); const auto View=Owner ? Owner->GetTargetView() : FRPGTradeTargetView{};
+    TargetPanel->SetVisibility(View.bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    if (DisplayedTargetInput!=View.InputToken)
+    { DisplayedTargetInput=View.InputToken; TargetNameBox->SetText(FText::FromString(View.Query)); }
+    if (DisplayedTargetResult!=View.ResultToken)
+    {
+        DisplayedTargetResult=View.ResultToken; SelectedTarget.Invalidate(); TargetLabels.Reset(); TargetIds.Reset(); TargetBox->ClearOptions();
+        for (const auto& Target:View.Targets) { TargetLabels.Add(Target.Name);TargetIds.Add(Target.Character);TargetBox->AddOption(Target.Name); }
+    }
+    TargetNameBox->SetIsEnabled(View.bCanEdit); SearchTargetButton->SetIsEnabled(View.bCanSearch);
+    TargetStatusText->SetText(View.Status); TargetBox->SetIsEnabled(View.bCanInvite);
+    InviteTargetButton->SetIsEnabled(View.bCanInvite && TargetIds.Contains(SelectedTarget));
+}
+void URPGTradeWidget::TargetNameEdited(const FText& Text)
+{ if (!bUpdatingTargets) if (auto O=TradeOwner.Pin()) O->SetTargetName(DisplayedTargetInput,Text.ToString()); }
+void URPGTradeWidget::FindTarget() { if(auto O=TradeOwner.Pin()) O->SearchTargets(DisplayedTargetInput); RefreshTargets(); }
+void URPGTradeWidget::SelectTarget(FString Option,ESelectInfo::Type)
+{ if(bUpdatingTargets)return;const int32 I=TargetLabels.IndexOfByKey(Option);SelectedTarget=TargetIds.IsValidIndex(I)?TargetIds[I]:FGuid();RefreshTargets(); }
+void URPGTradeWidget::InviteSelectedTarget()
+{ if(auto O=TradeOwner.Pin()) O->InviteTarget(DisplayedTargetResult,SelectedTarget);RefreshView(); }
 void URPGTradeWidget::RefreshDraft()
 {
     if (bUpdatingDraft || !DraftStatusText) return;

@@ -11,6 +11,7 @@ void FRPGTradeCoordinator::Reset()
     Client.Reset(); Endpoint.Reset(); Account.Reset(); Character.Invalidate(); PendingAction.Reset();
     Retries = 0; NextAttempt = 0; LastResponse = ERPGTradeResponse::Ignored;
     InvalidatePreview();
+    ClearTargets(); NextSearch = 0; TargetNow=0;
 }
 bool FRPGTradeCoordinator::SyncContext()
 {
@@ -45,6 +46,7 @@ bool FRPGTradeCoordinator::Refresh(FGuid Trade)
             Self->bBusy = false;
             Self->LastResponse = Self->Client.CompleteRead(Ticket, Result.bCurrentPlayerContext && Result.bTransportSuccessful ? Result.StatusCode : 0, Result.Body);
             const auto* Current = Self->Client.GetSession();
+            if (Current) Self->ClearTargets();
             if (Self->LastResponse != ERPGTradeResponse::Applied || !Current || (Self->Preview.IsSet() && !(Self->Preview->Session == *Current))) Self->InvalidatePreview();
             // A read cannot shorten a server-directed retry wait or resolve an uncertain write.
             Self->Notify();
@@ -102,6 +104,7 @@ bool FRPGTradeCoordinator::Invite(FGuid Invitee)
 {
     if (!SyncContext() || bBusy || !Client.PrepareInvite(Invitee)) return false;
     InvalidatePreview();
+    ClearTargets();
     PendingAction = TEXT("invite"); Retries = 0; NextAttempt = Now;
     Dispatch(); return true;
 }
@@ -109,6 +112,7 @@ bool FRPGTradeCoordinator::Submit(ERPGTradeAction Action, const FRPGTradeOffer* 
 {
     if (!SyncContext() || bBusy || !Client.Prepare(Action, Offer)) return false;
     InvalidatePreview();
+    ClearTargets();
     switch (Action)
     {
     case ERPGTradeAction::Accept: PendingAction = TEXT("accept"); break;
@@ -121,6 +125,63 @@ bool FRPGTradeCoordinator::Submit(ERPGTradeAction Action, const FRPGTradeOffer* 
     }
     Retries = 0; NextAttempt = Now;
     Dispatch(); return true;
+}
+void FRPGTradeCoordinator::ClearTargets()
+{
+    ++TargetGeneration; Targets.Reset(); TargetToken.Invalidate(); TargetDeadline=0; TargetState=ERPGTradeTargetState::Idle;
+}
+bool FRPGTradeCoordinator::CanSearchTargets() const
+{
+    const double Raw=Clock();
+    return !bBusy && !Client.GetSession() && !Client.GetPending() && FMath::IsFinite(Raw) && Raw>=0
+        && FMath::Max(Now,Raw)>=NextSearch && Transport->CanSend();
+}
+const TArray<FRPGTradeTarget>* FRPGTradeCoordinator::GetTargets() const
+{
+    const double Raw=Clock();
+    if (!FMath::IsFinite(Raw) || Raw<0) return nullptr;
+    TargetNow=FMath::Max(TargetNow,FMath::Max(Now,Raw));
+    return (TargetState==ERPGTradeTargetState::Ready || TargetState==ERPGTradeTargetState::Empty)
+        && !Client.GetSession() && !Client.GetPending() && FMath::IsFinite(Raw) && Raw>=0
+        && TargetNow<TargetDeadline ? &Targets : nullptr;
+}
+bool FRPGTradeCoordinator::SearchTargets(const FString& Input)
+{
+    FString Name;
+    if (!SyncContext() || !CanSearchTargets() || !RPGTradeTargets::NormalizeName(Input,Name)) return false;
+    UpdateTime(); ClearTargets(); const auto Epoch=TargetGeneration;
+    const double Started=Now; NextSearch=Now+2; TargetState=ERPGTradeTargetState::Loading;
+    const auto Expected=++Operation; bBusy=true;
+    TWeakPtr<FRPGTradeCoordinator> WeakThis=AsShared();
+    auto Completion=[WeakThis,Expected,Epoch,Started,Name](FRPGTradeHttpResult Result)
+    {
+        auto Self=WeakThis.Pin();
+        if (!Self || Self->Operation!=Expected || !Self->SyncContext()) return;
+        Self->bBusy=false; Self->UpdateTime();
+        if (Self->TargetGeneration==Epoch)
+        {
+            Self->TargetState=ERPGTradeTargetState::Failed;
+            if (Result.bCurrentPlayerContext && Result.bTransportSuccessful)
+            {
+                if (Result.StatusCode==200 && RPGTradeTargets::Decode(Result.Body,Self->Character,Name,Self->Targets))
+                {
+                    Self->TargetState=Self->Targets.IsEmpty() ? ERPGTradeTargetState::Empty : ERPGTradeTargetState::Ready;
+                    Self->TargetToken=FGuid::NewGuid();
+                    Self->TargetDeadline=Self->Now+FMath::Max(0.0,29.9-FMath::Max(0.0,Self->Now-Started));
+                }
+                else if (Result.StatusCode==429 || Result.StatusCode==503)
+                {
+                    const double Delay=FMath::IsFinite(Result.RetryAfterSeconds) && Result.RetryAfterSeconds>0
+                        ? FMath::Clamp(Result.RetryAfterSeconds,1.0,3600.0) : 60.0;
+                    Self->NextSearch=Self->Now+Delay; Self->TargetState=ERPGTradeTargetState::Throttled;
+                }
+            }
+        }
+        Self->Notify();
+    };
+    const bool Sent=Transport->SendTargets(Character,Name,Completion);
+    if (!Sent && Operation==Expected && bBusy) Completion(FRPGTradeHttpResult{});
+    Notify(); return Sent;
 }
 bool FRPGTradeCoordinator::Dispatch()
 {

@@ -26,6 +26,14 @@ struct PROJECT_RPG_API FRPGTradeDraftView
     TArray<FRPGTradeBagItem> SelectedItems;
     bool bCanReload = false, bCanBegin = false, bCanEdit = false, bCanSend = false;
 };
+struct PROJECT_RPG_API FRPGTradeTargetView
+{
+    FGuid InputToken, ResultToken;
+    FString Query;
+    FText Status;
+    TArray<FRPGTradeTarget> Targets;
+    bool bVisible=false, bCanEdit=false, bCanSearch=false, bCanInvite=false;
+};
 DECLARE_MULTICAST_DELEGATE(FRPGTradeLobbyChanged);
 
 /** Shared by the local-player subsystem and short-lived views. Views hold weak references only. */
@@ -56,6 +64,10 @@ public:
     bool SetDraftItem(FGuid Token, FGuid Item, const FString& Quantity);
     bool RemoveDraftItem(FGuid Token, FGuid Item);
     bool SendDraft(FGuid Token);
+    FRPGTradeTargetView GetTargetView() const;
+    bool SetTargetName(FGuid InputToken, const FString& Name);
+    bool SearchTargets(FGuid InputToken);
+    bool InviteTarget(FGuid ResultToken, FGuid Character);
     void DismissClosed();
     FRPGTradeLobbyView GetView() const;
     const FRPGTradeClient& GetClient() const { return Coordinator->GetClient(); }
@@ -82,4 +94,7 @@ private:
     FRPGTradeOfferDraft Draft;
     mutable double BagNow = 0;
     bool bSubmittingDraft = false;
+    bool CanDiscover() const;
+    FString TargetName;
+    FGuid TargetInputToken=FGuid::NewGuid();
 };

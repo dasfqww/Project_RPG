@@ -11,7 +11,7 @@ class UComboBoxString;
 class UEditableTextBox;
 class UVerticalBox;
 
-/** Read/accept/cancel view. Asset consent controls require the subsequent exact-item preview flow. */
+/** Explicit discovery/invitation and exact-offer review. The local owner outlives the view. */
 UCLASS()
 class PROJECT_RPG_API URPGTradeWidget final : public UUserWidget
 {
@@ -50,6 +50,11 @@ private:
     UFUNCTION() void SelectBagItem(FString Option, ESelectInfo::Type Type);
     UFUNCTION() void SelectOfferItem(FString Option, ESelectInfo::Type Type);
     void RefreshDraft();
+    UFUNCTION() void TargetNameEdited(const FText& Text);
+    UFUNCTION() void FindTarget();
+    UFUNCTION() void SelectTarget(FString Option, ESelectInfo::Type Type);
+    UFUNCTION() void InviteSelectedTarget();
+    void RefreshTargets();
     TWeakPtr<FRPGTradeLobbyOwner> TradeOwner;
     FDelegateHandle ChangeHandle;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> StatusText;
@@ -84,4 +89,14 @@ private:
     FGuid DisplayedDraftToken, DisplayedBagToken, SelectedBagItem, SelectedOfferItem;
     bool bUpdatingDraft = false;
     FText DraftInputError;
+    UPROPERTY(Transient) TObjectPtr<UVerticalBox> TargetPanel;
+    UPROPERTY(Transient) TObjectPtr<UEditableTextBox> TargetNameBox;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> TargetStatusText;
+    UPROPERTY(Transient) TObjectPtr<UComboBoxString> TargetBox;
+    UPROPERTY(Transient) TObjectPtr<UButton> SearchTargetButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> InviteTargetButton;
+    FGuid DisplayedTargetInput, DisplayedTargetResult, SelectedTarget;
+    TArray<FString> TargetLabels;
+    TArray<FGuid> TargetIds;
+    bool bUpdatingTargets=false;
 };

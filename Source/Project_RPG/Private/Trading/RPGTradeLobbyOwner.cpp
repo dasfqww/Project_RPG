@@ -32,6 +32,7 @@ bool FRPGTradeLobbyOwner::Update(bool bPoll)
     const auto KeepAlive = AsShared();
     const auto Next = Context();
     const bool bFrameChanged = !(Current == Next);
+    if (bFrameChanged) { Coordinator->ClearTargets(); TargetName.Reset(); TargetInputToken=FGuid::NewGuid(); }
     Current = Next;
     if (Current.Account != Account || Current.Endpoint != Endpoint)
     {
@@ -70,6 +71,53 @@ bool FRPGTradeLobbyOwner::Update(bool bPoll)
     return bCanAct && !bEnding;
 }
 void FRPGTradeLobbyOwner::Tick() { Update(true); }
+bool FRPGTradeLobbyOwner::CanDiscover() const
+{
+    return !bEnding && Current.bEnabled && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible
+        && BoundCharacter.IsValid() && Current.Character==BoundCharacter && !GetClient().GetSession() && !GetClient().GetPending();
+}
+FRPGTradeTargetView FRPGTradeLobbyOwner::GetTargetView() const
+{
+    FRPGTradeTargetView V; V.InputToken=TargetInputToken; V.Query=TargetName;
+    V.bVisible=!bEnding && Current.bEnabled && !GetClient().GetSession() && !GetClient().GetPending();
+    V.bCanEdit=CanDiscover() && !Coordinator->IsBusy();
+    FString Name; const bool Valid=RPGTradeTargets::NormalizeName(TargetName,Name);
+    V.bCanSearch=V.bCanEdit && Valid && Coordinator->CanSearchTargets();
+    if (CanDiscover()) if (const auto* Results=Coordinator->GetTargets()) V.Targets=*Results;
+    V.ResultToken=CanDiscover() ? Coordinator->GetTargetToken() : FGuid();
+    V.bCanInvite=V.bCanEdit && V.ResultToken.IsValid() && V.Targets.Num()==1;
+    const auto State=Coordinator->GetTargetState();
+    if (!CanDiscover()) V.Status=NSLOCTEXT("RPGTrade","TargetContext","선택한 캐릭터로 로비에 로그인해 거래 상대를 찾으세요.");
+    else if (State==ERPGTradeTargetState::Loading) V.Status=NSLOCTEXT("RPGTrade","TargetLoading","거래 상대를 찾고 있습니다.");
+    else if (Valid && !Coordinator->IsBusy() && !Coordinator->CanSearchTargets()) V.Status=NSLOCTEXT("RPGTrade","TargetWait","잠시 후 검색을 다시 시도하세요.");
+    else if (State==ERPGTradeTargetState::Failed || State==ERPGTradeTargetState::Throttled) V.Status=NSLOCTEXT("RPGTrade","TargetFailed","검색을 완료하지 못했습니다. 잠시 후 다시 검색하세요.");
+    else if (State==ERPGTradeTargetState::Ready || State==ERPGTradeTargetState::Empty)
+        V.Status=!Coordinator->GetTargets() ? NSLOCTEXT("RPGTrade","TargetExpired","검색 결과가 만료되었습니다. 다시 검색하세요.")
+            : V.Targets.IsEmpty() ? NSLOCTEXT("RPGTrade","TargetEmpty","일치하는 거래 상대를 찾을 수 없습니다.")
+            : NSLOCTEXT("RPGTrade","TargetChoose","상대를 선택해 초대를 보내세요. 상대의 수락이 필요합니다.");
+    else V.Status=NSLOCTEXT("RPGTrade","TargetNameHint","상대 캐릭터의 정확한 이름을 입력해 검색하세요. (2~20자)");
+    return V;
+}
+bool FRPGTradeLobbyOwner::SetTargetName(FGuid InputToken, const FString& Name)
+{
+    if (!Update(false) || InputToken!=TargetInputToken || !CanDiscover()) return false;
+    const FString Value=Name.Left(65);
+    if (Value!=TargetName) { TargetName=Value; Coordinator->ClearTargets(); Changed(); }
+    return true;
+}
+bool FRPGTradeLobbyOwner::SearchTargets(FGuid InputToken)
+{
+    if (!Update(false) || InputToken!=TargetInputToken || !GetTargetView().bCanSearch) return false;
+    const bool Sent=Coordinator->SearchTargets(TargetName); Changed(); return Sent;
+}
+bool FRPGTradeLobbyOwner::InviteTarget(FGuid ResultToken, FGuid Character)
+{
+    if (!Update(false)) return false;
+    const auto View=GetTargetView();
+    if (!View.bCanInvite || !ResultToken.IsValid() || ResultToken!=View.ResultToken
+        || !View.Targets.ContainsByPredicate([Character](const FRPGTradeTarget& T){return T.Character==Character;})) return false;
+    const bool Sent=Coordinator->Invite(Character); Changed(); return Sent;
+}
 bool FRPGTradeLobbyOwner::Refresh()
 {
     if (!Update(false) || Coordinator->IsBusy()) return false;
