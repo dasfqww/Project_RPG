@@ -9,11 +9,26 @@ using ProjectRpg.Backend.Application;
 
 namespace ProjectRpg.Backend.Operations.Infrastructure.Diagnostics;
 
-public sealed class OperationsEventRecorder(OperationsLogStore store, OperationsOptions options, TimeProvider clock)
+public sealed class OperationsEventRecorder(OperationsLogStore store, OperationsOptions options, TimeProvider clock) : IGameHttpObserver
 {
     public static string BuildVersion { get; } = typeof(OperationsEventRecorder).Assembly.GetName().Version
         + "+" + typeof(OperationsEventRecorder).Module.ModuleVersionId.ToString("N");
     private readonly Microsoft.Extensions.Logging.ILogger logger = store.CreateLogger();
+    public void Observe(GameHttpObservation observation)
+    {
+        string? error = observation.Outcome switch
+        {
+            GameHttpOutcome.Rejected => "game.http_rejected",
+            GameHttpOutcome.Faulted => "game.http_faulted",
+            GameHttpOutcome.Canceled => "game.http_canceled",
+            _ => null
+        };
+        Write(new(1,Guid.NewGuid(),observation.Phase == GameHttpPhase.Started ? "game.http.started" : "game.http.completed",
+            clock.GetUtcNow(),observation.Outcome == GameHttpOutcome.Faulted ? "Error" : error is null ? "Information" : "Warning",
+            options.EnvironmentId,"ProjectRpg.Backend",store.BootId,BuildVersion,observation.HttpRequestId,
+            observation.TraceId,observation.SpanId,observation.ParentSpanId,observation.OperationName,observation.DurationMs,
+            null,null,null,null,null,null,null,null,observation.Outcome.ToString(),error,observation.HttpStatus,"GameHttp"));
+    }
     public void Record(HttpContext context, string eventName, string operation, string outcome, double? durationMs = null,
         string? errorCode = null, Guid? characterId = null)
     {

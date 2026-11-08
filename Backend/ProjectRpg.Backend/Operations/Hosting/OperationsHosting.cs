@@ -105,6 +105,7 @@ public static class OperationsHosting
         services.AddSingleton<OperationsRequestLimits>();
         services.AddSingleton<OperationsLogStore>();
         services.AddSingleton<OperationsEventRecorder>();
+        services.AddSingleton<IGameHttpObserver>(p => p.GetRequiredService<OperationsEventRecorder>());
         services.AddSingleton<OperationsStorageTrace>();
         services.AddSingleton<ProjectRpg.Backend.Application.IDungeonSettlementObserver, OperationsSettlementObserver>();
         services.AddSingleton<IOperationLogReader, LocalJsonlOperationLogReader>();
@@ -138,6 +139,7 @@ public static class OperationsHosting
         if (!options.Enabled) return app;
         _ = app.Services.GetService<X509Certificate2>(); // Container owns/disposes the configured key protector certificate.
         app.UseRouting();
+        if (options.GameApiDiagnosticsEnabled) app.UseMiddleware<GameHttpDiagnostics>();
         if (options.KnownProxies.Length > 0)
             app.UseWhen(c => c.Request.Path.StartsWithSegments("/ops") || c.Request.Path.StartsWithSegments("/internal/operations"), branch => branch.UseForwardedHeaders());
         app.UseMiddleware<Monitoring.OperationsMonitorBoundary>();

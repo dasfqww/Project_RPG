@@ -24,11 +24,16 @@ public sealed class OperationsOptions
     public Monitoring.OperationsMonitorOptions Monitor { get; set; } = new();
     public bool RestrictionsEnabled { get; set; }
     public bool ServiceControlEnabled { get; set; }
+    public bool GameApiDiagnosticsEnabled { get; set; }
     public string OperatorId => "github:" + AllowedGitHubUserId;
 
     public void Validate(IHostEnvironment environment)
     {
-        if (!Enabled) return;
+        if (!Enabled)
+        {
+            if (GameApiDiagnosticsEnabled) throw new InvalidOperationException("Game API diagnostics requires enabled operations log storage.");
+            return;
+        }
         Monitor.Validate();
         if (!Uri.TryCreate(ManagementOrigin, UriKind.Absolute, out Uri? origin) || origin.Scheme != "https"
             || origin.AbsolutePath != "/" || origin.Query.Length != 0 || origin.Fragment.Length != 0 || origin.UserInfo.Length != 0)

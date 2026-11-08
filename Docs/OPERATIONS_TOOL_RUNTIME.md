@@ -1,6 +1,6 @@
 # 운영툴 실행과 유지보수
 
-2026-11-08 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 조사, S3 개별 보상·기간 제재/해제, S4 런타임 감시·알림과 공지·Open/Drain의 Backend/운영 화면, UE 로비 공지·점검 연결·장기 Drain 경보·백업 상태 수집/경보·격리 복원/PITR 리허설 도구를 구현했다. 운영 용량/외부 환경 복구 리허설·실제 운영 배포는 후속 범위다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md).
+2026-11-08 · S1 개인 로그인/기본 조회/로그 추적, S2 보상 조사, S3 개별 보상·기간 제재/해제, S4 런타임 감시·알림과 공지·Open/Drain의 Backend/운영 화면, UE 로비 공지·점검 연결·장기 Drain 경보·백업 상태 수집/경보·격리 복원/PITR 리허설 도구, 선택형 게임 API HTTP 추적을 구현했다. 운영 용량/외부 환경 복구 리허설·실제 운영 배포는 후속 범위다. [상세 계약](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md).
 
 ## 공지·Open/Drain 서비스 제어
 
@@ -11,7 +11,7 @@ UE 로비의 공지/점검 연결과 캐시·실패·주소 전환·인증 보�
 - 최초 상태는 Open/revision 0/빈 공지다. 변경은 기대 revision을 검사해 1 증가시키고 변경·원래 요청/운영자/HTTP/trace가 있는 불변 감사 영수증을 같은 트랜잭션으로 저장한다. 같은 ID/같은 정규 입력은 원래 영수증을 재생하고 다른 내용·다른 조치 종류의 ID 재사용은 거절한다. 조회는 상태를 변경하지 않는다.
 - Core는 공지·시각·revision 정책과 좁은 읽기/원자 변경 포트를, 저장 어댑터는 영속화·트랜잭션을 소유한다. `PostgresAdmissionAccess`는 서비스→계정→게임 잠금 순서만 조립한다. 계정 제재 정책과 서비스 정책은 각각 독립돼 있다. 신규 입장은 서비스 공유 transaction advisory lock, 전환은 배타 lock을 사용한다. Memory는 기존 공통 transaction gate 안에서 같은 경계를 보장한다.
 - Drain은 신규 로그인/인증 발급·던전 생성/참가·출발 요청·새 티켓 발급/소비·입장 확인을 503 `service_draining`/`Retry-After: 30`으로 거절한다. 출발 취소, 이미 인증된 조회/우편 수령, 기존 전투·heartbeat·정산과 읽기 전용 입장 근거는 유지한다. 기존 인증·멤버·리스·확정 보상을 삭제하지 않는다. Open 전환 후 신규 접근을 다시 허용한다.
-- `GET /api/service-status`는 운영 화면 비활성 상태에서도 익명 읽기로 제공한다. 예외는 정확한 경로의 GET뿐이며 IP당 60회/분, no-store를 적용한다. 모드·plain text 공지·시작/종료·표시 여부·관측시각만 반환한다. 운영자·사유·감사/요청/trace ID는 공개하지 않는다. 시작 포함/종료 제외의 UTC 구간이며 양쪽 시각을 생략하면 즉시·무기한, 빈 공지는 숨김이다. 클라이언트는 HTML로 실행하지 않고 텍스트로 표시해야 한다.
+- `GET /api/service-status`는 운영 화면 비활성 상태에서도 익명 읽기로 제공한다. 예외는 정확한 경로의 GET뿐이며 IP당 60회/분, no-store를 적용한다. 모드·plain text 공지·시작/종료·표시 여부·관측시각만 반환한다. 운영자·사유·운영 조치의 감사/요청/trace ID는 공개하지 않는다. 아래 선택형 게임 HTTP 추적을 켜면 이 조회 시도 자체의 번호는 공통 응답 헤더로 제공한다. 시작 포함/종료 제외의 UTC 구간이며 양쪽 시각을 생략하면 즉시·무기한, 빈 공지는 숨김이다. 클라이언트는 HTML로 실행하지 않고 텍스트로 표시해야 한다.
 - UI는 int64 revision을 문자열로 유지하고 요청 ID와 원래 본문을 전송 전에 저장한다. 응답 유실/401/영수증 404는 미커밋으로 단정하지 않고 같은 요청의 조회/재시도만 제공한다. 영수증의 조치 종류·요청·내용 일치를 확인한 뒤 최신 상태를 다시 읽는다. `GET /ops/api/actions/{requestId}`와 화면 로그 링크로 원래 조치 및 `operationRequestId`를 추적한다. 기술 로그에는 공지/사유 본문을 넣지 않는다. PUT도 CSRF·32KiB·운영 명령 30회/분 제한을 적용한다.
 
 필요한 검증은 기존 `Scripts/Tests/Run-OperationsTests.ps1 -Postgres`에 포함된다. 실제 HTTPS/모의 OAuth, Memory·격리 tmpfs PostgreSQL의 익명 경계/제한·권한/CSRF/본문·공지 시간·revision/재생·다른 종류 ID 충돌, 모든 신규 입장 거절과 기존 2인 heartbeat/실제 worker 양쪽 지급, 공유/배타 gate 대기·감사 실패 롤백·재시작 영속화·로그 검색을 검사한다. 별도 화면 스크립트 검사는 응답 유실/새로고침·동일 바이트 재전송·int64·401/404/영수증 불일치·저장 실패를 다룬다. 실제 GitHub OAuth·브라우저 시각 렌더·UE 화면/게임 소켓·운영 배포 검증과 구분한다.
@@ -24,9 +24,21 @@ Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복
 - [Operations/Hosting](../Backend/ProjectRpg.Backend/Operations/Hosting/)은 DI·인증·관리망·요청 제한을 조립한다. [Web](../Backend/ProjectRpg.Backend/Operations/Web/)은 입력/커서/응답 변환을 담당하며 [Razor 화면](../Backend/ProjectRpg.Backend/Pages/Ops/)과 JSON API가 같은 유스케이스를 쓴다.
 - [읽기 어댑터](../Backend/ProjectRpg.Backend/Operations/Infrastructure/Reads/)는 저장된 데이터만 관측한다. PostgreSQL은 READ ONLY / REPEATABLE READ, 명령 3초·요청 5초 제한이다. 조회가 만료 리스 정리나 성장 보상 반영을 호출하지 않는다. 패널 간 동일 snapshot은 보장하지 않는다.
 - 운영 인증은 게임 Bearer와 별도다. GitHub 숫자 ID 한 개를 허용하고 PKCE/state·CSRF, Secure/HttpOnly cookie, 서버 세션을 사용한다. 세션은 유휴 30분/절대 8시간이며 로그아웃과 AuthEpoch 변경으로 무효화한다.
-- 로그 수집/저장 구현은 Infrastructure에만 둔다. 요청 번호 → HTTP trace → PostgreSQL 읽기 child span을 연결한다. 정산 worker는 별도 관측 포트로 원래 세션/거래 요청 ID·시도 trace를 남긴다. 게임 서버/UE 전체 사건 계측은 제공하지 않으며 같은 HTTP trace가 worker까지 전파됐다고 표시하지 않는다.
+- 로그 수집/저장 구현은 Infrastructure에만 둔다. 운영 조회는 요청 번호 → HTTP trace → PostgreSQL 읽기 child span을 연결한다. 게임 API는 아래 선택형 HTTP 관측 포트로 시도 번호·실제 Activity를 남긴다. 정산 worker는 별도 관측 포트로 원래 세션/거래 요청 ID·시도 trace를 남긴다. 게임 API의 업무 ID/저장 구간·UE 전체 사건 계측은 후속이며 같은 HTTP trace가 worker까지 전파됐다고 표시하지 않는다.
 
 인터페이스를 추가할 때는 교체할 외부 의존성 또는 실제 유스케이스 경계가 있어야 한다. 새로운 지급 기능을 읽기 포트나 PageModel에 넣지 않는다. 여러 책임을 묶는 공통 repository/manager로 합치지 않는다.
+
+## 게임 API 요청 추적
+
+`Operations:Enabled=true`와 `Operations:GameApiDiagnosticsEnabled=true`를 함께 설정하면 `/api` 경계의 요청을 공통 계측한다. 기본값은 false이며 운영 저장소가 비활성인데 이 설정만 켜면 기동을 거절한다. `/ops`, `/internal/operations`, `/health`, `/apix`는 이 경계에 포함되지 않는다. 별도 migration은 없다.
+
+- 요청마다 서버가 새 GUID를 만들고 응답 `X-Game-Request-Id`로 제공한다. 재시도와 동시 요청도 각각 새 번호를 갖는다. 클라이언트의 같은 이름 헤더나 본문의 업무 요청 ID를 내부 시도 번호로 사용하지 않는다. `X-Game-Trace-Id`는 실제 비어 있지 않은 W3C Activity가 있을 때만 제공하며 .NET이 수용한 `traceparent`의 trace를 공유할 수 있다. 이 번호들은 인증 자격이 아니다. 전송 중단·미처리 예외로 응답을 보내지 못하면 헤더 전달도 보장할 수 없다.
+- `game.http.started`와 `game.http.completed`에 시도 번호·실제 trace/span·배포/인스턴스·고정 라우트 템플릿·상태·단조 시계 소요 시간을 남긴다. 실제 URL 경로 값, query, 요청/응답 본문, 인증/사용자 헤더, 예외 원문은 관측 포트에 전달하지 않는다. 라우트가 없거나 템플릿이 112자를 넘으면 `GET GameApi.Unmatched` 같은 고정 이름을 사용한다. 인증 전에도 실행하므로 401과 처리된 Drain 503이 관측된다.
+- 정상 반환의 400 이상은 `Rejected`, 나머지는 `Succeeded`다. 밖으로 전파되는 예외는 `Faulted`이며 응답 시작 전에는 500, 이미 시작됐으면 상태를 null로 남긴다. 요청 취소는 `Canceled`/상태 null로 남겨 전송되지 않은 200/499를 합성하지 않는다. HTTP 성공은 게임 DB 반영 증거가 아니다.
+- [HTTP 어댑터](../Backend/ProjectRpg.Backend/Operations/Hosting/GameHttpDiagnostics.cs)는 [Core의 IGameHttpObserver](../Backend/ProjectRpg.Operations.Core/Diagnostics/GameHttpObservation.cs)에 고정 모델만 전달한다. Infrastructure가 기존 유계 JSONL writer로 저장한다. 관측기 예외는 HTTP 상태·본문·업무 예외를 바꾸지 않는다. 기존 비동기 큐/보존 한도를 공유하므로 게임 요청량에 맞춘 실제 용량 검증은 배포 전에 수행한다.
+- `/ops/diagnostics` 또는 `GET /ops/api/logs?httpRequestId=<GUID>`에서 같은 번호로 검색한다. `traceId`·두 이벤트 이름 필터도 기존 검색 권한/기간/예산을 적용한다. 이 단계는 주체·캐릭터·업무/거래 ID를 추정해 채우지 않는다. 게임 저장 child span, UE→HTTP 문맥, 업무 영수증과의 연결은 별도 계측이 필요하다. 검색 `Complete`는 선택 원본의 검색 완료이며 비활성 기간·과거·UE까지 수집됐다는 의미가 아니다.
+
+`Scripts/Tests/Run-OperationsGameHttpTests.ps1 -Postgres`는 게시 Backend+본인 9개 C# 입력만 고정한 독립 빌드, 실제 loopback HTTPS/모의 OAuth, Memory·자기 tmpfs PostgreSQL에서 번호/실제 W3C 부모·재시도/동시성·권한 검색·라우트 마스킹·비밀 제외·게임 표 지문 불변을 검사한다. 예외/취소/관측기 실패는 경계 단위 검사다. `-FullSuite`는 운영툴 전체 Memory 회귀를 실행한다. 2026-11-08 두 모드 모두 빌드 0경고/0오류로 통과했다. finally로 사본·빌드 출력·런타임/DB를 폐기하며 작은 결과와 해시는 당시 실행 근거만 남긴다. 실제 UE 실행·운영 배포/부하 검증은 포함하지 않는다.
 
 ## 활성화와 배포 입력
 
@@ -47,6 +59,7 @@ Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복
 | `Operations__KeyCertificatePath`, `Operations__KeyCertificatePassword` | 키 암호화용 PFX. Linux 운영 환경 필수. HTTPS 서버 인증서와 별개 |
 | `Operations__AllowUnencryptedDevelopmentKeys` | 기본 false. Development/Testing에서만 명시적으로 true 허용 |
 | `Operations__SourceId` | 기본 `backend`; S1 단일 호스트 소스 식별자 |
+| `Operations__GameApiDiagnosticsEnabled` | 기본 false. `/api` 시도 번호·실제 Activity·안전한 시작/완료 이벤트. `Enabled=true` 필요 |
 | `Operations__Compensation__Enabled` | 기본 false. 개별 보상/API/조치 조회 활성화 |
 | `Operations__Compensation__AllowedDefinitions__0` 등 | 기본 빈 목록으로 지급 불가. 지원하는 서버 정의/버전의 정확한 key만 허용 |
 | `Operations__Monitor__Enabled` | 기본 false. 별도 기계 상태 조회 활성화 |

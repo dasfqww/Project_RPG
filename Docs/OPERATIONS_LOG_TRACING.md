@@ -1,6 +1,6 @@
 # 운영툴 로그 추적 계약
 
-작성일: 2026-11-04 · 상세 확정: 2026-11-05 · 설계 v1.1 · 상태: 설계, 아래 계측·검색 기능 신규 구현 아님
+작성일: 2026-11-04 · 상세 확정: 2026-11-05 · 게임 HTTP 반영: 2026-11-08 · 설계 v1.2 · 상태: 공통 계약과 구현 경계를 함께 기록, 모든 게임/UE 사건의 계측 완료를 뜻하지 않음
 
 상위 문서: [운영툴 아키텍처](OPERATIONS_TOOL_ARCHITECTURE.md), [1인 개발 제작 계획](SOLO_OPERATIONS_TOOL_PLAN.md). 실제 sink·물리 JSON·버퍼·검색 알고리즘은 [구현 계약 §6](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md#6-로그의-실제-기록회전검색-구현)에서 확정한다.
 
@@ -16,7 +16,7 @@
 
 조회/로그인/거절도 기술 기록을 남긴다. '지급 버튼을 눌렀다', 'HTTP 200이다', '로그에 완료 문장이 있다'는 사실만으로 게임 반영을 확정하지 않는다. DB 커밋, 서버 재조회, 클라이언트 표시 관측을 각각 구분한다.
 
-현재 [정산 worker](../Backend/ProjectRpg.Backend/Application/DungeonRewardSettlementWorker.cs)는 DungeonSessionId를 포함한 상태 로그를 남긴다. 이것만으로 운영자 검색·전체 trace·UE 연결이 구현된 것은 아니다. 기존 영수증 ID·게임 로그의 실제 필드부터 조사하고 부족한 계측은 해당 단계에서 추가한다.
+현재 운영 조회/로그 검색, [정산 worker](../Backend/ProjectRpg.Backend/Application/DungeonRewardSettlementWorker.cs)의 원래 세션/거래 요청 ID 관측, 선택형 게임 API HTTP 경계를 구현했다. 실제 범위와 검증은 [실행 문서](OPERATIONS_TOOL_RUNTIME.md)를 따른다. 게임 API의 업무 ID/저장 구간·UE 사건 연결은 해당 단계에서 추가한다.
 
 ## 2. ID와 연결 규칙
 
@@ -84,6 +84,7 @@
 | 이벤트 계열 | 언제 기록하는가 |
 |---|---|
 | `ops.http.started/completed` | 요청 수신/최종 응답, 미인증/잘못된 입력 포함 |
+| `game.http.started/completed` — 선택 활성화 | `/api`의 서버 생성 시도 번호·실제 Activity·고정 라우트·최종 상태/소요 시간. 업무 ID와 UE 관측을 합성하지 않음 |
 | `ops.access.denied` | 운영 인증/권한 거절. 로그인 시도 원문/비밀번호 제외 |
 | `ops.character.query.completed/failed` | 캐릭터 검색·상세의 결과와 지연 |
 | `ops.storage.query.completed/failed` | 필요한 DB 조회 구간. SQL 원문·파라미터 덤프 제외 |
@@ -93,6 +94,14 @@
 | `game.projection.observed` — 필요한 UE 연결 단계 | 실제 관측한 데이터 갱신. DB 성공만 보고 생성하지 않음 |
 
 EventName은 검색 계약이다. 이름/필드를 변경하면 SchemaVersion·호환 읽기 정책을 함께 검토한다. 사용자에게 보여주는 한국어 문구 변경이 이벤트 키를 바꾸지 않게 한다. 코드 위치는 LoggerCategory와 해당 BuildVersion 소스의 이벤트 선언으로 찾으며, 절대 개발자 PC 경로를 사용자에게 노출하지 않는다.
+
+### 구현된 게임 HTTP 경계 (2026-11-08)
+
+`Operations:GameApiDiagnosticsEnabled`는 기본 false이며 운영 저장소 활성화가 필요하다. 서버가 요청마다 만든 `HttpRequestId`를 `X-Game-Request-Id`로 반환하고, 실제 W3C Activity가 있을 때만 `X-Game-Trace-Id`를 반환한다. 호출자가 보낸 사용자 정의 추적 헤더를 복사하지 않는다. 같은 업무의 재전송도 HTTP 번호는 다르다. 번호를 아는 것만으로 로그를 읽을 수 없으며 기존 운영자 인증/진단 권한을 적용한다.
+
+HTTP 어댑터 → 순수 Core `IGameHttpObserver` → Infrastructure writer 순서로 분리한다. 시작/완료의 같은 시도 번호, 실제 trace/span/parent, HTTP method와 서버 라우트 템플릿, 상태와 소요 시간만 전달한다. 원래 URL/query·인증·본문·예외 원문·확인되지 않은 주체/업무 ID는 이 관측 모델에 넣지 않는다. 관측기 실패는 업무 응답/예외에 영향을 주지 않는다. 처리된 401/503은 `Rejected`, 전파되는 예외는 `Faulted`, 취소는 `Canceled`이며 미전송 상태를 성공으로 기록하지 않는다. 응답/trace/보존의 정확한 예외와 검증 명령은 [실행 계약](OPERATIONS_TOOL_RUNTIME.md#게임-api-요청-추적)을 따른다.
+
+기존 schemaVersion 1의 허용 이벤트 두 개를 추가했으며 JSON 필드는 유지한다. 검색의 `Complete`는 등록 원본의 읽기 완료다. 비활성 기간·과거 게임 사건·UE/업무 영수증까지 계측됐다는 의미가 아니며, 게임 HTTP와 별도 worker의 trace가 이어졌다고 표시하지 않는다.
 
 ## 4. 생성·수집·검색의 의존 분리
 

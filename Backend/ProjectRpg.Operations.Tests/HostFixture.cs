@@ -48,7 +48,7 @@ internal sealed class HostFixture : IAsyncDisposable
     internal static async Task<HostFixture> StartAsync(string root, string? postgres = null, int port = 0,
         CookieContainer? cookies = null, MutableClock? clock = null, string epoch = "operations-test-epoch-0001", bool enabled = true, bool compensation = false, string[]? allowedDefinitions = null,
         bool monitoring = false, bool restrictions = false, Action<Microsoft.Extensions.DependencyInjection.IServiceCollection>? customize = null,
-        Action<WebApplication>? customizeRoutes = null, bool serviceControl = false)
+        Action<WebApplication>? customizeRoutes = null, bool serviceControl = false, bool gameDiagnostics = false)
     {
         Directory.CreateDirectory(root);
         if (port == 0)
@@ -81,6 +81,7 @@ internal sealed class HostFixture : IAsyncDisposable
             ["Operations:Compensation:Enabled"]=compensation.ToString(),
             ["Operations:RestrictionsEnabled"]=restrictions.ToString(),
             ["Operations:ServiceControlEnabled"]=serviceControl.ToString(),
+            ["Operations:GameApiDiagnosticsEnabled"]=gameDiagnostics.ToString(),
             ["Operations:Monitor:Enabled"]=monitoring.ToString(), ["Operations:Monitor:Token"]=new string('m',48)
         });
         if (compensation) builder.Configuration.AddInMemoryCollection((allowedDefinitions ?? [

@@ -26,7 +26,7 @@ public sealed record OperationLogQuery(DateTimeOffset FromUtc, DateTimeOffset To
       "ops.logs.search.completed", "ops.logs.search.failed", "ops.evidence.query.completed", "ops.evidence.query.failed",
       "ops.command.started", "ops.command.committed", "ops.command.replayed", "ops.command.rejected", "ops.command.unknown",
       "game.reward.receipt.committed", "game.settlement.attempt.started", "game.settlement.attempt.completed",
-      "game.settlement.attempt.failed", "game.settlement.attempt.requeued" }.ToFrozenSet(StringComparer.Ordinal);
+      "game.settlement.attempt.failed", "game.settlement.attempt.requeued", "game.http.started", "game.http.completed" }.ToFrozenSet(StringComparer.Ordinal);
     public bool IsValid => ToUtc > FromUtc && ToUtc - FromUtc <= TimeSpan.FromHours(24)
         && Limit is >= 1 and <= 200 && SourceId is { Length: >= 1 and <= 64 }
         && Filters.Count is >= 1 and <= 10 && Filters.Any(p => IdFields.Contains(p.Key) || p.Key == "eventName")
