@@ -38,6 +38,7 @@ void URPGRidingSessionComponent::Invalidate(bool bRevoke)
 {
     if (GetOwner() && !GetOwner()->HasAuthority()) return;
     if (bRevoke) Runtime->Revoke(); else Runtime->ClearIdentity();
+    PendingDamageScopes.Reset();
     if (auto* Pawn = BoundPawn.Get()) Pawn->ReleaseBinding();
     BoundPawn.Reset(); BoundController.Reset(); BoundEpoch.Invalidate(); AuthorityContext.Invalidate();
     BoundCharacter.Reset(); BoundSteam.Reset(); BoundSession.Reset(); BoundGeneration = 0;

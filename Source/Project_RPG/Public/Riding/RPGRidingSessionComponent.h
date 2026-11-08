@@ -5,6 +5,7 @@
 #include "RPGRidingSessionComponent.generated.h"
 
 class ARPGPlayerState;
+class AController;
 class URPGRidingComponent;
 class URPGRidingPolicy;
 class FRPGRidingSession;
@@ -28,6 +29,7 @@ public:
 private:
     friend class ARPGPlayerState;
     friend class URPGRidingComponent;
+    friend class FRPGRidingDamageScope;
 #if WITH_DEV_AUTOMATION_TESTS
     friend struct FRPGRidingActorTestAccess;
 #endif
@@ -45,6 +47,7 @@ private:
     int64 BoundGeneration = 0;
     FGuid BoundEpoch;
     FGuid AuthorityContext;
+    TSet<FGuid> PendingDamageScopes;
     TFunction<bool()> ValidateAdmission;
     UPROPERTY(EditDefaultsOnly, Category="Riding") TObjectPtr<URPGRidingPolicy> Policy;
     UPROPERTY(Replicated) FRPGRidingOwnerState OwnerState;

@@ -1,7 +1,7 @@
 # Riding 코드 설계 — M1 상태·세션·탑승 기반
 
 - 작성: 2026-11-06 / 담당: `riding-code-design-20261106`
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 수동 능력·공격 입력 차단/소모품 준비 상호 배제 구현. 이동/기존 권한 폐기 실패는14절, 구역은15절, 능력/입력은16절, 소모품은17절의 검증 범위를 따른다. 제품 보유 API·피격 전투 잠금·Dash/Emote·실제 맵/다인 검증은 후속이다.**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 수동 능력·공격 입력 차단/소모품 준비 상호 배제·적대 피해 결과 연결 구현. 이동/기존 권한 폐기 실패는14절, 구역은15절, 능력/입력은16절, 소모품은17절, 피해는18절의 검증 범위를 따른다. 제품 보유 API·승인 제어 결과 잠금·Dash/Emote·실제 맵/다인 검증은 후속이다.**
 - 기준: [기능 계약](RIDING_SYSTEM_DESIGN.md), [아키텍처와 HUD 인계](RIDING_SYSTEM_ARCHITECTURE.md), 게시 `d546e392`의 관련 기존 소스. 재개 시 게시 HEAD `2971c97c`와 별도 담당의 미커밋 `Docs/ACTION_BAR_CONTEXT.md`/`UI/ActionBar` 계약을 추가 대조했다. 공용 코드의 빌드/검증 완료 주장은 아니다.
 - 목적: 첫 구현에서 만들 타입, 접근 제한, 판정 순서, 상태 수명, 검사 기준을 정한다. M2 액션 실행/M3 영속 저장은 포트만 정의하고 구현 완료로 취급하지 않는다.
 
@@ -467,3 +467,20 @@ CMC는 기존 도보 속도/제약 계산과 SavedMove·packed move/response가 
 최종 근거는 `Saved/BuildChecks/RidingConsume-20261108/Completion.json`이다. 게시 `88e1021d`+본인 고정 입력의 native `6124b3dbe0f84b80ab8d86372cca636b`에서 UHT/27단계 빌드·링크0·같은 `5ED76BCA…AEC47B55` DLL의 기존23+소비4 **27 Success·검사 오류/경고0·UE0**을 확인했다. `Integration-d8fb28475a594fd981083ac60e2ca054`의 전체 프로젝트 UHT/실제 CPP3 컴파일0이며 두 최종 cohort의 고유 입력37 SHA가 현재 원본과 일치했다. 이후 게시된 ActionBar 배치 변경은 이 cohort의 실행 입력에 포함하지 않았다.
 
 첫 CPP3 컴파일은 standalone 헤더의 `FWeakObjectPtr` 정의 누락으로 실패했다. 명시 include 보완 이전의 첫 native27은 Success였지만 최종 소스 일치 gate가 실패했으므로 위 최종27/CPP3와 구분한다. 자기4회 사본/PCH/OBJ/DLL/PDB/runtime/cache **5,705,891,837 bytes(약5.31GiB)**를 finally 정리했고 실행/Temp/새 정리 예외0이다. 원본 DLL·에셋·공유 출력/trace/cache·타 담당 변경과 이전 로그 예외는 보존했다. 작은 결과/명령/해시/필요 로그만 남겼으며 폐기한 DLL 해시는 당시 증거다.
+
+## 18. M2 적대 피해 결과와 탑승 전투 잠금 — 2026-11-09
+
+[DamageScope](../Source/Project_RPG/Public/Riding/RPGRidingDamageScope.h)는 기존 AttributeSet의 최종 TakeDamage 적용에서 보호막 흡수와 HP setter 전에 시작하는 서버 stack scope다. 기존 일반 피해/화상 틱의 승인·면역·수치 검사를 변경하지 않고 그 뒤의 실제 HP 손실/보호막 흡수 결과만 소비한다. HP 변화 delegate만으로 공격자를 추측하거나 GE/SetByCaller에 새 승인 bool을 넣지 않는다.
+
+- 현재 Source/Target ASC와 원래 Pawn·같은 서버 World를 검증한다. 적대성은 기존 `RPGCombatFunctionLibrary::IsTargetPawnHostile`와 같은 양측 Controller의 GenericTeamId 불일치 규칙이다. 자기 자신/아군/팀 인터페이스 없음·클라이언트/분리 ASC는 전투 잠금의 근거가 되지 않는다. 기존 전투 적용을 취소하는 새 피해 필터는 아니다.
+- 원래 PlayerState의 현재 인증 Context에 유일 토큰을 예약한다. 보호막/HP callback이 끝나기 전 탑승·교체를 거절한다. 같은 세션의 Pawn 교체에도 예약이 남고, 인증 신원/입장 세대 교체는 자기 토큰을 초기화한다. 이전 scope의 늦은 Complete/소멸이 새 Context의 예약·잠금을 변경하지 않는다. 정상 도보·기존 탑승 이동과 명시 하차는 이 임시 예약 때문에 취소하지 않는다.
+- 유한·음수 아님·하나 이상 양수인 실제 HP 손실/보호막 흡수가 확인되면 양측의 기존 `RecordApprovedHostileOutcome`를 같은 단조 시각으로 먼저 기록한다. 정책의10초 잠금을 유지/연장하고 소유자 기한을 발행한 뒤, 원래 Riding Epoch에만 Hit 하차를 요청한다. 공격자의 탑승 중 잔존 공격과 보호막이 전부 흡수한 적중도 포함한다. 이후 유효 DoT 틱은 각 최종 적용의 별도 scope로 잠금을 갱신한다.
+- 중첩 scope마다 자기 토큰만 해제하며 Complete는 한 번만 소비한다. 결과0/잘못된 값/중도 반환은 영구 잠금을 만들지 않는다. 기존 승인 receipt/효과 재생 방지와 피해·제어·죽음 처리는 기존 경로가 담당하며 새 범용 적중 ledger를 추가하지 않는다. 죽음이 HP callback에서 먼저 처리돼도 원래 인증 세션의 전투 잠금은 남아 재생성 Pawn의 즉시 탑승을 막는다.
+
+`Run-RidingFoundationTests.ps1 -IncludeDamage -IncludeConsume -IncludeAbilities -IncludeWorld`는 실제 native scope와 Riding Actor의 양측 하차/10초 기한, HP·보호막 결과, 첫 하차 callback의 상대 탑승 거절, 중첩/무결과·기존 이동 유지, 팀/권한·ASC와 Pawn/신원 교체를 검사한다. 실제 게임 AttributeSet/Shield/일반 피해·화상 GE 파이프라인을 실행한 결과와 구분한다. `Run-RidingIntegrationCompile.ps1 -IncludeDamage`는 게시 전체 프로젝트의 UHT와 실제 AttributeSet/Component/SessionComponent/DamageScope CPP4를 컴파일하며 전체 게임 DLL 링크·실제 HP/보호막/화상/다인 RPC·HTTP/PG 실행을 뜻하지 않는다.
+
+승인 제어 성공만으로 생기는 잠금/즉시 하차는 다음 경계다. 기존 제어 태그의 Tick 가드는 유지하지만 이를 성공 결과 알림 완료로 표시하지 않는다. 제품 보유 API의 NotReady, Dash/Emote·실제 맵/네트워크 검증도 후속이다.
+
+최종 근거는 `Saved/BuildChecks/RidingDamage-20261109/Completion.json`이다. native `660e8492ff6745af99f9eb789b1cbc7d`는 게시 `7aa3f48f`+본인 고정 입력의 UHT/29단계 빌드·링크0·같은 `4B9C94B1…22F6FBF9` DLL에서 기존27+피해4 **31 Success·검사 오류/경고0·UE0**이다. `Integration-26f2d161791e4eb8948106176d3bc3a8`는 게시 `def31e2e`+본인 고정 입력의 전체 UHT/실제 CPP4 컴파일0이다. 두 게시본 차이는 Backend/운영툴뿐이며 Source/Config/Plugins 차이0·최종 고유 입력41 SHA와 러너2 SHA가 현재 원본과 일치했다.
+
+첫 집중 컴파일은 기존 세션 헤더의 `AController` 전방 선언 누락으로 실패했다. 전방 선언과 양수 피해 입력 검사 보완 이전의 첫 native31은 모두 Success였지만 최종 입력 gate가 실패했으므로 위 최종31과 구분한다. 자기4회 사본/PCH/OBJ/DLL/PDB/runtime/cache **5,735,936,504 bytes(약5.34GiB)**를 finally 정리했고 실행/Temp/새 정리 예외0이다. 원본 DLL·에셋·공유 출력/trace/cache·타 담당 변경과 이전 로그 예외는 보존했다. 작은 결과/명령/해시/필요 로그만 남겼으며 폐기한 DLL 해시는 당시 증거다.

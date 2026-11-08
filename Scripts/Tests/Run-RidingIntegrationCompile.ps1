@@ -1,10 +1,10 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $run=[Guid]::NewGuid().ToString('N')
-$proofFolder = if ($IncludeConsume) { 'RidingConsume-20261108' } elseif ($IncludeAbilities) { 'RidingAbilityGate-20261108' } elseif ($IncludeWorld) { 'RidingRegions-20261108' } elseif ($IncludePresentation) { 'RidingPresentation-20261108' } else { 'RidingActors-20261106' }
-$reservation = if ($IncludeConsume) { 'riding-consume-20261108' } elseif ($IncludeAbilities) { 'riding-ability-gate-20261108' } elseif ($IncludeWorld) { 'riding-regions-20261108' } elseif ($IncludePresentation) { 'riding-presentation-20261108' } else { 'riding-actors-20261106' }
+$proofFolder = if ($IncludeDamage) { 'RidingDamage-20261109' } elseif ($IncludeConsume) { 'RidingConsume-20261108' } elseif ($IncludeAbilities) { 'RidingAbilityGate-20261108' } elseif ($IncludeWorld) { 'RidingRegions-20261108' } elseif ($IncludePresentation) { 'RidingPresentation-20261108' } else { 'RidingActors-20261106' }
+$reservation = if ($IncludeDamage) { 'riding-damage-20261109' } elseif ($IncludeConsume) { 'riding-consume-20261108' } elseif ($IncludeAbilities) { 'riding-ability-gate-20261108' } elseif ($IncludeWorld) { 'riding-regions-20261108' } elseif ($IncludePresentation) { 'riding-presentation-20261108' } else { 'riding-actors-20261106' }
 $proofRoot=Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/Integration-'+$run)
 $tempRoot=Join-Path $workspace 'Saved/RF'
 $temp=Join-Path $tempRoot $run.Substring(0,8)
@@ -68,6 +68,11 @@ try {
         $files=@('Source/Project_RPG/Public/Riding/RPGRidingConsumeLease.h','Source/Project_RPG/Private/Riding/RPGRidingConsumeLease.cpp',
             'Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Component/RPGItemCommandComponent.cpp')
     }
+    if ($IncludeDamage) {
+        $files=@('Source/Project_RPG/Public/Riding/RPGRidingDamageScope.h','Source/Project_RPG/Private/Riding/RPGRidingDamageScope.cpp',
+            'Source/Project_RPG/Public/Riding/RPGRidingSessionComponent.h','Source/Project_RPG/Private/Riding/RPGRidingSessionComponent.cpp',
+            'Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Attribute/RPGAttributeSet.cpp')
+    }
     foreach($relative in $files) {
         $source=Join-Path $workspace $relative
         $destination=Join-Path $project $relative
@@ -85,6 +90,7 @@ try {
     if ($IncludeWorld) { $compile=@('Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Riding/RPGRidingWorldPolicy.cpp','Source/Project_RPG/Private/Riding/RPGRidingRegionVolume.cpp') }
     if ($IncludeAbilities) { $compile=@('Source/Project_RPG/Private/Component/RPGAbilitySystemComponent.cpp','Source/Project_RPG/Private/Ability/RPGGameplayAbility.cpp','Source/Project_RPG/Private/Riding/RPGRidingAbilityGate.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp') }
     if ($IncludeConsume) { $compile=@('Source/Project_RPG/Private/Component/RPGItemCommandComponent.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Riding/RPGRidingConsumeLease.cpp') }
+    if ($IncludeDamage) { $compile=@('Source/Project_RPG/Private/Attribute/RPGAttributeSet.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Riding/RPGRidingSessionComponent.cpp','Source/Project_RPG/Private/Riding/RPGRidingDamageScope.cpp') }
     [IO.File]::WriteAllLines($fileList,@($compile|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
     $dotnet=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
     $ubt=Join-Path $EngineRoot 'Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll'

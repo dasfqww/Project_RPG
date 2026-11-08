@@ -2,6 +2,7 @@
 
 #include "Attribute/RPGAttributeSet.h"
 #include "Component/Combat/RPGShieldComponent.h"
+#include "Riding/RPGRidingDamageScope.h"
 #include "AI/RPGBossAIComponent.h"
 #include "GameplayEffectExtension.h"
 #include "GameplayEffectAggregator.h"
@@ -223,12 +224,17 @@ void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		//}
 
 		const auto* ShieldAvatar = Data.Target.GetAvatarActor();
+		FRPGRidingDamageScope RidingDamage(Data.EffectSpec.GetContext().GetOriginalInstigatorAbilitySystemComponent(), &Data.Target);
 		auto* Shield = ShieldAvatar ? ShieldAvatar->FindComponentByClass<URPGShieldComponent>() : nullptr;
 		const float HealthDamage = Shield ? Shield->AbsorbDamage(takeDamage) : static_cast<float>(takeDamage);
 		const float NewCurrentHealth = FMath::Clamp(prevHealth - HealthDamage, 0.f, GetMaxHealth());
 
 		SetCurrentHealth(NewCurrentHealth);
 	
+		if (takeDamage > 0 && FMath::IsFinite(prevHealth) && prevHealth > 0.f)
+			RidingDamage.Complete(FMath::Max(0.f, prevHealth - NewCurrentHealth),
+				FMath::Max(0.f, static_cast<float>(takeDamage) - HealthDamage));
+
 		/*const FString DebugString = FString::Printf(
 			TEXT("prev Health: %f, TakeDamage: %d, NewCurrentHealth: %f"),
 			prevHealth,

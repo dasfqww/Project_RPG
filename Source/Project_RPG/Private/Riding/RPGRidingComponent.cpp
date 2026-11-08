@@ -227,6 +227,7 @@ void URPGRidingComponent::ServerSetRiding_Implementation(FRPGRidingSetCommand Co
     {
         FRPGRidingEvaluationContext Context;
         BuildGuards(Context);
+        Context.bActionBlocked |= S->PendingDamageScopes.Num() > 0;
         FRPGRidingAdmissionSnapshot Owned;
         if (Command.bDesiredMounted && S->Runtime->CopySnapshot(Owned))
         {
