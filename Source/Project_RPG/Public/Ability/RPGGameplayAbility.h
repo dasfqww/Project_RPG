@@ -14,6 +14,7 @@
 #include "Combat/RPGHitReactionTypes.h"
 #include "Abilities/GameplayAbility.h"
 #include "Type/RPGEnumTypes.h"
+#include "Riding/RPGRidingAbilityPolicy.h"
 #include "RPGGameplayAbility.generated.h"
 
 class UPawnCombatComponent;
@@ -45,11 +46,12 @@ enum class ERPGGladiatorAbilityActivationPolicy : uint8
  * 
  */
 UCLASS()
-class PROJECT_RPG_API URPGGameplayAbility : public UGameplayAbility
+class PROJECT_RPG_API URPGGameplayAbility : public UGameplayAbility, public IRPGRidingAbilityPolicy
 {
 	GENERATED_BODY()
 
 public:
+    virtual bool IsAutomaticRidingExempt() const override { return ActivatesOnGrant(); }
 	/** Server-local execution identity; never a client-issued immunity permit. */
 	FGuid GetCombatExecutionId() const { return CombatExecutionId; }
 	bool CanUseMontageImmunity() const;

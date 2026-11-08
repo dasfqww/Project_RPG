@@ -2,6 +2,7 @@
 
 
 #include "Ability/RPGGameplayAbility.h"
+#include "Riding/RPGRidingAbilityGate.h"
 #include "AI/RPGBossAIComponent.h"
 #include "Combat/RPGCombatControlTypes.h"
 #include "Component/Combat/RPGCombatControlComponent.h"
@@ -25,6 +26,7 @@ bool URPGGameplayAbility::CanActivateAbility(
 	const FGameplayTagContainer* TargetTags,
 	FGameplayTagContainer* OptionalRelevantTags) const
 {
+    if (ActorInfo && FRPGRidingAbilityGate::IsBlocked(ActorInfo->AvatarActor.Get(), this)) return false;
 	if (ActorInfo && IsHitReactionAbility()
 		&& RPGCombatImmunity::IsImmune(ActorInfo->AvatarActor.Get(), ERPGCombatEffectKind::HitReaction)) return false;
 	if (AutomaticallyApplyActivationImmunity() && ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())

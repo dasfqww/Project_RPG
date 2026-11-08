@@ -8,6 +8,7 @@
 #include "Type/RPGStructTypes.h"
 #include "Security/RPGTargetDataAdmission.h"
 #include "Security/RPGServerRequestBudget.h"
+#include "Riding/RPGRidingAbilityGate.h"
 #include "RPGAbilitySystemComponent.generated.h"
 
 class ARPGPlayerState;
@@ -94,6 +95,7 @@ protected:
 	virtual void AbilitySpecInputReleased(FGameplayAbilitySpec& Spec) override;
 
 private:
+    FRPGRidingAbilityGate RidingAbilityGate;
 	friend struct FRPGRpcIngressTestAccess;
 	bool AdmitGenericReplicatedEvent(EAbilityGenericReplicatedEvent::Type EventType,
 		FGameplayAbilitySpecHandle Handle, FPredictionKey OriginalKey);

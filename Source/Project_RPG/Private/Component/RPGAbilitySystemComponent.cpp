@@ -57,6 +57,7 @@ void URPGAbilitySystemComponent::ClientTryActivateAbility_Implementation(
 
 void URPGAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor)
 {
+    if (GetOwnerActor() != InOwnerActor || GetAvatarActor() != InAvatarActor) RidingAbilityGate.Reset();
 	if (AActor* OldAvatar = GetAvatarActor(); IsValid(OldAvatar) && OldAvatar != InAvatarActor)
 		if (auto* Control = OldAvatar->FindComponentByClass<URPGCombatControlComponent>()) Control->ResetForAvatarReuse();
 	if (GetOwner() && (InOwnerActor != GetOwner() || InAvatarActor != GetOwner()))
@@ -77,6 +78,7 @@ void URPGAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AAct
 
 void URPGAbilitySystemComponent::ClearActorInfo()
 {
+    RidingAbilityGate.Reset();
 	if (AActor* Avatar = GetAvatarActor(); IsValid(Avatar))
 		if (auto* Control = Avatar->FindComponentByClass<URPGCombatControlComponent>()) Control->ResetForAvatarReuse();
 	if (GetOwner())
@@ -202,7 +204,8 @@ void URPGAbilitySystemComponent::OnAbilityInputPressed(const FGameplayTag& InInp
 		return;
 	}
 
-	for (FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
+    if (RidingAbilityGate.ConsumeTagPress(*this, InInputTag)) return;
+    for (FGameplayAbilitySpec& AbilitySpec : GetActivatableAbilities())
 	{
 		if (!AbilitySpec.GetDynamicSpecSourceTags().HasTagExact(InInputTag)) continue;
 		if (RPGCombatControl::IsActionBlocked(GetAvatarActor()) && RPGCombatControl::IsStunAffectedAbility(AbilitySpec.Ability)) continue;
@@ -220,6 +223,7 @@ void URPGAbilitySystemComponent::OnAbilityInputPressed(const FGameplayTag& InInp
 
 void URPGAbilitySystemComponent::OnAbilityInputReleased(const FGameplayTag& InInputTag)
 {
+    RidingAbilityGate.ReleaseTag(*this, InInputTag);
 	if (IsDungeonGameplayRevoked(GetOwner()) || !InInputTag.IsValid())
 	{
 		return;
@@ -243,8 +247,8 @@ void URPGAbilitySystemComponent::OnAbilitySpecInputPressed(
 	{
 		return;
 	}
-
-	if (RPGCombatControl::IsActionBlocked(GetAvatarActor()) && RPGCombatControl::IsStunAffectedAbility(AbilitySpec->Ability)) return;
+    if (RidingAbilityGate.ConsumeSpecPress(*this, SpecHandle)) return;
+    if (RPGCombatControl::IsActionBlocked(GetAvatarActor()) && RPGCombatControl::IsStunAffectedAbility(AbilitySpec->Ability)) return;
 	AbilitySpec->InputPressed = true;
 	if (AbilitySpec->IsActive())
 	{
@@ -258,6 +262,7 @@ void URPGAbilitySystemComponent::OnAbilitySpecInputPressed(
 void URPGAbilitySystemComponent::OnAbilitySpecInputReleased(
 	const FGameplayAbilitySpecHandle SpecHandle)
 {
+    RidingAbilityGate.ReleaseSpec(*this, SpecHandle);
 	if (IsDungeonGameplayRevoked(GetOwner())) return;
 	FGameplayAbilitySpec* AbilitySpec = FindAbilitySpecFromHandle(SpecHandle);
 	if (!AbilitySpec)

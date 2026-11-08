@@ -1,7 +1,7 @@
 # Riding 코드 설계 — M1 상태·세션·탑승 기반
 
 - 작성: 2026-11-06 / 담당: `riding-code-design-20261106`
-- 상태: **M1a 값 로직·Actor 연결과 M1b 기본 외형·CMC 이동/예측·권위 보정·서버 기본 구역 판정 구현. 이동36개/기존 권한 폐기1 실패는14절, 구역 검증은15절을 따른다. 제품 보유 snapshot/API·실제 맵 배치·다인 네트워크 검증은 후속이다.**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 수동 능력·공격 입력 차단 구현. 이동/기존 권한 폐기 실패는14절, 구역은15절, 능력/입력 검증은16절을 따른다. 제품 보유 API·피격 전투 잠금·Dash/Emote·실제 맵/다인 검증은 후속이다.**
 - 기준: [기능 계약](RIDING_SYSTEM_DESIGN.md), [아키텍처와 HUD 인계](RIDING_SYSTEM_ARCHITECTURE.md), 게시 `d546e392`의 관련 기존 소스. 재개 시 게시 HEAD `2971c97c`와 별도 담당의 미커밋 `Docs/ACTION_BAR_CONTEXT.md`/`UI/ActionBar` 계약을 추가 대조했다. 공용 코드의 빌드/검증 완료 주장은 아니다.
 - 목적: 첫 구현에서 만들 타입, 접근 제한, 판정 순서, 상태 수명, 검사 기준을 정한다. M2 액션 실행/M3 영속 저장은 포트만 정의하고 구현 완료로 취급하지 않는다.
 
@@ -433,3 +433,20 @@ CMC는 기존 도보 속도/제약 계산과 SavedMove·packed move/response가 
 최종 근거는 `Saved/BuildChecks/RidingRegions-20261108/Completion.json`이다. 게시 `fb5b0176`+본인 고정 입력의 native `c82c4915e02b4706ac687c7b543720f6`에서 UHT/23단계 빌드·링크0·같은 `A2376D59…422571A` DLL의 기존15+구역4 **19 Success·검사 오류/경고0·UE0**, 하차 callback의 위치 변경 후 과거 이동 비율 무효화까지 확인했다. `Integration-50f16a9e8e07444e9e4def2fa4f10c99`는 전체 프로젝트 UHT/실제 CPP4 컴파일0이며 실행 DLL을 만들지 않았다. 두 최종 cohort의 고유 입력30 SHA가 현재 원본과 모두 일치했다.
 
 첫 native19는 모두 Success였지만 월드 컨텍스트 없는 DestroyActor 경고6으로 strict gate가 실패했다. 컨텍스트 보완 후 두 번째19는 오류/경고0이었으나 검증 도중 보강한 callback 보호와 소스가 달라 input gate가 실패했다. 위 마지막19를 별도 최종 근거로 사용하며 앞선 통과 컴파일도 당시 소스와 구분한다. 자기6회 사본/PCH/OBJ/DLL/PDB/runtime/cache **8,537,945,925 bytes(약7.95GiB)**를 finally 폐기했고 실행/Temp/새 정리 예외0이다. 원본 DLL·에셋·공유 출력/trace/cache·이전 로그 정리 예외·타 담당 소스는 보존했고, 작은 결과/명령/해시/원인 로그만 남겼다. 폐기한 DLL 해시는 당시 증거다.
+
+## 16. M2 수동 능력과 공격 입력 차단 — 2026-11-08
+
+[AbilityGate](../Source/Project_RPG/Public/Riding/RPGRidingAbilityGate.h)는 현재 정규 Mounted 상태를 조회한다. 기존 `URPGGameplayAbility::CanActivateAbility`가 이 정책을 호출하므로 해당 계열의 직접 GAS/서버 활성화도 탑승 중 거절한다. 공용 입력 호스트를 새로 만들지 않고 기존 ASC의 태그/핸들 Press·Release 경로에 같은 입력 게이트를 연결했다.
+
+- 비로컬 수동 능력은 태그가 없어도 차단한다. 자동 지급/OnSpawn 패시브는 native `IRPGRidingAbilityPolicy`가 기존 ActivatesOnGrant 정책으로 분류한다. Blueprint/클라이언트가 이 인터페이스를 별도로 구현하거나 권한 bool을 전달하지 않는다. 기존 LocalOnly 표시·사망·순수 TargetLock은 유지하며, TargetLock과 공격 태그를 섞어 수동 전투 차단을 우회하지 않는다. 미래 Riding 전용 native 능력의 분류 포트도 정의했으나 Dash/Emote를 구현한 것은 아니다.
+- 이미 활성화된 수동 능력과 강제 HitReact는 새 탑승을 거절한다. 활성 패시브는 탑승을 막지 않는다. HitReact 자체의 실행은 거절하지 않아 Riding이 새 피격 면역을 주지 않는다. 기존 제어/면역 판정, 패시브·버프/디버프·능력 grant를 취소하거나 제거하지 않는다.
+- 일반 공격의 태그 입력이나 공격 spec의 직접 핸들 입력은 기존 `RequestSetMounted(false)`만 호출하고 그 Press를 소비한다. 기존 서버의 binding/revision/ledger/예산 검사가 그대로 적용된다. Listen Server에서 하차가 동기 완료돼도 같은 호출에서 공격을 이어서 실행하지 않는다. 커스텀 공격 키나 같은 키에 연결된 여러 spec도 하차 전에 먼저 표시해 두 번째 spec의 활성화를 막는다.
+- 소비한 입력의 spec/tag와 거절한 수동 스킬 입력은 Release까지 억제하며 InputPressed를 남기지 않는다. 서버 거절·지연 후 자동 재생하지 않는다. 실제 새 입력 이후에만 기존 도보 경로로 진행한다. Avatar/Epoch/ActorInfo 교체·해제는 자기 입력 억제 상태를 초기화하고, 제거된 spec의 핸들도 정리한다. 물리 키/프로필 세대별 취소는 기존 공용 호스트가 담당한다.
+
+제품 보유 API의 NotReady/비공개 경계를 유지한다. 이 단위는 소모품 커밋/미확정 복구, 실제 피해·보호막/제어 결과의 전투 잠금 갱신·즉시 하차, Dash RMS/Emote 실행을 추가하지 않는다. 새로 저작하는 별도 GAS 능력은 기존 RPG 능력 기반과 이 native 분류/활성화 계약을 사용해야 한다.
+
+`Run-RidingFoundationTests.ps1 -IncludeAbilities -IncludeWorld`는 기반/세션/Actor/구역과 공통 정책의 GAS fixture를 최소 모듈로 실행한다. fixture의 실제 GAS 활성화/거절·실제 Riding 하차 요청과 입력 억제 정책을 검증하며 실제 게임 ASC/URPGGameplayAbility 구현을 실행한 결과는 아니다. `Run-RidingIntegrationCompile.ps1 -IncludeAbilities`는 게시 전체 사본의 UHT와 실제 ASC/기본 능력/게이트/탈것 컴포넌트 CPP4를 컴파일한다. 전체 게임 DLL 링크·다인 RPC·저장된 실제 입력 에셋/HUD 시연과 구분한다.
+
+최종 근거는 `Saved/BuildChecks/RidingAbilityGate-20261108/Completion.json`이다. 게시 `19965ce7`와 본인 고정 입력의 native `2e823126faa1454e991aee8fb5b86547`에서 UHT/25단계 빌드·링크0·같은 `39CE6CEB…98ADD63` DLL의 기존19+능력/입력4 **23 Success·검사 오류/경고0·UE0**을 확인했다. `Integration-78a6a693a7214024b4300f174444e0b3`의 전체 프로젝트 UHT/실제 CPP4 컴파일0·고유 입력37 SHA 일치다. 기본 능력에 원래 있던 NonInstanced 폐기 예정 API 컴파일 경고는 별도이며 무경고 전체 게임 빌드로 표시하지 않는다.
+
+첫 native23도 통과했으나 이후 공유 입력 그룹의 핸들 Release 균형을 보완했다. 위 최종23은 그 보완까지 포함한 소스이며 첫 결과/컴파일과 구분한다. 자기4회 사본/PCH/OBJ/DLL/PDB/runtime/cache **5,735,603,207 bytes(약5.34GiB)**를 finally 정리했고 실행/Temp/새 정리 예외0이다. 원본 DLL·에셋·공용 출력/trace/cache·타 담당 소스와 이전 로그 예외는 보존했다. 작은 결과/명령/해시/필요 로그만 남겼으며 DLL 해시는 폐기된 당시 증거다.

@@ -1,15 +1,15 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation, [switch]$IncludeWorld)
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
 if ($IncludePresentation) { $IncludeActors = $true }
-if ($IncludeWorld) { $IncludeActors = $true }
+if ($IncludeWorld -or $IncludeAbilities) { $IncludeActors = $true }
 if ($IncludeActors) { $IncludeSession = $true }
-$suite = if ($IncludeWorld) { 'RidingRegions' } elseif ($IncludePresentation) { 'RidingPresentation' } elseif ($IncludeActors) { 'RidingActors' } elseif ($IncludeSession) { 'RidingSession' } else { 'RidingFoundation' }
-$reservation = if ($IncludeWorld) { 'riding-regions-20261108' } elseif ($IncludePresentation) { 'riding-presentation-20261108' } elseif ($IncludeActors) { 'riding-actors-20261106' } elseif ($IncludeSession) { 'riding-session-20261106' } else { 'riding-foundation-20261106' }
+$suite = if ($IncludeAbilities) { 'RidingAbilityGate' } elseif ($IncludeWorld) { 'RidingRegions' } elseif ($IncludePresentation) { 'RidingPresentation' } elseif ($IncludeActors) { 'RidingActors' } elseif ($IncludeSession) { 'RidingSession' } else { 'RidingFoundation' }
+$reservation = if ($IncludeAbilities) { 'riding-ability-gate-20261108' } elseif ($IncludeWorld) { 'riding-regions-20261108' } elseif ($IncludePresentation) { 'riding-presentation-20261108' } elseif ($IncludeActors) { 'riding-actors-20261106' } elseif ($IncludeSession) { 'riding-session-20261106' } else { 'riding-foundation-20261106' }
 $testFilter = if ($IncludeSession) { 'ProjectRPG.Riding' } else { 'ProjectRPG.Riding.Foundation' }
-$proofDate = if ($IncludePresentation -or $IncludeWorld) { '20261108' } else { '20261106' }
+$proofDate = if ($IncludePresentation -or $IncludeWorld -or $IncludeAbilities) { '20261108' } else { '20261106' }
 $proofRoot = Join-Path $workspace ('Saved/BuildChecks/' + $suite + '-' + $proofDate + '/' + $id)
 $tempRoot = Join-Path $workspace 'Saved/RF'
 $temp = Join-Path $tempRoot $id.Substring(0,8)
@@ -52,11 +52,13 @@ try {
     }
     if ($IncludeActors) {
         $files += @('Source/Project_RPG/Private/Tests/RPGRidingActorTests.h','Source/Project_RPG/Private/Tests/RPGRidingActorTests.cpp','Source/Project_RPG/Public/Component/PawnExtensionComponentBase.h','Source/Project_RPG/Private/Component/PawnExtensionComponentBase.cpp')
-        foreach ($name in @('RPGRidingSessionComponent','RPGRidingComponent','RPGRidingWorldPolicy','RPGRidingRegionVolume')) {
+        foreach ($name in @('RPGRidingSessionComponent','RPGRidingComponent','RPGRidingWorldPolicy','RPGRidingRegionVolume','RPGRidingAbilityGate')) {
             $files += 'Source/Project_RPG/Public/Riding/' + $name + '.h'
             $files += 'Source/Project_RPG/Private/Riding/' + $name + '.cpp'
         }
     }
+    if ($IncludeActors) { $files += 'Source/Project_RPG/Public/Riding/RPGRidingAbilityPolicy.h' }
+    if ($IncludeAbilities) { $files += @('Source/Project_RPG/Private/Tests/RPGRidingAbilityTests.h','Source/Project_RPG/Private/Tests/RPGRidingAbilityTests.cpp') }
     if ($IncludeWorld) { $files += 'Source/Project_RPG/Private/Tests/RPGRidingWorldTests.cpp' }
     if ($IncludePresentation) {
         $files += @('Source/Project_RPG/Public/Riding/RPGRidingPresentationComponent.h','Source/Project_RPG/Private/Riding/RPGRidingPresentationComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingPresentationTests.cpp')
@@ -79,12 +81,18 @@ try {
         $cuePath = if ($IncludePresentation) { '/Game/GreatswordComboPack' } else { '/Game/' }
         Write-Utf8 (Join-Path $project 'Config/DefaultGame.ini') ("[/Script/GameplayAbilities.AbilitySystemGlobals]`n+GameplayCueNotifyPaths="+$cuePath+"`n")
     }
-    if ($IncludeWorld) {
+    if ($IncludeWorld -or $IncludeAbilities) {
         Write-Utf8 (Join-Path $project 'Config/DefaultGameplayTags.ini') @'
 [/Script/GameplayTags.GameplayTagsSettings]
 ImportTagsFromConfig=True
 +GameplayTagList=(Tag="Riding.Test.A",DevComment="Test only")
 +GameplayTagList=(Tag="Riding.Test.B",DevComment="Test only")
++GameplayTagList=(Tag="Player.Ability.Attack.Test",DevComment="Test only")
++GameplayTagList=(Tag="Player.Ability.TargetLock",DevComment="Test only")
++GameplayTagList=(Tag="Shared.Ability.Death",DevComment="Test only")
++GameplayTagList=(Tag="Shared.Ability.HitReact",DevComment="Test only")
++GameplayTagList=(Tag="InputTag.LightAttack.Test",DevComment="Test only")
++GameplayTagList=(Tag="InputTag.CustomAttack",DevComment="Test only")
 '@
     }
     Write-Utf8 (Join-Path $project 'Source/RidingFoundationEditor.Target.cs') @'
@@ -162,6 +170,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingFounda
     if ($IncludeWorld) {
         $expected += @('DefaultAndLifecycle','SweptPath','RestrictionIntersection','AuthorityTransitions') | ForEach-Object {'ProjectRPG.Riding.World.'+$_}
     }
+    if ($IncludeAbilities) { $expected += @('Classification','GASActivation','AttackPressAndRelease','SharedInputAndSkill') | ForEach-Object {'ProjectRPG.Riding.Ability.'+$_} }
     if ((Compare-Object $expected @($proof.Tests.fullTestPath)) -or @($proof.Tests | Where-Object {$_.state -ne 'Success' -or $_.errors -ne 0 -or $_.warnings -ne 0}).Count) { throw 'Missing or failing native cases' }
     foreach ($inputFile in $proof.Inputs) {
         if ((Get-FileHash -LiteralPath (Join-Path $workspace $inputFile.Path)).Hash -ne $inputFile.SHA256) { throw 'Original source changed during validation' }
