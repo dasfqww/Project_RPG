@@ -3,11 +3,13 @@
 #include "Component/PawnExtensionComponentBase.h"
 #include "Riding/RPGRidingTypes.h"
 #include "Riding/RPGRidingDashAdmission.h"
+#include "GameplayAbilitySpecHandle.h"
 #include "RPGRidingComponent.generated.h"
 
 class URPGMountDefinition;
 class URPGRidingSessionComponent;
 class URPGPlayerMovementComponent;
+class UAbilitySystemComponent;
 struct FRPGRidingDecision;
 struct FRPGRidingEvaluationContext;
 class FRPGRidingDashRuntime;
@@ -30,6 +32,9 @@ public:
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const override;
     UFUNCTION(BlueprintPure, Category="Riding") FRPGRidingRepState GetRidingState() const { return State; }
     UFUNCTION(BlueprintCallable, Category="Riding") void RequestSetMounted(bool bMounted, const FRPGRidingSelector& Selector);
+    /** Requests only the current source-owned GAS spec; GAS performs the owning-client RPC. */
+    UFUNCTION(BlueprintCallable, Category="Riding") bool RequestDash();
+    UFUNCTION(BlueprintPure, Category="Riding") bool CanRequestDash() const;
     /** Native server boundary. Never trusts BP authority metadata or a client-supplied reason. */
     void ForceDismount(ERPGRidingEndReason Reason);
     void RefreshBinding();
@@ -59,6 +64,7 @@ private:
     friend struct FRPGRidingActorTestAccess;
     friend struct FRPGRidingMovementTestAccess;
     friend struct FRPGRidingDashTestAccess;
+    friend struct FRPGRidingDashAbilityTestAccess;
 #endif
     UFUNCTION() void HandleControllerChanged(APawn* Pawn, AController* Old, AController* Current);
     UFUNCTION() void HandleRestarted(APawn* Pawn);
@@ -73,6 +79,10 @@ private:
     bool IsDashCurrent(const FRPGRidingDashTicket& Ticket) const;
     bool MatchesDash(const FRPGRidingDashTicket& Ticket) const;
     bool FinishDash(const FRPGRidingDashTicket& Ticket, ERPGRidingEndReason Reason);
+    void SyncDashAbility();
+    void ReleaseDashAbility();
+    bool OwnsDashAbility(const UAbilitySystemComponent* ASC, FGameplayAbilitySpecHandle Handle) const;
+    FGameplayAbilitySpecHandle FindDashAbility(UAbilitySystemComponent*& OutASC) const;
     void ReleaseBinding();
     void Publish();
     bool Commit(const FRPGRidingDecision& Decision);
@@ -87,6 +97,10 @@ private:
     uint32 LocalRequestSeq = 0;
     bool bEnding = false, bApplying = false;
     bool bPreparingDash = false;
+    bool bSyncingDashAbility = false;
+    TWeakObjectPtr<UAbilitySystemComponent> DashAbilityOwner;
+    FGameplayAbilitySpecHandle DashAbilityHandle;
+    FRPGRidingStateKey DashGrantKey;
     FRPGRidingDashTicket ActiveDash;
     double DashDeadline = 0;
     TUniquePtr<FRPGRidingDashRuntime, FRPGRidingDashRuntimeDeleter> DashRuntime;

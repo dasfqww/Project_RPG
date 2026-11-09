@@ -3,11 +3,14 @@
 #include "UI/ActionBar/RPGActionBarIdentityWidget.h"
 #include "Component/UI/QuickSlotComponent.h"
 #include "Riding/RPGRidingComponent.h"
+#include "Riding/RPGRidingSessionComponent.h"
 #include "Riding/RPGMountDefinition.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
+#include "GameFramework/GameStateBase.h"
 #include "UObject/StrongObjectPtr.h"
 
 #define LOCTEXT_NAMESPACE "RPGRidingActionBar"
@@ -27,6 +30,10 @@ public:
         Profile->CenterLayout.Anchors = FAnchors(.5f, 1.f);
         Profile->CenterLayout.Alignment = FVector2D(.5f, 1.f);
         Profile->CenterLayout.Offsets = FMargin(0.f, -88.f, 240.f, 88.f);
+        FRPGActionBarEntry Dash;
+        Dash.ActionId = TEXT("Dash"); Dash.Label = LOCTEXT("Dash", "질주"); Dash.DisplaySlot = 0;
+        // Pointer/provider input until the existing physical Space binding is integrated.
+        Profile->Actions.Add(Dash);
         FRPGActionBarEntry Entry;
         Entry.ActionId = TEXT("Dismount");
         Entry.Label = LOCTEXT("Dismount", "내리기");
@@ -48,6 +55,23 @@ public:
     virtual const URPGActionBarProfile* GetActionBarProfile() const override { return Profile.Get(); }
     virtual FRPGActionBarActionView ReadAction(FName Id) const override
     {
+        if (Id == TEXT("Dash"))
+        {
+            auto View = ReadAction(TEXT("Dismount"));
+            if (!View.bAvailable) return View;
+            auto* C = Riding.Get();
+            View.bAvailable = C && C->CanRequestDash();
+            View.UnavailableReason = LOCTEXT("DashUnavailable", "현재 질주를 사용할 수 없습니다.");
+            const auto* PS = GetActionBarPawn()->GetPlayerState();
+            const auto* S = PS ? PS->FindComponentByClass<URPGRidingSessionComponent>() : nullptr;
+            const auto* Clock = C->GetWorld()->GetGameState();
+            if (S && Clock)
+            {
+                const double Remaining = S->GetOwnerState().DashEndServerSeconds - Clock->GetServerWorldTimeSeconds();
+                if (FMath::IsFinite(Remaining)) View.CooldownRemaining = static_cast<float>(FMath::Clamp(Remaining, 0., 3600.));
+            }
+            return View;
+        }
         FRPGActionBarActionView View;
         auto* P = GetActionBarPawn();
         auto* PC = Controller.Get();
@@ -78,7 +102,11 @@ public:
     virtual void PressAction(FName Id) override
     {
         if (ReadAction(Id).bAvailable)
-            if (auto* C = Riding.Get()) C->RequestSetMounted(false, FRPGRidingSelector{});
+            if (auto* C = Riding.Get())
+            {
+                if (Id == TEXT("Dash")) C->RequestDash();
+                else if (Id == TEXT("Dismount")) C->RequestSetMounted(false, FRPGRidingSelector{});
+            }
     }
     virtual void ReleaseAction(FName) override {}
 private:

@@ -44,8 +44,10 @@ bool URPGPlayerMovementComponent::MoveUpdatedComponentImpl(const FVector& Delta,
 
 bool URPGPlayerMovementComponent::CanOpenRidingDashWindow() const
 {
-    const auto* S = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGSecurityValidationComponent>() : nullptr;
-    return CharacterOwner && CharacterOwner->HasAuthority() && !IsRevokedOnServer() && S && !S->IsMovementAuthorizationActive();
+    auto* S = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGSecurityValidationComponent>() : nullptr;
+    FString Rejection;
+    return CharacterOwner && CharacterOwner->HasAuthority() && !IsRevokedOnServer() && S
+        && S->CanPerformProtectedAction(TEXT("RidingDash"), false, Rejection) && !S->IsMovementAuthorizationActive();
 }
 FRPGRidingDashWindow URPGPlayerMovementComponent::OpenRidingDashWindow(float Duration, float Distance)
 {

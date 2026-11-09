@@ -7,6 +7,7 @@
 #include "Riding/RPGRidingAbilityGate.h"
 #include "Riding/RPGRidingConsumeLease.h"
 #include "Riding/RPGRidingDashRuntime.h"
+#include "Riding/RPGGameplayAbility_RidingDash.h"
 #include "Components/CapsuleComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
@@ -17,6 +18,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
+#include "GameFramework/GameStateBase.h"
 #include "HAL/PlatformTime.h"
 #include "Net/UnrealNetwork.h"
 #include "Net/Core/PushModel/PushModel.h"
@@ -77,6 +79,8 @@ void URPGRidingComponent::RefreshBinding()
     if (!Pawn || !Pawn->HasAuthority() || bEnding) return;
     if (IsBindingCurrent()) return;
     ReleaseBinding();
+    // Ability-removal callbacks can already establish a fresh binding.
+    if (IsBindingCurrent() || bEnding || !IsValid(Pawn) || Pawn->IsActorBeingDestroyed()) return;
     auto* PS = Pawn->GetPlayerState();
     auto* S = PS ? PS->FindComponentByClass<URPGRidingSessionComponent>() : nullptr;
     if (!S) return;
@@ -95,16 +99,20 @@ void URPGRidingComponent::ReleaseBinding()
     auto* Previous = Session.Get();
     Session.Reset(); Controller.Reset();
     if (Previous) Previous->Unbind(*this, OldEpoch);
-    if (GetOwner() && GetOwner()->HasAuthority() && OldEpoch.IsValid())
+    const bool WasBound = GetOwner() && GetOwner()->HasAuthority() && OldEpoch.IsValid();
+    if (WasBound)
     {
         State = {};
         DashRuntime->ClampAfterStateChange();
-        Publish();
     }
+    ReleaseDashAbility();
+    // A removal callback may have published a new epoch. The old release cannot clear it.
+    if (WasBound && !State.Key.RiderEpoch.IsValid() && !Session.IsValid()) Publish();
 }
 
 void URPGRidingComponent::Publish()
 {
+    SyncDashAbility();
     MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, State, this);
     if (GetOwner()) GetOwner()->ForceNetUpdate();
     const auto Snapshot = State;
@@ -346,9 +354,101 @@ void URPGRidingComponent::TickComponent(float Delta, ELevelTick Tick, FActorComp
 {
     Super::TickComponent(Delta, Tick, Function);
     ValidateServerMovementContext();
+    SyncDashAbility();
     DashRuntime->Tick();
     if (State.Action == ERPGRidingAction::Dash && FPlatformTime::Seconds() >= DashDeadline)
         FinishDash(ActiveDash, ERPGRidingEndReason::Completed);
+}
+
+bool URPGRidingComponent::OwnsDashAbility(const UAbilitySystemComponent* ASC, FGameplayAbilitySpecHandle Handle) const
+{
+    return ASC && IsBindingCurrent() && State.Mode == ERPGRidingMode::Mounted
+        && DashAbilityOwner.Get() == ASC && Handle.IsValid() && DashAbilityHandle == Handle
+        && DashGrantKey.RiderEpoch == State.Key.RiderEpoch && DashGrantKey.StateRevision == State.Key.StateRevision
+        && ASC->GetAvatarActor() == GetOwner();
+}
+
+void URPGRidingComponent::ReleaseDashAbility()
+{
+    auto* ASC = DashAbilityOwner.Get();
+    const auto Handle = DashAbilityHandle;
+    DashAbilityOwner.Reset(); DashAbilityHandle = {}; DashGrantKey = {};
+    const auto* Spec = ASC ? ASC->FindAbilitySpecFromHandle(Handle) : nullptr;
+    if (Spec && Spec->SourceObject.Get() == this && Spec->Ability
+        && Spec->Ability->GetClass() == URPGGameplayAbility_RidingDash::StaticClass()) ASC->ClearAbility(Handle);
+}
+
+void URPGRidingComponent::SyncDashAbility()
+{
+    if (!GetOwner() || !GetOwner()->HasAuthority() || bSyncingDashAbility) return;
+    TGuardValue<bool> Syncing(bSyncingDashAbility, true);
+    const auto ReadyASC = [this]() -> UAbilitySystemComponent*
+    {
+        if (!IsRegistered() || !IsBindingCurrent() || State.Mode != ERPGRidingMode::Mounted
+            || Session->Runtime->GetStatus() != ERPGRidingSessionStatus::Ready) return nullptr;
+        auto* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner(), true);
+        return IsValid(ASC) && ASC->GetAvatarActor() == GetOwner() && ASC->GetWorld() == GetWorld() ? ASC : nullptr;
+    };
+    auto* ASC = ReadyASC();
+    const auto* Current = ASC ? ASC->FindAbilitySpecFromHandle(DashAbilityHandle) : nullptr;
+    if (OwnsDashAbility(ASC, DashAbilityHandle) && Current && !Current->PendingRemove && !Current->RemoveAfterActivation
+        && Current->SourceObject.Get() == this && Current->Ability
+        && Current->Ability->GetClass() == URPGGameplayAbility_RidingDash::StaticClass()) return;
+    ReleaseDashAbility();
+    // Removal can execute arbitrary ability-end delegates and change the binding.
+    ASC = ReadyASC();
+    if (!ASC) return;
+    FGameplayAbilitySpec Spec(URPGGameplayAbility_RidingDash::StaticClass(), 1, INDEX_NONE, this);
+    DashAbilityOwner = ASC; DashAbilityHandle = Spec.Handle; DashGrantKey = State.Key;
+    const auto GrantedHandle = Spec.Handle;
+    ASC->GiveAbility(Spec);
+    if (ReadyASC() != ASC || !OwnsDashAbility(ASC, GrantedHandle)) ReleaseDashAbility();
+}
+
+FGameplayAbilitySpecHandle URPGRidingComponent::FindDashAbility(UAbilitySystemComponent*& OutASC) const
+{
+    OutASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner(), true);
+    if (!IsValid(OutASC) || OutASC->GetAvatarActor() != GetOwner() || OutASC->GetWorld() != GetWorld()) return {};
+    FGameplayAbilitySpecHandle Found;
+    for (const auto& Spec : OutASC->GetActivatableAbilities())
+    {
+        if (Spec.SourceObject.Get() != this || !Spec.Ability
+            || Spec.Ability->GetClass() != URPGGameplayAbility_RidingDash::StaticClass() || Spec.PendingRemove || Spec.RemoveAfterActivation) continue;
+        if (Found.IsValid()) return {}; // Ambiguous replicated grants fail closed.
+        Found = Spec.Handle;
+    }
+    return Found;
+}
+
+bool URPGRidingComponent::CanRequestDash() const
+{
+    const auto* Pawn = Cast<APawn>(GetOwner());
+    const auto* PC = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
+    if (bEnding || !IsRegistered() || !IsValid(Pawn) || Pawn->IsActorBeingDestroyed() || !IsValid(PC)
+        || PC->GetPawn() != Pawn || PC->GetWorld() != GetWorld() || !RPGRiding::IsCanonical(State)
+        || State.Mode != ERPGRidingMode::Mounted || State.Action != ERPGRidingAction::None) return false;
+    UAbilitySystemComponent* ASC;
+    const auto Handle = FindDashAbility(ASC);
+    const auto* Spec = Handle.IsValid() ? ASC->FindAbilitySpecFromHandle(Handle) : nullptr;
+    if (!Spec || Spec->IsActive()) return false;
+    if (Pawn->HasAuthority()) return OwnsDashAbility(ASC, Handle) && EvaluateDashAdmission(State.Key) == ERPGRidingResultCode::Applied;
+    if (!Pawn->IsLocallyControlled() || Pawn->GetLocalRole() != ROLE_AutonomousProxy || !PC->IsLocalController()) return false;
+    const auto* PS = Pawn->GetPlayerState();
+    const auto* S = PS ? PS->FindComponentByClass<URPGRidingSessionComponent>() : nullptr;
+    const auto* Clock = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+    if (!S || !Clock) return false;
+    const auto Timing = S->GetOwnerState();
+    const double Now = Clock->GetServerWorldTimeSeconds();
+    return Timing.bReady && FMath::IsFinite(Now) && FMath::IsFinite(Timing.DashEndServerSeconds)
+        && FMath::IsFinite(Timing.CombatEndServerSeconds) && Timing.DashEndServerSeconds <= Now && Timing.CombatEndServerSeconds <= Now;
+}
+
+bool URPGRidingComponent::RequestDash()
+{
+    if (!CanRequestDash()) return false;
+    UAbilitySystemComponent* ASC;
+    const auto Handle = FindDashAbility(ASC);
+    return Handle.IsValid() && ASC->TryActivateAbility(Handle);
 }
 
 ERPGRidingResultCode URPGRidingComponent::EvaluateDashAdmission(const FRPGRidingStateKey& Expected) const

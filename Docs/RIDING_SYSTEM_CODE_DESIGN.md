@@ -1,7 +1,7 @@
 # Riding 코드 설계 — M1 상태·세션·탑승 기반
 
 - 작성: 2026-11-06 / 담당: `riding-code-design-20261106`
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한 구현. 기존 검증은14~19절, Dash 승인/종료는20절, 서버 이동/자원은21절을 따른다. 제품 보유 API·Dash GAS 예측/입력/grant·Emote·실제 맵/다인 검증은 후속이다.**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭 구현. 기존 검증은14~21절, GAS 연결은22절을 따른다. 제품 보유 API·Dash Space/LocalPredicted 이동·Emote·실제 맵/다인 검증은 후속이다.**
 - 기준: [기능 계약](RIDING_SYSTEM_DESIGN.md), [아키텍처와 HUD 인계](RIDING_SYSTEM_ARCHITECTURE.md), 게시 `d546e392`의 관련 기존 소스. 재개 시 게시 HEAD `2971c97c`와 별도 담당의 미커밋 `Docs/ACTION_BAR_CONTEXT.md`/`UI/ActionBar` 계약을 추가 대조했다. 공용 코드의 빌드/검증 완료 주장은 아니다.
 - 목적: 첫 구현에서 만들 타입, 접근 제한, 판정 순서, 상태 수명, 검사 기준을 정한다. M2 액션 실행/M3 영속 저장은 포트만 정의하고 구현 완료로 취급하지 않는다.
 
@@ -443,7 +443,7 @@ CMC는 기존 도보 속도/제약 계산과 SavedMove·packed move/response가 
 - 일반 공격의 태그 입력이나 공격 spec의 직접 핸들 입력은 기존 `RequestSetMounted(false)`만 호출하고 그 Press를 소비한다. 기존 서버의 binding/revision/ledger/예산 검사가 그대로 적용된다. Listen Server에서 하차가 동기 완료돼도 같은 호출에서 공격을 이어서 실행하지 않는다. 커스텀 공격 키나 같은 키에 연결된 여러 spec도 하차 전에 먼저 표시해 두 번째 spec의 활성화를 막는다.
 - 소비한 입력의 spec/tag와 거절한 수동 스킬 입력은 Release까지 억제하며 InputPressed를 남기지 않는다. 서버 거절·지연 후 자동 재생하지 않는다. 실제 새 입력 이후에만 기존 도보 경로로 진행한다. Avatar/Epoch/ActorInfo 교체·해제는 자기 입력 억제 상태를 초기화하고, 제거된 spec의 핸들도 정리한다. 물리 키/프로필 세대별 취소는 기존 공용 호스트가 담당한다.
 
-제품 보유 API의 NotReady/비공개 경계를 유지한다. 이 단위는 소모품 커밋/미확정 복구, 실제 피해·보호막/제어 결과의 전투 잠금 갱신·즉시 하차, Dash RMS/Emote 실행을 추가하지 않는다. 새로 저작하는 별도 GAS 능력은 기존 RPG 능력 기반과 이 native 분류/활성화 계약을 사용해야 한다.
+제품 보유 API의 NotReady/비공개 경계를 유지한다. 이 단위는 소모품 커밋/미확정 복구, 실제 피해·보호막/제어 결과의 전투 잠금 갱신·즉시 하차, Dash RMS/Emote 실행을 추가하지 않는다. 새로 저작하는 전투 GAS 능력은 기존 RPG 능력 기반과 이 native 분류/활성화 계약을 사용해야 한다. Riding 자체 수명만 담당하는 native Dash의 직접 GAS 기반/전용 승인 경계는 후속22절을 따른다.
 
 `Run-RidingFoundationTests.ps1 -IncludeAbilities -IncludeWorld`는 기반/세션/Actor/구역과 공통 정책의 GAS fixture를 최소 모듈로 실행한다. fixture의 실제 GAS 활성화/거절·실제 Riding 하차 요청과 입력 억제 정책을 검증하며 실제 게임 ASC/URPGGameplayAbility 구현을 실행한 결과는 아니다. `Run-RidingIntegrationCompile.ps1 -IncludeAbilities`는 게시 전체 사본의 UHT와 실제 ASC/기본 능력/게이트/탈것 컴포넌트 CPP4를 컴파일한다. 전체 게임 DLL 링크·다인 RPC·저장된 실제 입력 에셋/HUD 시연과 구분한다.
 
@@ -536,3 +536,21 @@ CMC는 기존 도보 속도/제약 계산과 SavedMove·packed move/response가 
 최종 근거는 `Saved/BuildChecks/RidingDashMotion-20261109/Completion.json`이다. 게시 `ad065f67`+본인 고정 입력의 native `034ae649ef994759829695ad727ee3d5`에서 UHT/32단계 빌드·링크0·같은 `96311E0B…2C24C8F6` DLL의 기존38+물리/소유권5 **43 Success·검사 오류/경고0·UE0**이다. 같은 게시본의 `Integration-5bad2342d22244d9af0c69f8cbb56e10`는 전체 UHT/실제 CPP5 컴파일0·고유 입력52 SHA/러너2 SHA가 현재 원본과 일치했다.
 
 첫43/CPP5도 통과했지만 경계 종료 뒤 관성 차단/물리 후 속도 확정과 지원하지 않는 중력/자세 거절을 보강했다. 중간43도 검사 Success였으나 보강 중 입력 일치 gate가 실패했으므로 위 최종43과 구분한다. 자기6회 사본/PCH/OBJ/DLL/PDB/runtime/cache **8,738,278,538 bytes(약8.14GiB)**를 finally 정리했고 실행/Temp/새 정리 예외0이다. 원본 DLL/에셋/공유 출력/trace/cache·타 담당 변경과 이전 로그 예외는 보존했다. 작은 결과/명령/해시/필요 로그만 남겼으며 폐기한 DLL 해시는 당시 증거다.
+
+## 22. M2 Dash GAS 지급·활성화와 HUD 클릭 — 2026-11-09
+
+담당 `riding-dash-gas-20261109`. 서버 이동 실행기를 **ServerOnly GAS 능력**에 연결한 단계다. 설계 목표인 LocalPredicted Dash를 완료한 것은 아니며 Space 물리 입력·클라이언트 RMS/예측 거절·다인 이동은 다음 경계다.
+
+- [native Dash 능력](../Source/Project_RPG/Public/Riding/RPGGameplayAbility_RidingDash.h)은 `UGameplayAbility`와 native `IRPGRidingAbilityPolicy`를 직접 사용한다. 전투용 `URPGGameplayAbility`의 공격/피격·몽타주 면역 수명을 만들지 않는 Riding 전용 capability다. InstancedPerActor·ServerOnly·재진입 금지이며 BP 자식·자동 지급 활성화·전투 무적/비용/쿨타임 GE를 추가하지 않는다. 공통 ASC의 권한 차단과 native Riding 분류를 그대로 사용하고 서버 실행기의 현재 세션·지면·구역·행동/전투 제한 및 공유 요청 예산으로 승인한다. 실제 Player CMC host는 보안 Restricted의 protected action 거절도 창 생성 전에 검사한다.
+- RidingComponent가 현재 바인딩/Ready/Mounted·현재 ASC avatar에만 지급한다. SourceObject는 원래 RidingComponent, 서버 추적 값은 **원래 ASC·정확한 spec handle·Epoch/StateRevision**이다. 액션 시작/종료는 같은 지급을 유지하고 하차/교체·unpossess·ASC avatar 손실·unregister/EndPlay는 자기 spec만 회수한다. 같은 클래스의 다른 source/spec은 지우지 않는다. source가 같아도 추적 handle이 다르면 활성화할 수 없고, 클라이언트 입력에서 중복 source spec은 모호하므로 거절한다. 제거/지급 callback 뒤에도 현재 바인딩을 재검사한다.
+- `RequestDash()`는 현재 로컬 소유자/서버의 현재 source spec만 찾아 `TryActivateAbility`를 호출한다. owning-client 요청 전송은 기존 GAS 경로를 사용한다. 새 RPC나 클라이언트 목적지/방향/힘 payload를 만들지 않는다. 반환 bool은 GAS 요청 접수 여부이며 최종 서버 이동 성공 영수증이 아니다. 서버는 현재 승인된 CMC 가속의 XY 방향, 정지 시 현재 Pawn 전방 XY를 사용한다. 클라이언트의 준비 표시는 현재 avatar·정규 Mounted·owner-only 준비/쿨타임과 GameState 서버 시계에 의존하며 최종 허용은 서버가 다시 판정한다.
+- 능력은 현재 Dash ticket이 끝나면 종료하고 GAS 취소/제거는 원래 ticket만 `ExecutionRejected`로 닫는다. RMS/보안 창과 쿨타임 소유권은21절에 남는다. 승인 발행의 선행 subscriber가 취소하거나 창 취득 callback이 취소하는 경우도 시작 세대/sequence로 식별하고, listener/실행 참조를 먼저 분리한 후 자기 실행만 닫는다. 취소는 쿨타임을 환불하지 않는다.
+- 기존 Riding ActionBar 제공자의 **첫 시각 칸에 질주 클릭**을 추가했다. 네 번째 하차/기존 물리 키 매핑과 하단 중앙 배치는 유지한다. provider PressAction→RequestDash만 연결하고 소유자 준비·쿨타임 남은 초를 투영한다. 승인된 전체 쿨타임 길이를 복제하지 않으므로 임의 길이의 진행률은 만들지 않는다. Space/Q 같은 키 라벨이나 별도 입력 호스트/매핑은 추가하지 않았다.
+
+`Run-RidingFoundationTests.ps1 -IncludeDashGAS -IncludeControl -IncludeConsume -IncludeAbilities -IncludeWorld`는 실제 native Dash GAS·Component/Runtime·Physics World와 Engine CMC/모의 보안 host 어댑터로 지급/다른 source·위조 handle/중복 선택 거절, 실제 이동과 능력 완료/쿨타임, 취소, unpossess/avatar 손실/unregister, 승인/창 callback 취소, 서버 방향/막힌 시작을 기존 회귀와 실행한다. 실제 제품 Player CMC/보안 컴포넌트 실행·복제된 원격 client/GAS RPC·GPU 클릭을 대신하지 않는다. `Run-RidingIntegrationCompile.ps1 -IncludeDashGAS`는 게시 전체 UHT 및 실제 능력/Component/Player CMC/HUD 제공자/검사 CPP5를 컴파일한다. 제품 보유 snapshot/API 부재의 NotReady와 공개 비활성 경계는 유지한다.
+
+바인딩 회수는 원래 세션의 Unbind와 빈 상태 확정 후 정확한 spec을 제거한다. 능력 종료 callback이 이미 새 Epoch를 바인딩/탑승했다면 이전 Release/Refresh가 그 상태를 비우거나 OnFoot로 덮어쓰지 않는다. 회귀는 실제 GAS 종료 delegate 안에서 새 바인딩/탑승을 만들고 새 Epoch·grant와 원래 이동/창의 해제를 함께 확인한다. 폐기된 핸들의 명시적 GAS 거절 진단1건은 예상 Warning으로 좁게 등록하며 예상 밖 경고는 계속 실패로 처리한다.
+
+최종 근거는 `Saved/BuildChecks/RidingDashGAS-20261109/Completion.json`이다. 게시 `d9c53e77`+고정 입력의 native `05b6e42c29cd4eeeaa568ee4378c19dc`에서 UHT/34단계 빌드·링크0, 같은 `3557B31B…FBE356B4` DLL의 기존43+Dash GAS6 **49 Success·검사 오류/예상 밖 경고0·UE0**이다. `Integration-e52268686aa14f538153cc72470de49e`의 전체 UHT/제품4+검사1 CPP5 컴파일0과 함께 고유 입력53/러너2 SHA가 현재 원본과 일치했다.
+
+첫 실행은 검사 프레임 번호 재사용으로 착지하지 않아5사례가 실패했다. 프레임/실제 시작 전제를 보강한 다음49개는 Success였지만 의도한 invalid-handle Warning1로 엄격 gate가 실패했다. 경고1건을 좁게 예상 처리하고 회수 callback의 새 세대 덮어쓰기 결함/회귀를 추가한 위 최종 실행과 구분한다. 중간 CPP4/CPP5 성공도 최종 입력의 근거로 대체하지 않는다. 자기7회 사본/PCH/OBJ/DLL/PDB/runtime/cache **8,832,105,907 bytes(약8.226GiB)**를 finally 폐기했고 실행/Temp/새 정리 예외0이다. 작은 결과/해시/필요 로그만 유지하며 원본 DLL/에셋/공유 출력/기존 예외와 타 담당 변경은 보존했다. 폐기한 DLL의 해시는 당시 증거다.
