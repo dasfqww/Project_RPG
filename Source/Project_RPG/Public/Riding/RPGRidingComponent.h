@@ -10,6 +10,8 @@ class URPGRidingSessionComponent;
 class URPGPlayerMovementComponent;
 struct FRPGRidingDecision;
 struct FRPGRidingEvaluationContext;
+class FRPGRidingDashRuntime;
+struct FRPGRidingDashRuntimeDeleter { void operator()(FRPGRidingDashRuntime*) const; };
 DECLARE_MULTICAST_DELEGATE_OneParam(FRPGRidingChanged, const FRPGRidingRepState&);
 DECLARE_MULTICAST_DELEGATE_OneParam(FRPGRidingResultReceived, const FRPGRidingCommandResult&);
 
@@ -19,6 +21,7 @@ class PROJECT_RPG_API URPGRidingComponent final : public UPawnExtensionComponent
     GENERATED_BODY()
 public:
     URPGRidingComponent();
+    virtual ~URPGRidingComponent() override;
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     virtual void OnUnregister() override;
@@ -39,11 +42,19 @@ public:
     void ValidateServerMovementContext();
     /** Server CMC: fraction of a proposed capsule segment permitted while mounted; may end Riding. */
     double ConstrainServerMovement(const FVector& Start, const FVector& End);
+    /** Native server executor. Admission may be cancelled by callbacks; query active motion before creating FX. */
+    ERPGRidingResultCode StartServerDash(FRPGRidingStateKey Expected, FVector Direction);
+    bool IsServerDashActive() const;
+    void PrepareServerDashMovement();
+    void FinalizeServerDashMovement();
+    void RecordServerDashMovement(FGuid ExecutionId, const FVector& Start, const FVector& End);
+    void StopServerDashForControl();
 
 private:
     friend class URPGRidingSessionComponent;
     friend class URPGPlayerMovementComponent;
     friend class URPGGameplayAbility_RidingDash;
+    friend class FRPGRidingDashRuntime;
 #if WITH_DEV_AUTOMATION_TESTS
     friend struct FRPGRidingActorTestAccess;
     friend struct FRPGRidingMovementTestAccess;
@@ -78,6 +89,7 @@ private:
     bool bPreparingDash = false;
     FRPGRidingDashTicket ActiveDash;
     double DashDeadline = 0;
+    TUniquePtr<FRPGRidingDashRuntime, FRPGRidingDashRuntimeDeleter> DashRuntime;
     ERPGRidingEndReason PendingEnd = ERPGRidingEndReason::None;
     UPROPERTY(EditDefaultsOnly, Category="Riding") TArray<TObjectPtr<URPGMountDefinition>> Definitions;
     UPROPERTY(ReplicatedUsing=OnRep_State) FRPGRidingRepState State;

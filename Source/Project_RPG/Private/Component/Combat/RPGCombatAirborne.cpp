@@ -1,5 +1,6 @@
 #include "Component/Combat/RPGCombatControlComponent.h"
 #include "Riding/RPGRidingDamageScope.h"
+#include "Riding/RPGRidingComponent.h"
 #include "Component/Combat/RPGCombatMotion.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
@@ -84,6 +85,9 @@ bool URPGCombatControlComponent::ApplyApprovedDamageAirborne(AActor* Source, con
 		? InterruptedAnim->GetActiveInstanceForMontage(InterruptedMontage.Get()) : nullptr;
 	if (bCancellingMontage && !ASC->GetAnimatingAbility() && Remaining && Remaining->GetInstanceID() == InterruptedId
 		&& Character->GetMesh()->IsPlayingRootMotion()) InterruptedAnim->Montage_Stop(0.f, InterruptedMontage.Get());
+	if (auto* Riding = Character->FindComponentByClass<URPGRidingComponent>()) Riding->StopServerDashForControl();
+	if (bEnding || BoundASC.Get() != ASC || !Lifetime.IsCurrent(Source, Character))
+	{ EndAirborne(ERPGAirborneEndReason::LifeChanged); return false; }
 	if (ForeignMotion(Movement, NAME_None)) { EndAirborne(ERPGAirborneEndReason::ForeignMovement); return false; }
 	auto* Security = Character->FindComponentByClass<URPGSecurityValidationComponent>();
 	if ((Character->IsPlayerControlled() && !Security) || (Security && Security->IsMovementAuthorizationActive()))

@@ -1,11 +1,11 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $run=[Guid]::NewGuid().ToString('N')
 if ($IncludeControl) { $IncludeDamage = $true }
-$proofFolder = if ($IncludeDashAdmission) { 'RidingDashAdmission-20261109' } elseif ($IncludeControl) { 'RidingControl-20261109' } elseif ($IncludeDamage) { 'RidingDamage-20261109' } elseif ($IncludeConsume) { 'RidingConsume-20261108' } elseif ($IncludeAbilities) { 'RidingAbilityGate-20261108' } elseif ($IncludeWorld) { 'RidingRegions-20261108' } elseif ($IncludePresentation) { 'RidingPresentation-20261108' } else { 'RidingActors-20261106' }
-$reservation = if ($IncludeDashAdmission) { 'riding-dash-admission-20261109' } elseif ($IncludeControl) { 'riding-control-20261109' } elseif ($IncludeDamage) { 'riding-damage-20261109' } elseif ($IncludeConsume) { 'riding-consume-20261108' } elseif ($IncludeAbilities) { 'riding-ability-gate-20261108' } elseif ($IncludeWorld) { 'riding-regions-20261108' } elseif ($IncludePresentation) { 'riding-presentation-20261108' } else { 'riding-actors-20261106' }
+$proofFolder = if ($IncludeDashMotion) { 'RidingDashMotion-20261109' } elseif ($IncludeDashAdmission) { 'RidingDashAdmission-20261109' } elseif ($IncludeControl) { 'RidingControl-20261109' } elseif ($IncludeDamage) { 'RidingDamage-20261109' } elseif ($IncludeConsume) { 'RidingConsume-20261108' } elseif ($IncludeAbilities) { 'RidingAbilityGate-20261108' } elseif ($IncludeWorld) { 'RidingRegions-20261108' } elseif ($IncludePresentation) { 'RidingPresentation-20261108' } else { 'RidingActors-20261106' }
+$reservation = if ($IncludeDashMotion) { 'riding-dash-motion-20261109' } elseif ($IncludeDashAdmission) { 'riding-dash-admission-20261109' } elseif ($IncludeControl) { 'riding-control-20261109' } elseif ($IncludeDamage) { 'riding-damage-20261109' } elseif ($IncludeConsume) { 'riding-consume-20261108' } elseif ($IncludeAbilities) { 'riding-ability-gate-20261108' } elseif ($IncludeWorld) { 'riding-regions-20261108' } elseif ($IncludePresentation) { 'riding-presentation-20261108' } else { 'riding-actors-20261106' }
 $proofRoot=Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/Integration-'+$run)
 $tempRoot=Join-Path $workspace 'Saved/RF'
 $temp=Join-Path $tempRoot $run.Substring(0,8)
@@ -77,6 +77,7 @@ try {
     $controlFiles=@('Source/Project_RPG/Private/Component/Combat/RPGCombatControlComponent.cpp','Source/Project_RPG/Private/Component/Combat/RPGCombatStagger.cpp','Source/Project_RPG/Private/Component/Combat/RPGCombatSlow.cpp','Source/Project_RPG/Private/Component/Combat/RPGCombatKnockback.cpp','Source/Project_RPG/Private/Component/Combat/RPGCombatAirborne.cpp')
     if ($IncludeControl) { $files += $controlFiles }
     if ($IncludeDashAdmission) { $files=@('Source/Project_RPG/Public/Riding/RPGRidingDashAdmission.h','Source/Project_RPG/Public/Riding/RPGRidingComponent.h','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Public/Riding/RPGRidingSessionComponent.h','Source/Project_RPG/Private/Riding/RPGRidingSession.h','Source/Project_RPG/Private/Riding/RPGRidingSession.cpp') }
+    if ($IncludeDashMotion) { $files=@('Source/Project_RPG/Public/Riding/RPGRidingDashMotionHost.h','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.h','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Public/Riding/RPGRidingComponent.h','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Public/Component/RPGPlayerMovementComponent.h','Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Component/Combat/RPGCombatKnockback.cpp','Source/Project_RPG/Private/Component/Combat/RPGCombatAirborne.cpp') }
     foreach($relative in $files) {
         $source=Join-Path $workspace $relative
         $destination=Join-Path $project $relative
@@ -97,6 +98,7 @@ try {
     if ($IncludeDamage) { $compile=@('Source/Project_RPG/Private/Attribute/RPGAttributeSet.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Riding/RPGRidingSessionComponent.cpp','Source/Project_RPG/Private/Riding/RPGRidingDamageScope.cpp') }
     if ($IncludeControl) { $compile=$controlFiles+@('Source/Project_RPG/Private/Attribute/RPGAttributeSet.cpp','Source/Project_RPG/Private/Riding/RPGRidingDamageScope.cpp') }
     if ($IncludeDashAdmission) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Riding/RPGRidingSession.cpp') }
+    if ($IncludeDashMotion) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Component/Combat/RPGCombatKnockback.cpp','Source/Project_RPG/Private/Component/Combat/RPGCombatAirborne.cpp') }
     [IO.File]::WriteAllLines($fileList,@($compile|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
     $dotnet=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
     $ubt=Join-Path $EngineRoot 'Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll'

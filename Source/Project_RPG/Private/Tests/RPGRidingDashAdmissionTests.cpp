@@ -27,6 +27,7 @@ struct FRPGRidingDashTestAccess
     static void Expire(URPGRidingComponent& C)
     { C.DashDeadline = FPlatformTime::Seconds() - 1; C.TickComponent(0.f, LEVELTICK_All, &C.PrimaryComponentTick); }
 };
+void RPGUnprotectRidingDashTestSession(URPGRidingSessionComponent& S) { FRPGRidingDashTestAccess::Unprotect(S); }
 namespace
 {
     constexpr auto Flags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter;

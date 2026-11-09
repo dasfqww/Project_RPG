@@ -1,7 +1,7 @@
 # Riding 코드 설계 — M1 상태·세션·탑승 기반
 
 - 작성: 2026-11-06 / 담당: `riding-code-design-20261106`
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과 연결, Dash 서버 승인 수명 구현. 기존 검증은14~19절, Dash 승인/종료는20절을 따른다. 제품 보유 API·실제 Dash RMS/지형 검사/GAS 예측·Emote·실제 맵/다인 검증은 후속이다.**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한 구현. 기존 검증은14~19절, Dash 승인/종료는20절, 서버 이동/자원은21절을 따른다. 제품 보유 API·Dash GAS 예측/입력/grant·Emote·실제 맵/다인 검증은 후속이다.**
 - 기준: [기능 계약](RIDING_SYSTEM_DESIGN.md), [아키텍처와 HUD 인계](RIDING_SYSTEM_ARCHITECTURE.md), 게시 `d546e392`의 관련 기존 소스. 재개 시 게시 HEAD `2971c97c`와 별도 담당의 미커밋 `Docs/ACTION_BAR_CONTEXT.md`/`UI/ActionBar` 계약을 추가 대조했다. 공용 코드의 빌드/검증 완료 주장은 아니다.
 - 목적: 첫 구현에서 만들 타입, 접근 제한, 판정 순서, 상태 수명, 검사 기준을 정한다. M2 액션 실행/M3 영속 저장은 포트만 정의하고 구현 완료로 취급하지 않는다.
 
@@ -518,3 +518,21 @@ CMC는 기존 도보 속도/제약 계산과 SavedMove·packed move/response가 
 최종 근거는 `Saved/BuildChecks/RidingDashAdmission-20261109/Completion.json`이다. 게시 `7a35731c`+본인 고정 입력의 native `dd0db37d907c4e9697dde7d6dde5ac29`에서 UHT/30단계 빌드·링크0·같은 `2DF498D5…FBEE1BA6` DLL의 기존34+Dash 승인4 **38 Success·검사 오류/경고0·UE0**을 확인했다. 같은 게시본의 `Integration-df102bdb66cb459a82d5bb7219aa41c5`는 전체 UHT/실제 Component/Session CPP2 컴파일0이다. 고유 입력42 SHA·러너2 SHA가 현재 원본과 일치하며 후발 `f988cb24`는 Backend/거래 계약 변경뿐으로 Source/Config/Plugins 차이0이다.
 
 두 시도 모두 통과했고 자기2회 사본/PCH/OBJ/DLL/PDB/runtime/cache **2,847,092,130 bytes(약2.65GiB)**를 finally 정리했다. 실행/Temp/새 정리 예외0·원본 DLL/에셋/공유 출력/trace/cache·타 담당 변경과 이전 로그 예외는 보존했다. 작은 결과/명령/해시/필요 로그만 남겼으며 폐기한 DLL 해시는 당시 증거다.
+
+## 21. M2 실제 서버 Dash 이동과 자원 수명 — 2026-11-09
+
+[DashRuntime](../Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.h)은 Pawn RidingComponent가 소유하는 서버 native 실행기다. `StartServerDash`가20절의 승인을 실제 지형 preflight와 연결하고, 승인 ticket이 여전히 현재일 때만 보안 창과 Engine CMC의 ConstantForce RMS를 만든다. 거리/시간은 승인 정책을 사용하며 현재 서버 위치/XY 방향을 사용한다. 기본900cm/0.6초는1500cm/s RMS이고 클라이언트 목적지나 순간이동 보충은 없다. native 포트만이며 신규 GAS 능력/예측·입력/grant/RPC를 추가하지 않는다.
+
+- 시작은 현재 Capsule/Walking·충돌/Movement 활성, 월드 아래 방향 중력/수직 캡슐, 외부 RMS·애니메이션 root motion 없음과 빈 보안 창을 요구한다. 실제 capsule sweep와 walkable floor가 있는 첫 이동 구간이 양수여야 승인한다. unsupported 중력/자세·벽에 완전히 막힌 시작은 승인/쿨타임/창/RMS를 만들지 않는다. native 창 취득 callback에서 취소/교체돼도 이후 이동을 생성하지 않는다.
+- [DashMotionHost](../Source/Project_RPG/Public/Riding/RPGRidingDashMotionHost.h)는 Blueprint 구현 불가 native 인터페이스다. 실제 Player CMC는 기존 Security 컴포넌트에 유한 duration+0.2초/거리+25cm 창을 요청한다. 창에는 원래 컴포넌트의 weak 참조·유일 handle·그 조합을 닫는 native 회수 함수를 보관한다. Movement가 바뀌거나 취득 callback이 새 창을 열어도 늦은 정리가 다른 창을 닫지 않는다. 실제 Security 소스/프로토콜은 수정하지 않는다.
+- 실제 Player CMC의 모든 `MoveUpdatedComponentImpl` 구간에 남은3D 누적 이동 예산, capsule sweep와 walkable floor를 적용한다. floor 샘플은 캡슐 반경의 절반(5~25cm 간격)·호출당 최대256개로 제한하며 한계를 넘는 큰 이동도 보수적으로 잘라 종료한다. 기존 구역 경계 제한과 곱해 첫 허용 지점까지만 이동한다. 실제 적용 후 원래 ExecutionId가 같은 구간만 누적한다. 추적 위치와 다른 시작점/비유한 값은 실행을 닫는다.
+- 벽/지원하지 않는 바닥/거리 한계는 부족한 이동을 재실행하지 않는다. 벽/바닥 경계 종료는 수평 속도0·현재 물리 실행의 과거 Dash 잔여 이동을 차단하고, 물리 종료 때도 속도를 확정해 절벽으로 자동 관성이 이어지지 않게 한다. 정상 종료/취소는 현재 허용 보행 속도 이하이며 Z 속도·외부 root motion·외부 이동 모드를 복원/제거하지 않는다. Dash 동안 통상 입력 가속은0이다.
+- 하차/바인딩 해제/승인 취소/서버 만료·RMS 종료는 먼저 자기 실행 레코드를 분리하고 그 이름의 RMS와 SavedRootMotion, 원래 보안 창만 정리한다. 현재 state를 발행하기 전에 정리하므로 callback의 새 자원을 이전 종료가 지우지 않는다. 넉백/공중제어는 활성 GE/원래 수명 검사를 통과한 뒤 Dash 실행/창을 먼저 회수하고, 수명을 다시 확인한 후 자신의 외부 이동 창/RMS를 만든다. 제어 성공의 양측 잠금/강제 하차는19절의 결과 경계를 그대로 사용한다. 취소는 Dash 쿨타임을 환불하지 않는다.
+
+`Run-RidingFoundationTests.ps1 -IncludeDashMotion -IncludeControl -IncludeConsume -IncludeAbilities -IncludeWorld`는 실제 Physics World/Engine CMC·제품 Runtime/Riding/구역 코드와 **모의 보안 host 및 검사 전용 CMC hook 어댑터**를 사용한다. 실제 이동·누적 거리/입력 방향 유지, 벽/절벽과 종료 후 무입력 정지, 중력 거절, 창/외부 RMS 소유권·제어 선점 순서, 취득 callback 취소/새 창 보존을 기존 회귀와 실행한다. 실제 제품 Player CMC/보안 검증·CombatControl 전체/다인 Iris 실행으로 표시하지 않는다. `Run-RidingIntegrationCompile.ps1 -IncludeDashMotion`는 게시 전체 UHT/실제 Runtime/Component/Player CMC/Knockback/Airborne CPP5를 컴파일한다.
+
+실제 맵/움직이는 발판·외부 teleport·패키징/다인 실행과 LocalPredicted GAS의 시작/거절·RMS ID 매핑·저장 move 취소·grant/입력은 후속이다. 특히 클라이언트 예측/거절 자원은 이 서버 전용 실행기가 정리했다는 근거로 대체하지 않는다. 보유 API의 NotReady와 제품 비공개 경계도 유지한다.
+
+최종 근거는 `Saved/BuildChecks/RidingDashMotion-20261109/Completion.json`이다. 게시 `ad065f67`+본인 고정 입력의 native `034ae649ef994759829695ad727ee3d5`에서 UHT/32단계 빌드·링크0·같은 `96311E0B…2C24C8F6` DLL의 기존38+물리/소유권5 **43 Success·검사 오류/경고0·UE0**이다. 같은 게시본의 `Integration-5bad2342d22244d9af0c69f8cbb56e10`는 전체 UHT/실제 CPP5 컴파일0·고유 입력52 SHA/러너2 SHA가 현재 원본과 일치했다.
+
+첫43/CPP5도 통과했지만 경계 종료 뒤 관성 차단/물리 후 속도 확정과 지원하지 않는 중력/자세 거절을 보강했다. 중간43도 검사 Success였으나 보강 중 입력 일치 gate가 실패했으므로 위 최종43과 구분한다. 자기6회 사본/PCH/OBJ/DLL/PDB/runtime/cache **8,738,278,538 bytes(약8.14GiB)**를 finally 정리했고 실행/Temp/새 정리 예외0이다. 원본 DLL/에셋/공유 출력/trace/cache·타 담당 변경과 이전 로그 예외는 보존했다. 작은 결과/명령/해시/필요 로그만 남겼으며 폐기한 DLL 해시는 당시 증거다.

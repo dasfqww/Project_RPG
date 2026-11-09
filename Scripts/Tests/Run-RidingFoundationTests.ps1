@@ -1,15 +1,16 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission)
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
+if ($IncludeDashMotion) { $IncludeDashAdmission = $true }
 if ($IncludeControl) { $IncludeDamage = $true }
 if ($IncludeDashAdmission) { $IncludeActors = $true }
 if ($IncludePresentation) { $IncludeActors = $true }
 if ($IncludeWorld -or $IncludeAbilities -or $IncludeConsume -or $IncludeDamage) { $IncludeActors = $true }
 if ($IncludeActors) { $IncludeSession = $true }
-$suite = if ($IncludeDashAdmission) { 'RidingDashAdmission' } elseif ($IncludeControl) { 'RidingControl' } elseif ($IncludeDamage) { 'RidingDamage' } elseif ($IncludeConsume) { 'RidingConsume' } elseif ($IncludeAbilities) { 'RidingAbilityGate' } elseif ($IncludeWorld) { 'RidingRegions' } elseif ($IncludePresentation) { 'RidingPresentation' } elseif ($IncludeActors) { 'RidingActors' } elseif ($IncludeSession) { 'RidingSession' } else { 'RidingFoundation' }
-$reservation = if ($IncludeDashAdmission) { 'riding-dash-admission-20261109' } elseif ($IncludeControl) { 'riding-control-20261109' } elseif ($IncludeDamage) { 'riding-damage-20261109' } elseif ($IncludeConsume) { 'riding-consume-20261108' } elseif ($IncludeAbilities) { 'riding-ability-gate-20261108' } elseif ($IncludeWorld) { 'riding-regions-20261108' } elseif ($IncludePresentation) { 'riding-presentation-20261108' } elseif ($IncludeActors) { 'riding-actors-20261106' } elseif ($IncludeSession) { 'riding-session-20261106' } else { 'riding-foundation-20261106' }
+$suite = if ($IncludeDashMotion) { 'RidingDashMotion' } elseif ($IncludeDashAdmission) { 'RidingDashAdmission' } elseif ($IncludeControl) { 'RidingControl' } elseif ($IncludeDamage) { 'RidingDamage' } elseif ($IncludeConsume) { 'RidingConsume' } elseif ($IncludeAbilities) { 'RidingAbilityGate' } elseif ($IncludeWorld) { 'RidingRegions' } elseif ($IncludePresentation) { 'RidingPresentation' } elseif ($IncludeActors) { 'RidingActors' } elseif ($IncludeSession) { 'RidingSession' } else { 'RidingFoundation' }
+$reservation = if ($IncludeDashMotion) { 'riding-dash-motion-20261109' } elseif ($IncludeDashAdmission) { 'riding-dash-admission-20261109' } elseif ($IncludeControl) { 'riding-control-20261109' } elseif ($IncludeDamage) { 'riding-damage-20261109' } elseif ($IncludeConsume) { 'riding-consume-20261108' } elseif ($IncludeAbilities) { 'riding-ability-gate-20261108' } elseif ($IncludeWorld) { 'riding-regions-20261108' } elseif ($IncludePresentation) { 'riding-presentation-20261108' } elseif ($IncludeActors) { 'riding-actors-20261106' } elseif ($IncludeSession) { 'riding-session-20261106' } else { 'riding-foundation-20261106' }
 $testFilter = if ($IncludeSession) { 'ProjectRPG.Riding' } else { 'ProjectRPG.Riding.Foundation' }
 $proofDate = if ($IncludeDashAdmission) { '20261109' } elseif ($IncludeDamage) { '20261109' } elseif ($IncludePresentation -or $IncludeWorld -or $IncludeAbilities -or $IncludeConsume) { '20261108' } else { '20261106' }
 $proofRoot = Join-Path $workspace ('Saved/BuildChecks/' + $suite + '-' + $proofDate + '/' + $id)
@@ -60,7 +61,8 @@ try {
             $files += 'Source/Project_RPG/Private/Riding/' + $name + '.cpp'
         }
     }
-    if ($IncludeActors) { $files += 'Source/Project_RPG/Public/Riding/RPGRidingAbilityPolicy.h' }
+    if ($IncludeActors) { $files += @('Source/Project_RPG/Public/Riding/RPGRidingAbilityPolicy.h','Source/Project_RPG/Public/Riding/RPGRidingDashMotionHost.h','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.h','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp') }
+    if ($IncludeDashMotion) { $files += @('Source/Project_RPG/Private/Tests/RPGRidingDashMotionTests.h','Source/Project_RPG/Private/Tests/RPGRidingDashMotionTests.cpp','Source/Project_RPG/Private/Tests/RPGTestWorldCleanup.h') }
     if ($IncludeDashAdmission) { $files += 'Source/Project_RPG/Private/Tests/RPGRidingDashAdmissionTests.cpp' }
     if ($IncludeConsume) { $files += 'Source/Project_RPG/Private/Tests/RPGRidingConsumeTests.cpp' }
     if ($IncludeDamage) { $files += @('Source/Project_RPG/Public/Riding/RPGRidingDamageScope.h','Source/Project_RPG/Private/Riding/RPGRidingDamageScope.cpp','Source/Project_RPG/Private/Tests/RPGRidingDamageTests.h','Source/Project_RPG/Private/Tests/RPGRidingDamageTests.cpp') }
@@ -118,7 +120,7 @@ public class Project_RPG : ModuleRules {
     public Project_RPG(ReadOnlyTargetRules Target) : base(Target) {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         bUseUnity = false;
-        PublicDependencyModuleNames.AddRange(new string[] {"Core", "CoreUObject", "Engine", "NetCore", "GameplayTags", "GameplayAbilities", "GameplayTasks", "AIModule"});
+        PublicDependencyModuleNames.AddRange(new string[] {"Core", "CoreUObject", "Engine", "NetCore", "GameplayTags", "GameplayAbilities", "GameplayTasks", "AIModule", "PhysicsCore"});
     }
 }
 '@
@@ -178,6 +180,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingFounda
     }
     if ($IncludeAbilities) { $expected += @('Classification','GASActivation','AttackPressAndRelease','SharedInputAndSkill') | ForEach-Object {'ProjectRPG.Riding.Ability.'+$_} }
     if ($IncludeConsume) { $expected += @('MutualExclusion','PendingAndCallbackPin','IndependentReservations','PawnAndBounds') | ForEach-Object {'ProjectRPG.Riding.Consume.'+$_} }
+    if ($IncludeDashMotion) { $expected += @('Travel','Boundaries','Ownership','Preemption','Callbacks') | ForEach-Object {'ProjectRPG.Riding.DashMotion.'+$_} }
     if ($IncludeDashAdmission) { $expected += @('Approval','Reentry','Endings','Lifetime') | ForEach-Object {'ProjectRPG.Riding.DashAdmission.'+$_} }
     if ($IncludeDamage) { $expected += @('HealthAndShield','RejectedAndNested','AuthorityAndTeams','PawnAndIdentity') | ForEach-Object {'ProjectRPG.Riding.Damage.'+$_} }
     if ($IncludeDamage) { $expected += @('ActiveEffect','RejectedEffects','CallbackAndNesting') | ForEach-Object {'ProjectRPG.Riding.Control.'+$_} }

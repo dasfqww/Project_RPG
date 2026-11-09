@@ -6,6 +6,7 @@
 #include "Riding/RPGRidingWorldPolicy.h"
 #include "Riding/RPGRidingAbilityGate.h"
 #include "Riding/RPGRidingConsumeLease.h"
+#include "Riding/RPGRidingDashRuntime.h"
 #include "Components/CapsuleComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
@@ -22,9 +23,29 @@
 
 URPGRidingComponent::URPGRidingComponent()
 {
+    DashRuntime.Reset(new FRPGRidingDashRuntime(*this));
     SetIsReplicatedByDefault(true);
     PrimaryComponentTick.bCanEverTick = true;
     PrimaryComponentTick.TickInterval = 0.1f;
+}
+void FRPGRidingDashRuntimeDeleter::operator()(FRPGRidingDashRuntime* P) const { delete P; }
+URPGRidingComponent::~URPGRidingComponent() = default;
+
+ERPGRidingResultCode URPGRidingComponent::StartServerDash(FRPGRidingStateKey Expected, FVector Direction)
+{ return DashRuntime->Start(Expected, Direction); }
+bool URPGRidingComponent::IsServerDashActive() const
+{ return GetOwner() && GetOwner()->HasAuthority() && DashRuntime->HasMotion(); }
+void URPGRidingComponent::PrepareServerDashMovement()
+{ if (GetOwner() && GetOwner()->HasAuthority()) DashRuntime->PrepareMovement(); }
+void URPGRidingComponent::FinalizeServerDashMovement()
+{ if (GetOwner() && GetOwner()->HasAuthority()) DashRuntime->ClampAfterStateChange(); }
+void URPGRidingComponent::RecordServerDashMovement(FGuid ExecutionId, const FVector& Start, const FVector& End)
+{ if (GetOwner() && GetOwner()->HasAuthority() && ExecutionId.IsValid() && ExecutionId == ActiveDash.ExecutionId) DashRuntime->RecordStep(Start, End); }
+void URPGRidingComponent::StopServerDashForControl()
+{
+    if (!GetOwner() || !GetOwner()->HasAuthority()) return;
+    DashRuntime->Stop(ERPGRidingEndReason::ExecutionRejected);
+    if (State.Action == ERPGRidingAction::Dash) FinishDash(ActiveDash, ERPGRidingEndReason::ExecutionRejected);
 }
 void URPGRidingComponent::BeginPlay()
 {
@@ -68,6 +89,7 @@ void URPGRidingComponent::RefreshBinding()
 
 void URPGRidingComponent::ReleaseBinding()
 {
+    DashRuntime->Stop(ERPGRidingEndReason::ExecutionRejected, false);
     ActiveDash = {}; DashDeadline = 0;
     const FGuid OldEpoch = State.Key.RiderEpoch;
     auto* Previous = Session.Get();
@@ -76,6 +98,7 @@ void URPGRidingComponent::ReleaseBinding()
     if (GetOwner() && GetOwner()->HasAuthority() && OldEpoch.IsValid())
     {
         State = {};
+        DashRuntime->ClampAfterStateChange();
         Publish();
     }
 }
@@ -272,12 +295,14 @@ void URPGRidingComponent::ClientRidingResult_Implementation(FRPGRidingCommandRes
 
 void URPGRidingComponent::MakeOnFoot(ERPGRidingEndReason Reason)
 {
+    DashRuntime->Stop(Reason, false);
     ActiveDash = {}; DashDeadline = 0;
     const auto Key = State.Key;
     State = {};
     State.Key = Key;
     ++State.Key.StateRevision;
     State.LastEndReason = Reason;
+    DashRuntime->ClampAfterStateChange();
 }
 
 bool URPGRidingComponent::Commit(const FRPGRidingDecision& Decision)
@@ -321,6 +346,7 @@ void URPGRidingComponent::TickComponent(float Delta, ELevelTick Tick, FActorComp
 {
     Super::TickComponent(Delta, Tick, Function);
     ValidateServerMovementContext();
+    DashRuntime->Tick();
     if (State.Action == ERPGRidingAction::Dash && FPlatformTime::Seconds() >= DashDeadline)
         FinishDash(ActiveDash, ERPGRidingEndReason::Completed);
 }
@@ -400,6 +426,7 @@ bool URPGRidingComponent::FinishDash(const FRPGRidingDashTicket& Ticket, ERPGRid
 {
     if (!IsInGameThread() || !MatchesDash(Ticket)
         || (Reason != ERPGRidingEndReason::Completed && Reason != ERPGRidingEndReason::ExecutionRejected && Reason != ERPGRidingEndReason::Manual)) return false;
+    DashRuntime->Stop(Reason, false);
     State.Action = ERPGRidingAction::None; State.ExecutionId.Invalidate();
     State.ActionDuration = 0; State.ActionStartServerWorldSeconds = 0; State.ActionDirection = FVector::ZeroVector;
     State.LastEndReason = Reason; ++State.Key.ActionSequence;
@@ -425,15 +452,18 @@ void URPGRidingComponent::ValidateServerMovementContext()
 double URPGRidingComponent::ConstrainServerMovement(const FVector& Start, const FVector& End)
 {
     const auto* Character = Cast<ACharacter>(GetOwner());
-    if (!Character || !Character->HasAuthority() || State.Mode != ERPGRidingMode::Mounted) return 1;
+    if (!Character || !Character->HasAuthority()) return 1;
+    const bool WasMounted = State.Mode == ERPGRidingMode::Mounted;
     ValidateServerMovementContext();
-    if (State.Mode != ERPGRidingMode::Mounted) return 0;
+    if (WasMounted && State.Mode != ERPGRidingMode::Mounted) return 0;
+    const double DashFraction = DashRuntime->Constrain(Start, End);
+    if (DashFraction <= 0 || State.Mode != ERPGRidingMode::Mounted) return DashFraction;
     if (Start.ContainsNaN() || End.ContainsNaN()
         || !Start.Equals(Character->GetCapsuleComponent()->GetComponentLocation(), 0.01))
     { ForceDismount(ERPGRidingEndReason::Region); return 0; }
     const auto* Definition = FindDefinition(State.MountId);
     const auto* Policy = GetWorld()->GetSubsystem<URPGRidingWorldPolicy>();
-    const auto Result = Definition && Policy ? Policy->EvaluatePath(*Character, Start, End, Definition->RegionTags) : FRPGRidingPathPermission{};
+    const auto Result = Definition && Policy ? Policy->EvaluatePath(*Character, Start, Start + (End - Start) * DashFraction, Definition->RegionTags) : FRPGRidingPathPermission{};
     if (!Result.bAllowed)
     {
         const auto Epoch = State.Key.RiderEpoch;
@@ -441,7 +471,7 @@ double URPGRidingComponent::ConstrainServerMovement(const FVector& Start, const 
         if (!IsBindingCurrent() || State.Key.RiderEpoch != Epoch
             || !Start.Equals(Character->GetCapsuleComponent()->GetComponentLocation(), 0.01)) return 0;
     }
-    return Result.bAllowed ? 1 : FMath::Clamp(Result.SafeFraction, 0., 1.);
+    return DashFraction * (Result.bAllowed ? 1 : FMath::Clamp(Result.SafeFraction, 0., 1.));
 }
 void URPGRidingComponent::EndPlay(const EEndPlayReason::Type Reason)
 {

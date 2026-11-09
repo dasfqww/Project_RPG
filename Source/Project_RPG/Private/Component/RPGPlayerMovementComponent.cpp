@@ -3,6 +3,7 @@
 #include "GameFramework/Character.h"
 #include "Security/RPGDungeonGameplayAuthority.h"
 #include "Riding/RPGRidingComponent.h"
+#include "Component/RPGSecurityValidationComponent.h"
 
 URPGPlayerMovementComponent::URPGPlayerMovementComponent()
 {
@@ -14,6 +15,9 @@ bool URPGPlayerMovementComponent::MoveUpdatedComponentImpl(const FVector& Delta,
     bool bSweep, FHitResult* OutHit, ETeleportType Teleport)
 {
     if (IsRevokedOnServer()) { if (OutHit) *OutHit = FHitResult(); return false; }
+    const FVector OriginalStart = UpdatedComponent ? UpdatedComponent->GetComponentLocation() : FVector::ZeroVector;
+    auto* OriginalRiding = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr;
+    const FGuid OriginalExecution = OriginalRiding ? OriginalRiding->GetRidingState().ExecutionId : FGuid();
     FVector AllowedDelta = Delta;
     if (CharacterOwner && CharacterOwner->HasAuthority() && UpdatedComponent)
         if (auto* Riding = CharacterOwner->FindComponentByClass<URPGRidingComponent>())
@@ -33,7 +37,28 @@ bool URPGPlayerMovementComponent::MoveUpdatedComponentImpl(const FVector& Delta,
             if (bEvaluatingRidingMove && (!bHasRidingStamp || !(EvaluatedStamp == FRPGRidingMoveStamp::FromState(Riding->GetRidingState()))))
                 GetPredictionData_Server_Character()->bForceClientUpdate = true;
         }
-    return Super::MoveUpdatedComponentImpl(AllowedDelta, NewRotation, bSweep, OutHit, Teleport);
+    const bool Moved = Super::MoveUpdatedComponentImpl(AllowedDelta, NewRotation, bSweep, OutHit, Teleport);
+    if (IsValid(OriginalRiding) && UpdatedComponent) OriginalRiding->RecordServerDashMovement(OriginalExecution, OriginalStart, UpdatedComponent->GetComponentLocation());
+    return Moved;
+}
+
+bool URPGPlayerMovementComponent::CanOpenRidingDashWindow() const
+{
+    const auto* S = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGSecurityValidationComponent>() : nullptr;
+    return CharacterOwner && CharacterOwner->HasAuthority() && !IsRevokedOnServer() && S && !S->IsMovementAuthorizationActive();
+}
+FRPGRidingDashWindow URPGPlayerMovementComponent::OpenRidingDashWindow(float Duration, float Distance)
+{
+    if (!CanOpenRidingDashWindow()) return {};
+    auto* S = CharacterOwner->FindComponentByClass<URPGSecurityValidationComponent>();
+    const auto Handle = S->BeginMovementAuthorization(Duration, Distance, TEXT("RPG.RidingDash"));
+    return {S, Handle, [Weak = TWeakObjectPtr<URPGSecurityValidationComponent>(S), Handle]()
+        { if (auto* Original = Weak.Get()) Original->EndMovementAuthorization(Handle, true); }};
+}
+FVector URPGPlayerMovementComponent::ConstrainInputAcceleration(const FVector& Input) const
+{
+    const auto* R = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr;
+    return R && R->IsServerDashActive() ? FVector::ZeroVector : Super::ConstrainInputAcceleration(Input);
 }
 
 bool URPGPlayerMovementComponent::TryGetRidingProfile(FRPGRidingMovementProfile& Out) const
@@ -91,7 +116,9 @@ void URPGPlayerMovementComponent::PerformMovement(float DeltaTime)
 {
 	if (IsRevokedOnServer()) { StopRevokedMovement(); return; }
     if (auto* Riding = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr) Riding->ValidateServerMovementContext();
+    if (auto* Riding = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr) Riding->PrepareServerDashMovement();
 	Super::PerformMovement(DeltaTime);
+    if (auto* Riding = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr) Riding->FinalizeServerDashMovement();
 }
 
 void URPGPlayerMovementComponent::ServerMove_HandleMoveData(const FCharacterNetworkMoveDataContainer& MoveDataContainer)
@@ -104,6 +131,7 @@ void URPGPlayerMovementComponent::ServerMove_PerformMovement(const FCharacterNet
 {
     if (IsRevokedOnServer()) { StopRevokedMovement(); return; }
     if (auto* Riding = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr) Riding->ValidateServerMovementContext();
+    if (auto* Riding = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr) Riding->PrepareServerDashMovement();
     TGuardValue<bool> Evaluating(bEvaluatingRidingMove, true);
     const bool Known = &Data == &RidingMoves.Moves[0] || &Data == &RidingMoves.Moves[1] || &Data == &RidingMoves.Moves[2];
     TGuardValue<bool> HasStamp(bHasRidingStamp, Known);

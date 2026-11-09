@@ -1,5 +1,6 @@
 #include "Component/Combat/RPGCombatControlComponent.h"
 #include "Riding/RPGRidingDamageScope.h"
+#include "Riding/RPGRidingComponent.h"
 #include "Component/Combat/RPGCombatMotion.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
@@ -78,6 +79,9 @@ bool URPGCombatControlComponent::ApplyApprovedDamageKnockback(AActor* Source, co
 		? InterruptedAnim->GetActiveInstanceForMontage(InterruptedMontage.Get()) : nullptr;
 	if (bCancellingMontage && !ASC->GetAnimatingAbility() && RemainingInstance && RemainingInstance->GetInstanceID() == InterruptedId
 		&& Character->GetMesh()->IsPlayingRootMotion()) InterruptedAnim->Montage_Stop(0.f, InterruptedMontage.Get());
+	if (auto* Riding = Character->FindComponentByClass<URPGRidingComponent>()) Riding->StopServerDashForControl();
+	if (bEnding || BoundASC.Get() != ASC || RecoveryRevision() != Life || LifetimeEpoch != Epoch || !IsLivingAvatar(Character))
+	{ EndKnockback(ERPGKnockbackEndReason::LifeChanged); return false; }
 	if (ForeignMotion(Movement, NAME_None)) { EndKnockback(ERPGKnockbackEndReason::ForeignMovement); return false; }
 	auto* Security = Character->FindComponentByClass<URPGSecurityValidationComponent>();
 	// A non-combat system's window must not be overwritten. Cancelled combat revoked its own window above.
