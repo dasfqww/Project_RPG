@@ -24,6 +24,7 @@ struct FRPGEquipmentMutationHttpResult;
 struct FRPGNarrativeHttpResult;
 struct FRPGNarrativeInteractionCommand;
 struct FRPGNarrativeInteractionHttpResult;
+struct FRPGNarrativeKillCommand;
 class IRPGTradeTransport;
 class FRPGDungeonDisconnectionJournal;
 class FRPGDungeonConsumeJournal;
@@ -316,6 +317,8 @@ public:
 		TFunction<void(FRPGNarrativeHttpResult)> Completion);
 	/** Build-only approved observation POST, using only the assigned game-server credential. */
 	FHttpRequestPtr CreateServerNarrativeInteractionRequest(const FRPGNarrativeInteractionCommand& Command, const FString& FrozenBody,
+		TFunction<void(FRPGNarrativeInteractionHttpResult)> Completion);
+	FHttpRequestPtr CreateServerNarrativeKillRequest(const FRPGNarrativeKillCommand& Command, const FString& FrozenBody,
 		TFunction<void(FRPGNarrativeInteractionHttpResult)> Completion);
 	/** Build only; the intent owner must durably save before dispatching this request. */
 	FHttpRequestPtr CreatePlayerEquipmentMutationRequest(const FRPGEquipmentMutationCommand& Command,
