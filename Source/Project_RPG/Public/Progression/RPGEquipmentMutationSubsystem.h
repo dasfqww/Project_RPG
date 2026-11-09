@@ -4,9 +4,12 @@
 #include "Http.h"
 #include "Progression/RPGEquipmentMutationJournal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Progression/RPGEquipmentReadGuard.h"
+#include "Economy/Backend/RPGEconomyBackendTypes.h"
 #include "RPGEquipmentMutationSubsystem.generated.h"
 
 class UHttpWebManager;
+struct FRPGEquipmentReadTicket { FRPGEquipmentMutationScope Scope; uint64 Generation=0; };
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRPGEquipmentMutationsChanged);
 
 /** Player-only narrow commands. Backend ownership/lease/CAS remain authoritative.
@@ -28,6 +31,11 @@ public:
 	/** Fresh player GET into the existing read-only projection entries; no item mutation. */
 	UFUNCTION(BlueprintCallable, Category="RPG|Equipment") bool RefreshItems(FGuid CharacterId);
 	UFUNCTION(BlueprintPure, Category="RPG|Equipment") bool IsItemsReadInFlight() const { return ActiveReadRequest.IsValid(); }
+	// Native-only read projection import. Never dispatches, clears a journal or changes server assets.
+	bool BeginExternalRead(FGuid Character, FRPGEquipmentReadTicket& Out);
+	bool IsExternalReadCurrent(const FRPGEquipmentReadTicket& Ticket) const;
+	bool ApplyExternalRead(FRPGEquipmentReadTicket& Ticket, const TArray<FRPGInventoryProjectionEntry>& Items,
+		const TArray<FRPGInventoryProjectionEntry>& Mail, const FRPGEconomyWalletResult& Wallet);
 	UFUNCTION(BlueprintCallable, Category="RPG|Equipment") bool UpgradeEquipment(FGuid CharacterId,
 		const FRPGEquipmentItemExpectation& Equipment, const TArray<FRPGEquipmentCostExpectation>& OreStacks);
 	UFUNCTION(BlueprintCallable, Category="RPG|Equipment") bool TransferEquipment(FGuid CharacterId,
@@ -45,7 +53,7 @@ private:
 	bool Begin(FRPGEquipmentMutationCommand Command);
 	bool Dispatch(const FRPGEquipmentPendingMutation& Pending);
 	void Complete(uint64 Attempt, FRPGEquipmentMutationScope Scope, FRPGEquipmentMutationCommand Command, FRPGEquipmentMutationHttpResult Result);
-	void Publish(const FRPGEquipmentMutationScope& Scope, FRPGEquipmentMutationView View);
+	void Publish(const FRPGEquipmentMutationScope& Scope, FRPGEquipmentMutationView View, bool bExternalAssets = false);
 	void CancelItemsRead();
 	void CompleteItems(uint64 Serial, FRPGEquipmentMutationScope Scope, FRPGEquipmentMutationHttpResult Result);
 	FString JournalRoot;
@@ -56,6 +64,7 @@ private:
 	FRPGEquipmentMutationScope ActiveScope;
 	uint64 AttemptSerial = 0;
 	bool bShuttingDown = false;
+	FRPGEquipmentReadGuard ReadGuard;
 #if WITH_DEV_AUTOMATION_TESTS
 	TWeakObjectPtr<UHttpWebManager> TestManager;
 	TFunction<bool(const FHttpRequestRef&)> TestDispatch;

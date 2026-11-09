@@ -60,12 +60,14 @@ bool URPGEquipmentMutationSubsystem::ScopeFor(FGuid CharacterId, FRPGEquipmentMu
 		&& FRPGEquipmentMutationScope::Create(Endpoint, SteamId, CharacterId, OutScope);
 }
 
-void URPGEquipmentMutationSubsystem::Publish(const FRPGEquipmentMutationScope& Scope, FRPGEquipmentMutationView View)
+void URPGEquipmentMutationSubsystem::Publish(const FRPGEquipmentMutationScope& Scope, FRPGEquipmentMutationView View, bool bExternalAssets)
 {
+	ReadGuard.Invalidate();
+	if (!bExternalAssets) { View.bWalletReady=false; View.Wallet.Reset(); }
 	auto EqualItems = [](const TArray<FRPGInventoryProjectionEntry>& A, const TArray<FRPGInventoryProjectionEntry>& B)
 	{ if (A.Num() != B.Num()) return false; for (int32 I = 0; I < A.Num(); ++I) if (!A[I].HasSamePayload(B[I])) return false; return true; };
 	const auto* Previous = Views.Find(Scope.Key);
-	const bool Changed = !Previous || Previous->CharacterId != View.CharacterId || Previous->RequestId != View.RequestId
+	const bool Changed = bExternalAssets || !Previous || Previous->bWalletReady!=View.bWalletReady || Previous->CharacterId != View.CharacterId || Previous->RequestId != View.RequestId
 		|| Previous->Operation != View.Operation || Previous->State != View.State || Previous->HttpStatus != View.HttpStatus
 		|| Previous->AffectedQuantity != View.AffectedQuantity || Previous->bNeedsInventoryRefresh != View.bNeedsInventoryRefresh
 		|| Previous->ItemsLoadState != View.ItemsLoadState || !EqualItems(Previous->Items, View.Items) || !EqualItems(Previous->MailItems, View.MailItems)
@@ -86,6 +88,7 @@ FRPGEquipmentMutationView URPGEquipmentMutationSubsystem::GetState(FGuid Charact
 		const auto Auth = RPGEquipmentMutationUI::View(CharacterId, nullptr, ERPGEquipmentMutationState::AuthenticationRequired);
 		Result.State = Auth.State; Result.Message = Auth.Message;
 		Result.Items.Reset(); Result.MailItems.Reset(); Result.ItemsLoadState = ERPGInventoryProjectionLoadState::Failed;
+		Result.Wallet.Reset(); Result.bWalletReady=false;
 	}
 	return Result;
 }
@@ -170,8 +173,41 @@ bool URPGEquipmentMutationSubsystem::RetryPending(FGuid CharacterId)
 
 void URPGEquipmentMutationSubsystem::CancelItemsRead()
 {
+	ReadGuard.Invalidate();
 	++ReadSerial;
 	if (ActiveReadRequest) { ActiveReadRequest->OnProcessRequestComplete().Unbind(); ActiveReadRequest->CancelRequest(); ActiveReadRequest.Reset(); }
+}
+
+bool URPGEquipmentMutationSubsystem::BeginExternalRead(FGuid Character, FRPGEquipmentReadTicket& Out)
+{
+	FRPGEquipmentMutationScope Scope;
+	if (!ScopeFor(Character,Scope)) return false;
+	FRPGEquipmentReadTicket Ticket{Scope,ReadGuard.Capture()};
+	if (!IsExternalReadCurrent(Ticket)) return false;
+	Out=MoveTemp(Ticket); return true;
+}
+bool URPGEquipmentMutationSubsystem::IsExternalReadCurrent(const FRPGEquipmentReadTicket& Ticket) const
+{
+	FRPGEquipmentMutationScope Current;FRPGEquipmentPendingMutation Pending;
+	if (!ReadGuard.Matches(Ticket.Generation) || ActiveRequest || ActiveReadRequest || !ScopeFor(Ticket.Scope.CharacterId,Current)
+		|| !(Current==Ticket.Scope) || !Web()->HasAccessToken()
+		|| FRPGEquipmentMutationJournal::Load(JournalRoot,Current,Pending)!=ERPGEquipmentJournalRead::Missing) return false;
+	const auto State=GetState(Current.CharacterId).State;
+	return State==ERPGEquipmentMutationState::Idle || State==ERPGEquipmentMutationState::Committed || State==ERPGEquipmentMutationState::Rejected;
+}
+bool URPGEquipmentMutationSubsystem::ApplyExternalRead(FRPGEquipmentReadTicket& Ticket,
+	const TArray<FRPGInventoryProjectionEntry>& Items,const TArray<FRPGInventoryProjectionEntry>& Mail,const FRPGEconomyWalletResult& Wallet)
+{
+	FGuid Character;FString Endpoint,Account;
+	if (!IsExternalReadCurrent(Ticket) || !Wallet.WasSuccessful() || !FGuid::Parse(Wallet.CharacterId,Character)
+		|| Character!=Ticket.Scope.CharacterId || !Web()->GetPlayerEquipmentContext(Endpoint,Account) || Wallet.AccountId!=Account) return false;
+	auto View=GetState(Character);View.Items=Items;View.MailItems=Mail;View.Wallet=Wallet.Balances;View.bWalletReady=true;
+	View.ItemsLoadState=ERPGInventoryProjectionLoadState::Ready;View.bNeedsInventoryRefresh=false;
+	const uint64 Expected=ReadGuard.Current()+1;
+	Publish(Ticket.Scope,MoveTemp(View),true);
+	// A synchronous subscriber may have started a newer read/write while publishing.
+	if (ReadGuard.Current()!=Expected) return false;
+	Ticket.Generation=ReadGuard.Current();return IsExternalReadCurrent(Ticket);
 }
 
 bool URPGEquipmentMutationSubsystem::RefreshItems(FGuid CharacterId)

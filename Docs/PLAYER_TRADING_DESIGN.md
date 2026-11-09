@@ -125,7 +125,7 @@ T6에서 보상 생성 시 확정한 eligible character/account 목록, 원래 �
 | T2a | Memory/PG 자산 예약·해제·만료와 기존 변이/지출 차단 | 실제 PG 병렬 예약/지출/아이템 변경·취소 봉인·중간 실패 롤백·저장소 재생성 |
 | T2b | 교환 계획(11절)·PostgreSQL 원자 저장(12절)·Memory 원자 저장/내부 DI(13절) 완료 | 실제 PG 양측 교환/취소·입장 경합, 주입 실패 전체 롤백, 재시작/응답 유실 복구; Memory 동등 계약 |
 | T3 | 인증된 직거래 API/조회/만료 처리 구현(14절), 기본 비활성 | 실제 HTTP 두 계정·세 번째 계정 거절·요청 충돌·응답 유실·재시작, 제한/영수증 감사 |
-| T4 | 상세 API·UE 수명/조회/동의·가방 기반 제안 편집·상대 검색/선택·초대·완료 자산 조회 구현(15~23절), 완료 자산의 UE Projection 반영 후속 | 실제 두 클라이언트 제안·준비·확정·취소·재접속, 기존 인벤토리 명령과 충돌 검사 |
+| T4 | 상세 API·UE 수명/조회/동의·가방 기반 제안 편집·상대 검색/선택·초대·완료 자산 조회/로비 Projection 반영 구현(15~24절) | 실제 두 클라이언트 제안·준비·확정·취소·재접속, 기존 인벤토리 명령과 충돌 검사 |
 | T5 | 경매장 등록/검색/구매/취소/만료/대금 수령/API/UI | 동시 구매 1명 성공·취소 경합·오프라인 판매·포화/잔액 상한·재시작 실연결 |
 | T6 | 파티 전리품 자격/제한 교환 | 획득 당시 참여자만 허용·시간/장착/강화/재이전 규칙·정산 출처 보존 |
 
@@ -807,7 +807,7 @@ loopback 전송 fixture와 사설 native UMG는 실제 ASP.NET/PG·두 게임 �
 ## 23. 완료된 거래 이후 본인 자산의 일관된 재조회 — 2026-11-09
 
 `GET /api/characters/{characterId}/trades/{tradeId}/assets`는 거래 완료를 확인한 뒤, 현재 본인 지갑과 활성 아이템 전체를
-하나의 스냅샷으로 읽는다. 이 단계는 backend 읽기 API이며 UE 인벤토리/지갑의 실제 반영은 다음 연결이다.
+하나의 스냅샷으로 읽는다. 이 절은 backend 읽기 API이며 UE 로비 읽기 캐시/지갑 반영은 §24에서 연결한다.
 이미 저장된 정산을 다시 실행하거나, 과거 제안/교환 계획의 수량을 현재 자산에 더하거나 빼지 않는다. 기본 거래 비활성은 유지한다.
 
 - 현재 Player가 소유한 actor와 해당 거래의 참여자 관계를 모두 검사한다. 자신의 다른 캐릭터로도 같은 계정의 거래를 대신 조회할 수 없다.
@@ -845,3 +845,46 @@ PG는 아이템 SELECT를 잠근 상태에서 아이템/지갑을 한 번에 변
 
 최종 실행 3ac4d387581843ab9774575bc4378365, 자기3회 임시52,046,217 bytes와 PG 컨테이너를 폐기했다.
 Temp/자기 프로세스/컨테이너/정리 예외0이며 근거는 Saved/BuildChecks/TradeAssets-20261109/Completion.json이다.
+
+## 24. UE 완료 자산의 조회/로비 캐시 반영과 표시 — 2026-11-09
+
+완료 상태이며 원래 미확정 명령이 없는 거래는 로컬 소유자가 현재 문맥에서 한 번 자산을 조회한다.
+'완료 후 자산 다시 불러오기'로 다시 조회할 수 있다. 읽기 실패/기한·문맥/캐시 충돌은 거래 롤백이 아니며
+완료 상태를 유지한 채 재조회를 안내한다. 진행 중 confirm은 assets GET이나 완료 화면으로 지우지 않고 원래 ID/본문 영수증을 확인한다.
+
+- SendAssets는 기존 player 인증의 같은 단일 HTTP 경로로 /assets를 읽는다. Coordinator는 쓰기/pending과 겹치지 않게 진행 상태를 소유한다.
+  클라이언트 자산 본문은4MiB/깊이12/최대500행 제한이다. 더 큰 유효 응답도 불완전하게 반영하지 않고 확인 불가로 남긴다.
+  기존 세션/preview/검색의 개별 본문 한도는 유지한다. 공통 JSON 검사기의 허용 최대만 자산용으로 확장했다.
+- FRPGTradeAssets는 중복 키·isComplete·정확한 완료 session/actor/계정과 관측 시각을 검사한다.
+  기존 아이템/지갑 codec을 사용하고 지갑을 다시 직렬화하기 전에 StoreNumbersAsStrings로 수치 원문을 보존한다.
+  wallet의 캐릭터/계정·유효한 roster 및 각 재화 owner 범위, 모든 아이템의 Active/정확한 소유자/중복 ID와 투영을 확인한다.
+  정밀 리비전/재화를 double로 계산하지 않으며, 수신 당시 원시 ItemRecord·seed/소유 위치는 검증 후 기존 읽기 projection으로 줄인다.
+- 데이터 대상은 URPGEquipmentMutationSubsystem의 로비 player 읽기 캐시다. Items/MailItems와 Wallet/bWalletReady를 한 번에 공개하고
+  기존 OnEquipmentMutationsChanged를 통지해 성장/제작 등 이 캐시를 읽는 화면도 갱신한다. 서버의 PlayerState/복제 인벤토리·지갑에는 쓰지 않는다.
+  일반 아이템 읽기/명령 publication은 지갑 준비 상태를 지워 오래된 지갑을 새 응답으로 표시하지 않게 한다.
+- 외부 읽기 ticket은 현재 endpoint/계정/actor scope와 캐시 세대에 묶인다. 시작/적용/현재 표시 때 실제 요청 진행 여부와 기존 journal을 검사한다.
+  journal은 Missing이어야 하며, 미확정·복구 불가/저장 차단·인증 불가 상태에서는 시작/적용하지 않는다. journal을 전송하거나 지우지 않는다.
+  아이템 읽기/변경/새 publication 또는 새 ticket이 이전 ticket을 무효화한다. 적용 통지의 동기 callback이 새 읽기/명령을 시작해도 이전 결과를 최신으로 표시하지 않는다.
+- Owner는 현재 문맥/완료 session·pending 부재와 요청 세대를 재검사한 후에만 cache sink를 호출한다.
+  계정/캐릭터/endpoint·인증/로비 문맥 변경의 늦은 응답과 superseded cache는 적용하지 않는다.
+  적용한 뒤 캐시가 바뀌면 거래 요약도 숨기고 재조회를 안내한다. 원래 자산에 제안 수량을 더하거나 지갑 잔액을 차감하지 않는다.
+- 표시에는 알려진 Gold의 정확한 정수와 가방/장착·우편 entry 종류 수만 사용한다. Gold 정의가 없으면0 대신 확인 불가를 표시한다.
+  raw owner/seed/생성 source·서버 오류 원문은 표시하지 않는다. 원시 지갑 계약은 기존 캐시의 소유 범위 확인용으로만 보유한다.
+  창을 닫아도 진행 중 완료 자산 읽기의 소유자는 유지되며 새 창에서 결과를 볼 수 있다. 읽기가 끝나면 닫기로 종료 세션을 정리할 수 있다.
+
+검증 러너 Run-TradeAssetsUiTests.ps1는 게시 RPGInventory plugin을 독립 사본에서 실제 빌드하고 기존 지갑 codec/새 DTO·로컬 소유자·UMG·실제 loopback HTTP를 검사한다.
+장비 캐시의 세대 계약은 실제 FRPGEquipmentReadGuard를 사용하되 native 소유자 검사는 주입한 cache sink이며,
+실제 URPGEquipmentMutationSubsystem/TradeSubsystem 연결은 Run-TradeAssetsUiIntegrationCompile.ps1의 전체 프로젝트 UHT/CPP7 컴파일로 구분한다.
+실제 정상 DLL 설치·로비/장비 journal/아이템 HTTP를 포함한 두 게임 클라이언트·GPU/Steam E2E와 거래 기능/콘텐츠 활성화는 이 검사 범위가 아니다.
+기존 Lobby/Preview/Offer/Target UI native 러너는 새 읽기 모델·지갑 codec과 게시 plugin 캡처 의존성을 추가했다.
+
+- 최종 ad065f67+명시 입력/게시 plugin 942dfc9c의57단계 빌드/링크·native37 Success/검사 오류·예상 밖 경고0/UE0,
+  전체 프로젝트 UHT/실제 CPP7 컴파일0·입력/러너 SHA 동일. 신규5개는 정밀 코덱/불완전·범위·중복 거절, 캐시 세대·실패/재시도·문맥/원래 pending 보존,
+  실제 UMG 골드 표시/조회 실패·창 닫기 수명과 실제 HTTP 자산 조회를 검사했다. assets GET1/완료 active GET1 및 기존 검색/preview/초대/offer HTTP 회귀·fixture 오류0이다.
+  Engine 기동 Error15와 검사 시작 후 Error0은 구분한다.
+- 최초 검사는 소수 리비전의 기존 codec 정수 변환 허용과 fixture 전용 경로 처리 순서로 실패했다. 자산 입구에서 정수 필드의 원문 정규형·범위를 검사해
+  소수/지수/잘못된 타입의 손실 변환을 막고, fixture를 수정했다. 후속 UE5.8 공유 JSON key의 명시 변환 컴파일 실패는 변환 보완 후 최종 성공과 구분한다.
+  기존 제안 수량의 미초기화 경고도 초기값을 명시해 없앴다. 플러그인 원본 codec/소스는 수정하지 않았다.
+- 자기6회 임시9,064,865,462 bytes(8.442GiB)를 폐기했고 프로세스/Temp/이번 정리 예외0이다.
+  근거 Saved/BuildChecks/TradeAssetsUi-20261109/CompletionAudit.json, native ee8b7097b2c74ef9b84ce185b4ddd177/Result.json,
+  Integration-e1b747c947934607b73ec12a036fdd4f/Result.json. 폐기한 모듈 SHA는 당시 실행 근거로만 유지한다.

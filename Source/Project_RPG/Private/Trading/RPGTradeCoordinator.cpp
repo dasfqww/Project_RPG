@@ -57,6 +57,18 @@ bool FRPGTradeCoordinator::Refresh(FGuid Trade)
 }
 void FRPGTradeCoordinator::InvalidatePreview()
 { Preview.Reset(); PreviewToken.Invalidate(); PreviewDeadline = 0; }
+bool FRPGTradeCoordinator::RefreshAssets(TFunction<void(FRPGTradeHttpResult)> Completion)
+{
+    if(!Completion || !SyncContext() || bBusy || !Transport->CanSend() || Client.GetPending()
+        || !Client.GetSession() || Client.GetSession()->Status!=ERPGTradeStatus::Completed) return false;
+    const auto Trade=Client.GetSession()->TradeId;const auto Expected=++Operation;bBusy=true;
+    TWeakPtr<FRPGTradeCoordinator> Weak=AsShared();
+    auto Done=[Weak,Expected,Completion=MoveTemp(Completion)](FRPGTradeHttpResult Result) mutable
+    {auto Self=Weak.Pin();if(!Self || Self->Operation!=Expected || !Self->SyncContext())return;Self->bBusy=false;Completion(MoveTemp(Result));Self->Notify();};
+    const bool Sent=Transport->SendAssets(Character,Trade,Done);
+    if(!Sent && Operation==Expected && bBusy)Done(FRPGTradeHttpResult{});
+    return Sent;
+}
 const FRPGTradePreview* FRPGTradeCoordinator::GetPreview() const
 {
     const double RawTime = Clock();

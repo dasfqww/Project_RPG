@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Item/Backend/RPGItemBackendTypes.h"
 #include "Item/Projection/RPGInventoryProjectionTypes.h"
+#include "Economy/RPGCurrencyTypes.h"
 #include "RPGEquipmentMutationTypes.generated.h"
 
 UENUM(BlueprintType)
@@ -53,6 +54,8 @@ struct PROJECT_RPG_API FRPGEquipmentMutationView
 	/** Read-only fresh owner query, never historical receipt records. */
 	UPROPERTY(BlueprintReadOnly, Category="RPG|Equipment") TArray<FRPGInventoryProjectionEntry> Items;
 	UPROPERTY(BlueprintReadOnly, Category="RPG|Equipment") TArray<FRPGInventoryProjectionEntry> MailItems;
+	UPROPERTY(BlueprintReadOnly, Category="RPG|Equipment") bool bWalletReady = false;
+	UPROPERTY(BlueprintReadOnly, Category="RPG|Equipment") TArray<FRPGCurrencyBalance> Wallet;
 	UPROPERTY(BlueprintReadOnly, Category="RPG|Equipment") FText Message;
 };
 

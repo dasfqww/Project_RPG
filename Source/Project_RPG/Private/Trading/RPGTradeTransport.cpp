@@ -30,8 +30,10 @@ bool FRPGHttpTradeTransport::SendTargets(FGuid Character, const FString& Name, T
     FString Normalized;
     return RPGTradeTargets::NormalizeName(Name,Normalized) && SendRequest(Character,FGuid(),TEXT(""),TEXT(""),MoveTemp(Completion),false,Normalized);
 }
+bool FRPGHttpTradeTransport::SendAssets(FGuid Character, FGuid Trade, TFunction<void(FRPGTradeHttpResult)> Completion)
+{ return Trade.IsValid() && SendRequest(Character,Trade,TEXT(""),TEXT(""),MoveTemp(Completion),false,FString(),true); }
 bool FRPGHttpTradeTransport::SendRequest(FGuid Character, FGuid Trade, const FString& Action, const FString& Body,
-    TFunction<void(FRPGTradeHttpResult)> Completion, bool bPreview, const FString& TargetName)
+    TFunction<void(FRPGTradeHttpResult)> Completion, bool bPreview, const FString& TargetName, bool bAssets)
 {
     FRPGTradeHttpContext Value;
     if (!IsInGameThread() || Active || !Character.IsValid() || !Completion || !Context || !Validate
@@ -48,6 +50,7 @@ bool FRPGHttpTradeTransport::SendRequest(FGuid Character, FGuid Trade, const FSt
     if (Trade.IsValid()) Path += TEXT("/") + Trade.ToString(EGuidFormats::DigitsWithHyphensLower);
     if (bWrite) Path += TEXT("/") + Action;
     if (bPreview) Path += TEXT("/preview");
+    if (bAssets) Path += TEXT("/assets");
     if (!TargetName.IsEmpty()) Path += TEXT("/targets?name=")+FGenericPlatformHttp::UrlEncode(TargetName);
     auto Request = FHttpModule::Get().CreateRequest();
     Request->SetDelegateThreadPolicy(EHttpRequestDelegateThreadPolicy::CompleteOnGameThread);
@@ -61,7 +64,7 @@ bool FRPGHttpTradeTransport::SendRequest(FGuid Character, FGuid Trade, const FSt
     const auto Expected = ++Generation;
     TWeakPtr<FRPGHttpTradeTransport> WeakThis = AsShared();
     Request->OnProcessRequestComplete().BindLambda(
-        [WeakThis, Expected, Value, bPreview, Completion = MoveTemp(Completion)](FHttpRequestPtr, FHttpResponsePtr Response, bool bSuccess) mutable
+        [WeakThis, Expected, Value, bPreview, bAssets, Completion = MoveTemp(Completion)](FHttpRequestPtr, FHttpResponsePtr Response, bool bSuccess) mutable
         {
             auto Self = WeakThis.Pin();
             if (!Self || Self->Generation != Expected) return;
@@ -70,7 +73,7 @@ bool FRPGHttpTradeTransport::SendRequest(FGuid Character, FGuid Trade, const FSt
             Result.bTransportSuccessful = bSuccess && Response.IsValid();
             Result.StatusCode = Result.bTransportSuccessful ? Response->GetResponseCode() : 0;
             Result.bCurrentPlayerContext = Self->Validate(Value, Result.StatusCode);
-            if (Result.bTransportSuccessful && Response->GetContent().Num() <= (bPreview ? 131072 : 32768)) Result.Body = Response->GetContentAsString();
+            if (Result.bTransportSuccessful && Response->GetContent().Num() <= (bAssets ? 4*1024*1024 : bPreview ? 131072 : 32768)) Result.Body = Response->GetContentAsString();
             if (Result.StatusCode == 429 || Result.StatusCode == 503)
             {
                 const FString Delay = Response->GetHeader(TEXT("Retry-After"));

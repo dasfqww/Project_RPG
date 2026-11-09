@@ -19,7 +19,7 @@ TSharedRef<FRPGTradeLobbyOwner> FRPGTradeLobbyOwner::Create(TSharedRef<IRPGTrade
 FRPGTradeLobbyOwner::~FRPGTradeLobbyOwner() { Shutdown(); }
 void FRPGTradeLobbyOwner::Shutdown()
 {
-    bEnding = true; Coordinator->OnChanged = {}; Coordinator->Reset(); Draft.Reset(); OnChanged.Clear();
+    bEnding = true; ++AssetGeneration; Assets.Reset(); Coordinator->OnChanged = {}; Coordinator->Reset(); Draft.Reset(); OnChanged.Clear();
 }
 void FRPGTradeLobbyOwner::Changed() { if (!bEnding) OnChanged.Broadcast(); }
 bool FRPGTradeLobbyOwner::HasLiveTrade() const
@@ -32,7 +32,8 @@ bool FRPGTradeLobbyOwner::Update(bool bPoll)
     const auto KeepAlive = AsShared();
     const auto Next = Context();
     const bool bFrameChanged = !(Current == Next);
-    if (bFrameChanged) { Coordinator->ClearTargets(); TargetName.Reset(); TargetInputToken=FGuid::NewGuid(); }
+    if (bFrameChanged)
+    { Coordinator->ClearTargets(); TargetName.Reset(); TargetInputToken=FGuid::NewGuid(); ++AssetGeneration;Assets.Reset();AssetAttemptedTrade.Invalidate();bAssetsLoading=false;bAssetsFailed=false; }
     Current = Next;
     if (Current.Account != Account || Current.Endpoint != Endpoint)
     {
@@ -68,9 +69,45 @@ bool FRPGTradeLobbyOwner::Update(bool bPoll)
         }
     }
     if (bFrameChanged) Changed();
+    const auto* Completed=GetClient().GetSession();
+    if(bPoll && CanReadAssets() && Completed && AssetAttemptedTrade!=Completed->TradeId) ReloadAssets();
     return bCanAct && !bEnding;
 }
 void FRPGTradeLobbyOwner::Tick() { Update(true); }
+void FRPGTradeLobbyOwner::SetAssetSink(TFunction<bool()> Begin,TFunction<bool(const FRPGTradeAssets&)> Apply,TFunction<bool()> IsCurrent)
+{ ++AssetGeneration;Assets.Reset();AssetAttemptedTrade.Invalidate();bAssetsLoading=false;bAssetsFailed=false;AssetBegin=MoveTemp(Begin);AssetApply=MoveTemp(Apply);AssetCurrent=MoveTemp(IsCurrent); }
+bool FRPGTradeLobbyOwner::CanReadAssets() const
+{
+    const auto* S=GetClient().GetSession();
+    return !bEnding && S && S->Status==ERPGTradeStatus::Completed && !GetClient().GetPending() && !Coordinator->IsBusy()
+        && !bAssetsLoading && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible && Current.Character==BoundCharacter
+        && bool(AssetBegin) && bool(AssetApply) && bool(AssetCurrent);
+}
+bool FRPGTradeLobbyOwner::ReloadAssets()
+{
+    if(!Update(false) || !CanReadAssets())return false;
+    const auto Session=*GetClient().GetSession();const auto Scope=Current;const auto Epoch=++AssetGeneration;
+    AssetAttemptedTrade=Session.TradeId;Assets.Reset();bAssetsFailed=true;
+    if(!AssetBegin()){Changed();return false;}
+    bAssetsLoading=true;bAssetsFailed=false;
+    TWeakPtr<FRPGTradeLobbyOwner> Weak=AsShared();
+    const bool Sent=Coordinator->RefreshAssets([Weak,Session,Scope,Epoch](FRPGTradeHttpResult Result)
+    {
+        auto Self=Weak.Pin();if(!Self || Self->bEnding)return;
+        Self->Update(false);
+        if(Self->AssetGeneration!=Epoch)return;
+        Self->bAssetsLoading=false;Self->bAssetsFailed=true;
+        const auto* CurrentSession=Self->GetClient().GetSession();FRPGTradeAssets Decoded;
+        if(Self->Current==Scope && CurrentSession && *CurrentSession==Session && !Self->GetClient().GetPending()
+            && Result.bCurrentPlayerContext && Result.bTransportSuccessful && Result.StatusCode==200
+            && FRPGTradeAssets::Decode(Result.Body,Session,Scope.Character,Scope.Account,Decoded)
+            && Self->AssetApply && Self->AssetApply(Decoded) && Self->AssetCurrent && Self->AssetCurrent())
+        {Self->Assets=MoveTemp(Decoded);Self->bAssetsFailed=false;}
+        Self->Changed();
+    });
+    if(!Sent){bAssetsLoading=false;bAssetsFailed=true;}
+    Changed();return Sent;
+}
 bool FRPGTradeLobbyOwner::CanDiscover() const
 {
     return !bEnding && Current.bEnabled && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible
@@ -141,6 +178,9 @@ bool FRPGTradeLobbyOwner::Submit(ERPGTradeAction Action)
 }
 void FRPGTradeLobbyOwner::DismissClosed()
 {
+    const auto* Before=GetClient().GetSession();
+    if(Before && Before->Status==ERPGTradeStatus::Completed && AssetAttemptedTrade!=Before->TradeId && CanReadAssets())ReloadAssets();
+    if(bAssetsLoading || Coordinator->IsBusy())return;
     const auto* S = GetClient().GetSession();
     if (S && !S->IsOpen() && Coordinator->ClearClosedSession()) { Draft.Reset(); NextPoll = 0; Changed(); }
 }
@@ -211,7 +251,7 @@ bool FRPGTradeLobbyOwner::SetDraftAmount(FGuid Token, const FString& Amount)
 }
 bool FRPGTradeLobbyOwner::SetDraftItem(FGuid Token, FGuid Item, const FString& Quantity)
 {
-    FRPGTradeBagSnapshot Bag; int64 N;
+    FRPGTradeBagSnapshot Bag; int64 N=0;
     if (!Update(false) || Token != Draft.GetToken() || !GetDraftView().bCanEdit || !ReadBag(Bag)
         || !FRPGTradeOfferDraft::ParseInteger(Quantity,N) || N < 1 || N > MAX_int32) return false;
     const bool Set = Draft.SetItem(Item,static_cast<int32>(N),Bag); Changed(); return Set;
@@ -254,6 +294,21 @@ FRPGTradeLobbyView FRPGTradeLobbyOwner::GetView() const
         V.Status = NSLOCTEXT("RPGTrade", "Rejected", "거래 요청을 처리할 수 없습니다. 현재 상태를 다시 확인하세요.");
     if (S)
     {
+        if(S->Status==ERPGTradeStatus::Completed)
+        {
+            V.bReloadAssets=CanReadAssets();
+            const bool Fresh=Assets.IsSet() && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible
+                && Current.Character==BoundCharacter && AssetCurrent && AssetCurrent();
+            V.AssetStatus=bAssetsLoading ? NSLOCTEXT("RPGTrade","AssetsLoading","거래는 완료되었습니다. 최신 자산을 불러오고 있습니다.")
+                : Fresh ? NSLOCTEXT("RPGTrade","AssetsReady","완료 후 최신 자산을 확인했습니다.")
+                : NSLOCTEXT("RPGTrade","AssetsRefreshNeeded","거래는 완료되었습니다. 자산을 다시 불러와 확인하세요.");
+            if(Fresh)
+            {
+                const auto* Gold=Assets->Wallet.Balances.FindByPredicate([](const FRPGCurrencyBalance& B){return B.CurrencyCode==FName(TEXT("Gold"));});
+                const auto Coins=Gold ? FText::Format(NSLOCTEXT("RPGTrade","AssetsGold","골드 {0}"),FText::AsNumber(Gold->Balance)) : NSLOCTEXT("RPGTrade","AssetsGoldUnknown","골드 잔액 확인 불가");
+                V.AssetSummary=FText::Format(NSLOCTEXT("RPGTrade","AssetSummary","{0} · 가방/장착 {1}종 · 우편 {2}종"),Coins,FText::AsNumber(Assets->Items.Num()),FText::AsNumber(Assets->Mail.Num()));
+            }
+        }
         auto Summary = [S](const FRPGTradeOffer& O)
         { return FText::Format(S->CurrencyCode == TEXT("Gold") ? NSLOCTEXT("RPGTrade", "GoldSummary", "물품 {0}종 · 골드 {1}")
             : NSLOCTEXT("RPGTrade", "UnknownCurrency", "물품 {0}종 · 확인할 수 없는 재화 {1}"), FText::AsNumber(O.Items.Num()), FText::AsNumber(O.CurrencyAmount)); };

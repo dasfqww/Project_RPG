@@ -1,6 +1,7 @@
 #pragma once
 #include "Trading/RPGTradeCoordinator.h"
 #include "Trading/RPGTradeOfferDraft.h"
+#include "Trading/RPGTradeAssets.h"
 
 struct PROJECT_RPG_API FRPGTradeLobbyContext
 {
@@ -16,6 +17,8 @@ struct PROJECT_RPG_API FRPGTradeLobbyView
     FGuid ReviewToken;
     bool bCanReview = false, bReady = false, bConfirm = false;
     bool bAccept = false, bCancel = false, bWithdraw = false, bRetry = false, bRefresh = false;
+    FText AssetStatus, AssetSummary;
+    bool bReloadAssets = false;
 };
 struct PROJECT_RPG_API FRPGTradeDraftView
 {
@@ -68,6 +71,8 @@ public:
     bool SetTargetName(FGuid InputToken, const FString& Name);
     bool SearchTargets(FGuid InputToken);
     bool InviteTarget(FGuid ResultToken, FGuid Character);
+    void SetAssetSink(TFunction<bool()> Begin,TFunction<bool(const FRPGTradeAssets&)> Apply,TFunction<bool()> Current);
+    bool ReloadAssets();
     void DismissClosed();
     FRPGTradeLobbyView GetView() const;
     const FRPGTradeClient& GetClient() const { return Coordinator->GetClient(); }
@@ -97,4 +102,11 @@ private:
     bool CanDiscover() const;
     FString TargetName;
     FGuid TargetInputToken=FGuid::NewGuid();
+    TFunction<bool()> AssetBegin, AssetCurrent;
+    TFunction<bool(const FRPGTradeAssets&)> AssetApply;
+    TOptional<FRPGTradeAssets> Assets;
+    FGuid AssetAttemptedTrade;
+    uint64 AssetGeneration=0;
+    bool bAssetsLoading=false, bAssetsFailed=false;
+    bool CanReadAssets() const;
 };

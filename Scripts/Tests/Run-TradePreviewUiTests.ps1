@@ -29,6 +29,7 @@ try {
     $proof.Head = (git -C $workspace rev-parse HEAD).Trim()
     $files = @('Source/Project_RPG/Public/Trading/RPGTradeClient.h','Source/Project_RPG/Private/Trading/RPGTradeClient.cpp','Source/Project_RPG/Private/Tests/RPGTradeClientTests.cpp','Source/Project_RPG/Public/Trading/RPGTradeTransport.h','Source/Project_RPG/Private/Trading/RPGTradeTransport.cpp','Source/Project_RPG/Public/Trading/RPGTradeCoordinator.h','Source/Project_RPG/Private/Trading/RPGTradeCoordinator.cpp','Source/Project_RPG/Private/Tests/RPGTradeTransportTests.cpp','Scripts/Tests/trade_preview_fixture.py','Source/Project_RPG/Public/Trading/RPGTradeLobbyOwner.h','Source/Project_RPG/Private/Trading/RPGTradeLobbyOwner.cpp','Source/Project_RPG/Public/UI/Lobby/RPGTradeWidget.h','Source/Project_RPG/Private/UI/Lobby/RPGTradeWidget.cpp','Source/Project_RPG/Private/Tests/RPGTradeLobbyTests.cpp','Source/Project_RPG/Private/Trading/RPGTradeJson.h','Source/Project_RPG/Public/Trading/RPGTradePreview.h','Source/Project_RPG/Private/Trading/RPGTradePreview.cpp','Source/Project_RPG/Private/Tests/RPGTradePreviewTests.cpp','Source/Project_RPG/Public/Trading/RPGTradeOfferDraft.h','Source/Project_RPG/Private/Trading/RPGTradeOfferDraft.cpp')
     $files += @('Source/Project_RPG/Public/Trading/RPGTradeTargets.h','Source/Project_RPG/Private/Trading/RPGTradeTargets.cpp')
+    $files += @('Source/Project_RPG/Public/Trading/RPGTradeAssets.h','Source/Project_RPG/Private/Trading/RPGTradeAssets.cpp','Source/Project_RPG/Public/Economy/RPGCurrencyTypes.h','Source/Project_RPG/Public/Economy/Backend/RPGEconomyBackendTypes.h','Source/Project_RPG/Public/Economy/Backend/RPGEconomyBackendJsonCodec.h','Source/Project_RPG/Private/Economy/Backend/RPGEconomyBackendJsonCodec.cpp')
     foreach ($relative in $files) {
         $source = Join-Path $workspace $relative
         $destination = Join-Path $project $relative
@@ -38,9 +39,16 @@ try {
         if ((Get-FileHash -LiteralPath $destination).Hash -ne $hash -or (Get-FileHash -LiteralPath $source).Hash -ne $hash) { throw 'Source changed during capture' }
         $proof.Inputs += @{Path=$relative; SHA256=$hash}
     }
+    # Published plugin only; never copy another agent's working plugin edits.
+    $proof.PluginTree=(git -C $workspace rev-parse ($proof.Head+':Plugins/RPGInventory')).Trim()
+    $pluginArchive=Join-Path $temp 'InventoryPlugin.tar'
+    & git -C $workspace archive --format=tar ('-o'+$pluginArchive) $proof.Head -- Plugins/RPGInventory
+    if($LASTEXITCODE -ne 0){throw 'Published inventory plugin archive failed'}
+    & tar -xf $pluginArchive -C $project
+    if($LASTEXITCODE -ne 0){throw 'Published inventory plugin extraction failed'}
     $proof.RunnerSHA256 = (Get-FileHash -LiteralPath $PSCommandPath).Hash
     Write-Utf8 (Join-Path $project 'TradeClient.uproject') @'
-{"FileVersion":3,"EngineAssociation":"5.8","DisableEnginePluginsByDefault":true,"Modules":[{"Name":"Project_RPG","Type":"Runtime","LoadingPhase":"Default"}]}
+{"FileVersion":3,"EngineAssociation":"5.8","DisableEnginePluginsByDefault":true,"Plugins":[{"Name":"RPGInventory","Enabled":true}],"Modules":[{"Name":"Project_RPG","Type":"Runtime","LoadingPhase":"Default"}]}
 '@
     Write-Utf8 (Join-Path $project 'Source/TradeClientEditor.Target.cs') @'
 using UnrealBuildTool;
@@ -59,7 +67,7 @@ public class Project_RPG : ModuleRules {
     public Project_RPG(ReadOnlyTargetRules Target) : base(Target) {
         PCHUsage = PCHUsageMode.NoPCHs;
         bUseUnity = false;
-        PublicDependencyModuleNames.AddRange(new string[] {"Core", "CoreUObject", "Engine", "Json", "HTTP", "UMG", "Slate", "SlateCore", "InputCore"});
+        PublicDependencyModuleNames.AddRange(new string[] {"RPGInventoryRuntime", "Core", "CoreUObject", "Engine", "Json", "HTTP", "UMG", "Slate", "SlateCore", "InputCore"});
     }
 }
 '@

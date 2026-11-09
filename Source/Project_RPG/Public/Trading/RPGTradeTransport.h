@@ -22,6 +22,7 @@ public:
     virtual void Cancel() = 0;
     virtual bool SendPreview(FGuid Character, FGuid Trade, TFunction<void(FRPGTradeHttpResult)> Completion) { return false; }
     virtual bool SendTargets(FGuid Character, const FString& Name, TFunction<void(FRPGTradeHttpResult)> Completion) { return false; }
+    virtual bool SendAssets(FGuid Character, FGuid Trade, TFunction<void(FRPGTradeHttpResult)> Completion) { return false; }
 };
 
 // Transient credential copy for HTTP only. Never persist, log or expose this through UI state.
@@ -45,9 +46,10 @@ public:
     virtual void Cancel() override;
     virtual bool SendPreview(FGuid Character, FGuid Trade, TFunction<void(FRPGTradeHttpResult)> Completion) override;
     virtual bool SendTargets(FGuid Character, const FString& Name, TFunction<void(FRPGTradeHttpResult)> Completion) override;
+    virtual bool SendAssets(FGuid Character, FGuid Trade, TFunction<void(FRPGTradeHttpResult)> Completion) override;
 private:
     bool SendRequest(FGuid Character, FGuid Trade, const FString& Action, const FString& Body,
-        TFunction<void(FRPGTradeHttpResult)> Completion, bool bPreview, const FString& TargetName = FString());
+        TFunction<void(FRPGTradeHttpResult)> Completion, bool bPreview, const FString& TargetName = FString(), bool bAssets = false);
     FContext Context;
     FValidate Validate;
     float TimeoutSeconds;

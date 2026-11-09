@@ -38,6 +38,9 @@ TSharedRef<SWidget> URPGTradeWidget::RebuildWidget()
         { auto* B = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), FName(Name)); auto* T = WidgetTree->ConstructWidget<UTextBlock>(); T->SetText(Label); B->SetContent(T); Rows->AddChild(B); return B; };
         RefreshButton = Button(TEXT("TradeRefresh"), NSLOCTEXT("RPGTrade", "Refresh", "새로 고침"));
         RetryButton = Button(TEXT("TradeRetry"), NSLOCTEXT("RPGTrade", "Retry", "처리 결과 다시 확인"));
+        AssetStatusText=Text(TEXT("TradeAssetStatus"),FText::GetEmpty());AssetSummaryText=Text(TEXT("TradeAssetSummary"),FText::GetEmpty());
+        ReloadAssetsButton=Button(TEXT("TradeAssetsReload"),NSLOCTEXT("RPGTrade","ReloadAssets","완료 후 자산 다시 불러오기"));
+        ReloadAssetsButton->OnClicked.AddDynamic(this,&ThisClass::ReloadCompletedAssets);
         auto* OuterRows=Rows; TargetPanel=WidgetTree->ConstructWidget<UVerticalBox>();Rows->AddChild(TargetPanel);Rows=TargetPanel;
         Text(TEXT("TradeTargetTitle"),NSLOCTEXT("RPGTrade","TargetTitle","거래 상대 찾기"));
         TargetNameBox=WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(),TEXT("TradeTargetName"));
@@ -115,6 +118,9 @@ void URPGTradeWidget::RefreshView()
         if (ReviewCheck) ReviewCheck->SetIsChecked(false);
     }
     if (StatusText) StatusText->SetText(Owner ? View.Status : NSLOCTEXT("RPGTrade", "Unavailable", "거래 상태를 확인할 수 없습니다."));
+    if(AssetStatusText)AssetStatusText->SetText(View.AssetStatus);
+    if(AssetSummaryText)AssetSummaryText->SetText(View.AssetSummary);
+    if(ReloadAssetsButton){ReloadAssetsButton->SetVisibility(View.AssetStatus.IsEmpty()?ESlateVisibility::Collapsed:ESlateVisibility::Visible);ReloadAssetsButton->SetIsEnabled(View.bReloadAssets);}
     if (MyOfferText) MyOfferText->SetText(View.MyOffer); if (OtherOfferText) OtherOfferText->SetText(View.OtherOffer);
     if (RefreshButton) RefreshButton->SetIsEnabled(View.bRefresh); if (RetryButton) RetryButton->SetIsEnabled(View.bRetry);
     if (AcceptButton) AcceptButton->SetIsEnabled(View.bAccept); if (CancelButton) CancelButton->SetIsEnabled(View.bCancel);
@@ -150,6 +156,7 @@ void URPGTradeWidget::SelectTarget(FString Option,ESelectInfo::Type)
 { if(bUpdatingTargets)return;const int32 I=TargetLabels.IndexOfByKey(Option);SelectedTarget=TargetIds.IsValidIndex(I)?TargetIds[I]:FGuid();RefreshTargets(); }
 void URPGTradeWidget::InviteSelectedTarget()
 { if(auto O=TradeOwner.Pin()) O->InviteTarget(DisplayedTargetResult,SelectedTarget);RefreshView(); }
+void URPGTradeWidget::ReloadCompletedAssets(){if(auto O=TradeOwner.Pin())O->ReloadAssets();RefreshView();}
 void URPGTradeWidget::RefreshDraft()
 {
     if (bUpdatingDraft || !DraftStatusText) return;

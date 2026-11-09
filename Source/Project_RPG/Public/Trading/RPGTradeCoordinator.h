@@ -17,6 +17,7 @@ public:
     void Reset();
     bool Refresh(FGuid Trade = FGuid());
     bool RefreshPreview();
+    bool RefreshAssets(TFunction<void(FRPGTradeHttpResult)> Completion);
     const FRPGTradePreview* GetPreview() const;
     FGuid GetPreviewToken() const { return GetPreview() ? PreviewToken : FGuid(); }
     bool Invite(FGuid Invitee);

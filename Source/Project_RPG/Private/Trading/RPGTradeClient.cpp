@@ -16,7 +16,7 @@ FString Decimal(int64 Value) { return LexToString(Value); }
 // Check depth/duplicate names before the DOM parser can collapse duplicate keys.
 bool ReadObject(const FString& Text, FObject& Out, int32 MaximumBytes)
 {
-    if (MaximumBytes < 1 || MaximumBytes > 131072 || Text.IsEmpty() || Text.Len() > MaximumBytes || FTCHARToUTF8(*Text).Length() > MaximumBytes) return false;
+    if (MaximumBytes < 1 || MaximumBytes > 4*1024*1024 || Text.IsEmpty() || Text.Len() > MaximumBytes || FTCHARToUTF8(*Text).Length() > MaximumBytes) return false;
     struct FScope { bool bObject; TSet<FString> Keys; };
     TArray<FScope> Stack;
     auto Reader = TJsonReaderFactory<>::Create(Text);

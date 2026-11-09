@@ -3,6 +3,7 @@
 #include "Subsystems/LocalPlayerSubsystem.h"
 #include "Containers/Ticker.h"
 #include "Trading/RPGTradeLobbyOwner.h"
+#include "Progression/RPGEquipmentMutationSubsystem.h"
 #include "RPGTradeSubsystem.generated.h"
 class URPGEquipmentMutationSubsystem;
 
@@ -37,4 +38,5 @@ private:
     FRPGTradeBagSnapshot CachedBag;
     bool bBagWaiting = false, bBagSawLoading = false;
     double BagReadDeadline = 0;
+    FRPGEquipmentReadTicket AssetTicket;
 };

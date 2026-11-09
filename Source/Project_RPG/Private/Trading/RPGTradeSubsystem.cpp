@@ -60,6 +60,15 @@ TSharedPtr<FRPGTradeLobbyOwner> URPGTradeSubsystem::GetTradeOwner()
         if (EquipmentReader.IsValid()) EquipmentReader->OnEquipmentMutationsChanged.AddUniqueDynamic(this,&ThisClass::HandleTradeBagChanged);
         Owner->SetBagSource([WeakThis] { auto* Self=WeakThis.Get(); return Self ? Self->ReadTradeBag() : FRPGTradeBagSnapshot{}; },
             [WeakThis] { auto* Self=WeakThis.Get(); return Self && Self->ReloadTradeBag(); });
+        Owner->SetAssetSink([WeakThis]
+        {auto* S=WeakThis.Get();if(!S || S->bEnding || !S->EquipmentReader.IsValid())return false;
+            S->CachedBag={};return S->EquipmentReader->BeginExternalRead(S->ReadContext().Character,S->AssetTicket);},
+            [WeakThis](const FRPGTradeAssets& Assets)
+        {auto* S=WeakThis.Get();return S && !S->bEnding && S->EquipmentReader.IsValid()
+            && S->EquipmentReader->ApplyExternalRead(S->AssetTicket,Assets.Items,Assets.Mail,Assets.Wallet);},
+            [WeakThis]
+        {const auto* S=WeakThis.Get();return S && !S->bEnding && S->EquipmentReader.IsValid()
+            && S->EquipmentReader->IsExternalReadCurrent(S->AssetTicket);});
     }
     return Owner;
 }

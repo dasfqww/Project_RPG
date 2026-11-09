@@ -54,6 +54,7 @@ private:
     UFUNCTION() void FindTarget();
     UFUNCTION() void SelectTarget(FString Option, ESelectInfo::Type Type);
     UFUNCTION() void InviteSelectedTarget();
+    UFUNCTION() void ReloadCompletedAssets();
     void RefreshTargets();
     TWeakPtr<FRPGTradeLobbyOwner> TradeOwner;
     FDelegateHandle ChangeHandle;
@@ -99,4 +100,7 @@ private:
     TArray<FString> TargetLabels;
     TArray<FGuid> TargetIds;
     bool bUpdatingTargets=false;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> AssetStatusText;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> AssetSummaryText;
+    UPROPERTY(Transient) TObjectPtr<UButton> ReloadAssetsButton;
 };
