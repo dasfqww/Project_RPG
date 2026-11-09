@@ -219,9 +219,11 @@ S1의 source는 backend 하나다. S2에서 등록 source를 추가하되 source
 
 Complete는 고정한 보존 파일을 끝까지 검색했다는 뜻이다. 사건 전부의 수집/보존 성공을 뜻하지 않는다. 검색 요청 자체는 별도 이벤트로 기록하되 현재 검색 snapshot 이후에 추가되어 자기 결과를 무한히 늘리지 않는다.
 
-성공한 로그 검색 응답은 추가 필드 `data.instrumentation`에 현재 호스트의 관측 시각/환경/source/boot/빌드와 게임 관련 네 생산 경계의 구성 상태·범위·등록 사건 이름을 제공한다. `scope=CurrentProcessOnly`, `historicalCoverage=Unknown`이며 기존 파일 검색 `coverage`와 별개다. 현재 설정으로 과거 이력을 합성하거나 보존 결과를 제거하지 않는다. 검색 전 Razor에도 동일 Core 읽기 포트를 사용한다. [구현/재시작 검증 경계](OPERATIONS_TOOL_RUNTIME.md#현재-계측-설정과-과거-로그)를 따르며 자격/파일 경로·새 검색 권한은 노출하지 않는다.
+성공한 로그 검색 응답은 추가 필드 `data.instrumentation`에 현재 호스트의 관측 시각/환경/source/boot/빌드와 게임 관련 다섯 생산 경계의 구성 상태·범위·등록 사건 이름을 제공한다. `scope=CurrentProcessOnly`, `historicalCoverage=Unknown`이며 기존 파일 검색 `coverage`와 별개다. 현재 설정으로 과거 이력을 합성하거나 보존 결과를 제거하지 않는다. 검색 전 Razor에도 동일 Core 읽기 포트를 사용한다. [구현/재시작 검증 경계](OPERATIONS_TOOL_RUNTIME.md#현재-계측-설정과-과거-로그)를 따르며 자격/파일 경로·새 검색 권한은 노출하지 않는다.
 
 개인 거래의 [저장 명령 결과 관측](OPERATIONS_TOOL_RUNTIME.md#개인-거래-명령-결과-추적)은 `game.trade.command.observed`와 선택 UUID `tradeId`/`tradeCommandRequestId`를 schemaVersion 1에 추가한다. 새 명령과 같은 결과 재조회는 구분하지 않으며, 완료 영수증을 관측한 로그 건수가 새 자산 교환 횟수는 아니다. 별도 Application 관측 포트/Infrastructure 어댑터를 사용하고 거래 API/원자 저장/정책·기본 비활성은 유지한다.
+
+일반 아이템/재화 서비스의 [저장 호출 추적](OPERATIONS_TOOL_RUNTIME.md#아이템재화-거래-저장-구간)은 별도 선택적 Application 포트와 Infrastructure ActivitySource 어댑터를 사용한다. `game.storage.returned/failed/canceled`에 조회·커밋4개 호출의 시간·실제 자식/부모 span과 요청된 `transactionRequestId`를 기록한다. 반환은 명령 성공/커밋 확정이 아니고 예외/취소는 롤백 확정이 아니다. 기존 영수증 이벤트·로그 스키마/ID 검색·권한·큐 예산을 재사용하며 현재 계측 metadata에 `game-storage`를 추가한다. 개별 SQL·다른 업무 저장소·UE를 계측했다고 주장하지 않는다.
 
 ## 7. S2 보상 조사 계약
 

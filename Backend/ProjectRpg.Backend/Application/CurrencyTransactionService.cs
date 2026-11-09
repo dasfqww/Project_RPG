@@ -7,7 +7,8 @@ public sealed class CurrencyTransactionService(
     ICurrencyAuthorityRepository gameRepository,
     IEconomyRepository economyRepository,
     TimeProvider timeProvider,
-    IGameTransactionObserver? observer = null)
+    IGameTransactionObserver? observer = null,
+    IGameStorageObserver? storageObserver = null)
 {
     public async Task<CurrencyTransactionResult> CommitAsync(
         CurrencyTransactionRequest request,
@@ -71,9 +72,10 @@ public sealed class CurrencyTransactionService(
         }
 
         CurrencyTransactionResult? existing =
-            await economyRepository.TryGetTransactionResultAsync(
+            await GameStorageCall.RunAsync(storageObserver, GameStorageOperation.CurrencyReceiptRead, request.RequestId,
+                () => economyRepository.TryGetTransactionResultAsync(
                 request.RequestId,
-                cancellationToken);
+                cancellationToken));
         if (existing is not null)
         {
             return IsSameCommand(existing, request)
@@ -87,11 +89,12 @@ public sealed class CurrencyTransactionService(
                     now);
         }
 
-        CurrencyTransactionResult result = await economyRepository.CommitAsync(
+        CurrencyTransactionResult result = await GameStorageCall.RunAsync(storageObserver, GameStorageOperation.CurrencyCommit,
+            request.RequestId, () => economyRepository.CommitAsync(
             request,
             context,
             now,
-            cancellationToken);
+            cancellationToken));
         if (result.Status == CurrencyTransactionStatus.AlreadyCommitted
             && !IsSameCommand(result, request))
         {

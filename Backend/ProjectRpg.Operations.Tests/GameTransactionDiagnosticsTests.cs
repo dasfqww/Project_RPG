@@ -26,7 +26,8 @@ internal static class GameTransactionDiagnosticsTests
     {
         string root = Environment.GetEnvironmentVariable("PROJECT_RPG_OPS_TEST_ROOT")!;
         await using (var off = await HostFixture.StartAsync(Path.Combine(root,"transaction-off")))
-            Check.That(off.App.Services.GetService<IGameTransactionObserver>() is null,"Receipt observation is off with game HTTP diagnostics.");
+            Check.That(off.App.Services.GetService<IGameTransactionObserver>() is null
+                && off.App.Services.GetService<IGameStorageObserver>() is null,"Receipt and storage observation are off with game HTTP diagnostics.");
         using var listener = new ActivityListener { ShouldListenTo = _ => true,
             Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded };
         ActivitySource.AddActivityListener(listener);
@@ -122,13 +123,27 @@ internal static class GameTransactionDiagnosticsTests
         {
             foreach(var expected in new[]{(command.RequestId,itemFirst,itemRetry,"ItemTransaction.Commit"),(currencyContract.RequestId,currencyFirst,currencyRetry,"CurrencyTransaction.Commit")})
             {
-                var found=await Search(host,"transactionRequestId",expected.Item1,2);
+                var all=await Search(host,"transactionRequestId",expected.Item1,6);
+                var found=all.Where(e=>e.GetProperty("eventName").GetString()!.StartsWith("game.transaction.receipt.",StringComparison.Ordinal)).ToArray();
                 Check.That(found.Select(e=>e.GetProperty("httpRequestId").GetGuid()).ToHashSet().SetEquals([expected.Item2,expected.Item3])
                     &&found.All(e=>e.GetProperty("traceId").GetString()==ParentTrace&&e.GetProperty("operationName").GetString()==expected.Item4),"Receipt search connects both HTTP attempts with real trace and fixed operation.");
             }
-            var attempt=await Search(host,"httpRequestId",itemFirst,3);
+            var attempt=await Search(host,"httpRequestId",itemFirst,5);
             Check.That(attempt.Select(e=>e.GetProperty("eventName").GetString()).ToHashSet().SetEquals(
-                ["game.http.started","game.transaction.receipt.committed","game.http.completed"]),"HTTP search includes the confirmed receipt between transport observations.");
+                ["game.http.started","game.storage.returned","game.transaction.receipt.committed","game.http.completed"]),"HTTP search includes the storage calls and confirmed receipt between transport observations.");
+            foreach(var id in new[]{itemFirst,itemRetry,currencyFirst,currencyRetry})
+            {
+                bool first=id==itemFirst||id==currencyFirst;
+                var timeline=await Search(host,"httpRequestId",id,first?5:4);
+                string httpSpan=timeline.Single(e=>e.GetProperty("eventName").GetString()=="game.http.started").GetProperty("spanId").GetString()!;
+                var calls=timeline.Where(e=>e.GetProperty("eventName").GetString()=="game.storage.returned").ToArray();
+                Check.That(calls.Length==(first?2:1)&&calls.All(e=>e.GetProperty("traceId").GetString()==ParentTrace
+                    &&e.GetProperty("parentSpanId").GetString()==httpSpan&&e.GetProperty("spanId").GetString()!=httpSpan
+                    &&e.GetProperty("durationMs").GetDouble()>=0&&e.GetProperty("outcome").GetString()=="Returned"),
+                    "Repository calls are timed sibling children of their own actual HTTP span; replay skips the commit call.");
+                Check.That(timeline.Single(e=>e.GetProperty("eventName").GetString()=="game.transaction.receipt."+(first?"committed":"replayed"))
+                    .GetProperty("spanId").GetString()==httpSpan,"Storage child scope is restored before receipt observation.");
+            }
         }
         if(fingerprint is not null)Check.That(fingerprint==await HostTests.FingerprintAsync(host),"Replay/refusal and operator log search do not mutate gameplay tables.");
         await host.StopAsync();
@@ -139,6 +154,12 @@ internal static class GameTransactionDiagnosticsTests
         var receipts=logs.SelectMany(File.ReadLines).Select(line=>JsonDocument.Parse(line)).Select(doc=>
         {using(doc)return doc.RootElement.GetProperty("Properties").GetProperty("OpsEvent").Deserialize<LogEvent>(OperationsHttp.Json)!;})
             .Where(e=>e.EventName.StartsWith("game.transaction.receipt.",StringComparison.Ordinal)).ToArray();
+        var storage=logs.SelectMany(File.ReadLines).Select(line=>JsonDocument.Parse(line)).Select(doc=>
+        {using(doc)return doc.RootElement.GetProperty("Properties").GetProperty("OpsEvent").Deserialize<LogEvent>(OperationsHttp.Json)!;})
+            .Where(e=>e.EventName.StartsWith("game.storage.",StringComparison.Ordinal)).ToArray();
+        Check.That(storage.Length==8&&storage.All(e=>e.Outcome=="Returned"&&e.CharacterId is null&&e.DungeonSessionId is null
+            &&e.ItemId is null&&e.TradeId is null&&e.OperatorId is null&&e.HttpStatus is null),
+            "Only the four implemented repository boundaries are logged; command conflicts remain ordinary returned calls, authorization and unscoped work create none.");
         if(broken is null)
         {
             Check.That(receipts.Length==4&&receipts.Count(e=>e.Outcome=="Committed")==2&&receipts.Count(e=>e.Outcome=="Replayed")==2,

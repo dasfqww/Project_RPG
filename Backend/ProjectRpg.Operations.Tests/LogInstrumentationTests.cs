@@ -52,7 +52,7 @@ internal static class LogInstrumentationTests
             {
                 Check.That(initial.IsSuccessStatusCode,"Initial authorized log screen displays configured producers before a search.");
                 string html=await initial.Content.ReadAsStringAsync();
-                foreach(string key in new[]{"game-http","game-transactions","player-trade","settlement"})
+                foreach(string key in new[]{"game-http","game-transactions","player-trade","game-storage","settlement"})
                 {
                     bool configured=key=="settlement"||enabled;
                     Check.That(html.Contains($"data-log-producer=\"{key}\" data-configured-enabled=\"{configured.ToString().ToLowerInvariant()}\""),"Razor renders the actual configured state for each supported producer group.");
@@ -87,7 +87,7 @@ internal static class LogInstrumentationTests
             string boot=metadata.GetProperty("bootId").GetString()!;
             Check.That(Guid.TryParseExact(boot,"N",out var bootId)&&bootId!=Guid.Empty&&boots.Add(boot),"Each restarted process is distinguished from the prior event source.");
             var producers=metadata.GetProperty("producers").EnumerateArray().ToArray();
-            Check.That(producers.Length==4&&producers.Select(p=>p.GetProperty("key").GetString()).Distinct().Count()==4,"Bounded metadata exposes the implemented configuration groups.");
+            Check.That(producers.Length==5&&producers.Select(p=>p.GetProperty("key").GetString()).Distinct().Count()==5,"Bounded metadata exposes the implemented configuration groups.");
             foreach(var producer in producers)
             {
                 string key=producer.GetProperty("key").GetString()!;

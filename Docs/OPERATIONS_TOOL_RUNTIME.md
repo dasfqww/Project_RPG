@@ -36,7 +36,7 @@ Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복
 - `game.http.started`와 `game.http.completed`에 시도 번호·실제 trace/span·배포/인스턴스·고정 라우트 템플릿·상태·단조 시계 소요 시간을 남긴다. 실제 URL 경로 값, query, 요청/응답 본문, 인증/사용자 헤더, 예외 원문은 관측 포트에 전달하지 않는다. 라우트가 없거나 템플릿이 112자를 넘으면 `GET GameApi.Unmatched` 같은 고정 이름을 사용한다. 인증 전에도 실행하므로 401과 처리된 Drain 503이 관측된다.
 - 정상 반환의 400 이상은 `Rejected`, 나머지는 `Succeeded`다. 밖으로 전파되는 예외는 `Faulted`이며 응답 시작 전에는 500, 이미 시작됐으면 상태를 null로 남긴다. 요청 취소는 `Canceled`/상태 null로 남겨 전송되지 않은 200/499를 합성하지 않는다. HTTP 성공은 게임 DB 반영 증거가 아니다.
 - [HTTP 어댑터](../Backend/ProjectRpg.Backend/Operations/Hosting/GameHttpDiagnostics.cs)는 [Core의 IGameHttpObserver](../Backend/ProjectRpg.Operations.Core/Diagnostics/GameHttpObservation.cs)에 고정 모델만 전달한다. Infrastructure가 기존 유계 JSONL writer로 저장한다. 관측기 예외는 HTTP 상태·본문·업무 예외를 바꾸지 않는다. 기존 비동기 큐/보존 한도를 공유하므로 게임 요청량에 맞춘 실제 용량 검증은 배포 전에 수행한다.
-- `/ops/diagnostics` 또는 `GET /ops/api/logs?httpRequestId=<GUID>`에서 같은 번호로 검색한다. `traceId`·두 이벤트 이름 필터도 기존 검색 권한/기간/예산을 적용한다. HTTP 이벤트 자체에는 주체·캐릭터·업무/거래 ID를 추정해 채우지 않는다. 아래 별도 영수증 이벤트에 확인된 거래 ID만 연결한다. 게임 저장 child span, UE→HTTP 문맥, 그 밖의 업무 영수증 연결은 후속이다. 검색 `Complete`는 선택 원본의 검색 완료이며 비활성 기간·과거·UE까지 수집됐다는 의미가 아니다.
+- `/ops/diagnostics` 또는 `GET /ops/api/logs?httpRequestId=<GUID>`에서 같은 번호로 검색한다. `traceId`·두 이벤트 이름 필터도 기존 검색 권한/기간/예산을 적용한다. HTTP 이벤트 자체에는 주체·캐릭터·업무/거래 ID를 추정해 채우지 않는다. 아래 별도 영수증 이벤트에 확인된 거래 ID만 연결한다. 일반 아이템/재화의 저장 호출 child span은 아래 구간에 구현했다. 그 밖의 저장 구간·UE→HTTP 문맥· 그 밖의 업무 영수증 연결은 후속이다. 검색 `Complete`는 선택 원본의 검색 완료이며 비활성 기간·과거·UE까지 수집됐다는 의미가 아니다.
 
 `Scripts/Tests/Run-OperationsGameHttpTests.ps1 -Postgres`는 게시 Backend+본인 9개 C# 입력만 고정한 독립 빌드, 실제 loopback HTTPS/모의 OAuth, Memory·자기 tmpfs PostgreSQL에서 번호/실제 W3C 부모·재시도/동시성·권한 검색·라우트 마스킹·비밀 제외·게임 표 지문 불변을 검사한다. 예외/취소/관측기 실패는 경계 단위 검사다. `-FullSuite`는 운영툴 전체 Memory 회귀를 실행한다. 2026-11-08 두 모드 모두 빌드 0경고/0오류로 통과했다. finally로 사본·빌드 출력·런타임/DB를 폐기하며 작은 결과와 해시는 당시 실행 근거만 남긴다. 실제 UE 실행·운영 배포/부하 검증은 포함하지 않는다.
 
@@ -90,6 +90,19 @@ Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복
 
 2026-11-09 개인 거래 추적의 최신 게시 Backend 기준 집중 Memory/PG와 전체 운영툴 Memory 회귀 모두 Release 0경고/0오류로 통과했다. 현재 schemaVersion 1의 선택 필드 추가이며 원자 거래 저장소/API 변경은 없다.
 
+### 아이템·재화 거래 저장 구간
+
+`ItemTransactionService`·`CurrencyTransactionService`의 영수증 조회와 커밋 repository 호출에 선택적 [IGameStorageObserver](../Backend/ProjectRpg.Backend/Application/IGameStorageObserver.cs)를 연결했다. [GameStorageCall](../Backend/ProjectRpg.Backend/Application/GameStorageCall.cs)은 원래 호출을 한 번 실행하고 시작/종료 관측 실패를 격리한다. Application은 Activity·HTTP·로그 저장 구현을 참조하지 않는다. 기존 거래 검증·권한·중복 방지·저장소·스키마·기본 설정은 유지한다.
+
+- 기존 `GameApiDiagnosticsEnabled`로 [호스트 어댑터](../Backend/ProjectRpg.Backend/Operations/Infrastructure/Diagnostics/OperationsGameStorageObserver.cs)를 등록한다. 서버 생성 HTTP 시도 번호가 있는 호출만 관측하며 직접/background 호출에 HTTP 관계를 합성하지 않는다. `ProjectRpg.Game.Storage` ActivitySource와 호스트 수명의 listener로 실제 부모 Activity가 있을 때 외부 exporter 없이 child span을 생성하고 종료한다. 부모가 없으면 HTTP ID/시간만 남기고 trace/span/parent는 null로 두며 새 root trace를 합성하지 않는다. span 종료·부모 복원은 기록 실패 시에도 수행한다.
+- 고정 operation은 `GameStorage.ItemReceiptRead`, `GameStorage.ItemCommit`, `GameStorage.CurrencyReceiptRead`, `GameStorage.CurrencyCommit`이다. 호출별 단조 시계 소요 시간과 실제 trace/span/parent·HTTP 시도·요청받은 `transactionRequestId`만 연결한다. 이 번호는 저장을 요청한 식별자이며 해당 이벤트만으로 확정 영수증이 존재한다고 단정하지 않는다. 주체/캐릭터·세션·아이템·통화/금액·caller operation/fingerprint·본문·SQL·연결 문자열·예외 원문은 전달하지 않는다.
+- 정상 반환은 `game.storage.returned`/`Returned`, 전파 예외는 `game.storage.failed`/`Faulted`, `OperationCanceledException`은 `game.storage.canceled`/`Canceled`다. 오류 코드는 해당 고정 이벤트 이름이다. 정상 반환에는 미발견/규칙 거절/충돌도 포함될 수 있다. 예외/취소는 커밋/롤백 여부를 증명하지 않으며 확정/재생은 별도 영수증 이벤트와 원자 저장 결과로 조사한다.
+- 신규 명령은 영수증 조회→커밋의 형제 child span, 정확한 재생은 조회 span만 남긴다. 유효성/권한에서 먼저 거절되면 이 저장 구간을 실행하지 않는다. Memory와 PostgreSQL에 같은 호출 경계를 사용하며 개별 SQL/DB 트랜잭션·권한 조회·원자 픽업·장비/개인 거래·정산 저장 전체의 계측으로 확대하지 않는다. 기존 ID/이벤트 검색·권한/보존/큐 예산을 사용하며 새 필드·migration·외부 수집 의존성은 없다.
+
+`Scripts/Tests/Run-OperationsStorageTracingTests.ps1 -Postgres`는 게시 Backend+본인13 C# 고정 사본에서 실제 HTTPS/Memory·격리 tmpfs PostgreSQL의 기존 아이템/재화 지급·재생·충돌·권한/비밀 경계·DB 불변과 형제 span/부모 복원·시간·보호 조회를 검사한다. 별도 실제 HTTPS의 모형 저장소로 반환/읽기·커밋 예외/취소·동시 요청·exporter 없는 실제 span 종료를 검사하며 이 모형은 DB 롤백 검증이 아니다. 순수 서비스 검사는 null/시작·종료 실패 관측기와 원래 결과/예외 객체·호출1회를 확인한다. `-FullSuite`는 전체 운영툴 Memory 회귀다. 자기 사본/출력/컨테이너/runtime은 finally 폐기하며 실제 UE/Steam·브라우저 시각·운영 부하/배포는 미포함이다.
+
+2026-11-09 게시16ff2be9 기준의 집중 Memory/PG·전체 운영툴 Memory 검사는 최종 Release 0경고/0오류로 통과했다. 실제 DB 상태 보존 검사와 모형 저장소의 예외/취소 검사는 별도 근거다.
+
 ## 활성화와 배포 입력
 
 기본값 `Operations:Enabled=false`에서는 `/ops` 라우트·운영 인증·로그 writer를 등록하지 않는다. 활성화에는 기존 [백엔드 실행 설정](../Backend/README.md)에 다음 값을 추가한다. 환경 변수는 `:` 대신 `__`를 사용한다. 비밀 값은 서비스 환경 또는 비밀 저장소로 주입하고 저장소에 기록하지 않는다.
@@ -139,9 +152,9 @@ GitHub 앱 callback은 정확히 `<ManagementOrigin>/ops/auth/github-callback`�
 
 ### 현재 계측 설정과 과거 로그
 
-로그 화면은 검색 전에도 **게임 HTTP**, **게임 확정 거래**, **개인 거래 명령 관측**, **정산 worker 관측**의 현재 계측 설정을 표시한다. 게임 HTTP/거래/개인 거래 관측은 현재 `GameApiDiagnosticsEnabled` 값, 정산은 운영 호스트에 등록된 별도 관측 경계를 따른다. 일반 확정 거래는 아이템/재화·원자 픽업·장비 제작/분해/강화/전승이며 개인 거래는 별도 명령 결과 관측이다. UE와 그 밖의 직접 저장 경로를 전체 수집 중이라고 표현하지 않는다. 켜짐은 구성/등록 상태이며 실제 worker 실행·거래 기능 활성화·무손실 수집·sink 저장 성공의 증거가 아니다.
+로그 화면은 검색 전에도 **게임 HTTP**, **게임 확정 거래**, **개인 거래 명령 관측**, **게임 거래 저장소 호출**, **정산 worker 관측**의 현재 계측 설정을 표시한다. 정산 외 네 경계는 현재 `GameApiDiagnosticsEnabled` 값, 정산은 운영 호스트에 등록된 별도 관측 경계를 따른다. 일반 확정 거래는 아이템/재화·원자 픽업·장비 제작/분해/강화/전승이며 개인 거래는 별도 명령 결과 관측, 저장소 호출은 일반 아이템/재화의 조회·커밋4구간이다. UE와 그 밖의 직접 저장 경로를 전체 수집 중이라고 표현하지 않는다. 켜짐은 구성/등록 상태이며 실제 worker 실행·거래 기능 활성화·무손실 수집·sink 저장 성공의 증거가 아니다.
 
-성공한 `GET /ops/api/logs` 응답의 `data.instrumentation`에도 같은 [Core 모델/읽기 포트](../Backend/ProjectRpg.Operations.Core/Diagnostics/LogInstrumentation.cs)를 추가한다. `observedAtUtc`, 환경, 등록 `sourceId`, 현재 `bootId`/빌드, 네 생산 경계의 `key`/표시 이름/`configuredEnabled`/범위/등록 사건 이름을 담는다. [호스트 어댑터](../Backend/ProjectRpg.Backend/Operations/Infrastructure/Diagnostics/ConfiguredLogInstrumentation.cs)는 설정과 현재 writer 식별자만 읽으며 SQL·파일 재검색·자격/로컬 경로 노출을 하지 않는다. Web·Razor는 Core 포트에 의존한다. 기존 응답 필드와 권한/커서/검색 예산은 유지하며 새 설정 변경 API는 없다.
+성공한 `GET /ops/api/logs` 응답의 `data.instrumentation`에도 같은 [Core 모델/읽기 포트](../Backend/ProjectRpg.Operations.Core/Diagnostics/LogInstrumentation.cs)를 추가한다. `observedAtUtc`, 환경, 등록 `sourceId`, 현재 `bootId`/빌드, 다섯 생산 경계의 `key`/표시 이름/`configuredEnabled`/범위/등록 사건 이름을 담는다. [호스트 어댑터](../Backend/ProjectRpg.Backend/Operations/Infrastructure/Diagnostics/ConfiguredLogInstrumentation.cs)는 설정과 현재 writer 식별자만 읽으며 SQL·파일 재검색·자격/로컬 경로 노출을 하지 않는다. Web·Razor는 Core 포트에 의존한다. 기존 응답 필드와 권한/커서/검색 예산은 유지하며 새 설정 변경 API는 없다.
 
 - `scope=CurrentProcessOnly`, `historicalCoverage=Unknown`이다. 현재 호스트의 설정을 보존 기간 전체의 계측 이력처럼 표시하지 않는다. 기존 `coverage=Complete`도 선택 원본의 읽기 완료일 뿐 전체 사건 수집 완료가 아니다.
 - 이전 호스트가 남긴 게임 HTTP 로그를 보존한 채 추적을 끄고 재시작해도 과거 사건은 기존 ID/기간으로 검색된다. 현재 꺼짐 설정이 과거 사건을 지우거나 `NotInstrumented`로 단정하게 하지 않는다. 현재 metadata의 boot/빌드와 각 과거 사건의 `instanceId`/빌드는 별개다.

@@ -1,6 +1,6 @@
 # 운영툴 로그 추적 계약
 
-작성일: 2026-11-04 · 상세 확정: 2026-11-05 · 개인 거래 관측 반영: 2026-11-09 · 설계 v1.8 · 상태: 공통 계약과 구현 경계를 함께 기록, 모든 게임/UE 사건의 계측 완료를 뜻하지 않음
+작성일: 2026-11-04 · 상세 확정: 2026-11-05 · 거래 저장 구간 반영: 2026-11-09 · 설계 v1.9 · 상태: 공통 계약과 구현 경계를 함께 기록, 모든 게임/UE 사건의 계측 완료를 뜻하지 않음
 
 상위 문서: [운영툴 아키텍처](OPERATIONS_TOOL_ARCHITECTURE.md), [1인 개발 제작 계획](SOLO_OPERATIONS_TOOL_PLAN.md). 실제 sink·물리 JSON·버퍼·검색 알고리즘은 [구현 계약 §6](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md#6-로그의-실제-기록회전검색-구현)에서 확정한다.
 
@@ -88,6 +88,7 @@
 | `game.http.started/completed` — 선택 활성화 | `/api`의 서버 생성 시도 번호·실제 Activity·고정 라우트·최종 상태/소요 시간. 업무 ID와 UE 관측을 합성하지 않음 |
 | `game.transaction.receipt.committed/replayed` — 선택 활성화 | 일반 아이템/재화·원자 픽업·장비 API가 확인한 확정/재생 영수증의 거래 ID → 실제 HTTP 시도/trace. 신규 반영과 재생을 구분 |
 | `game.trade.command.observed` — 선택 활성화 | 개인 거래의 저장된 명령/거절·완료 영수증 관측. 같은 결과 재조회는 새 교환으로 계산하지 않음 |
+| `game.storage.returned/failed/canceled` — 선택 활성화 | 일반 아이템/재화의 영수증 조회·커밋 호출 시간/실제 child span·요청한 거래 ID. 명령 성공·커밋/롤백의 증거가 아님 |
 | `ops.access.denied` | 운영 인증/권한 거절. 로그인 시도 원문/비밀번호 제외 |
 | `ops.character.query.completed/failed` | 캐릭터 검색·상세의 결과와 지연 |
 | `ops.storage.query.completed/failed` | 필요한 DB 조회 구간. SQL 원문·파라미터 덤프 제외 |
@@ -129,6 +130,12 @@ HTTP 어댑터 → 순수 Core `IGameHttpObserver` → Infrastructure writer 순
 Application의 선택형 `ITradeCommandObserver`가 저장된 `TradeSessionResult`와 검증된 참여자에서 실제 거래/명령/캐릭터 ID·명령 enum·상태만 전달하고 Infrastructure가 게임 HTTP 시도/실제 Activity와 연결한다. `tradeId`/`tradeCommandRequestId`는 schemaVersion 1의 선택 필드이며 이전 기록의 누락 값은 null이다. 검색/화면은 이제 10종 ID를 지원하고 현재 계측 구성에 `player-trade` 경계를 추가한다.
 
 신규 실행/동일 결과 재생을 구분하지 않는 관측 계약이다. `CompletedReceiptObserved`는 확정 저장 결과의 완료/해당 교환 계획 존재를 확인한 영수증 관측이며 새 자산 이동 사건이 아니다. `StoredRefusal`도 저장된 거절 결과만 의미한다. 계정/제안·품목/재화·교환 계획/자격/원문 거절은 기록하지 않는다. [실제 양측 거래·관측 실패·권한 검색 검증](OPERATIONS_TOOL_RUNTIME.md#개인-거래-명령-결과-추적)은 API/PG 자산 반영과 클라이언트/Steam 표시를 구분한다.
+
+### 구현된 아이템·재화 저장 호출 (2026-11-09)
+
+`ItemTransactionService`·`CurrencyTransactionService`의 영수증 조회/커밋4개 repository 호출을 선택적 Application 관측 포트로 감싼다. 호스트의 `ProjectRpg.Game.Storage` ActivitySource 어댑터만 HTTP/Activity와 JSONL을 참조한다. 실제 형제 child span과 단조 시간·원래 시도 번호·요청된 `transactionRequestId`를 연결하고 기록 실패·반환·예외·취소에서 호출1회/원래 결과·예외와 부모 Activity 복원을 보존한다. 원문/SQL/금액/주체를 전송하지 않는다.
+
+`Returned`는 명령 거절/조회 미발견도 가능한 호출 반환이고 `Faulted`/`Canceled`는 저장 상태 미확정이다. 확정/재생 영수증과 구분한다. 현재 계측 표시의 다섯 생산 경계 중 `game-storage`는 등록 설정이며 검색 기간 전체·DB 내부/다른 업무 전체 계측의 증거가 아니다. [구현/검증 경계](OPERATIONS_TOOL_RUNTIME.md#아이템재화-거래-저장-구간)를 따른다.
 
 ## 4. 생성·수집·검색의 의존 분리
 

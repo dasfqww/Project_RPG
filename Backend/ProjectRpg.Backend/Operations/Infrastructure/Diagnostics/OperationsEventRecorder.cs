@@ -14,6 +14,25 @@ public sealed class OperationsEventRecorder(OperationsLogStore store, Operations
     public static string BuildVersion { get; } = typeof(OperationsEventRecorder).Assembly.GetName().Version
         + "+" + typeof(OperationsEventRecorder).Module.ModuleVersionId.ToString("N");
     private readonly Microsoft.Extensions.Logging.ILogger logger = store.CreateLogger();
+    public void RecordGameStorage(Guid httpRequestId, Guid transactionRequestId, GameStorageOperation operation,
+        GameStorageOutcome outcome, double durationMs, Activity? activity)
+    {
+        string eventName = outcome switch
+        {
+            GameStorageOutcome.Returned => "game.storage.returned",
+            GameStorageOutcome.Canceled => "game.storage.canceled",
+            GameStorageOutcome.Faulted => "game.storage.failed",
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome))
+        };
+        bool trace = activity is not null && activity.TraceId != default;
+        Write(new(1, Guid.NewGuid(), eventName, clock.GetUtcNow(),
+            outcome == GameStorageOutcome.Returned ? "Information" : outcome == GameStorageOutcome.Canceled ? "Warning" : "Error",
+            options.EnvironmentId, "ProjectRpg.Backend", store.BootId, BuildVersion, httpRequestId,
+            trace ? activity!.TraceId.ToString() : null, trace && activity!.SpanId != default ? activity.SpanId.ToString() : null,
+            trace && activity!.ParentSpanId != default ? activity.ParentSpanId.ToString() : null,
+            "GameStorage." + operation, durationMs, null, null, null, null, null, transactionRequestId, null, null,
+            outcome.ToString(), outcome == GameStorageOutcome.Returned ? null : eventName, null, "GameStorage"));
+    }
     public void RecordTradeCommand(Guid httpRequestId, TradeCommandObservation observation)
     {
         Activity? activity=Activity.Current;

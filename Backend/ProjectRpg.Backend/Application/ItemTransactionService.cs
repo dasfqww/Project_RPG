@@ -6,7 +6,8 @@ namespace ProjectRpg.Backend.Application;
 public sealed class ItemTransactionService(
     IItemRepository repository,
     TimeProvider timeProvider,
-    IGameTransactionObserver? observer = null)
+    IGameTransactionObserver? observer = null,
+    IGameStorageObserver? storageObserver = null)
 {
     public async Task<ItemRepositoryCommitResult> CommitAsync(
         ItemRepositoryCommitRequest request,
@@ -40,9 +41,10 @@ public sealed class ItemTransactionService(
         }
 
         ItemRepositoryCommitResult? existing =
-            await repository.TryGetCommitResultAsync(
+            await GameStorageCall.RunAsync(storageObserver, GameStorageOperation.ItemReceiptRead, request.RequestId,
+                () => repository.TryGetCommitResultAsync(
                 request.RequestId,
-                cancellationToken);
+                cancellationToken));
         if (existing is not null)
         {
             return IsSameCommand(existing, request)
@@ -56,10 +58,11 @@ public sealed class ItemTransactionService(
                     now);
         }
 
-        ItemRepositoryCommitResult result = await repository.CommitAsync(
+        ItemRepositoryCommitResult result = await GameStorageCall.RunAsync(storageObserver, GameStorageOperation.ItemCommit,
+            request.RequestId, () => repository.CommitAsync(
             request,
             now,
-            cancellationToken);
+            cancellationToken));
         if (result.Status == ItemRepositoryCommitStatus.AlreadyCommitted
             && !IsSameCommand(result, request))
         {
