@@ -155,6 +155,14 @@ FGuid FRPGRidingSession::BindPawn()
     return Epoch;
 }
 
+bool FRPGRidingSession::CopyDashProfile(FRPGRidingDashProfile& Out) const
+{
+    Out = {};
+    if (Status != ERPGRidingSessionStatus::Ready) return false;
+    Out.Distance = Policy.DashDistance; Out.Duration = Policy.DashDuration;
+    return true; // ConfirmAdmission validated and copied the immutable policy.
+}
+
 bool FRPGRidingSession::UnbindPawn(const FGuid& ExpectedEpoch)
 {
     if (!Epoch.IsValid() || ExpectedEpoch != Epoch) return false;

@@ -2,6 +2,7 @@
 
 #include "Component/PawnExtensionComponentBase.h"
 #include "Riding/RPGRidingTypes.h"
+#include "Riding/RPGRidingDashAdmission.h"
 #include "RPGRidingComponent.generated.h"
 
 class URPGMountDefinition;
@@ -42,9 +43,11 @@ public:
 private:
     friend class URPGRidingSessionComponent;
     friend class URPGPlayerMovementComponent;
+    friend class URPGGameplayAbility_RidingDash;
 #if WITH_DEV_AUTOMATION_TESTS
     friend struct FRPGRidingActorTestAccess;
     friend struct FRPGRidingMovementTestAccess;
+    friend struct FRPGRidingDashTestAccess;
 #endif
     UFUNCTION() void HandleControllerChanged(APawn* Pawn, AController* Old, AController* Current);
     UFUNCTION() void HandleRestarted(APawn* Pawn);
@@ -52,6 +55,13 @@ private:
     UFUNCTION(Server, Reliable) void ServerSetRiding(FRPGRidingSetCommand Command);
     UFUNCTION(Client, Reliable) void ClientRidingResult(FRPGRidingCommandResult Result);
     bool IsBindingCurrent() const;
+    /** Trusted native executor preflight only. No client callback, RPC, BP or activation grant. */
+    ERPGRidingResultCode TryBeginDash(FRPGRidingStateKey Expected, FVector Direction,
+        TFunctionRef<bool(const FRPGRidingDashProfile&, const FVector&)> Preflight, FRPGRidingDashTicket& Out);
+    ERPGRidingResultCode EvaluateDashAdmission(const FRPGRidingStateKey& Expected) const;
+    bool IsDashCurrent(const FRPGRidingDashTicket& Ticket) const;
+    bool MatchesDash(const FRPGRidingDashTicket& Ticket) const;
+    bool FinishDash(const FRPGRidingDashTicket& Ticket, ERPGRidingEndReason Reason);
     void ReleaseBinding();
     void Publish();
     bool Commit(const FRPGRidingDecision& Decision);
@@ -65,6 +75,9 @@ private:
     FGuid LocalRequestEpoch;
     uint32 LocalRequestSeq = 0;
     bool bEnding = false, bApplying = false;
+    bool bPreparingDash = false;
+    FRPGRidingDashTicket ActiveDash;
+    double DashDeadline = 0;
     ERPGRidingEndReason PendingEnd = ERPGRidingEndReason::None;
     UPROPERTY(EditDefaultsOnly, Category="Riding") TArray<TObjectPtr<URPGMountDefinition>> Definitions;
     UPROPERTY(ReplicatedUsing=OnRep_State) FRPGRidingRepState State;

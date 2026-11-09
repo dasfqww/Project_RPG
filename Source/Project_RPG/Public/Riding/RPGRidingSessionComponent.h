@@ -32,6 +32,7 @@ private:
     friend class FRPGRidingDamageScope;
 #if WITH_DEV_AUTOMATION_TESTS
     friend struct FRPGRidingActorTestAccess;
+    friend struct FRPGRidingDashTestAccess;
 #endif
     void UpdateAuthenticatedContext(const FString& CharacterId, const FString& SteamId,
         const FString& SessionId, int64 Generation, bool bRevoked, bool bAdmissionConfirmed);

@@ -68,6 +68,7 @@ void URPGRidingComponent::RefreshBinding()
 
 void URPGRidingComponent::ReleaseBinding()
 {
+    ActiveDash = {}; DashDeadline = 0;
     const FGuid OldEpoch = State.Key.RiderEpoch;
     auto* Previous = Session.Get();
     Session.Reset(); Controller.Reset();
@@ -271,6 +272,7 @@ void URPGRidingComponent::ClientRidingResult_Implementation(FRPGRidingCommandRes
 
 void URPGRidingComponent::MakeOnFoot(ERPGRidingEndReason Reason)
 {
+    ActiveDash = {}; DashDeadline = 0;
     const auto Key = State.Key;
     State = {};
     State.Key = Key;
@@ -319,6 +321,91 @@ void URPGRidingComponent::TickComponent(float Delta, ELevelTick Tick, FActorComp
 {
     Super::TickComponent(Delta, Tick, Function);
     ValidateServerMovementContext();
+    if (State.Action == ERPGRidingAction::Dash && FPlatformTime::Seconds() >= DashDeadline)
+        FinishDash(ActiveDash, ERPGRidingEndReason::Completed);
+}
+
+ERPGRidingResultCode URPGRidingComponent::EvaluateDashAdmission(const FRPGRidingStateKey& Expected) const
+{
+    if (!IsInGameThread() || !IsBindingCurrent()) return ERPGRidingResultCode::AuthorityRevoked;
+    if (RPGRiding::Compare(Expected, State.Key) != ERPGRidingStateOrder::Same) return ERPGRidingResultCode::StaleState;
+    if (!RPGRiding::IsCanonical(State) || State.Mode != ERPGRidingMode::Mounted) return ERPGRidingResultCode::NotReady;
+    if (State.Action != ERPGRidingAction::None) return ERPGRidingResultCode::Busy;
+    FRPGRidingEvaluationContext C; BuildGuards(C);
+    if (!C.bReady) return ERPGRidingResultCode::NotReady;
+    if (!C.bAlive || C.bActionBlocked || C.bSlowActive || Session->PendingDamageScopes.Num()) return ERPGRidingResultCode::ActionBlocked;
+    if (!C.bOnGround) return ERPGRidingResultCode::WrongMovementMode;
+    if (C.bInCombat) return ERPGRidingResultCode::InCombat;
+    const auto* Definition = FindDefinition(State.MountId);
+    if (!Definition || Definition->DefinitionVersion != State.DefinitionVersion) return ERPGRidingResultCode::DefinitionMismatch;
+    if (!IsRegionAllowed(*Definition)) return ERPGRidingResultCode::RegionDenied;
+    const auto Timing = Session->Runtime->GetTiming(FPlatformTime::Seconds());
+    if (!Timing.bValid) return ERPGRidingResultCode::NotReady;
+    if (Timing.DashRemaining > 0) return ERPGRidingResultCode::Busy;
+    return ERPGRidingResultCode::Applied;
+}
+
+ERPGRidingResultCode URPGRidingComponent::TryBeginDash(FRPGRidingStateKey Expected, FVector Direction,
+    TFunctionRef<bool(const FRPGRidingDashProfile&, const FVector&)> Preflight, FRPGRidingDashTicket& Out)
+{
+    Out = {};
+    if (bPreparingDash || bApplying) return ERPGRidingResultCode::Busy;
+    if (Direction.ContainsNaN() || Direction.Z != 0 || !Direction.IsNormalized()) return ERPGRidingResultCode::ActionBlocked;
+    auto Result = EvaluateDashAdmission(Expected);
+    if (Result != ERPGRidingResultCode::Applied) return Result;
+    if (State.Key.ActionSequence >= MAX_uint32 - 1) return ERPGRidingResultCode::NotReady;
+    auto* S = Session.Get();
+    FRPGRidingDashProfile Profile;
+    if (!S->Runtime->CopyDashProfile(Profile)) return ERPGRidingResultCode::NotReady;
+    TGuardValue<bool> Preparing(bPreparingDash, true);
+    if (!Preflight(Profile, Direction)) return ERPGRidingResultCode::ActionBlocked;
+    // The trusted executor may still invoke gameplay callbacks. Its old observation cannot approve a replacement.
+    if (Session != S) return ERPGRidingResultCode::AuthorityRevoked;
+    Result = EvaluateDashAdmission(Expected);
+    if (Result != ERPGRidingResultCode::Applied) return Result;
+    auto Approved = State;
+    ++Approved.Key.ActionSequence;
+    Approved.Action = ERPGRidingAction::Dash; Approved.ExecutionId = FGuid::NewGuid();
+    Approved.ActionDuration = Profile.Duration; Approved.ActionDirection = Direction;
+    Approved.ActionStartServerWorldSeconds = GetWorld()->GetTimeSeconds();
+    Approved.LastEndReason = ERPGRidingEndReason::None;
+    const double Now = FPlatformTime::Seconds();
+    if (!S->Runtime->TryReserveApprovedAction(Approved, Now)) return ERPGRidingResultCode::RateLimited;
+    State = Approved;
+    ActiveDash = {State.Key, State.ExecutionId, Profile}; DashDeadline = Now + Profile.Duration;
+    Out = ActiveDash; // Remains an admitted ticket even if a publication callback immediately cancels it.
+    S->PublishOwnerState();
+    Publish();
+    return ERPGRidingResultCode::Applied;
+}
+
+bool URPGRidingComponent::MatchesDash(const FRPGRidingDashTicket& Ticket) const
+{
+    return IsBindingCurrent() && State.Action == ERPGRidingAction::Dash && Ticket.ExecutionId.IsValid()
+        && Ticket.ExecutionId == State.ExecutionId && Ticket.ExecutionId == ActiveDash.ExecutionId
+        && RPGRiding::Compare(Ticket.Key, State.Key) == ERPGRidingStateOrder::Same;
+}
+
+bool URPGRidingComponent::IsDashCurrent(const FRPGRidingDashTicket& Ticket) const
+{
+    if (!IsInGameThread() || !MatchesDash(Ticket) || FPlatformTime::Seconds() >= DashDeadline) return false;
+    FRPGRidingEvaluationContext C; BuildGuards(C);
+    const auto* Definition = FindDefinition(State.MountId);
+    return C.bReady && C.bAlive && !C.bActionBlocked && !C.bSlowActive && C.bOnGround && !C.bInCombat
+        && !Session->PendingDamageScopes.Num() && Definition && Definition->DefinitionVersion == State.DefinitionVersion
+        && IsRegionAllowed(*Definition);
+}
+
+bool URPGRidingComponent::FinishDash(const FRPGRidingDashTicket& Ticket, ERPGRidingEndReason Reason)
+{
+    if (!IsInGameThread() || !MatchesDash(Ticket)
+        || (Reason != ERPGRidingEndReason::Completed && Reason != ERPGRidingEndReason::ExecutionRejected && Reason != ERPGRidingEndReason::Manual)) return false;
+    State.Action = ERPGRidingAction::None; State.ExecutionId.Invalidate();
+    State.ActionDuration = 0; State.ActionStartServerWorldSeconds = 0; State.ActionDirection = FVector::ZeroVector;
+    State.LastEndReason = Reason; ++State.Key.ActionSequence;
+    ActiveDash = {}; DashDeadline = 0;
+    Session->PublishOwnerState(); Publish();
+    return true;
 }
 
 void URPGRidingComponent::ValidateServerMovementContext()

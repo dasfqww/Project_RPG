@@ -1,7 +1,7 @@
 # Riding 코드 설계 — M1 상태·세션·탑승 기반
 
 - 작성: 2026-11-06 / 담당: `riding-code-design-20261106`
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 수동 능력·공격 입력 차단/소모품 준비 상호 배제·적대 피해/제어 결과 연결 구현. 이동/기존 권한 폐기 실패는14절, 구역은15절, 능력/입력은16절, 소모품은17절, 피해는18절, 제어는19절의 검증 범위를 따른다. 제품 보유 API·Dash/Emote·실제 맵/다인 검증은 후속이다.**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과 연결, Dash 서버 승인 수명 구현. 기존 검증은14~19절, Dash 승인/종료는20절을 따른다. 제품 보유 API·실제 Dash RMS/지형 검사/GAS 예측·Emote·실제 맵/다인 검증은 후속이다.**
 - 기준: [기능 계약](RIDING_SYSTEM_DESIGN.md), [아키텍처와 HUD 인계](RIDING_SYSTEM_ARCHITECTURE.md), 게시 `d546e392`의 관련 기존 소스. 재개 시 게시 HEAD `2971c97c`와 별도 담당의 미커밋 `Docs/ACTION_BAR_CONTEXT.md`/`UI/ActionBar` 계약을 추가 대조했다. 공용 코드의 빌드/검증 완료 주장은 아니다.
 - 목적: 첫 구현에서 만들 타입, 접근 제한, 판정 순서, 상태 수명, 검사 기준을 정한다. M2 액션 실행/M3 영속 저장은 포트만 정의하고 구현 완료로 취급하지 않는다.
 
@@ -501,3 +501,20 @@ CMC는 기존 도보 속도/제약 계산과 SavedMove·packed move/response가 
 최종 근거는 `Saved/BuildChecks/RidingControl-20261109/Completion.json`이다. 게시 `e9eff8ca`+본인 고정 입력의 native `c1e1d32b6f7244be85c2dc550dbbf20c`는 UHT/29단계 빌드·링크0·같은 `694F494D…4A790A2F` DLL의 기존31+제어3 **34 Success·검사 오류/경고0·UE0**이다. 같은 게시본의 `Integration-9a3d88766fd04cd0a6e07d513fa08ba4`는 전체 UHT/실제 CPP7 컴파일0이며 두 cohort의 고유 입력46 SHA와 러너2 SHA가 현재 원본과 일치했다.
 
 첫 CPP7도 통과했지만 넉백의 하차 callback 뒤 ASC 분리/생존 재검사를 보강해 최종 CPP7을 다시 컴파일했다. native 입력40은 그 보강의 영향 없이 동일하므로 위 native34를 유지하며 실제 넉백 runtime 재검증으로 표시하지 않는다. 세 시도 모두 통과했고 자기3회 사본/PCH/OBJ/DLL/PDB/runtime/cache **3,127,966,055 bytes(약2.91GiB)**를 finally 정리했다. 실행/Temp/새 정리 예외0·원본 DLL/에셋/공유 출력/trace/cache·타 담당 변경과 이전 로그 예외는 보존했다. 작은 결과/명령/해시/필요 로그만 남겼으며 폐기한 DLL 해시는 당시 증거다.
+
+## 20. M2 Dash 서버 승인과 종료 수명 — 2026-11-09
+
+[DashAdmission](../Source/Project_RPG/Public/Riding/RPGRidingDashAdmission.h)은 서버 정책의 거리/시간과 한 실행의 Epoch/StateRevision/ActionSequence/ExecutionId를 보관하는 native 값이다. Pawn RidingComponent의 private 시작/현재성/종료 포트가 기존 세션 `TryReserveApprovedAction`을 실제 액션 상태와 연결한다. 미래 Riding Dash 능력의 native 접근만 예약했으며 해당 능력 클래스·grant/RPC/BP 활성화·HUD 입력 연결은 아직 추가하지 않았다.
+
+- 시작은 현재 바인딩/키, Mounted/무액션·정상 정의 버전, 현재 ASC의 생존/행동/감속/지상·구역/전투 잠금과 세션 쿨타임을 검사한다. 방향은 유한·정규화 XY만 받는다. 거리/시간은 승인된 정책 사본에서 읽으며 클라이언트 목적지·속도·duration을 받지 않는다. 최초10초 보호는 그대로며 개발 검사만 별도 private fixture로 해제한다.
+- trusted native 실행기의 동기 preflight를 호출하고, 그 callback 뒤 같은 현재 세션/키와 모든 가드를 다시 검사한다. 키와 방향은 값으로 캡처한다. 재진입 시작은 Busy다. preflight 거절·도중 하차/신원/생존 변경에는 액션/쿨타임을 승인하지 않는다. 이 callback은 물리/능력 실행기의 내부 포트이며 클라이언트가 제공하는 권한 bool이 아니다.
+- 시작 승인은 액션 시퀀스/ExecutionId와 단조 종료 기한을 만들고 기존 공통 예산/세션 Dash 쿨타임을 먼저 소비한 뒤 OwnerState와 액션 상태를 발행한다. Mount StateRevision/프로필은 유지한다. 발행 callback에서 즉시 취소돼도 이미 승인한 쿨타임은 환불하지 않는다. 시작 결과가 Applied여도 실행기는 반환 ticket의 현재성을 다시 확인한 뒤 이동/FX를 만들어야 한다.
+- 종료는 현재 서버 바인딩과 정확한 키/ExecutionId/내부 활성 실행을 대조한다. Completed/ExecutionRejected/Manual 종료는 액션 필드만 비우고 시퀀스를 올려 Mounted/기본 이동 프로필을 보존한다. 중복·과거 실행/다른 Epoch 완료는 새 상태를 바꾸지 않는다. 하차/바인딩 폐기는 내부 ticket/기한도 지우며 기존 정책대로 세션 쿨타임을 유지한다. 서버 Tick의 단조 만료도 같은 종료 포트를 사용한다.
+
+`Run-RidingFoundationTests.ps1 -IncludeDashAdmission -IncludeControl -IncludeConsume -IncludeAbilities -IncludeWorld`는 실제 Riding/세션 Actor에서 최초 보호/방향/거절 전제, 정책 복사/원자 상태·타이머, preflight 재진입/상태 변경과 발행 중 취소, 정확한/과거 완료·만료·Pawn 교체/권한을 검사한다. preflight는 검사에서 성공/실패 callback을 주입하므로 실제 capsule sweep/바닥 확인이나 Dash 이동을 검증한 것이 아니다. `Run-RidingIntegrationCompile.ps1 -IncludeDashAdmission`는 게시 전체 UHT와 실제 Component/Session CPP2를 컴파일한다.
+
+이 단위는 **서버 액션 승인/종료 수명**이다. 실제 RMS·보안 창·누적 거리/충돌/낭떠러지 검사·자기 handle 정리, LocalPredicted GAS 시작/거절/보정·입력/grant는 다음 실행기 단위다. 그 실행기는 이 승인 포트 이전의 실제 preflight와 네트워크 입력 예산, 이후 ticket 현재성 재검사 및 자기 자원 종료를 연결해야 한다. Dash 자기 창 취소→외부 제어 이동 시작 순서도 그때 검증한다. 제품 보유 API의 NotReady를 유지하며 지금 제품 Dash를 활성화하지 않는다.
+
+최종 근거는 `Saved/BuildChecks/RidingDashAdmission-20261109/Completion.json`이다. 게시 `7a35731c`+본인 고정 입력의 native `dd0db37d907c4e9697dde7d6dde5ac29`에서 UHT/30단계 빌드·링크0·같은 `2DF498D5…FBEE1BA6` DLL의 기존34+Dash 승인4 **38 Success·검사 오류/경고0·UE0**을 확인했다. 같은 게시본의 `Integration-df102bdb66cb459a82d5bb7219aa41c5`는 전체 UHT/실제 Component/Session CPP2 컴파일0이다. 고유 입력42 SHA·러너2 SHA가 현재 원본과 일치하며 후발 `f988cb24`는 Backend/거래 계약 변경뿐으로 Source/Config/Plugins 차이0이다.
+
+두 시도 모두 통과했고 자기2회 사본/PCH/OBJ/DLL/PDB/runtime/cache **2,847,092,130 bytes(약2.65GiB)**를 finally 정리했다. 실행/Temp/새 정리 예외0·원본 DLL/에셋/공유 출력/trace/cache·타 담당 변경과 이전 로그 예외는 보존했다. 작은 결과/명령/해시/필요 로그만 남겼으며 폐기한 DLL 해시는 당시 증거다.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Riding/RPGRidingPolicy.h"
+#include "Riding/RPGRidingDashAdmission.h"
 #include "Riding/RPGRidingRequestLedger.h"
 #include "Security/RPGServerRequestBudget.h"
 
@@ -68,6 +69,7 @@ public:
     ERPGRidingSessionStatus GetStatus() const { return Status; }
     bool CopySnapshot(FRPGRidingAdmissionSnapshot& Out) const;
     bool CopyMovementProfile(FRPGRidingMovementProfile& Out) const;
+    bool CopyDashProfile(FRPGRidingDashProfile& Out) const;
 
     FGuid BindPawn();
     bool UnbindPawn(const FGuid& ExpectedEpoch);
@@ -81,6 +83,9 @@ public:
     FRPGRidingTimingView GetTiming(double Now) const;
 
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+    friend struct FRPGRidingDashTestAccess;
+#endif
     bool ObserveTime(double Now);
     bool MatchesPending(const FRPGRidingSnapshotTicket& Ticket) const;
     void ResetContext();
