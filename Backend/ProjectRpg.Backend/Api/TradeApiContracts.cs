@@ -95,6 +95,13 @@ public static class TradeApiContracts
             initiatorItems = Items(preview.InitiatorItems), inviteeItems = Items(preview.InviteeItems) };
     }
 
+    public static object Assets(TradeAssets assets) => new
+    {
+        session = Session(assets.Session), assets.CharacterId, assets.ObservedAt, isComplete = true,
+        wallet = EconomyApiContractMapper.ToContract(assets.Wallet),
+        items = assets.Items.Select(ItemApiContractMapper.ToContract).ToArray()
+    };
+
     internal static void RejectDuplicateProperties(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Object)

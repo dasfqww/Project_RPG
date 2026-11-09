@@ -13,6 +13,18 @@ public static class TradeApiEndpoints
 
     public static void MapTradeApi(this WebApplication app)
     {
+        app.MapGet(Root + "/{tradeId:guid}/assets", async (Guid characterId, Guid tradeId, HttpContext context,
+            TradeApplication service, ITradeSessionRepository store, CancellationToken ct) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            try
+            {
+                var actor = await service.ActorAsync(context.GetProjectRpgPrincipal(), characterId, ct);
+                var assets = await store.AssetsAsync(tradeId, actor, ct);
+                return assets is null ? Failure(context, "trade_not_found") : Results.Ok(TradeApiContracts.Assets(assets));
+            }
+            catch (TradeRuleException e) { return Failure(context, e.Code); }
+        });
         app.MapGet(Root + "/targets", async (Guid characterId, HttpContext context, TradeApplication service, CancellationToken ct) =>
         {
             context.Response.Headers.CacheControl = "no-store";

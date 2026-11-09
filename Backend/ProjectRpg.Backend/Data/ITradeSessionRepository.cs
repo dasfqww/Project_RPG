@@ -12,4 +12,5 @@ public interface ITradeSessionRepository
     Task<TradeStoredSession?> FindActiveAsync(TradeParticipant actor, CancellationToken ct);
     Task<IReadOnlyList<TradeStoredSession>> FindExpiredAsync(int limit, CancellationToken ct);
     Task<TradePreview?> PreviewAsync(Guid tradeId, TradeParticipant actor, CancellationToken ct);
+    Task<TradeAssets?> AssetsAsync(Guid tradeId, TradeParticipant actor, CancellationToken ct);
 }

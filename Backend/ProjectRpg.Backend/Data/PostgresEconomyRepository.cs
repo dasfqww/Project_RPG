@@ -137,6 +137,13 @@ public sealed class PostgresEconomyRepository(NpgsqlDataSource dataSource)
         CharacterEconomyContext context,
         CancellationToken cancellationToken)
     {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        return await ReadWalletAsync(connection, null, context, cancellationToken);
+    }
+
+    internal static async Task<CurrencyWallet> ReadWalletAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction,
+        CharacterEconomyContext context, CancellationToken cancellationToken)
+    {
         const string sql = """
             SELECT
                 definition.currency_code,
@@ -164,9 +171,7 @@ public sealed class PostgresEconomyRepository(NpgsqlDataSource dataSource)
             ORDER BY definition.currency_code;
             """;
         List<CurrencyBalance> balances = [];
-        await using NpgsqlConnection connection =
-            await dataSource.OpenConnectionAsync(cancellationToken);
-        await using NpgsqlCommand command = new(sql, connection);
+        await using NpgsqlCommand command = new(sql, connection, transaction);
         command.Parameters.AddWithValue("account_id", context.SteamId);
         command.Parameters.AddWithValue("roster_id", context.RosterId.ToString("D"));
         command.Parameters.AddWithValue(
