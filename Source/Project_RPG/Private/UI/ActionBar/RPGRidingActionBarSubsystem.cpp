@@ -22,6 +22,11 @@ public:
         Profile->ProfileId = TEXT("Riding");
         Profile->NativeSlotCount = 4;
         Profile->CenterWidgetClass = URPGActionBarIdentityWidget::StaticClass();
+        // PlayerIdentity is an authored fullscreen module; place this compact replacement explicitly.
+        Profile->bOverrideCenterLayout = true;
+        Profile->CenterLayout.Anchors = FAnchors(.5f, 1.f);
+        Profile->CenterLayout.Alignment = FVector2D(.5f, 1.f);
+        Profile->CenterLayout.Offsets = FMargin(0.f, -88.f, 240.f, 88.f);
         FRPGActionBarEntry Entry;
         Entry.ActionId = TEXT("Dismount");
         Entry.Label = LOCTEXT("Dismount", "내리기");

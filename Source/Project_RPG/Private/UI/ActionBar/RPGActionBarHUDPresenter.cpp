@@ -53,8 +53,14 @@ URPGActionBarWidget* URPGActionBarHUDPresenter::CreateReplacement(
     auto* Canvas = Original ? Cast<UCanvasPanel>(Original->GetParent()) : nullptr;
     auto* OriginalSlot = Original ? Cast<UCanvasPanelSlot>(Original->Slot) : nullptr;
     if (!Canvas || !OriginalSlot || !HUDRoot || !Context || !Class) return nullptr;
-    const auto Layout = OriginalSlot->GetLayout();
-    const bool bAutoSize = OriginalSlot->GetAutoSize();
+    auto Layout = OriginalSlot->GetLayout();
+    bool bAutoSize = OriginalSlot->GetAutoSize();
+    const auto* Profile = Context->GetProfile();
+    if (Original == BaseCenter && Profile && Profile->bOverrideCenterLayout)
+    {
+        Layout = Profile->CenterLayout;
+        bAutoSize = Profile->bCenterAutoSize;
+    }
     const int32 ZOrder = OriginalSlot->GetZOrder();
     const uint64 Revision = Context->GetRevision();
     TStrongObjectPtr<URPGActionBarWidget> Widget(CreateWidget<URPGActionBarWidget>(HUDRoot->GetOwningPlayer(), Class));

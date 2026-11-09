@@ -26,7 +26,7 @@
 - `FRPGActionBarActionView::UnavailableReason`은 제공자가 정한 지역화 표시 문구다. native 셀은 비활성 상태에서 액션 이름과 사유를 툴팁으로 표시하며, 사유가 비어 있으면 공통 사용 불가 문구를 표시한다. 활성 상태에서는 이전 사유를 숨긴다. 서버 내부 오류 문자열 대신 기능의 결과 enum을 표시 문구로 변환해 제공한다.
 - 기본 좌측은 native 버튼 바, 별도 저작 위젯은 URPGActionBarWidget 파생 클래스. 중앙 클래스가 없으면 기존 직업 아이덴티티를 숨긴다. 새 중앙/좌측 위젯은 같은 context를 읽는다.
 - `URPGActionBarIdentityWidget`은 중앙 Title/Status/Detail을 표시하는 네이티브 위젯이다. 값 갱신 때문에 프로필을 재설치하지 않으며, 저작 위젯도 같은 읽기 API를 사용할 수 있다.
-- ARPGHUD는 기존 PlayerSkillBar/PlayerIdentity Canvas slot 배치를 사용한다. 원래 위젯과 직업 편성/쿨타임/우측 슬롯은 보존한다. 복귀 시 원래 위젯을 다시 표시한다.
+- ARPGHUD는 기본적으로 기존 PlayerSkillBar/PlayerIdentity Canvas slot 배치를 사용한다. 중앙 콘텐츠가 다른 배치를 필요로 하면 프로필의 `bOverrideCenterLayout`을 켜고 `CenterLayout`(Canvas anchors/offsets/alignment)과 `bCenterAutoSize`를 지정한다. 이 설정은 대체 중앙 위젯에만 적용하며 기본값은 기존 배치를 유지한다. 원래 위젯과 직업 편성/쿨타임/우측 슬롯은 보존하고 복귀 시 원래 위젯을 다시 표시한다.
 - HUD가 교체되면 기존 presenter를 해제하고 현재 Pawn context를 다시 연결한다. 테스트용 HUD 등 두 canvas 영역이 없는 root는 교체 대상이 아니다.
 - `ReleaseAllSkillInputs()`는 창 열기/입력 해제 시 기존 스킬과 제공자의 누른 액션을 함께 해제한다. 모드 전환 내부에서는 물리적으로 누른 상태를 유지하여 키를 놓기 전 새 동작이 실행되지 않는다.
 - 사유/키/쿨타임은 같은 셀과 툴팁에서 현재 view를 읽어 갱신한다. 비활성 사유만 바뀔 때 프로필을 재설치하지 않는다. 포인터로 누르는 중 사용 가능 여부가 바뀌어도 Release는 전달하며, 제거된 셀의 툴팁/버튼 콜백은 weak 참조로 만료된다. 저작 위젯은 기존 `ReadAction` 반환값에서 같은 사유를 읽을 수 있다.
@@ -46,6 +46,8 @@
 현재 실제 서버 API가 있는 **Dismount 한 개**를 제공한다. 셀 클릭과 기존 네 번째 스킬 슬롯 입력은 모두 `RequestSetMounted(false, ...)`로 이어진다. 물리 키는 해당 슬롯의 현재 설정을 조회하며 별도 IMC나 기본 키 덮어쓰기를 추가하지 않는다. Dash/Emote와 탑승 호출/보관함·RidingShortcut 배정은 이 어댑터의 구현 범위가 아니다.
 
 Riding의 native 좌측 바는 네 칸을 유지하며 하차를 네 번째 표시 위치에 둔다(`NativeSlotCount=4`, `DisplaySlot=3`, `SkillSlot=3`). 앞의 세 빈 칸에 실행할 수 없는 Dash/Emote를 추가하지 않는다. 표시 위치를 바꿔도 `SkillSlot`/`InputTag`·ActionId나 현재 물리 키 배정은 바뀌지 않는다. 사용자 직업 편성/우측 아이템 배열을 수정하지 않는다.
+
+저장된 `PlayerIdentity`는 내부에 하단 게이지를 배치한 전체 화면 모듈이다. 그 바깥 Canvas 배치를 작은 native 중앙 위젯에 그대로 복사하면 텍스트가 화면 위에 나타난다. Riding 프로필은 중앙 배치를 명시하여 anchors `(0.5, 1)`, alignment `(0.5, 1)`, offsets `(0, -88, 240, 88)`, auto-size false로 하단 중앙에 표시한다. 좌표는 HUD의 논리 Canvas 공간이며 기존 직업 모듈/에셋의 내부 배치는 수정하지 않는다.
 
 중앙에는 현재 정의의 표시 이름·“탑승 중”·“기본 이동 속도”를 제공한다. 이름은 현재 MountId/DefinitionVersion에 맞는 `GetPresentationDefinition()`의 메타데이터를 읽고, 없으면 공통 “탈것” 문구를 사용한다. 기본 속도는 canonical 복제 상태의 `Movement.Speed`이며, GAS 감속/외부 제한을 적용한 최종 속도나 실제 이동량을 뜻하지 않는다. UI에서 이동 프로필을 만들거나 보정 값을 수정하지 않는다. 하차/다른 프로필 전환에서는 원래 직업 아이덴티티를 복원한다.
 

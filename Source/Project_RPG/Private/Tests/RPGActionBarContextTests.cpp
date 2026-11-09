@@ -2,6 +2,7 @@
 #include "UI/ActionBar/RPGActionBarContext.h"
 #include "UI/ActionBar/RPGActionBarHUDPresenter.h"
 #include "UI/ActionBar/RPGActionBarWidget.h"
+#include "UI/ActionBar/RPGActionBarIdentityWidget.h"
 #include "Component/UI/QuickSlotComponent.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
@@ -303,4 +304,47 @@ bool FRPGActionBarIdentityBoundaryTest::RunTest(const FString&)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGActionBarCenterLayoutTest, "ProjectRPG.UI.ActionBar.CenterLayoutOverride",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGActionBarCenterLayoutTest::RunTest(const FString&)
+{
+    using namespace RPGActionBarTests;
+    FFixture F; if (!TestTrue(TEXT("Local fixture"), F.Initialize())) return false;
+    TStrongObjectPtr<URPGActionBarWidget> Root(CreateWidget<URPGActionBarWidget>(F.Controller));
+    Root->WidgetTree = NewObject<UWidgetTree>(Root.Get());
+    auto* Canvas = Root->WidgetTree->ConstructWidget<UCanvasPanel>(); Root->WidgetTree->RootWidget = Canvas;
+    auto* Left = Root->WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("PlayerSkillBar"));
+    auto* Center = Root->WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("PlayerIdentity"));
+    auto* Right = Root->WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("Utility"));
+    Canvas->AddChildToCanvas(Left); auto* BaseSlot = Canvas->AddChildToCanvas(Center); Canvas->AddChildToCanvas(Right);
+    BaseSlot->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f)); BaseSlot->SetOffsets(FMargin(0.f));
+    const auto BaseLayout = BaseSlot->GetLayout(); const auto RightVisibility = Right->GetVisibility();
+    const auto Slate = Root->TakeWidget();
+    TStrongObjectPtr<URPGActionBarHUDPresenter> Presenter(NewObject<URPGActionBarHUDPresenter>(Root.Get()));
+    auto* C = F.Slots->GetActionBarContext(); Presenter->Bind(Root.Get(), C);
+    auto P = MakeShared<FProvider>(F.Pawn);
+    P->Profile->CenterWidgetClass = URPGActionBarIdentityWidget::StaticClass();
+    P->Profile->bOverrideCenterLayout = true;
+    P->Profile->CenterLayout.Anchors = FAnchors(.5f, 1.f);
+    P->Profile->CenterLayout.Alignment = FVector2D(.5f, 1.f);
+    P->Profile->CenterLayout.Offsets = FMargin(0.f, -88.f, 240.f, 88.f);
+    C->Activate(P);
+    auto* NewCenter = Cast<URPGActionBarWidget>(Canvas->GetChildAt(4));
+    if (!TestNotNull(TEXT("Central replacement"), NewCenter)) return false;
+    auto* Slot = CastChecked<UCanvasPanelSlot>(NewCenter->Slot);
+    TestTrue(TEXT("Explicit bottom anchor replaces fullscreen outer layout"), Slot->GetAnchors().Minimum.Equals(FVector2D(.5f, 1.f))
+        && Slot->GetAnchors().Maximum.Equals(FVector2D(.5f, 1.f)));
+    TestTrue(TEXT("Explicit content box and alignment"), Slot->GetOffsets() == P->Profile->CenterLayout.Offsets
+        && Slot->GetAlignment().Equals(FVector2D(.5f, 1.f)) && !Slot->GetAutoSize());
+    TestTrue(TEXT("Original module layout is untouched"), BaseSlot->GetAnchors() == BaseLayout.Anchors && BaseSlot->GetOffsets() == BaseLayout.Offsets);
+    C->Deactivate(P);
+    P->Profile->bOverrideCenterLayout = false; C->Activate(P);
+    NewCenter = Cast<URPGActionBarWidget>(Canvas->GetChildAt(4));
+    if (!TestNotNull(TEXT("Legacy central replacement"), NewCenter)) return false;
+    TestTrue(TEXT("Default profiles retain authored layout"), CastChecked<UCanvasPanelSlot>(NewCenter->Slot)->GetAnchors() == BaseLayout.Anchors);
+    C->Deactivate(P);
+    TestEqual(TEXT("Restoration removes both replacements"), Canvas->GetChildrenCount(), 3);
+    TestTrue(TEXT("Right region remains unchanged"), Right->GetVisibility() == RightVisibility);
+    return true;
+}
 #endif

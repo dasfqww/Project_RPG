@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "Components/CanvasPanelSlot.h"
 #include "GameplayTagContainer.h"
 #include "UI/ActionBar/RPGActionBarActionView.h"
 #include "RPGActionBarProfile.generated.h"
@@ -38,6 +39,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TSubclassOf<URPGActionBarWidget> LeftWidgetClass;
     /** Null hides the class identity region while this profile is active. */
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TSubclassOf<URPGActionBarWidget> CenterWidgetClass;
+    /** A fullscreen identity module's outer canvas is not its visible content region. */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) bool bOverrideCenterLayout = false;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(EditCondition="bOverrideCenterLayout")) FAnchorData CenterLayout;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(EditCondition="bOverrideCenterLayout")) bool bCenterAutoSize = false;
     bool IsValidProfile() const;
     bool TryBuildDisplayOrder(TArray<int32>& OutOrder) const;
 };
