@@ -297,7 +297,7 @@ FRPGTradeLobbyView FRPGTradeLobbyOwner::GetView() const
         if(S->Status==ERPGTradeStatus::Completed)
         {
             V.bReloadAssets=CanReadAssets();
-            const bool Fresh=Assets.IsSet() && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible
+            const bool Fresh=Assets.IsSet() && AssetAttemptedTrade==S->TradeId && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible
                 && Current.Character==BoundCharacter && AssetCurrent && AssetCurrent();
             V.AssetStatus=bAssetsLoading ? NSLOCTEXT("RPGTrade","AssetsLoading","거래는 완료되었습니다. 최신 자산을 불러오고 있습니다.")
                 : Fresh ? NSLOCTEXT("RPGTrade","AssetsReady","완료 후 최신 자산을 확인했습니다.")

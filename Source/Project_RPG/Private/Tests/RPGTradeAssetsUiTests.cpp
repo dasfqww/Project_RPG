@@ -35,6 +35,7 @@ struct FFake final:IRPGTradeTransport
     virtual bool GetContext(FString& E,FString& A)const override{E=TEXT("http://localhost:3000/api");A=Account;return true;}
     virtual bool CanSend()const override{return true;}
     virtual bool Send(FGuid,FGuid,const FString&,const FString& B,TFunction<void(FRPGTradeHttpResult)> C)override{Body=B;Callback=MoveTemp(C);return true;}
+    virtual bool SendPreview(FGuid,FGuid,TFunction<void(FRPGTradeHttpResult)> C)override{Callback=MoveTemp(C);return true;}
     virtual bool SendAssets(FGuid,FGuid,TFunction<void(FRPGTradeHttpResult)> C)override{++Gets;Callback=MoveTemp(C);return true;}
     virtual void Cancel()override{Callback={};}
     void Reply(int32 Code,const FString& B){auto C=MoveTemp(Callback);if(C)C({true,Code!=0,Code,B,0});}
@@ -82,6 +83,29 @@ bool FRPGTradeAssetsOwnerTest::RunTest(const FString&)
     S.Blocked=true;TestFalse(TEXT("unresolved equipment journal blocks capture"),S.Owner->ReloadAssets());S.Blocked=false;
     TestTrue(TEXT("retry after resolving blocking work"),S.Owner->ReloadAssets());S.Fake->Reply(503,TEXT("{}"));TestTrue(TEXT("failed read never shows zero wallet"),S.Owner->GetView().AssetSummary.IsEmpty());
     TestTrue(TEXT("completion remains after failed asset read"),S.Owner->GetClient().GetSession()->Status==ERPGTradeStatus::Completed);return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGTradeAssetsNewTradeScopeTest,"ProjectRPG.Trading.Assets.NewTradeScope",RPGTradeAssetsUiTests::Flags)
+bool FRPGTradeAssetsNewTradeScopeTest::RunTest(const FString&)
+{
+    using namespace RPGTradeAssetsUiTests;FSetup S;S.Owner->Tick();S.Fake->Reply(200,Payload());
+    TestFalse(TEXT("first completed trade has a fresh summary"),S.Owner->GetView().AssetSummary.IsEmpty());
+    S.Owner->DismissClosed();
+    if(!TestNull(TEXT("first trade dismissed"),S.Owner->GetClient().GetSession()))return false;
+    const FGuid Next(9,9,9,9);
+    auto ForNext=[&](FString Body){return Body.Replace(*Id(Trade),*Id(Next));};
+    if(!TestTrue(TEXT("observe next trade"),S.Owner->Refresh()))return false;
+    S.Fake->Reply(200,ForNext(Envelope(TEXT("Negotiating"))));
+    if(!TestTrue(TEXT("observe next completion"),S.Owner->Refresh()))return false;
+    auto NextCompleted=ForNext(Session()).Replace(TEXT("\"revision\":\"10\""),TEXT("\"revision\":\"11\""));
+    S.Fake->Reply(200,TEXT("{\"session\":")+NextCompleted+TEXT(",\"observedAt\":\"2026-11-10T00:00:00Z\",\"isOpen\":false,\"allItemsAvailable\":true,\"initiatorItems\":[],\"inviteeItems\":[]}"));
+    const auto* Current=S.Owner->GetClient().GetSession();
+    if(!TestTrue(TEXT("new session completed before its first asset tick"),Current && Current->TradeId==Next && Current->Status==ERPGTradeStatus::Completed))return false;
+    TestTrue(TEXT("previous trade cannot supply the new completion summary"),S.Owner->GetView().AssetSummary.IsEmpty());
+    TestEqual(TEXT("no speculative cache import"),S.Applies,1);
+    if(!TestTrue(TEXT("read assets for the new completion"),S.Owner->ReloadAssets()))return false;
+    S.Fake->Reply(200,ForNext(Payload()).Replace(TEXT("\"revision\":\"10\""),TEXT("\"revision\":\"11\"")));
+    TestEqual(TEXT("new trade assets imported once"),S.Applies,2);
+    TestFalse(TEXT("new summary visible only after its own read"),S.Owner->GetView().AssetSummary.IsEmpty());return true;
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGTradeAssetsLifetimeTest,"ProjectRPG.Trading.Assets.ScopeAndPending",RPGTradeAssetsUiTests::Flags)
 bool FRPGTradeAssetsLifetimeTest::RunTest(const FString&)

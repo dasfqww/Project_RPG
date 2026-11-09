@@ -1,5 +1,9 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8')
+param([string]$EngineRoot = 'D:/UE_5.8',
+    [ValidateSet('trading-assets-ui-20261109','trading-assets-session-scope-20261110')]
+    [string]$ReservationId = 'trading-assets-ui-20261109',
+    [ValidateSet('ProjectRPG.Trading','ProjectRPG.Trading.Assets')]
+    [string]$TestFilter = 'ProjectRPG.Trading')
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
@@ -18,7 +22,7 @@ function Write-Utf8([string]$Path, [string]$Text) {
 }
 function Save-Proof { Write-Utf8 (Join-Path $proofRoot 'Result.json') ($proof | ConvertTo-Json -Depth 10) }
 function Assert-Reservation {
-    $rows = @(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') | Where-Object {$_ -match '^\|[^|]* / trading-assets-ui-20261109 \|'})
+    $rows = @(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') | Where-Object {$_ -match ('^\|[^|]* / '+[regex]::Escape($ReservationId)+' \|')})
     if ($rows.Count -ne 1) { throw 'Trading client validation reservation missing' }
 }
 try {
@@ -95,7 +99,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "TradeClient"
     if ($LASTEXITCODE -ne 0) { throw 'Isolated target query failed' }
     $report = Join-Path $temp 'Report'
     $editor = Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe'
-    $editorArgs = @(('"'+$uproject+'"'),'/Engine/Maps/Entry','-ExecCmds="Automation RunTests ProjectRPG.Trading"','-TestExit="Automation Test Queue Empty"','-unattended','-nullrhi','-nosound','-nosteam','-nop4','-nosplash','-NoLiveCoding','-DisablePython','-NoLoadingScreen','-Multiprocess','-DDC=(InstalledEnginePak,Local)',('-LocalDataCachePath="'+(Join-Path $temp 'Cache')+'"'),('-ShaderWorkingDir="'+(Join-Path $temp 'Shaders')+'"'),('-UserDir="'+(Join-Path $temp 'User')+'"'),('-abslog="'+(Join-Path $proofRoot 'Native.log')+'"'),('-ReportExportPath="'+$report+'"'))
+    $editorArgs = @(('"'+$uproject+'"'),'/Engine/Maps/Entry',('-ExecCmds="Automation RunTests '+$TestFilter+'"'),'-TestExit="Automation Test Queue Empty"','-unattended','-nullrhi','-nosound','-nosteam','-nop4','-nosplash','-NoLiveCoding','-DisablePython','-NoLoadingScreen','-Multiprocess','-DDC=(InstalledEnginePak,Local)',('-LocalDataCachePath="'+(Join-Path $temp 'Cache')+'"'),('-ShaderWorkingDir="'+(Join-Path $temp 'Shaders')+'"'),('-UserDir="'+(Join-Path $temp 'User')+'"'),('-abslog="'+(Join-Path $proofRoot 'Native.log')+'"'),('-ReportExportPath="'+$report+'"'))
     $portFile = Join-Path $temp 'Port.txt'
     $statsFile = Join-Path $temp 'HttpStats.json'
     $python = Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/Python3/Win64/python.exe'
@@ -143,14 +147,18 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "TradeClient"
     $expected += @('Codec','Versioning','Consent','FreshnessAndDefinitions','WidgetReview','RealHttp') | ForEach-Object {'ProjectRPG.Trading.Preview.'+$_}
     $expected += @('ValuesAndBounds','ScopeAndStaleness','ImmutableReplay','WidgetEditing','RealHttp') | ForEach-Object {'ProjectRPG.Trading.Offer.'+$_}
     $expected += @('Codec','SelectionAndReplay','ContextAndThrottle','WidgetSelection','RealHttp') | ForEach-Object {'ProjectRPG.Trading.Targets.'+$_}
-    $expected += @('Codec','OwnerAndGeneration','ScopeAndPending','WidgetAndClose','RealHttp') | ForEach-Object {'ProjectRPG.Trading.Assets.'+$_}
+    $expected += @('Codec','OwnerAndGeneration','NewTradeScope','ScopeAndPending','WidgetAndClose','RealHttp') | ForEach-Object {'ProjectRPG.Trading.Assets.'+$_}
+    $expected = @($expected | Where-Object {$_.StartsWith($TestFilter+'.',[StringComparison]::Ordinal)})
     if ((Compare-Object $expected @($proof.Tests.fullTestPath)) -or @($proof.Tests | Where-Object {$_.state -ne 'Success' -or $_.errors -ne 0 -or $_.warnings -ne 0}).Count) { throw 'Missing or failing native cases' }
     foreach ($inputFile in $proof.Inputs) {
         if ((Get-FileHash -LiteralPath (Join-Path $workspace $inputFile.Path)).Hash -ne $inputFile.SHA256) { throw 'Original source changed during validation' }
     }
     if ((Get-FileHash -LiteralPath $PSCommandPath).Hash -ne $proof.RunnerSHA256) { throw 'Runner changed during validation' }
     $proof.HttpStats = Get-Content -LiteralPath $statsFile -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($proof.HttpStats.commits -ne 2 -or $proof.HttpStats.posts -ne 4 -or $proof.HttpStats.replays -ne 2 -or $proof.HttpStats.gets -ne 3 -or $proof.HttpStats.unauthorized -ne 1 -or $proof.HttpStats.previews -ne 1 -or $proof.HttpStats.offerPosts -ne 2 -or $proof.HttpStats.offerCommits -ne 1 -or $proof.HttpStats.offerReplays -ne 1 -or $proof.HttpStats.targetGets -ne 1 -or $proof.HttpStats.assetGets -ne 1 -or $proof.HttpStats.assetActiveGets -ne 1 -or $proof.HttpStats.errors.Count) { throw 'HTTP fixture contract failed' }
+    $expectedWire = @{commits=2;posts=4;replays=2;gets=3;unauthorized=1;previews=1;offerPosts=2;offerCommits=1;offerReplays=1;targetGets=1;assetGets=1;assetActiveGets=1}
+    if ($TestFilter -eq 'ProjectRPG.Trading.Assets') {foreach($key in @($expectedWire.Keys)){if($key -notin @('assetGets','assetActiveGets')){$expectedWire[$key]=0}}}
+    foreach($key in $expectedWire.Keys){if($proof.HttpStats.$key -ne $expectedWire[$key]){throw ('HTTP fixture count failed: '+$key)}}
+    if ($proof.HttpStats.errors.Count) { throw 'HTTP fixture contract failed' }
     $proof.Passed = $true
 } catch { $proof.Failure = $_.Exception.Message }
 finally {
