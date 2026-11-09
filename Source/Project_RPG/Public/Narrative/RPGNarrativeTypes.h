@@ -13,6 +13,10 @@ struct PROJECT_RPG_API FRPGQuestObjectiveView
     UPROPERTY(BlueprintReadOnly) FString Id;
     UPROPERTY(BlueprintReadOnly) FText Text;
     UPROPERTY(BlueprintReadOnly) bool bCompleted = false;
+    /** Present only for server-authored quantity objectives. Legacy/non-count goals have no pair. */
+    UPROPERTY(BlueprintReadOnly) bool bHasCount = false;
+    UPROPERTY(BlueprintReadOnly) int32 CurrentCount = 0;
+    UPROPERTY(BlueprintReadOnly) int32 RequiredCount = 0;
 };
 
 USTRUCT(BlueprintType)

@@ -42,11 +42,21 @@ UE의 던전 결과 자동 반영은 아래 절의 읽기·별도 POST 절차를
 
 진행은 활성화 시각·필요 횟수·현재 횟수·마지막 사건을 저장한다. 음수/상한 초과·달성 플래그 모순·필수 메타데이터 누락·선행/후속에 같은 마지막 사건을 사용한 상태는 읽기/새 전이에서 거절하고 초기화하지 않는다. 저널은 `currentCount`/`requiredCount`를 제공한다. 응답 영수증은 사건/캐릭터, 문자열 `revision`, 적용 목표별 `questId`/`objectiveId`/`count`/`requiredCount`이며 `no-store`다. 영수증은 당시 저장 스냅샷에서 렌더링하여 뒤의 처치·보고·카탈로그 변경으로 과거 부분 횟수가 바뀌지 않는다.
 
-`invalid_kill_event`는400, 현재 멤버/세대 불일치 등은403, `kill_event_out_of_window`·사건 ID 내용 변경/다른 명령과의 충돌은409다. 자동 보고·아이템/XP·해금·파티 전파는 하지 않는다. UE의 적별 ID/생명 사건 생성, 사망 확정과 개인 자격/기여자 선정, 전송 및 수량 UI는 후속 연결이다. 이 API의 GameServer 인증만으로 실제 몬스터 사망/참여 정책의 완성을 주장하지 않는다.
+`invalid_kill_event`는400, 현재 멤버/세대 불일치 등은403, `kill_event_out_of_window`·사건 ID 내용 변경/다른 명령과의 충돌은409다. 자동 보고·아이템/XP·해금·파티 전파는 하지 않는다. UE의 적별 ID/생명 사건 생성, 사망 확정과 개인 자격/기여자 선정, 전송은 후속 연결이며 저널 수량 표시는 아래 절을 따른다. 이 API의 GameServer 인증만으로 실제 몬스터 사망/참여 정책의 완성을 주장하지 않는다.
 
 검증 진입점은 `Scripts/Tests/Run-NarrativeKillTests.ps1 -Postgres`다. 게시 Git Backend와 명시한 본인 입력만 고정하여 실제 Memory/PG·Bearer HTTP의 수량 누적/부분 저널·동시 재전송·무효과 영수증·타입 충돌·순차 목표·세대/종료·부캐/성장·손상 상태와 기존 조사·이야기 회귀를 확인한다. UE/전투 실행은 검사하지 않는다. 사본·빌드 산출물·전용 DB는 종료 시 정리하고 작은 결과/입력 해시만 남긴다.
 
 2026-11-09 검증: 게시 `cd8182dd`+본인11입력의 Release 빌드3종 모두0경고/0오류, 새 처치 목표의 Memory/실제PG·인증 HTTP와 기존 조사 Memory/PG·이야기 Memory/HTTP 회귀가 통과했다. 잘못된 적·던전·난이도, 부분 누적과 영수증 복원/카탈로그 변경, 순차/병렬·역할/세대/종료·부캐/성장 불변도 확인했고 최종 입력 SHA가 유지됐다. 추가 손상 검사 fixture의 잘못된 초기 리비전은 거절된 원인을 확인하고 주입 리비전을 수정하여 재실행했다. 자기3회 임시87,249,524 bytes/전용 DB 폐기·Temp/예외0. 근거 `Saved/BuildChecks/NarrativeKill-20261109/56fb7aeb52714409b80ed81f5245681c/Result.json`과 `CompletionAudit.json`이며 폐기한 입력/빌드 해시는 당시 증거다. 실제 UE 처치 연결 검증을 뜻하지 않는다.
+
+## UE 목표 수량 검증과 저널
+
+`FRPGQuestObjectiveView`는 `bHasCount`, `CurrentCount`, `RequiredCount`를 읽기 모델로 제공한다. 코덱은 두 필드가 함께 없는 옛 응답과 둘 다 null인 비수량 목표를 허용한다. 수량 목표는 두 필드 모두 실제 JSON 숫자여야 하고 정수·필요량1~10000·현재량0~필요량·`completed`와의 일치를 검사한다. 한쪽 누락/null, 숫자 문자열, 음수·소수·범위 초과·완료 모순은 응답 전체를 거절하며 부분 파싱으로 기존 출력 모델을 덮어쓰지 않는다.
+
+`FRPGNarrativePresentation::ObjectiveLine`을 기존 대화창 저널에서 사용해 `[ ] 늑대 처치 (1/3)`과 완료 시 `[완료] 늑대 처치 (3/3)`을 표시한다. 제목이 없는 목표는 위치에 따른 기존 대체 이름을 사용하고, 비수량 목표에는 수량을 만들지 않는다. Blueprint 읽기도 같은 서버 진도 모델을 사용한다. 화면 표시를 위해 로컬 횟수를 증가시키거나 목표를 완료하지 않는다. NPC/선택 캐릭터·계정/endpoint 검증과 진행 조회/보고는 기존 Coordinator 경로를 유지한다.
+
+검증 진입점은 `Scripts/Tests/Run-NarrativeCountTests.ps1`이다. 닫힌 사설 작은 UE 모듈에서 실제 코덱과 저널 문자열 함수를 native 검사하고, 게시 Git 전체 Source/Config/플러그인에 본인 입력만 얹어 전체 UHT와 실제 위젯/타입/표시 CPP를 집중 컴파일한다. 원본 DLL을 교체하지 않으며 전체 게임 모듈 링크·렌더링/GPU·UE 사망 사건 전송 검증과 구분한다.
+
+2026-11-09 확인: 게시 `7a35731c`+본인6입력의 작은 모듈 빌드/링크와 native5 Success·검사 오류/경고0·실행0이 통과했다. 위젯의 기존 Pawn 전방 선언 의존성이 NoPCH 집중 컴파일에서 드러나 명시 헤더를 추가했고, 이후 `-IntegrationOnly`의 전체 UHT/실제 CPP4 컴파일0이 통과했다. native에 포함된5입력은 불변이며 최종6입력/러너 SHA를 기록했다. Engine 기동 Error15/Warning4와 최초 위젯 컴파일 실패는 검사 성공과 구분한다. 자기2회 임시181,284,920 bytes 폐기·Saved/NC 잔여/정리 예외0, 근거 `Saved/BuildChecks/NarrativeCount-20261109/CompletionAudit.json`이다. 폐기한 DLL 해시는 당시 근거이며 GPU/물리 입력/실제 처치 전송 결과로 확대하지 않는다.
 
 ## 개인 조사/상호작용 서버 사건
 

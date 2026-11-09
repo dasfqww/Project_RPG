@@ -14,8 +14,10 @@
 #include "Narrative/RPGNarrativeCoordinator.h"
 #include "Narrative/RPGDialogueManager.h"
 #include "Narrative/RPGQuestManager.h"
+#include "Narrative/RPGNarrativePresentation.h"
 #include "Actor/Narrative/RPGNarrativeNPC.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/Pawn.h"
 #include "Online/RPGDungeonSessionSubsystem.h"
 #include "Manager/HttpWebManager.h"
 #include "Component/UI/RPGSkillWindowComponent.h"
@@ -275,10 +277,7 @@ void URPGNarrativeDialogueWidget::Render()
                 Lines.Add(FText::Format(NSLOCTEXT("RPGNarrative", "LegacyGoals", "  완료한 목표 {0}개"), FText::AsNumber(Quest.CompletedObjectives.Num())));
             for (int32 Index = 0; Index < Quest.Objectives.Num(); ++Index)
             {
-                const auto& Objective = Quest.Objectives[Index];
-                const FText Label = Objective.Text.IsEmpty() ? FText::Format(NSLOCTEXT("RPGNarrative", "UnnamedObjective", "목표 {0}"), FText::AsNumber(Index + 1)) : Objective.Text;
-                Lines.Add(FText::Format(NSLOCTEXT("RPGNarrative", "JournalGoal", "  {0} {1}"),
-                    Objective.bCompleted ? NSLOCTEXT("RPGNarrative", "GoalDone", "[완료]") : FText::FromString(TEXT("[ ]")), Label));
+                Lines.Add(FRPGNarrativePresentation::ObjectiveLine(Quest.Objectives[Index], Index));
             }
         }
         Journal->SetText(Lines.IsEmpty() ? NSLOCTEXT("RPGNarrative", "NoQuests", "수락한 의뢰가 없습니다.") : FText::Join(FText::FromString(TEXT("\n")), Lines));

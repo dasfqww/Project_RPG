@@ -6,6 +6,24 @@
 
 namespace RPGNarrativeJson
 {
+    bool CountPair(const FJsonObject& Object, FRPGQuestObjectiveView& Out)
+    {
+        const auto Current = Object.TryGetField(TEXT("currentCount"));
+        const auto Required = Object.TryGetField(TEXT("requiredCount"));
+        if (!Current && !Required) return true; // pre-counter servers
+        if (!Current || !Required) return false;
+        if (Current->IsNull() && Required->IsNull()) return true;
+        double Count = 0, Goal = 0;
+        // TryGetNumber also accepts numeric strings in UE; require actual JSON numbers.
+        if (Current->Type != EJson::Number || Required->Type != EJson::Number
+            || !Current->TryGetNumber(Count) || !Required->TryGetNumber(Goal)
+            || !FMath::IsFinite(Count) || !FMath::IsFinite(Goal)
+            || Goal < 1 || Goal > 10000 || Count < 0 || Count > Goal
+            || Count != FMath::FloorToDouble(Count) || Goal != FMath::FloorToDouble(Goal)
+            || Out.bCompleted != (Count == Goal)) return false;
+        Out.bHasCount = true; Out.CurrentCount = static_cast<int32>(Count); Out.RequiredCount = static_cast<int32>(Goal);
+        return true;
+    }
     bool Id(const FString& Value)
     {
         if (Value.IsEmpty() || Value.Len() > 128) return false;
@@ -97,6 +115,7 @@ bool FRPGNarrativeCodec::Decode(const FString& Body, const FGuid ExpectedCharact
                     || !(*Entry)->TryGetStringField(TEXT("id"), Objective.Id) || !Id(Objective.Id) || ObjectiveIds.Contains(Objective.Id)
                     || !OptionalText(*Entry, TEXT("text"), 1024, Objective.Text)
                     || !(*Entry)->TryGetBoolField(TEXT("completed"), Objective.bCompleted)
+                    || !CountPair(**Entry, Objective)
                     || Objective.bCompleted != Quest.CompletedObjectives.Contains(Objective.Id)) return false;
                 ObjectiveIds.Add(Objective.Id); Quest.Objectives.Add(MoveTemp(Objective));
             }
