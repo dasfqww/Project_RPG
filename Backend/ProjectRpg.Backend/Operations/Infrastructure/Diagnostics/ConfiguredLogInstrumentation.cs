@@ -14,6 +14,8 @@ public sealed class ConfiguredLogInstrumentation(OperationsOptions options, Oper
         new LogProducerConfiguration("game-transactions","게임 확정 거래",options.GameApiDiagnosticsEnabled,
             Values("일반 아이템 커밋","재화 커밋","원자 픽업","장비 제작","장비 분해","장비 강화","장비 전승"),
             Values("game.transaction.receipt.committed","game.transaction.receipt.replayed")),
+        new LogProducerConfiguration("player-trade","개인 거래 명령 관측",options.GameApiDiagnosticsEnabled,
+            Values("플레이어 거래의 저장된 명령 결과·완료 영수증 관측"),Values("game.trade.command.observed")),
         new LogProducerConfiguration("settlement","정산 worker 관측",true,
             Values("던전 보상 정산 시도·확정 지급 영수증"),Values("game.settlement.attempt.started","game.settlement.attempt.completed",
                 "game.settlement.attempt.failed","game.settlement.attempt.requeued","game.reward.receipt.committed"))

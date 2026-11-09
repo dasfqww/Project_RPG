@@ -18,7 +18,9 @@ public static class OperationsLogNavigation
         new LogIdentifierField("transactionRequestId","거래 요청 ID",36),
         new LogIdentifierField("characterId","캐릭터 ID",36),
         new LogIdentifierField("dungeonSessionId","던전 세션 ID",36),
-        new LogIdentifierField("itemId","아이템 ID",36)
+        new LogIdentifierField("itemId","아이템 ID",36),
+        new LogIdentifierField("tradeId","개인 거래 ID",36),
+        new LogIdentifierField("tradeCommandRequestId","거래 명령 ID",36)
     });
 
     public static IReadOnlyList<LogIdentifierLink> Connections(LogEvent entry, WebLogPage page)
@@ -33,6 +35,7 @@ public static class OperationsLogNavigation
                 "operationRequestId" => entry.OperationRequestId?.ToString("D"), "caseId" => entry.CaseId?.ToString("D"),
                 "transactionRequestId" => entry.TransactionRequestId?.ToString("D"), "characterId" => entry.CharacterId?.ToString("D"),
                 "dungeonSessionId" => entry.DungeonSessionId?.ToString("D"), "itemId" => entry.ItemId?.ToString("D"),
+                "tradeId" => entry.TradeId?.ToString("D"), "tradeCommandRequestId" => entry.TradeCommandRequestId?.ToString("D"),
                 _ => null
             };
             if (value is null) continue;

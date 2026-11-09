@@ -7,7 +7,7 @@ using ProjectRpg.Backend.Domain.Trading;
 namespace ProjectRpg.Backend.Application;
 
 public sealed class TradeApplication(IGameRepository game, ITradeSessionRepository store,
-    IOptions<TradingOptions> options, TradeRequestLimiter limiter)
+    IOptions<TradingOptions> options, TradeRequestLimiter limiter, ITradeCommandObserver? observer = null)
 {
     public async Task<TradeParticipant> ActorAsync(AuthenticatedPrincipal principal, Guid characterId, CancellationToken ct)
     {
@@ -47,6 +47,18 @@ public sealed class TradeApplication(IGameRepository game, ITradeSessionReposito
         }
         if (!limiter.Acquire(actor.AccountId, kind == TradeCommandKind.Invite, invitee?.AccountId))
             throw new TradeRuleException("trade_rate_limit");
-        return await store.ExecuteAsync(new(requestId, tradeId, actor, kind, revision, offerRevision, invitee, currency, offer), ct);
+        var result = await store.ExecuteAsync(new(requestId, tradeId, actor, kind, revision, offerRevision, invitee, currency, offer), ct);
+        if (observer is not null)
+        {
+            try
+            {
+                var state = result.Session.State;
+                if (result.RequestId == requestId && state.TradeId == tradeId && (actor == state.Initiator || actor == state.Invitee))
+                    observer.Observe(new(state.TradeId,result.RequestId,actor.CharacterId,kind,state.Status,
+                        result.Session.Completed && result.Session.Exchange?.TradeId == state.TradeId,result.Rejection is not null));
+            }
+            catch (Exception) { /* Optional diagnostics cannot change the committed command/exchange or its replay. */ }
+        }
+        return result;
     }
 }

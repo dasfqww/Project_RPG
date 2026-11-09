@@ -55,7 +55,7 @@ internal static class LogNavigationTests
             Check.That(html.Contains("<option value=\""+name+"\">"),"Event suggestions use the current registry, including game HTTP/receipts/worker events.");
         Check.That(!html.Contains(UnsafeText)&&WebUtility.HtmlDecode(html).Contains(UnsafeText),"Stored operation/build text is HTML encoded, not executed as markup.");
         var links=Links(html);
-        Check.That(links.Count==8&&links.Select(l=>l.Key).ToHashSet().SetEquals(OperationLogQuery.IdFields),"Each present confirmed ID has one supported local navigation link.");
+        Check.That(links.Count==10&&links.Select(l=>l.Key).ToHashSet().SetEquals(OperationLogQuery.IdFields),"Each present confirmed ID has one supported local navigation link.");
         var period=QueryHelpers.ParseQuery(new Uri(host.Origin+links[0].Url).Query);
         string from=period["fromUtc"].ToString(),to=period["toUtc"].ToString();
         Check.That(from==originalNow.AddHours(-1).UtcDateTime.ToString("O")&&to==originalNow.UtcDateTime.ToString("O"),
@@ -121,7 +121,8 @@ internal static class LogNavigationTests
 
     private static LogEvent Fixture(Guid character,Guid session,DateTimeOffset at)=>new(1,Guid.NewGuid(),"game.transaction.receipt.replayed",at,
         "Information","OpsTest","Backend.fixture","fixture-process",UnsafeText,Guid.NewGuid(),Trace,new string('b',16),new string('c',16),
-        UnsafeText,null,null,character,null,session,Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),"Replayed",null,null,"NavigationFixture");
+        UnsafeText,null,null,character,null,session,Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),"Replayed",null,null,"NavigationFixture",
+        TradeId:Guid.NewGuid(),TradeCommandRequestId:Guid.NewGuid());
     private static string Line(LogEvent entry)=>JsonSerializer.Serialize(new { Properties=new { OpsEvent=JsonSerializer.SerializeToElement(entry,OperationsHttp.Json) } })+"\n";
     private static bool StoredGameHttp(string root,string id)
     {

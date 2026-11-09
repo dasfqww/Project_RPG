@@ -14,6 +14,19 @@ public sealed class OperationsEventRecorder(OperationsLogStore store, Operations
     public static string BuildVersion { get; } = typeof(OperationsEventRecorder).Assembly.GetName().Version
         + "+" + typeof(OperationsEventRecorder).Module.ModuleVersionId.ToString("N");
     private readonly Microsoft.Extensions.Logging.ILogger logger = store.CreateLogger();
+    public void RecordTradeCommand(Guid httpRequestId, TradeCommandObservation observation)
+    {
+        Activity? activity=Activity.Current;
+        bool trace=activity is not null&&activity.TraceId!=default;
+        Write(new(1,Guid.NewGuid(),"game.trade.command.observed",clock.GetUtcNow(),observation.StoredRefusal?"Warning":"Information",
+            options.EnvironmentId,"ProjectRpg.Backend",store.BootId,BuildVersion,httpRequestId,
+            trace?activity!.TraceId.ToString():null,trace&&activity!.SpanId!=default?activity.SpanId.ToString():null,
+            trace&&activity!.ParentSpanId!=default?activity.ParentSpanId.ToString():null,"PlayerTrade."+observation.Kind,null,
+            null,observation.CharacterId,null,null,null,null,null,null,
+            observation.StoredRefusal?"StoredRefusal":observation.CompletedReceipt?"CompletedReceiptObserved":observation.State.ToString(),
+            observation.StoredRefusal?"trade.command_refused":null,null,"PlayerTrade",
+            TradeId:observation.TradeId,TradeCommandRequestId:observation.CommandRequestId));
+    }
     public void RecordGameTransaction(Guid httpRequestId, GameTransactionObservation observation)
     {
         Activity? activity = Activity.Current;

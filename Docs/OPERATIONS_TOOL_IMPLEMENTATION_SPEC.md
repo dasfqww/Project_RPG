@@ -74,7 +74,7 @@ Razor PageModel은 Core 유스케이스를 직접 호출한다. 아래 읽기 AP
 |---|---|---|
 | `GET /ops` | 없음 | 검색 폼·환경/빌드 표시 |
 | `GET /ops/characters/{id}` | 캐릭터 GUID | 기본 상세 + 독립 패널 링크/조회 |
-| `GET /ops/diagnostics` | 아래 로그 필터 | 8종 ID/등록 이벤트 검색·ID 연결 탐색·기존 조건의 이어보기 |
+| `GET /ops/diagnostics` | 아래 로그 필터 | 10종 ID/등록 이벤트 검색·ID 연결 탐색·기존 조건의 이어보기 |
 | `GET /ops/api/characters` | `kind=SteamId\|CharacterId`, `value`, `limit`, `cursor?` | `SearchCharacters` → Page<CharacterHeader> |
 | `GET /ops/api/characters/{id}` | GUID | `GetCharacterSummary` → CharacterHeader |
 | `GET /ops/api/characters/{id}/inventory` | `container=Inventory\|Equipment\|Mail`, `limit`, `cursor?` | `GetInventoryPage` → Page<ItemSummary> |
@@ -213,13 +213,15 @@ Memory는 게임 저장소와 같은 잠금 안에서 불변 복사본을 만든
 
 S1의 source는 backend 하나다. S2에서 등록 source를 추가하되 source별 cursor/검색을 사용하고 별도 서버의 임의 파일을 운영 웹에서 직접 열지 않는다. 로그 수집 제공자는 같은 root에 안전한 입력으로 옮기거나 중앙 검색 어댑터를 구현한다. 미등록/미계측 구간은 NotInstrumented/Unknown이다.
 
-한 로컬 source의 catalogue는 최대 30파일이다. API의 ID 필터는 httpRequestId/traceId/operationRequestId/characterId/dungeonSessionId/transactionRequestId/itemId/caseId이며 여러 필터는 AND다. UUID/trace 형식은 고정 검증하고 EventName은 등록 이벤트 키, Level은 정의된 수준만 받는다. 검색 범위는 `[fromUtc,toUtc)`다. 수집 위치 순서상 timestamp가 오래된 한 줄을 봤다고 나머지 파일을 생략하지 않는다.
+한 로컬 source의 catalogue는 최대 30파일이다. API의 ID 필터는 httpRequestId/traceId/operationRequestId/characterId/dungeonSessionId/transactionRequestId/itemId/caseId/tradeId/tradeCommandRequestId이며 여러 필터는 AND다. UUID/trace 형식은 고정 검증하고 EventName은 등록 이벤트 키, Level은 정의된 수준만 받는다. 기존 최대10 필터/검색 예산은 유지한다. 검색 범위는 `[fromUtc,toUtc)`다. 수집 위치 순서상 timestamp가 오래된 한 줄을 봤다고 나머지 파일을 생략하지 않는다.
 
 작은 파일 catalogue는 파일 ID/크기·보존 시작/끝·writer boot ID·마지막 수집·회전/삭제·알려진 유실 구간을 저장한다. 원자적 임시 파일 교체로 갱신하고 부팅 시 파일 stat과 대조한다. catalogue도 1MiB 상한이며 오래된 기술 메타데이터를 정리한다. 신뢰할 수 없는 범위는 Unknown이다. catalogue는 검색 색인이나 게임 상태 저장소가 아니다.
 
 Complete는 고정한 보존 파일을 끝까지 검색했다는 뜻이다. 사건 전부의 수집/보존 성공을 뜻하지 않는다. 검색 요청 자체는 별도 이벤트로 기록하되 현재 검색 snapshot 이후에 추가되어 자기 결과를 무한히 늘리지 않는다.
 
-성공한 로그 검색 응답은 추가 필드 `data.instrumentation`에 현재 호스트의 관측 시각/환경/source/boot/빌드와 게임 관련 세 생산 경계의 구성 상태·범위·등록 사건 이름을 제공한다. `scope=CurrentProcessOnly`, `historicalCoverage=Unknown`이며 기존 파일 검색 `coverage`와 별개다. 현재 설정으로 과거 이력을 합성하거나 보존 결과를 제거하지 않는다. 검색 전 Razor에도 동일 Core 읽기 포트를 사용한다. [구현/재시작 검증 경계](OPERATIONS_TOOL_RUNTIME.md#현재-계측-설정과-과거-로그)를 따르며 자격/파일 경로·새 검색 권한은 노출하지 않는다.
+성공한 로그 검색 응답은 추가 필드 `data.instrumentation`에 현재 호스트의 관측 시각/환경/source/boot/빌드와 게임 관련 네 생산 경계의 구성 상태·범위·등록 사건 이름을 제공한다. `scope=CurrentProcessOnly`, `historicalCoverage=Unknown`이며 기존 파일 검색 `coverage`와 별개다. 현재 설정으로 과거 이력을 합성하거나 보존 결과를 제거하지 않는다. 검색 전 Razor에도 동일 Core 읽기 포트를 사용한다. [구현/재시작 검증 경계](OPERATIONS_TOOL_RUNTIME.md#현재-계측-설정과-과거-로그)를 따르며 자격/파일 경로·새 검색 권한은 노출하지 않는다.
+
+개인 거래의 [저장 명령 결과 관측](OPERATIONS_TOOL_RUNTIME.md#개인-거래-명령-결과-추적)은 `game.trade.command.observed`와 선택 UUID `tradeId`/`tradeCommandRequestId`를 schemaVersion 1에 추가한다. 새 명령과 같은 결과 재조회는 구분하지 않으며, 완료 영수증을 관측한 로그 건수가 새 자산 교환 횟수는 아니다. 별도 Application 관측 포트/Infrastructure 어댑터를 사용하고 거래 API/원자 저장/정책·기본 비활성은 유지한다.
 
 ## 7. S2 보상 조사 계약
 

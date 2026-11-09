@@ -1,6 +1,6 @@
 # 운영툴 로그 추적 계약
 
-작성일: 2026-11-04 · 상세 확정: 2026-11-05 · 현재 계측 설정 구분 반영: 2026-11-09 · 설계 v1.7 · 상태: 공통 계약과 구현 경계를 함께 기록, 모든 게임/UE 사건의 계측 완료를 뜻하지 않음
+작성일: 2026-11-04 · 상세 확정: 2026-11-05 · 개인 거래 관측 반영: 2026-11-09 · 설계 v1.8 · 상태: 공통 계약과 구현 경계를 함께 기록, 모든 게임/UE 사건의 계측 완료를 뜻하지 않음
 
 상위 문서: [운영툴 아키텍처](OPERATIONS_TOOL_ARCHITECTURE.md), [1인 개발 제작 계획](SOLO_OPERATIONS_TOOL_PLAN.md). 실제 sink·물리 JSON·버퍼·검색 알고리즘은 [구현 계약 §6](OPERATIONS_TOOL_IMPLEMENTATION_SPEC.md#6-로그의-실제-기록회전검색-구현)에서 확정한다.
 
@@ -29,6 +29,7 @@
 | `CharacterId`, `RosterId` | 권위 데이터에서 확인한 ID | 대상과 실제 지급 소유 범위 추적 |
 | `DungeonSessionId`, `SettlementId/Key` | 기존 세션·정산 기록의 실제 식별자 | UE→backend→worker→정산 결과 연결. 없는 ID를 합성해 실제 기록처럼 표시하지 않음 |
 | `TransactionRequestId`, `ItemId` | 게임 영수증/아이템 ID | 재화 증감·아이템 생성/이동/수령 연결 |
+| `TradeId`, `TradeCommandRequestId` | 저장된 개인 거래/명령 결과의 실제 UUID | 협상·완료 영수증과 각 HTTP 시도 연결. 일반 거래 영수증/운영 조치/던전 ID와 혼용하지 않음 |
 | `EventId`, `Attempt` | 기록마다 고유 ID / 실제 시도 순번 | 중복 수집 제거와 재시도 구분 |
 
 `.NET Activity`의 TraceId/SpanId는 호출 구간을 연결하며, 업무 요청 ID와 목적이 다르다. 이 설계에서는 별도 필드로 유지한다. [Microsoft 분산 추적 개념](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/distributed-tracing-concepts)
@@ -86,6 +87,7 @@
 | `ops.http.started/completed` | 요청 수신/최종 응답, 미인증/잘못된 입력 포함 |
 | `game.http.started/completed` — 선택 활성화 | `/api`의 서버 생성 시도 번호·실제 Activity·고정 라우트·최종 상태/소요 시간. 업무 ID와 UE 관측을 합성하지 않음 |
 | `game.transaction.receipt.committed/replayed` — 선택 활성화 | 일반 아이템/재화·원자 픽업·장비 API가 확인한 확정/재생 영수증의 거래 ID → 실제 HTTP 시도/trace. 신규 반영과 재생을 구분 |
+| `game.trade.command.observed` — 선택 활성화 | 개인 거래의 저장된 명령/거절·완료 영수증 관측. 같은 결과 재조회는 새 교환으로 계산하지 않음 |
 | `ops.access.denied` | 운영 인증/권한 거절. 로그인 시도 원문/비밀번호 제외 |
 | `ops.character.query.completed/failed` | 캐릭터 검색·상세의 결과와 지연 |
 | `ops.storage.query.completed/failed` | 필요한 DB 조회 구간. SQL 원문·파라미터 덤프 제외 |
@@ -121,6 +123,12 @@ HTTP 어댑터 → 순수 Core `IGameHttpObserver` → Infrastructure writer 순
 제작/분해/강화/전승 API의 공통 결과 필터가 서버의 확정 `ItemCommitResponse`만 기존 Application 관측 포트에 전달한다. 실제 거래/Character actor ID와 고정 `Equipment.Craft/Dismantle/Upgrade/Transfer` 종류로 구분하며 Infrastructure가 현재 게임 HTTP 시도/실제 Activity를 연결한다. 추가 권위 조회·본문 파싱·저장 트랜잭션은 없다. 일반 거래/픽업 이벤트와 schemaVersion 1을 유지한다.
 
 권한/규칙/충돌 거절·저장 예외는 확정 영수증이 아니며 관측기 실패는 기존 결과/업무 예외를 바꾸지 않는다. 여러 변경 아이템 중 하나나 현재 세션을 추정해 맥락을 채우지 않는다. 입력/결과 소비·후속 강화/전승 후 재생은 원래 영수증과 연결한다. [실행·검증 경계](OPERATIONS_TOOL_RUNTIME.md#장비-변경-영수증-연결)를 따르며 직접 저장 호출/UE/실제 클라이언트 표시를 검증한 것으로 확대하지 않는다.
+
+### 구현된 개인 거래 명령 관측 (2026-11-09)
+
+Application의 선택형 `ITradeCommandObserver`가 저장된 `TradeSessionResult`와 검증된 참여자에서 실제 거래/명령/캐릭터 ID·명령 enum·상태만 전달하고 Infrastructure가 게임 HTTP 시도/실제 Activity와 연결한다. `tradeId`/`tradeCommandRequestId`는 schemaVersion 1의 선택 필드이며 이전 기록의 누락 값은 null이다. 검색/화면은 이제 10종 ID를 지원하고 현재 계측 구성에 `player-trade` 경계를 추가한다.
+
+신규 실행/동일 결과 재생을 구분하지 않는 관측 계약이다. `CompletedReceiptObserved`는 확정 저장 결과의 완료/해당 교환 계획 존재를 확인한 영수증 관측이며 새 자산 이동 사건이 아니다. `StoredRefusal`도 저장된 거절 결과만 의미한다. 계정/제안·품목/재화·교환 계획/자격/원문 거절은 기록하지 않는다. [실제 양측 거래·관측 실패·권한 검색 검증](OPERATIONS_TOOL_RUNTIME.md#개인-거래-명령-결과-추적)은 API/PG 자산 반영과 클라이언트/Steam 표시를 구분한다.
 
 ## 4. 생성·수집·검색의 의존 분리
 
@@ -161,7 +169,7 @@ S1에 검색·캐릭터 상세와 함께 **기본 로그 조회 페이지**를 �
 
 타임라인의 각 항목에는 출처·상태·관측 시각·연결 근거를 표시한다. 직접 trace 관계인지, 업무 ID로 연계한 것인지, 계측하지 않은 구간인지 구분한다. 게임 영수증은 기술 로그 페이지에 복사해 새로운 지급 근거로 만들지 않고 원래 기록을 참조한다.
 
-2026-11-08 구현한 [로그 화면의 연결 탐색](OPERATIONS_TOOL_RUNTIME.md#로그-화면의-연결-탐색)은 지원하는 8종 ID를 폼과 결과 링크에 연결하고 등록 이벤트 목록을 제안한다. ID 링크는 실제 검색 기간/단일 등록 원본과 선택한 번호만 유지해 새 검색을 시작한다. 이전 AND 조건·커서는 제외하므로 거래의 다른 시도나 trace의 다른 사건을 찾을 수 있다. 이어보기는 원래 조건·고정 기간·보호 커서/EOF를 유지한다. 저장된 유효 ID만 사용하며, span/부모나 없는 업무 관계를 검색 링크로 합성하지 않는다. 기존 운영자 권한·검색 한도·Coverage 의미를 유지한다. 풍부한 합성 JSONL 행으로 한 화면 검증과 실제 공통 HTTP 이벤트 검증을 구분한다.
+2026-11-08 구현한 [로그 화면의 연결 탐색](OPERATIONS_TOOL_RUNTIME.md#로그-화면의-연결-탐색)은 초기 8종에 개인 거래/명령 ID를 추가해 현재 10종 ID를 폼과 결과 링크에 연결하고 등록 이벤트 목록을 제안한다. ID 링크는 실제 검색 기간/단일 등록 원본과 선택한 번호만 유지해 새 검색을 시작한다. 이전 AND 조건·커서는 제외하므로 거래의 다른 시도나 trace의 다른 사건을 찾을 수 있다. 이어보기는 원래 조건·고정 기간·보호 커서/EOF를 유지한다. 저장된 유효 ID만 사용하며, span/부모나 없는 업무 관계를 검색 링크로 합성하지 않는다. 기존 운영자 권한·검색 한도·Coverage 의미를 유지한다. 풍부한 합성 JSONL 행으로 한 화면 검증과 실제 공통 HTTP 이벤트 검증을 구분한다.
 
 검색 계약:
 

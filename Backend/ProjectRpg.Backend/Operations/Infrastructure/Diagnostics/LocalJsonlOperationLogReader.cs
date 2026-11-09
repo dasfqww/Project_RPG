@@ -95,6 +95,7 @@ public sealed class LocalJsonlOperationLogReader(OperationsLogStore store, Opera
                 "httpRequestId" => item.HttpRequestId?.ToString("D"), "characterId" => item.CharacterId?.ToString("D"),
                 "operationRequestId" => item.OperationRequestId?.ToString("D"), "dungeonSessionId" => item.DungeonSessionId?.ToString("D"),
                 "transactionRequestId" => item.TransactionRequestId?.ToString("D"), "itemId" => item.ItemId?.ToString("D"), "caseId" => item.CaseId?.ToString("D"),
+                "tradeId" => item.TradeId?.ToString("D"), "tradeCommandRequestId" => item.TradeCommandRequestId?.ToString("D"),
                 _ => null
             };
             if (!string.Equals(actual, expected, StringComparison.Ordinal)) return false;

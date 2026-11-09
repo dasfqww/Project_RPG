@@ -77,6 +77,19 @@ Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복
 
 2026-11-09 장비 추적의 집중 Memory/PG와 전체 운영툴 Memory 회귀 모두 Release 0경고/0오류로 통과했다. 최초 PG 시도의 Docker 미기동은 테스트 전 환경 실패이며 최종 격리 DB 성공과 구분한다.
 
+### 개인 거래 명령 결과 추적
+
+[TradeApplication](../Backend/ProjectRpg.Backend/Application/TradeApplication.cs)은 저장소의 `TradeSessionResult`가 돌아온 뒤 선택형 [ITradeCommandObserver](../Backend/ProjectRpg.Backend/Application/ITradeCommandObserver.cs)에 검증된 거래/명령/실행자 캐릭터·명령 종류·결과 상태만 전달한다. 기존 플레이어/소유권·거래 정책·요청 제한·원자 저장/멱등 계약은 유지한다. 추가 권위 조회는 없으며 관측기 예외는 저장 결과·응답·재시도를 변경하지 않는다. 같은 `GameApiDiagnosticsEnabled` 설정을 사용하고 `Trading:Enabled`나 허용 품목을 자동 변경하지 않는다.
+
+- 사건 이름은 `game.trade.command.observed`, 작업은 enum의 `PlayerTrade.Invite/Accept/ReplaceOffer/Ready/Withdraw/Confirm/Cancel`이다. 기록은 **저장된 명령 결과의 관측**이며 신규 실행과 동일 결과 재생을 구별할 수 있다고 주장하지 않는다. 저장 결과를 반환하지 않은 인증/본문/권한/충돌·저장 예외에는 이 사건을 만들지 않는다.
+- `tradeId`는 원래 개인 거래, `tradeCommandRequestId`는 불변 명령 결과의 요청 번호, `characterId`는 해당 명령의 확인된 참여자다. 일반 아이템/재화 영수증의 `transactionRequestId`, 운영 조치의 `operationRequestId`, 던전 세션/단일 아이템 ID와 혼용하지 않는다. 두 nullable UUID 필드는 기존 schemaVersion 1에 추가하며 이전 행의 누락 값은 null이다.
+- 협상 중에는 저장된 협상 상태를 결과로 표시한다. 저장된 거절은 `StoredRefusal`/고정 `trade.command_refused`다. `CompletedReceiptObserved`는 저장 결과가 Completed이고 해당 거래의 교환 계획을 포함하는 **완료 영수증 관측**이다. 완료 명령을 재조회하면 같은 결과가 다시 관측되므로 로그 건수로 교환 횟수를 계산하지 않는다. 합의/준비/첫 확인만으로 자산 이동을 확정하지 않는다.
+- 계정/상대 신원·품목·가격/수량·제안/지갑/교환 계획·보류 키·자격/본문·원문 거절 문자열은 전달하지 않는다. 기존 유계 JSONL writer와 보호 검색·10종 ID 화면 링크로 개인 거래→명령→서로 다른 HTTP 시도/trace를 조사한다. 직접 저장 호출·만료 worker·UE/클라이언트 반영은 이 플레이어 명령 관측의 범위 밖이다.
+
+`Scripts/Tests/Run-OperationsTradeTracingTests.ps1 -Postgres`는 게시 Backend+본인 13개 C# 입력만 고정한 독립 Release에서 실제 양측 HTTPS/모의 OAuth·Memory/자기 tmpfs PostgreSQL 거래를 실행한다. 초대/수락/품목+재화 제안/양측 준비/확인·실제 분할 이동/단일 재화 반영, 초대·완료 명령 재조회, 저장된 잔액 부족 거절/재조회, 역할/본문/충돌 거절·거래/명령 ID 권한 검색/Razor 링크·PG 재생/조사 지문 불변·비밀 제외를 검증한다. 별도 실제 Memory HTTPS에서 매번 실패하는 관측기와 추적 비활성의 동일 흐름을 확인한다. ID 10종 화면/현재 4개 계측 경계/호스트 재시작 회귀도 포함한다. `-FullSuite`는 전체 운영툴 Memory 회귀다. 자기 사본/출력/DB는 finally 폐기하며 실제 두 게임 클라이언트/Steam/브라우저 시각·운영 부하/배포 검증과 구분한다.
+
+2026-11-09 개인 거래 추적의 최신 게시 Backend 기준 집중 Memory/PG와 전체 운영툴 Memory 회귀 모두 Release 0경고/0오류로 통과했다. 현재 schemaVersion 1의 선택 필드 추가이며 원자 거래 저장소/API 변경은 없다.
+
 ## 활성화와 배포 입력
 
 기본값 `Operations:Enabled=false`에서는 `/ops` 라우트·운영 인증·로그 writer를 등록하지 않는다. 활성화에는 기존 [백엔드 실행 설정](../Backend/README.md)에 다음 값을 추가한다. 환경 변수는 `:` 대신 `__`를 사용한다. 비밀 값은 서비스 환경 또는 비밀 저장소로 주입하고 저장소에 기록하지 않는다.
@@ -126,9 +139,9 @@ GitHub 앱 callback은 정확히 `<ManagementOrigin>/ops/auth/github-callback`�
 
 ### 현재 계측 설정과 과거 로그
 
-로그 화면은 검색 전에도 **게임 HTTP**, **게임 확정 거래**, **정산 worker 관측**의 현재 계측 설정을 표시한다. 게임 HTTP/거래는 현재 `GameApiDiagnosticsEnabled` 값, 정산은 운영 호스트에 등록된 별도 관측 경계를 따른다. 거래의 범위는 일반 아이템/재화·원자 픽업·장비 제작/분해/강화/전승이며 UE와 그 밖의 직접 저장 경로를 전체 수집 중이라고 표현하지 않는다. 켜짐은 구성/등록 상태이며 실제 worker 실행·무손실 수집·sink 저장 성공의 증거가 아니다.
+로그 화면은 검색 전에도 **게임 HTTP**, **게임 확정 거래**, **개인 거래 명령 관측**, **정산 worker 관측**의 현재 계측 설정을 표시한다. 게임 HTTP/거래/개인 거래 관측은 현재 `GameApiDiagnosticsEnabled` 값, 정산은 운영 호스트에 등록된 별도 관측 경계를 따른다. 일반 확정 거래는 아이템/재화·원자 픽업·장비 제작/분해/강화/전승이며 개인 거래는 별도 명령 결과 관측이다. UE와 그 밖의 직접 저장 경로를 전체 수집 중이라고 표현하지 않는다. 켜짐은 구성/등록 상태이며 실제 worker 실행·거래 기능 활성화·무손실 수집·sink 저장 성공의 증거가 아니다.
 
-성공한 `GET /ops/api/logs` 응답의 `data.instrumentation`에도 같은 [Core 모델/읽기 포트](../Backend/ProjectRpg.Operations.Core/Diagnostics/LogInstrumentation.cs)를 추가한다. `observedAtUtc`, 환경, 등록 `sourceId`, 현재 `bootId`/빌드, 세 생산 경계의 `key`/표시 이름/`configuredEnabled`/범위/등록 사건 이름을 담는다. [호스트 어댑터](../Backend/ProjectRpg.Backend/Operations/Infrastructure/Diagnostics/ConfiguredLogInstrumentation.cs)는 설정과 현재 writer 식별자만 읽으며 SQL·파일 재검색·자격/로컬 경로 노출을 하지 않는다. Web·Razor는 Core 포트에 의존한다. 기존 응답 필드와 권한/커서/검색 예산은 유지하며 새 설정 변경 API는 없다.
+성공한 `GET /ops/api/logs` 응답의 `data.instrumentation`에도 같은 [Core 모델/읽기 포트](../Backend/ProjectRpg.Operations.Core/Diagnostics/LogInstrumentation.cs)를 추가한다. `observedAtUtc`, 환경, 등록 `sourceId`, 현재 `bootId`/빌드, 네 생산 경계의 `key`/표시 이름/`configuredEnabled`/범위/등록 사건 이름을 담는다. [호스트 어댑터](../Backend/ProjectRpg.Backend/Operations/Infrastructure/Diagnostics/ConfiguredLogInstrumentation.cs)는 설정과 현재 writer 식별자만 읽으며 SQL·파일 재검색·자격/로컬 경로 노출을 하지 않는다. Web·Razor는 Core 포트에 의존한다. 기존 응답 필드와 권한/커서/검색 예산은 유지하며 새 설정 변경 API는 없다.
 
 - `scope=CurrentProcessOnly`, `historicalCoverage=Unknown`이다. 현재 호스트의 설정을 보존 기간 전체의 계측 이력처럼 표시하지 않는다. 기존 `coverage=Complete`도 선택 원본의 읽기 완료일 뿐 전체 사건 수집 완료가 아니다.
 - 이전 호스트가 남긴 게임 HTTP 로그를 보존한 채 추적을 끄고 재시작해도 과거 사건은 기존 ID/기간으로 검색된다. 현재 꺼짐 설정이 과거 사건을 지우거나 `NotInstrumented`로 단정하게 하지 않는다. 현재 metadata의 boot/빌드와 각 과거 사건의 `instanceId`/빌드는 별개다.
@@ -140,7 +153,7 @@ GitHub 앱 callback은 정확히 `<ManagementOrigin>/ops/auth/github-callback`�
 
 ### 로그 화면의 연결 탐색
 
-`/ops/diagnostics`에서 HTTP 요청 번호, trace, 운영 요청, 조사 사건, 거래 요청, 캐릭터, 던전 세션, 아이템의 8종 ID를 입력한다. 여러 조건은 AND 검색이다. 이벤트 제안은 `OperationLogQuery.EventNames`의 등록 목록을 사용하므로 게임 HTTP·거래 영수증·worker 이벤트가 같은 화면에 나온다. 결과에는 수준/결과, 실제 값이 있는 HTTP 상태/소요 시간, 환경·서비스·인스턴스·빌드·span/부모 정보를 표시한다. HTML 본문과 폼 값은 Razor가 인코딩한다.
+`/ops/diagnostics`에서 HTTP 요청 번호, trace, 운영 요청, 조사 사건, 일반 거래 요청, 캐릭터, 던전 세션, 아이템, 개인 거래, 거래 명령의 10종 ID를 입력한다. 여러 조건은 AND 검색이다. 이벤트 제안은 `OperationLogQuery.EventNames`의 등록 목록을 사용하므로 게임 HTTP·확정 영수증·개인 거래 명령·worker 이벤트가 같은 화면에 나온다. 결과에는 수준/결과, 실제 값이 있는 HTTP 상태/소요 시간, 환경·서비스·인스턴스·빌드·span/부모 정보를 표시한다. HTML 본문과 폼 값은 Razor가 인코딩한다.
 
 - 결과에 있는 유효한 ID를 누르면 해당 번호 하나로 새 검색을 한다. 실제 검색한 UTC 기간과 등록 원본을 유지하고 이전의 다른 ID·eventName·level·limit·cursor는 가져오지 않는다. 같은 거래의 다른 HTTP 시도나 같은 trace의 다른 사건이 이전 AND 조건에 가려지지 않게 한다. 기간을 입력하지 않았던 최초 검색도 당시의 기본 1시간을 고정한다.
 - **계속 검색**은 같은 검색의 다음 페이지다. 원래 모든 조건·페이지 크기·고정 기간·보호 커서를 유지한다. 새로 추가된 로그를 기존 페이지 체인에 끼워 넣지 않는 EOF 계약도 유지한다. ID 링크로 새 검색할 때는 새 시점의 보존 원본을 읽는다.
