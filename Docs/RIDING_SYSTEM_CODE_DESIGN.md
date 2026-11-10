@@ -1,7 +1,7 @@
 # Riding 코드 설계 — M1 상태·세션·탑승 기반
 
 - 작성: 2026-11-06 / 담당: `riding-code-design-20261106`
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭·기존 회피 키 입력 연결 구현. 기존 검증은14~22절, 회피 키/기본 Space 입력은23절을 따른다. 제품 보유 API·Dash LocalPredicted 이동·Emote·실제 맵/다인 검증은 후속이다.**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭·기존 회피 키 입력·RMS 실행 식별/재생 보호 구현. 기존 검증은14~23절, RMS 재생 경계는24절을 따른다. 제품 보유 API·Dash LocalPredicted 이동·Emote·실제 맵/다인 검증은 후속이다.**
 - 기준: [기능 계약](RIDING_SYSTEM_DESIGN.md), [아키텍처와 HUD 인계](RIDING_SYSTEM_ARCHITECTURE.md), 게시 `d546e392`의 관련 기존 소스. 재개 시 게시 HEAD `2971c97c`와 별도 담당의 미커밋 `Docs/ACTION_BAR_CONTEXT.md`/`UI/ActionBar` 계약을 추가 대조했다. 공용 코드의 빌드/검증 완료 주장은 아니다.
 - 목적: 첫 구현에서 만들 타입, 접근 제한, 판정 순서, 상태 수명, 검사 기준을 정한다. M2 액션 실행/M3 영속 저장은 포트만 정의하고 구현 완료로 취급하지 않는다.
 
@@ -568,3 +568,20 @@ ServerOnly 능력/이동과22절의 서버 승인 경계는 유지한다. 클라
 최종 근거는 `Saved/BuildChecks/RidingDashInput-20261110/Completion.json`이다. 게시 `a1e4323f`+본인3입력 고정 사본의 전체 UHT/Editor 빌드·링크와 같은 `DBDE433F…CD4A7AF6` DLL에서 입력2/Dash GAS6/이동5·ActionBar/퀵슬롯/HUD 포함 **40 Success·검사 오류0·입력2의 예상 밖 경고0·UE0**를 확인했다. 기존 예제/서드파티 에셋의 특정 경고139건은 정확한 패턴·건수로 예상 처리한다. 다른 기존 UI·퀵슬롯 사례의 에셋/의도한 거절 경고108건과 기동 자동화 등록 Error15는 입력 성공과 별도로 기록했다. 후발 게시 소스5경로는 거래 저널뿐이며 본인 입력/호출 코드는 바뀌지 않았다.
 
 초기 CPP3 사전 컴파일 후 전체 빌드의 자기 wrapper/UBT를 식별해 종료하고 CL 사용 해제를 확인, 완료된 자기 OBJ를 재사용해 병렬도2→4로 재개했다. 첫 실행40개는 Success였으나 입력 사례에 섞인 기존 에셋 경고139로 엄격 gate가 실패했다. 해당 경고만 좁게 예상 처리한 최종3차를 별도로 기록한다. 최종 overlay3·러너/로컬 드라이버3·InputConfig 에셋1 SHA가 원본과 일치했다. 자기 사전/전체 사본2개와 PCH/OBJ/DLL/PDB/runtime/cache **6,804,798,944 bytes(약6.337GiB)**·읽기 링크7을 finally 정리했고 소유 실행/Temp/새 예외0이다. 원본 DLL/에셋/공유 출력/기존 예외·타 담당은 보존했으며 폐기한 DLL 해시는 당시 증거다.
+
+## 24. M2 Dash RMS 실행 식별과 재생 경계 — 2026-11-10
+
+담당 `riding-dash-replay-20261110`. **클라이언트 예측을 켜기 전의 재생 안전장치**다. 이전 일반 ConstantForce RMS는 SavedMove에 남은 Dash와 다른 능력의 이동을 구분하지 못했다. 이번 단위는 서버 Dash의 실제 source를 전용 native `FRootMotionSource_RPGRidingDash`로 바꾸고, 현재 승인과 맞지 않는 그 source만 재생에서 제거한다. GAS는 여전히 ServerOnly이며 로컬 예측 이동을 시작하지 않는다.
+
+- [전용 source](../Source/Project_RPG/Public/Riding/RPGRidingDashRootMotion.h)는 Epoch/StateRevision/ActionSequence와 ExecutionId를 clone·네트워크 상태와 함께 보관한다. Engine source matching도 이 식별자를 비교하므로 같은 이름/힘이어도 다른 실행은 매칭되지 않는다. 서버가 승인한 ticket에서만 실제 실행기가 값을 채운다. 이 값은 식별/비교용이며 RootMotion이나 수신 move stamp로 Riding 권한 상태를 설치하지 않는다.
+- Native wire는 world-space constant force와 유효한 실행 키·GUID, 유한한 시간/힘을 요구한다. UObject curve payload를 추가하지 않고, 역직렬화 생성자도 gravity/Z 누적 무시와 기존 서버 우선순위를 유지한다. 물리/거리 제한과 보안 창 수명은21절에 남는다.
+- SavedMove `PrepMoveFor`는 base 재생 전후에 현재 source와 저장 source를 검사한다. 외부 source의 native 재동기화 콜백이 상태를 바꿀 수 있으므로 base 이후에는 최신 상태를 다시 읽는다. 현재 승인 Dash와 정확히 일치한 source는 유지하고 종료/하차·새 mount/epoch/실행 뒤 남은 Dash만 제거한다. **native struct type**으로 소유를 구분하며 이름/접두어로 다른 source를 지우지 않는다. 이전 finish-velocity 명령을 실행하거나 외부 source 시계/가산 속도 기록을 진전시키지 않는다. 제거 뒤 활성 source의 velocity/settings 집계만 다시 계산한다.
+- Autonomous owner의 유효한 State RepNotify는 현재·Character 저장 root와 cached SavedMoves/PendingMove를 정리한다. 오래된 RepNotify가 거절되면 새 Dash를 지우지 않는다. 실제 Player CMC는 server correction의 상태 적용→base RMS 수신 뒤에도 같은 검사로 늦은 source 재설치를 막는다. source 제거 외의 도보/Riding 상태·movement mode·montage를 복원하지 않는다. 다른 활성 이동이 없을 때에만 현재 보행 속도로 XY를 제한하고 Z는 유지한다.
+
+`Run-RidingFoundationTests.ps1 -IncludeDashReplay -IncludeControl -IncludeConsume -IncludeAbilities -IncludeWorld`는 실제 native source clone/matching/wire, 같은 이름의 외부 RMS·pending source/가산 기록 보존, Engine SavedMove 재생·외부 재동기화 콜백·종료/오래된 RepNotify를 기존 Riding 회귀와 실행한다. Physics/Engine CMC의 기존 Dash 이동 검사는 제품 Runtime과 모의 보안 host를 사용한다. `Run-RidingIntegrationCompile.ps1 -IncludeDashReplay`는 게시 전체 UHT 및 제품 source/runtime/prediction/component/Player CMC5+검사1 CPP6를 컴파일한다. **실제 원격 RPC·RMS ID 서버/클라이언트 매핑·전체 최신 게임 DLL 링크/GPU/다인 실행 결과가 아니다.**
+
+후속은 GAS prediction key와 승인 profile/입력 intent의 연결 및 로컬 RMS 시작·서버 거절/보정이다. 이번 fingerprint는 현재 서버 ExecutionId를 사용하며, 클라이언트가 아직 알 수 없는 GUID를 예측했다고 취급하지 않는다. 보유 snapshot/API의 NotReady와 제품 공개 비활성도 유지한다.
+
+최종 근거는 `Saved/BuildChecks/RidingDashReplay-20261110/Completion.json`이다. 게시 `e8edb9bd`+고정 입력의 native `e8a57388757b41eca1e350656a787d20`에서 UHT/37단계 빌드·링크0, 같은 `36B287AF…5B2FB139` DLL의 기존49+새5 **54 Success·검사 오류/경고0·UE0**를 확인했다. `Integration-c85ddd0b27f24959b8824d29f6da1bf7`의 전체 UHT/제품5+검사1 CPP6 컴파일0과 고유 입력57/러너2 SHA 일치도 확인했다. 이후 게시 변경은 제작 도구 영역으로 Riding 입력/호출 변경0이다.
+
+첫54/CPP6 성공 뒤 외부 재동기화 callback의 최신 상태 재조회/현재 saved snapshot 정리까지 보강했다. 추가 callback 사례는 Engine group 대입이 source를 clone하는데 포인터 동일성을 기대해1건 실패했고, 실제 foreign LocalID/type와 현재/저장 group의 보존을 검사하도록 고친 위 최종 실행과 구분한다. 자기6회 사본/PCH/OBJ/DLL/PDB/runtime/cache **8,773,829,277 bytes(약8.171GiB)**를 finally 폐기했고 소유 실행/Temp/새 예외0이다. 원본 DLL/에셋/공유 출력/기존 예외·타 담당 변경은 보존했다. 작은 결과/해시/필요 로그만 유지하며 폐기한 DLL 해시는 당시 증거다.

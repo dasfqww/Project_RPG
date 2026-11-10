@@ -1,5 +1,6 @@
 #include "Riding/RPGRidingMovementPrediction.h"
 #include "Riding/RPGRidingComponent.h"
+#include "Riding/RPGRidingDashRootMotion.h"
 #include "GameFramework/Character.h"
 
 FRPGRidingMoveStamp FRPGRidingMoveStamp::FromState(const FRPGRidingRepState& State)
@@ -44,9 +45,19 @@ bool FSavedMove_RPGRiding::CanCombineWith(const FSavedMovePtr& NewMove, ACharact
 }
 void FSavedMove_RPGRiding::PrepMoveFor(ACharacter* Character)
 {
+    const auto* C = Character ? Character->FindComponentByClass<URPGRidingComponent>() : nullptr;
+    const auto State = C ? C->GetRidingState() : FRPGRidingRepState{};
+    RPGRidingDashMotion::RejectStale(SavedRootMotion, State);
+    if (Character) RPGRidingDashMotion::Reconcile(*Character, State);
     FSavedMove_Character::PrepMoveFor(Character);
-    // Replay only input under the latest authority state. Never restore an old Riding profile/execution.
-    // M1 creates no Riding RMS; existing non-Riding root-motion replay remains owned by the base CMC.
+    if (IsValid(Character))
+    {
+        const auto* Latest = Character->FindComponentByClass<URPGRidingComponent>();
+        const auto LatestState = Latest ? Latest->GetRidingState() : FRPGRidingRepState{};
+        RPGRidingDashMotion::RejectStale(SavedRootMotion, LatestState);
+        RPGRidingDashMotion::Reconcile(*Character, LatestState);
+    }
+    // Base resimulation can import a corrected source: filter both sides of that boundary.
 }
 FSavedMovePtr FPredictionData_Client_RPGRiding::AllocateNewMove() { return FSavedMovePtr(new FSavedMove_RPGRiding()); }
 

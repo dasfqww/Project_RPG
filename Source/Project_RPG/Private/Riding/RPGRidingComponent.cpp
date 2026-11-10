@@ -8,6 +8,7 @@
 #include "Riding/RPGRidingConsumeLease.h"
 #include "Riding/RPGRidingDashRuntime.h"
 #include "Riding/RPGGameplayAbility_RidingDash.h"
+#include "Riding/RPGRidingDashRootMotion.h"
 #include "Components/CapsuleComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
@@ -124,6 +125,8 @@ void URPGRidingComponent::OnRep_State(const FRPGRidingRepState& Previous)
     if (!RPGRiding::IsCanonical(State)
         || (State.Key.RiderEpoch == Previous.Key.RiderEpoch && RPGRiding::Compare(State.Key, Previous.Key) == ERPGRidingStateOrder::Older))
     { State = Previous; return; }
+    if (auto* C = Cast<ACharacter>(GetOwner()); C && C->GetLocalRole() == ROLE_AutonomousProxy)
+        RPGRidingDashMotion::Reconcile(*C, State, true);
     const auto Snapshot = State;
     OnChanged.Broadcast(Snapshot);
 }

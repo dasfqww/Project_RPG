@@ -1,13 +1,15 @@
 # Riding System 아키텍처 v1
 
 - 작성: 2026-11-06 / 담당: `riding-architecture-20261106`
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭·기존 회피 키/기본 Space 입력 구현. 코드 설계14~23절의 단위별 검증 범위를 따른다. 제품 snapshot/API·Dash LocalPredicted 이동·Emote·맵 배치/최종 자세·다인 네트워크 검증은 후속이다.**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭·기존 회피 키 입력·RMS 실행 식별/재생 보호 구현. 코드 설계14~24절의 단위별 검증 범위를 따른다. 제품 snapshot/API·Dash LocalPredicted 이동·Emote·맵 배치/최종 자세·다인 네트워크 검증은 후속이다.**
 - 기준: 게시 `92fdb7bf`와 [Riding 상세 설계](RIDING_SYSTEM_DESIGN.md). 게임 규칙·수치·API/DB 계약은 상세 설계가 기준이고, 이 문서는 책임·의존·연결 방법을 정의한다.
 - 이번 산출물: 아키텍처와 구현 분할. C++ 골격, 백엔드, 에셋 생성 및 런타임 검증은 포함하지 않는다.
 - 다음 코드 설계: [M1 상태·세션·컴포넌트 계약](RIDING_SYSTEM_CODE_DESIGN.md) — C++ 값/시그니처·요청 ledger·초기화/재진입/복제·검사 순서. 공용 HUD의 구체 API 인계와 독립적으로 진행하며 제품 구현과 구분한다.
 - 실제 구현 현황은 [M1a 첫 기반 구현](RIDING_SYSTEM_CODE_DESIGN.md#10-m1a-첫-기반-구현--2026-11-06), [서버 세션 내부 로직](RIDING_SYSTEM_CODE_DESIGN.md#11-m1a-서버-세션-내부-로직--2026-11-06), [Actor 연결](RIDING_SYSTEM_CODE_DESIGN.md#12-m1a-actor-연결--2026-11-07), [기본 외형](RIDING_SYSTEM_CODE_DESIGN.md#13-m1b-기본-외형과-비동기-수명--2026-11-08), [CMC 이동과 예측](RIDING_SYSTEM_CODE_DESIGN.md#14-m1b-cmc-이동과-예측--2026-11-08)을 따른다. 설계의 모든 클래스가 구현됐다는 뜻은 아니다.
 
 ## 1. 구조 결정
+
+Dash RMS의 [실행 식별과 재생 경계](RIDING_SYSTEM_CODE_DESIGN.md#24-m2-dash-rms-실행-식별과-재생-경계--2026-11-10)는 native source type/서버 ticket을 함께 비교한다. 하차·종료 뒤 SavedMove나 늦은 보정이 과거 Dash를 재설치하지 못하며, 다른 source는 이름이 같아도 유지한다. 이는 LocalPredicted 전환에 앞선 안전장치이며 로컬 예측 이동을 구현한 단계가 아니다.
 
 Dash의 [서버 승인/종료 수명](RIDING_SYSTEM_CODE_DESIGN.md#20-m2-dash-서버-승인과-종료-수명--2026-11-09)과 [실제 서버 이동/자원](RIDING_SYSTEM_CODE_DESIGN.md#21-m2-실제-서버-dash-이동과-자원-수명--2026-11-09)을 분리한다. Pawn native 실행기가 현재 ticket에 Engine RMS/보안 창을 연결하고 Player CMC가 실제 이동 구간의 지형/거리를 제한한다. 제어 이동은 Dash 자기 창 회수 뒤 시작한다. [ServerOnly GAS/클릭 연결](RIDING_SYSTEM_CODE_DESIGN.md#22-m2-dash-gas-지급활성화와-hud-클릭--2026-11-09)은 현재 Mounted 세대의 source/handle만 지급·회수하며 원래 실행 ticket으로만 취소한다. [기존 회피 키 입력](RIDING_SYSTEM_CODE_DESIGN.md#23-m2-기존-회피-키와-dash-입력--2026-11-10)은 Roll 태그/기본 Space와 현재 재매핑·공통 held 경계를 사용한다. GAS 클라이언트 예측과 제품 보유 권한은 후속이며 제품 경로는 NotReady다.
 

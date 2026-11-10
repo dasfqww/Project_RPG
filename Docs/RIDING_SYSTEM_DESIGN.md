@@ -1,7 +1,7 @@
 # Riding System 상세 설계 v1 — 로스트아크 벤치마크
 
 - 작성·상세화: 2026-11-06
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭·기존 회피 키/기본 Space 입력 구현 / 단위별 검증은 코드 설계14~23절 / 제품 보유 API·Dash LocalPredicted 이동·Emote·맵 배치/최종 자세·다인 네트워크 검증 후속**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭·기존 회피 키 입력·RMS 실행 식별/재생 보호 구현 / 단위별 검증은 코드 설계14~24절 / 제품 보유 API·Dash LocalPredicted 이동·Emote·맵 배치/최종 자세·다인 네트워크 검증 후속**
 - 담당: `riding-detail-20261106`
 - 대체 문서: 기존 `MOUNT_SYSTEM_DESIGN.md` 초안. 그 경로는 이 문서로 안내한다.
 - 구현 구조: [Riding System 아키텍처](RIDING_SYSTEM_ARCHITECTURE.md) — 클래스 책임·의존 방향·수명·기존 코드 연결·구현 분할. 게임 규칙과 저장 계약은 본 문서를 기준으로 한다.

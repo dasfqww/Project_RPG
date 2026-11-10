@@ -1,5 +1,6 @@
 #include "Riding/RPGRidingDashRuntime.h"
 #include "Riding/RPGRidingComponent.h"
+#include "Riding/RPGRidingDashRootMotion.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
@@ -92,7 +93,8 @@ ERPGRidingResultCode FRPGRidingDashRuntime::Start(FRPGRidingStateKey Expected, F
     Active.Window = Window;
     if (ForeignMotion(*M) || !Usable(C, M)) { Stop(ERPGRidingEndReason::ExecutionRejected); return Result; }
     Active.MotionName = FName(*FString::Printf(TEXT("RidingDash_%s"), *T.ExecutionId.ToString(EGuidFormats::Digits)));
-    auto Source = MakeShared<FRootMotionSource_ConstantForce>();
+    auto Source = MakeShared<FRootMotionSource_RPGRidingDash>();
+    Source->RidingKey = T.Key; Source->RidingExecution = T.ExecutionId;
     Source->InstanceName = Active.MotionName; Source->Priority = 150;
     Source->AccumulateMode = ERootMotionAccumulateMode::Override;
     Source->Force = Direction * (T.Profile.Distance / T.Profile.Duration); Source->Duration = T.Profile.Duration;

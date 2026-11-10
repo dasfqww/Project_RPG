@@ -3,6 +3,7 @@
 #include "GameFramework/Character.h"
 #include "Security/RPGDungeonGameplayAuthority.h"
 #include "Riding/RPGRidingComponent.h"
+#include "Riding/RPGRidingDashRootMotion.h"
 #include "Component/RPGSecurityValidationComponent.h"
 
 URPGPlayerMovementComponent::URPGPlayerMovementComponent()
@@ -162,4 +163,6 @@ void URPGPlayerMovementComponent::ClientHandleMoveResponse(const FCharacterMoveR
             Riding->ApplyMovementCorrection(RidingResponse.State);
     // Install current same-epoch authority before the base schedules replay of unacknowledged input.
     Super::ClientHandleMoveResponse(Response);
+    if (auto* R = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr)
+        RPGRidingDashMotion::Reconcile(*CharacterOwner, R->GetRidingState(), true);
 }
