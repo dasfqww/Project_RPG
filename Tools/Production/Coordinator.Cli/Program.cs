@@ -15,6 +15,8 @@ try
         case "enqueue" when args.Length == 4: result = queue.Enqueue(ContractJson.Read<TaskCard>(File.ReadAllText(args[3]))); break;
         case "approve" when args.Length == 4: result = queue.Approve(args[3]); break;
         case "get" when args.Length == 4: result = queue.Get(args[3]); break;
+        case "attempts" when args.Length == 4: result = queue.Attempts(args[3]); break;
+        case "sweep" when args.Length == 3: result = queue.FlagExpired(); break;
         case "cancel" when args.Length == 5: result = queue.Cancel(args[3], args[4]); break;
         case "pause" when args.Length == 3: queue.SetPaused(true); result = queue.Status(); break;
         case "resume" when args.Length == 3: queue.SetPaused(false); result = queue.Status(); break;
@@ -31,6 +33,6 @@ catch (Exception ex) when (ex is ContractException or QueueException or System.T
 
 static int Usage()
 {
-    Console.Error.WriteLine("Usage: <database.db> <policy.json> init|status|events|ready|pause|resume|enqueue <task.json>|approve|get <task-id>|cancel <task-id> <reason>");
+    Console.Error.WriteLine("Usage: <database.db> <policy.json> init|status|events|ready|pause|resume|sweep|enqueue <task.json>|approve|get|attempts <task-id>|cancel <task-id> <reason>");
     return 2;
 }

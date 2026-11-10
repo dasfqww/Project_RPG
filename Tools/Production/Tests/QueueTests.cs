@@ -63,6 +63,16 @@ internal static class QueueTests
         Check.Reject(() => { using var wrong = new QueueStore("relative.db", policy); }, "Relative database accepted.");
         CrashAndRestart(root, Path.Combine(temporaryRoot, "crash.db"), policy);
         CliRoundtrip(root, Path.Combine(temporaryRoot, "cli.db"));
+        var migration = Path.Combine(temporaryRoot, "v1.db");
+        using (var queue = new QueueStore(migration, policy)) queue.Enqueue(card);
+        // Reconstruct the previously shipped v1 schema while retaining its task and event.
+        Execute(migration, "DROP TABLE path_leases; DROP TABLE resource_leases; DROP TABLE attempts; ALTER TABLE tasks DROP COLUMN retry_after_utc; ALTER TABLE tasks DROP COLUMN transient_failures; ALTER TABLE tasks DROP COLUMN defect_failures; PRAGMA user_version=1;");
+        using (var migrated = new QueueStore(migration, policy))
+        {
+            Check.That(migrated.Get(card.TaskId).State == TaskState.Proposed && migrated.Events().Length == 1, "v1 migration lost existing task/event.");
+            migrated.Approve(card.TaskId); migrated.SetPaused(false);
+            Check.That(migrated.TryClaim("migrated") is not null, "v1 migrated database cannot create leases.");
+        }
     }
 
     private static void CrashAndRestart(string root, string database, RuntimePolicy policy)

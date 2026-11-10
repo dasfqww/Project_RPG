@@ -12,13 +12,15 @@ public sealed partial class QueueStore : IDisposable
     private readonly object gate = new();
     private readonly RuntimePolicy policy;
     private readonly TimeProvider clock;
+    private readonly IProcessProbe processProbe;
     private bool disposed;
 
-    public QueueStore(string databasePath, RuntimePolicy policy, TimeProvider? clock = null)
+    public QueueStore(string databasePath, RuntimePolicy policy, TimeProvider? clock = null, IProcessProbe? processProbe = null)
     {
         ContractRules.Validate(policy);
         this.policy = ContractJson.Read<RuntimePolicy>(ContractJson.Write(policy));
         this.clock = clock ?? TimeProvider.System;
+        this.processProbe = processProbe ?? new LocalProcessProbe();
         var path = Path.GetFullPath(databasePath);
         if (path.StartsWith("\\\\", StringComparison.Ordinal) || !Path.IsPathFullyQualified(databasePath) || !path.EndsWith(".db", StringComparison.OrdinalIgnoreCase))
             throw new QueueException("Use an absolute local .db path.");
@@ -53,7 +55,7 @@ public sealed partial class QueueStore : IDisposable
     {
         var version = Convert.ToInt32(Scalar(null, "PRAGMA user_version;"));
         var application = Convert.ToInt32(Scalar(null, "PRAGMA application_id;"));
-        if (version != 0 && (version != 1 || application != ApplicationId)) throw new QueueException("Unsupported database version or owner.");
+        if (version != 0 && (version is < 1 or > 2 || application != ApplicationId)) throw new QueueException("Unsupported database version or owner.");
         if (version == 0 && (application != 0 || Convert.ToInt32(Scalar(null, "SELECT COUNT(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%';")) != 0))
             throw new QueueException("Refusing to initialize a foreign database.");
         Execute(null, "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
@@ -84,6 +86,7 @@ public sealed partial class QueueStore : IDisposable
         }
         if ((string?)Scalar(transaction, "SELECT value FROM settings WHERE key='policy_hash';") != ContractJson.Hash(policy))
             throw new QueueException("Policy differs from persisted configuration; explicit migration is required.");
+        if (version < 2) InitializeLeases(transaction);
         transaction.Commit();
     }
 
@@ -129,6 +132,8 @@ public sealed partial class QueueStore : IDisposable
         ValidateReason(reason);
         var task = ReadTask(transaction, taskId);
         if (task.State == TaskState.Canceled) return task;
+        if (Convert.ToInt32(Scalar(transaction, "SELECT COUNT(*) FROM path_leases WHERE task_id=$id;", ("$id", taskId))) != 0)
+            throw new QueueException("Reserved work requires reconciliation/handoff before cancellation.");
         if (task.State is not (TaskState.Proposed or TaskState.Ready or TaskState.Blocked or TaskState.NeedsDirector or TaskState.RetryWaiting))
             throw new QueueException("Active or completed tasks cannot be canceled without reconciliation.");
         SetState(transaction, taskId, TaskState.Canceled, reason, "Canceled");
@@ -225,7 +230,8 @@ public sealed partial class QueueStore : IDisposable
     private object? Scalar(SqliteTransaction? transaction, string sql, params (string Name, object? Value)[] parameters)
     {
         using var command = Command(transaction, sql, parameters);
-        return command.ExecuteScalar();
+        var value = command.ExecuteScalar();
+        return value is DBNull ? null : value;
     }
 
     private void Execute(SqliteTransaction? transaction, string sql, params (string Name, object? Value)[] parameters)

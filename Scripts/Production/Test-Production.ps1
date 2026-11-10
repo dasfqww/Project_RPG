@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidateSet('contracts','queue')][string]$Group = 'contracts', [switch]$UpdateLock)
+param([ValidateSet('contracts','queue','leases')][string]$Group = 'contracts', [switch]$UpdateLock)
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $toolRoot = Join-Path $repoRoot 'Tools/Production'
@@ -13,6 +13,13 @@ $passed = $false
 $deletedBytes = 0L
 $lines = @()
 $oldTelemetry = $env:DOTNET_CLI_TELEMETRY_OPTOUT
+function Get-ProductionInputHashes {
+    $files = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'Tools/Production'),(Join-Path $repoRoot 'Production'),$PSScriptRoot -Recurse -File |
+        Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' -and (!$UpdateLock -or $_.Name -ne 'packages.lock.json') } | Sort-Object FullName)
+    return @($files | ForEach-Object { [ordered]@{ path=$_.FullName.Substring($repoRoot.Length+1).Replace('\','/'); sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } })
+}
+$inputHashes = Get-ProductionInputHashes
+$sourceUnchanged = $false
 try {
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
     Push-Location $toolRoot
@@ -25,6 +32,9 @@ try {
         $testExit = $LASTEXITCODE
         $lines | Write-Output
         if ($testExit -ne 0) { throw 'Production regression failed.' }
+        $afterHashes = Get-ProductionInputHashes
+        $sourceUnchanged = ($inputHashes | ConvertTo-Json -Depth 4 -Compress) -eq ($afterHashes | ConvertTo-Json -Depth 4 -Compress)
+        if (!$sourceUnchanged) { throw 'Production inputs changed during verification.' }
         $passed = $true
     } finally { Pop-Location }
 }
@@ -44,7 +54,8 @@ finally {
         }
     }
     Remove-Item -LiteralPath $resolved -Recurse -Force
-    [ordered]@{ group=$Group; passed=$passed; utc=[DateTime]::UtcNow.ToString('o'); result=$lines; deleted_bytes=$deletedBytes; cleanup_exceptions=0 } |
-        ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $proofRoot ($Group + '-result.json')) -Encoding UTF8
+    $result = [ordered]@{ group=$Group; passed=$passed; utc=[DateTime]::UtcNow.ToString('o'); result=$lines; source_unchanged=$sourceUnchanged; inputs=$inputHashes; deleted_bytes=$deletedBytes; cleanup_exceptions=0 }
+    $result | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $proofRoot ($Group + '-result.json')) -Encoding UTF8
+    $result | ConvertTo-Json -Depth 5 -Compress | Add-Content -LiteralPath (Join-Path $proofRoot 'runs.jsonl') -Encoding UTF8
     Write-Output "Cleaned $deletedBytes bytes of owned temporary output."
 }

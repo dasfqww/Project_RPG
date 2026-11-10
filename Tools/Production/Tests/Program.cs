@@ -12,7 +12,9 @@ try
     {
         case "contracts": ContractTests.Run(Path.GetFullPath(args[1])); break;
         case "queue": QueueTests.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2])); break;
+        case "leases": LeaseTests.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2])); break;
         case "queue-child": QueueTests.Child(args[1], args[2]); break;
+        case "process-child": Console.WriteLine("ready"); Console.Out.Flush(); Console.ReadLine(); break;
         default: throw new InvalidOperationException("Unknown test group.");
     }
     Console.WriteLine($"PASS {Check.Count} checks ({args[0]})");
