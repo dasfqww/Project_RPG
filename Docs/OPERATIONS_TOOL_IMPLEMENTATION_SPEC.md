@@ -74,7 +74,7 @@ Razor PageModel은 Core 유스케이스를 직접 호출한다. 아래 읽기 AP
 |---|---|---|
 | `GET /ops` | 없음 | 검색 폼·환경/빌드 표시 |
 | `GET /ops/characters/{id}` | 캐릭터 GUID | 기본 상세 + 독립 패널 링크/조회 |
-| `GET /ops/diagnostics` | 아래 로그 필터 | 10종 ID/등록 이벤트 검색·ID 연결 탐색·기존 조건의 이어보기 |
+| `GET /ops/diagnostics` | 아래 로그 필터 | 10종 ID/등록 이벤트 검색·ID 연결·현재 페이지 부모 span 탐색·기존 조건의 이어보기 |
 | `GET /ops/api/characters` | `kind=SteamId\|CharacterId`, `value`, `limit`, `cursor?` | `SearchCharacters` → Page<CharacterHeader> |
 | `GET /ops/api/characters/{id}` | GUID | `GetCharacterSummary` → CharacterHeader |
 | `GET /ops/api/characters/{id}/inventory` | `container=Inventory\|Equipment\|Mail`, `limit`, `cursor?` | `GetInventoryPage` → Page<ItemSummary> |
@@ -89,6 +89,8 @@ Razor PageModel은 Core 유스케이스를 직접 호출한다. 아래 읽기 AP
 원자 픽업의 [확정 영수증 연결](OPERATIONS_TOOL_RUNTIME.md#던전-픽업-영수증-연결)도 기존 선택 관측 포트를 사용한다. `DungeonPickup.Commit` 결과에서 실제 거래·캐릭터·아이템·검증된 세션을 HTTP/trace에 연결한다. 예약/거절/취소는 확정 사건으로 기록하지 않으며 저장소의 원자 소비·권한/잠금 및 API 계약은 유지한다. 일반 아이템/재화 서비스에 없는 맥락을 소급해 채우지 않는다.
 
 장비 제작/분해/강화/전승의 [결과 관측 필터](OPERATIONS_TOOL_RUNTIME.md#장비-변경-영수증-연결)는 기존 권한/규칙/원자 저장 이후의 확정 서버 응답만 같은 관측 포트에 전달한다. 거래/캐릭터 ID와 명령 종류를 실제 HTTP/trace로 연결하되 다중 아이템·없는 세션을 추정하지 않는다. 추적 비활성/관측 실패에서도 원래 API 결과와 핸들러 예외를 유지한다.
+
+부모 span의 [현재 페이지 탐색](OPERATIONS_TOOL_RUNTIME.md#현재-페이지의-부모-span-탐색)은 별도 순수 Web 표시 모델이 담당한다. 동일 환경·trace에서 기록된 부모 span이 현재 결과에 있을 때만 행 앵커를 제공한다. 동일 span의 여러 사건은 허용하되 출처/부모 충돌·순환·잘못된 문맥은 연결하지 않으며, 부모 미포함/미기록을 전체 실행의 부재/시작으로 단정하지 않는다. 추가 검색/자동 페이지 취득·필터/스키마/권한 변경 없이 기존 PageModel·Razor만 조립한다.
 
 ### 3.1 공통 형식과 검증
 

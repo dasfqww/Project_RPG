@@ -1,5 +1,6 @@
 @page "/ops/diagnostics"
 @model ProjectRpg.Backend.Pages.Ops.DiagnosticsModel
+@using ProjectRpg.Backend.Operations.Web
 <h1>로그 추적</h1>
 @{ var instrumentation = Model.Instrumentation; }
 <section aria-label="현재 계측 설정">
@@ -35,10 +36,32 @@
 <p class="muted">조회 범위는 선택한 보존 원본의 읽기 결과입니다. 현재 계측 설정과 과거 수집 범위를 동일하게 해석하지 마세요.</p>
 <p>조회 원본: @string.Join(", ", Model.Logs.SearchedSources). 연결 번호를 누르면 같은 기간에서 해당 번호로 다시 검색합니다.</p>
 <p class="muted">기술 로그가 없다는 사실만으로 게임 처리 실패를 단정할 수 없습니다.</p>
+<p class="muted">부모 span 연결은 이번 페이지의 동일 환경·trace/span에 기록된 관계만 사용합니다. 부모가 없으면 기간·조건·이어보기·수집/보존 범위를 확인하세요. 같은 업무 ID만으로 실행 관계를 추정하지 않습니다.</p>
 <table><thead><tr><th>시각</th><th>사건</th><th>결과</th><th>연결 번호</th></tr></thead><tbody>
-@foreach(var e in Model.Logs.Events)
+@for(int rowIndex=0;rowIndex<Model.Logs.Events.Count;rowIndex++)
 {
-<tr><td>@e.TimestampUtc.ToString("u")</td><td>@e.EventName<br />@e.OperationName
+var e=Model.Logs.Events[rowIndex];var span=Model.SpanRows[rowIndex];
+<tr id="@span.RowId" tabindex="-1" data-span-relation="@span.Relation"><td>@e.TimestampUtc.ToString("u")</td><td>@e.EventName<br />@e.OperationName
+<div class="muted">
+@switch(span.Relation)
+{
+    case LogSpanRelation.ParentOnPage:
+        <a data-span-parent href="#@span.ParentRowId">부모 span 보기 (이번 페이지 @span.ParentEventCount 건)</a>
+        break;
+    case LogSpanRelation.ParentOutsidePage:
+        <span>부모 span이 이번 결과 페이지에 없음 · Trace ID로 범위를 확인하세요.</span>
+        break;
+    case LogSpanRelation.NoParentRecorded:
+        <span>부모 span 미기록 · 전체 실행의 시작이라고 단정하지 않습니다.</span>
+        break;
+    case LogSpanRelation.AmbiguousContext:
+        <span>span 관계 불명확 · 충돌하거나 순환하는 문맥은 연결하지 않습니다.</span>
+        break;
+    default:
+        <span>유효한 span 문맥 없음 · 관계를 추정하지 않습니다.</span>
+        break;
+}
+</div>
 <details><summary>실행 정보</summary><div>환경 @e.Environment · 서비스 @e.Service</div><div>인스턴스 <code>@e.InstanceId</code></div><div>빌드 <code>@e.BuildVersion</code></div><div>Span <code>@e.SpanId</code> · 부모 <code>@e.ParentSpanId</code></div></details>
 </td><td>@e.Level · @e.Outcome · @e.ErrorCode
 @if(e.HttpStatus is { } status){<div>HTTP @status</div>}

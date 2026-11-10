@@ -170,7 +170,7 @@ GitHub 앱 callback은 정확히 `<ManagementOrigin>/ops/auth/github-callback`�
 
 - 결과에 있는 유효한 ID를 누르면 해당 번호 하나로 새 검색을 한다. 실제 검색한 UTC 기간과 등록 원본을 유지하고 이전의 다른 ID·eventName·level·limit·cursor는 가져오지 않는다. 같은 거래의 다른 HTTP 시도나 같은 trace의 다른 사건이 이전 AND 조건에 가려지지 않게 한다. 기간을 입력하지 않았던 최초 검색도 당시의 기본 1시간을 고정한다.
 - **계속 검색**은 같은 검색의 다음 페이지다. 원래 모든 조건·페이지 크기·고정 기간·보호 커서를 유지한다. 새로 추가된 로그를 기존 페이지 체인에 끼워 넣지 않는 EOF 계약도 유지한다. ID 링크로 새 검색할 때는 새 시점의 보존 원본을 읽는다.
-- ID는 해당 이벤트에 저장된 값만 사용한다. null/빈 GUID/잘못된 trace에는 링크를 만들지 않고, 조회 원본이 없거나 여러 개여서 한 원본을 정할 수 없으면 추정하지 않는다. span/부모는 표시만 하며 지원하지 않는 검색 필터를 합성하지 않는다. 링크는 같은 관리 호스트의 `/ops/diagnostics`로만 향한다.
+- ID는 해당 이벤트에 저장된 값만 사용한다. null/빈 GUID/잘못된 trace에는 링크를 만들지 않고, 조회 원본이 없거나 여러 개여서 한 원본을 정할 수 없으면 추정하지 않는다. span/부모는 아래 현재 페이지 탐색으로 확인된 관계만 연결하며 지원하지 않는 검색 필터를 합성하지 않는다. ID 검색 링크는 같은 관리 호스트의 `/ops/diagnostics`로만 향한다.
 - [연결 링크 생성기](../Backend/ProjectRpg.Backend/Operations/Web/OperationsLogNavigation.cs)는 표시 필드와 새 검색 URL만 담당한다. [PageModel](../Backend/ProjectRpg.Backend/Pages/Ops/Diagnostics.cshtml.cs)은 기존 읽기 facade를 사용하고 [Razor](../Backend/ProjectRpg.Backend/Pages/Ops/Diagnostics.cshtml)는 표시만 한다. API/권한/검색 예산/보존 계약은 유지한다. 페이지는 미인증 시 기존 로그인으로 안내하고 JSON API는 401을 반환한다. 게임 관리자 Bearer로 운영 로그를 읽을 수 없다.
 
 `Scripts/Tests/Run-OperationsLogNavigationTests.ps1 -Postgres`는 게시 Backend+본인 5개 C#/Razor 입력의 독립 Release, 실제 HTTPS/모의 OAuth·JSONL에서 8종 ID/현재 이벤트 제안, HTTP·trace 링크 실행, 기본 UTC 기간 고정/원본 유지·이전 AND 조건 제거, 이어보기/추가 행/커서 필터 불일치, 권한/경로 제한·저장/입력 HTML 인코딩·PG 게임 표 지문 불변을 확인한다. 풍부한 연결 관계는 합성 JSONL fixture이며, 별도로 실제 `/api/service-status`가 남긴 요청 번호→영속 HTTP 이벤트→실제 trace 링크를 확인한다. 합성 행을 실제 거래/게임 반영의 증거로 취급하지 않는다. `-FullSuite`는 운영툴 전체 Memory 회귀다. 2026-11-08 집중 PG와 전체 Memory 모두 Release 0경고/0오류로 통과했다. 실제 브라우저 시각 검증·UE 실행·운영 배포는 포함하지 않는다. 자기 사본/출력/격리 DB는 finally 폐기한다.
@@ -178,6 +178,18 @@ GitHub 앱 callback은 정확히 `<ManagementOrigin>/ops/auth/github-callback`�
 커서는 환경·운영자·입력/정렬·페이지 크기에 묶인 보호 token이며 15분 뒤 만료한다. 이어보기 시 첫 검색의 기간을 유지한다. 커서 만료 또는 보존 파일 삭제 시 처음부터 다시 조회한다. 로그 검색은 최대 200건·3초·64MiB, 역방향 JSONL 읽기다. 손상/미완성/과대 행과 보존 유실은 Partial/Unknown으로 표시한다. 부분 결과나 0건은 게임 처리 성공/실패의 증거가 아니다.
 
 기술 로그는 하루 또는 32MiB마다 회전하고 최대 30파일/14일을 보존한다. 4096개 비동기 큐가 넘치면 요청을 막지 않고 drop 수를 기록한다. 종료 flush 한도는 5초다. `catalogue.json`은 파일 관측/부팅/유실 정보를 담고, 실제 기록은 `ops-*.jsonl`이다. Windows에서 쓰는 중인 파일의 길이는 읽기 handle에서 확인한다. 기술 로그는 감사 원장이나 지급 영수증이 아니다. cookie/token/code/요청 body/SQL·예외 원문은 기록하지 않는다.
+
+### 현재 페이지의 부모 span 탐색
+
+HTTP→저장소 실행 정보에 **부모 span 보기**를 추가했다. [순수 표시 모델](../Backend/ProjectRpg.Backend/Operations/Web/OperationsSpanNavigation.cs)이 현재 검색 페이지(최대200건)의 저장된 `Environment`·정규 W3C `TraceId/SpanId/ParentSpanId`만 비교한다. PageModel은 기존 읽기 결과를 한 번 변환하고 Razor는 상태와 같은 문서의 행 앵커를 출력한다. 수집·검색 포트/권한/필터/커서·DB 계약은 바꾸지 않으며 추가 I/O·자동 조회·페이지 간 상태 보관은 없다.
+
+- 실제 부모 ID가 같은 환경·trace의 span으로 이 페이지에 존재하면 첫 해당 행으로 이동한다. HTTP 시작/영수증/완료처럼 동일 span의 여러 사건은 정상이며 이번 페이지의 사건 수를 표시한다. 이를 여러 실행·신규 거래 횟수로 계산하거나 duration을 합산하지 않는다. 행 앵커는 서버가 부여한 현재 결과 인덱스이며 저장 EventId/원문을 HTML 식별자로 사용하지 않는다.
+- 부모가 이번 페이지에 없으면 **이번 결과 페이지에 없음**으로 표시한다. 기간·AND 조건·이어보기·수집/보존 중 원인을 추정하지 않으며 기존 Trace ID 검색으로 범위를 바꿀 수 있다. null 부모는 **부모 span 미기록**이고 전체 실행의 시작이라고 단정하지 않는다. 문맥이 없거나 잘못된 ID에는 관계를 합성하지 않는다.
+- 같은 환경/trace/span에 서비스·인스턴스·빌드·부모가 충돌하거나 부모 체인이 자신으로 돌아오면 **span 관계 불명확**으로 표시하고 연결하지 않는다. 서로 다른 환경/trace나 동일 업무 ID·시간순/작업 이름만으로 부모를 추정하지 않는다. 최대 페이지 한도 안에서 반복 탐색하며 재귀/무한 체인을 만들지 않는다.
+
+`Scripts/Tests/Run-OperationsSpanNavigationTests.ps1 -Postgres`는 게시 Backend+본인 C#/Razor5입력의 닫힌 Release에서 실제 HTTPS 아이템 API의 Memory/격리 tmpfs PostgreSQL 커밋이 남긴 HTTP/영수증3사건·저장소 child span2건과 컴파일된 부모 앵커를 확인한다. 필터/limit1 페이지의 부모 미포함, 운영 인증·원문/자격 비노출·PG 게임 표 불변과 기존 10종 ID/이어보기 회귀를 검사한다. 순수 표시 모델은 누락/잘못된 ID/환경·trace 분리·중복 사건/충돌·순환·최대200단계 체인을 별도 검사한다. `-FullSuite`는 전체 운영툴 Memory 회귀다. 자기 사본/출력/DB/runtime은 finally 폐기하며 실제 브라우저 클릭·GPU·UE/Steam·운영 부하/배포 검증과 구분한다.
+
+2026-11-10 게시a1e4323f 기준 집중 Memory/PG와 전체 운영툴 Memory 검사를 최종 Release 0경고/0오류로 통과했다. 컴파일된 HTML 앵커 검증과 실제 브라우저 클릭 검증을 구분한다.
 
 ## 보상 근거 조사(S2)
 

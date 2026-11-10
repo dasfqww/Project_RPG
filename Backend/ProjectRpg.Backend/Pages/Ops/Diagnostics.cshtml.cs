@@ -13,6 +13,7 @@ public sealed class DiagnosticsModel(OperationsReadFacade reads, OperationsOptio
     public IReadOnlyList<LogIdentifierField> IdentifierFields => OperationsLogNavigation.IdentifierFields;
     public IEnumerable<string> EventNames => OperationLogQuery.EventNames.Order(StringComparer.Ordinal);
     public WebLogPage? Logs { get; private set; }
+    public IReadOnlyList<LogSpanRow> SpanRows { get; private set; } = [];
     public Failure? Error { get; private set; }
     public string From => Logs?.SearchedFromUtc.UtcDateTime.ToString("O") ?? Request.Query["fromUtc"].ToString();
     public string To => Logs?.SearchedToUtc.UtcDateTime.ToString("O") ?? Request.Query["toUtc"].ToString();
@@ -25,6 +26,7 @@ public sealed class DiagnosticsModel(OperationsReadFacade reads, OperationsOptio
         var result = await reads.LogsAsync(HttpContext);
         if (!result.IsSuccess) { Error = result.Error; Response.StatusCode = OperationsHttp.Status(Error!); return; }
         Logs = result.Value;
+        SpanRows = OperationsSpanNavigation.Build(Logs.Events);
         if (Logs.NextCursor is not null)
         {
             var parameters = Request.Query.ToDictionary(p => p.Key, p => (string?)p.Value.ToString(), StringComparer.Ordinal);
