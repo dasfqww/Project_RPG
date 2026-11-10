@@ -1,6 +1,7 @@
 #include "Riding/RPGRidingMovementPrediction.h"
 #include "Riding/RPGRidingComponent.h"
 #include "Riding/RPGRidingDashRootMotion.h"
+#include "Riding/RPGRidingDashPrediction.h"
 #include "GameFramework/Character.h"
 
 FRPGRidingMoveStamp FRPGRidingMoveStamp::FromState(const FRPGRidingRepState& State)
@@ -31,29 +32,46 @@ bool FRPGRidingMoveStamp::Serialize(FArchive& Ar)
     return !Ar.IsError();
 }
 
-void FSavedMove_RPGRiding::Clear() { FSavedMove_Character::Clear(); Riding = {}; }
+void FSavedMove_RPGRiding::Clear() { FSavedMove_Character::Clear(); Riding = {}; PredictedDashTravelled = 0; }
 void FSavedMove_RPGRiding::SetMoveFor(ACharacter* Character, float Delta, const FVector& Accel, FNetworkPredictionData_Client_Character& Data)
 {
     FSavedMove_Character::SetMoveFor(Character, Delta, Accel, Data);
     const auto* Component = Character ? Character->FindComponentByClass<URPGRidingComponent>() : nullptr;
-    Riding = Component ? FRPGRidingMoveStamp::FromState(Component->GetRidingState()) : FRPGRidingMoveStamp{};
+    Riding = Component ? FRPGRidingMoveStamp::FromState(Component->GetDashMovementState()) : FRPGRidingMoveStamp{};
+    PredictedDashTravelled = Component ? Component->DashPrediction->GetTravelled() : 0;
 }
 bool FSavedMove_RPGRiding::CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* Character, float MaxDelta) const
 {
-    return NewMove.IsValid() && Riding == static_cast<const FSavedMove_RPGRiding&>(*NewMove).Riding
+    return !Riding.ExecutionId.IsValid() && NewMove.IsValid() && Riding == static_cast<const FSavedMove_RPGRiding&>(*NewMove).Riding
         && FSavedMove_Character::CanCombineWith(NewMove, Character, MaxDelta);
 }
 void FSavedMove_RPGRiding::PrepMoveFor(ACharacter* Character)
 {
-    const auto* C = Character ? Character->FindComponentByClass<URPGRidingComponent>() : nullptr;
-    const auto State = C ? C->GetRidingState() : FRPGRidingRepState{};
+    auto* C = Character ? Character->FindComponentByClass<URPGRidingComponent>() : nullptr;
+    if (C)
+    {
+        // A late correction may contain an older Dash alongside the live prediction.
+        // Remove that stale owned type before looking for external preemption.
+        const auto Before = C->GetDashMovementState();
+        RPGRidingDashMotion::RejectStale(SavedRootMotion, Before);
+        RPGRidingDashMotion::Reconcile(*Character, Before);
+        C->DashPrediction->Update();
+    }
+    const auto State = C ? C->GetDashMovementState() : FRPGRidingRepState{};
     RPGRidingDashMotion::RejectStale(SavedRootMotion, State);
     if (Character) RPGRidingDashMotion::Reconcile(*Character, State);
     FSavedMove_Character::PrepMoveFor(Character);
     if (IsValid(Character))
     {
-        const auto* Latest = Character->FindComponentByClass<URPGRidingComponent>();
-        const auto LatestState = Latest ? Latest->GetRidingState() : FRPGRidingRepState{};
+        auto* Latest = Character->FindComponentByClass<URPGRidingComponent>();
+        if (Latest)
+        {
+            const auto Before = Latest->GetDashMovementState();
+            RPGRidingDashMotion::RejectStale(SavedRootMotion, Before);
+            RPGRidingDashMotion::Reconcile(*Character, Before);
+            Latest->DashPrediction->Update(); Latest->DashPrediction->Restore(Riding, PredictedDashTravelled);
+        }
+        const auto LatestState = Latest ? Latest->GetDashMovementState() : FRPGRidingRepState{};
         RPGRidingDashMotion::RejectStale(SavedRootMotion, LatestState);
         RPGRidingDashMotion::Reconcile(*Character, LatestState);
     }

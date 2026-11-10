@@ -80,6 +80,7 @@ public:
                 const double Remaining = S->GetOwnerState().DashEndServerSeconds - Clock->GetServerWorldTimeSeconds();
                 if (FMath::IsFinite(Remaining)) View.CooldownRemaining = static_cast<float>(FMath::Clamp(Remaining, 0., 3600.));
             }
+            View.CooldownRemaining = FMath::Max(View.CooldownRemaining, C->GetPredictedDashCooldownRemaining());
             return View;
         }
         FRPGActionBarActionView View;

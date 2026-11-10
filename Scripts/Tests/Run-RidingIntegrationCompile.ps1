@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [ValidateRange(1,4)][int]$MaxParallelActions=1)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $run=[Guid]::NewGuid().ToString('N')
@@ -16,6 +16,10 @@ $temp=Join-Path $tempRoot $run.Substring(0,8)
 if ($IncludeDashReplay) {
     $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingDashReplay-20261110/Integration-'+$run)
     $reservation='riding-dash-replay-20261110'
+}
+if ($IncludeDashPrediction) {
+    $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingDashPrediction-20261110/Integration-'+$run)
+    $reservation='riding-dash-prediction-20261110'
 }
 $project=Join-Path $temp 'Project'
 if ($IncludeDashGrant) {
@@ -93,6 +97,7 @@ try {
     if ($IncludeDashGAS) { $files=@('Source/Project_RPG/Public/Riding/RPGGameplayAbility_RidingDash.h','Source/Project_RPG/Private/Riding/RPGGameplayAbility_RidingDash.cpp','Source/Project_RPG/Public/Riding/RPGRidingComponent.h','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp','Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashAbilityTests.cpp') }
     if ($IncludeDashReplay) { $files=@('Source/Project_RPG/Public/Riding/RPGRidingDashRootMotion.h','Source/Project_RPG/Private/Riding/RPGRidingDashRootMotion.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Private/Riding/RPGRidingMovementPrediction.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashReplayTests.cpp') }
     if ($IncludeDashGrant) { $files=@('Source/Project_RPG/Public/Riding/RPGRidingDashGrant.h','Source/Project_RPG/Private/Riding/RPGRidingDashGrant.cpp','Source/Project_RPG/Public/Riding/RPGRidingDashAdmission.h','Source/Project_RPG/Private/Riding/RPGRidingSession.cpp','Source/Project_RPG/Public/Riding/RPGRidingComponent.h','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Riding/RPGGameplayAbility_RidingDash.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.h','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashGrantTests.cpp') }
+    if ($IncludeDashPrediction) { $files=@('Source/Project_RPG/Public/Riding/RPGRidingDashIntent.h','Source/Project_RPG/Private/Riding/RPGRidingDashIntent.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashGeometry.h','Source/Project_RPG/Private/Riding/RPGRidingDashGeometry.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashPrediction.h','Source/Project_RPG/Private/Riding/RPGRidingDashPrediction.cpp','Source/Project_RPG/Public/Riding/RPGRidingComponent.h','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Public/Riding/RPGGameplayAbility_RidingDash.h','Source/Project_RPG/Private/Riding/RPGGameplayAbility_RidingDash.cpp','Source/Project_RPG/Public/Riding/RPGRidingMovementPrediction.h','Source/Project_RPG/Private/Riding/RPGRidingMovementPrediction.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Component/RPGAbilitySystemTargetDataSecurity.cpp','Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashMotionTests.h','Source/Project_RPG/Private/Tests/RPGRidingDashMotionTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashGrantTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashPredictionTests.h','Source/Project_RPG/Private/Tests/RPGRidingDashPredictionTests.cpp') }
     foreach($relative in $files) {
         $source=Join-Path $workspace $relative
         $destination=Join-Path $project $relative
@@ -117,12 +122,13 @@ try {
     if ($IncludeDashGAS) { $compile=@('Source/Project_RPG/Private/Riding/RPGGameplayAbility_RidingDash.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp','Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashAbilityTests.cpp') }
     if ($IncludeDashReplay) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingDashRootMotion.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Private/Riding/RPGRidingMovementPrediction.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashReplayTests.cpp') }
     if ($IncludeDashGrant) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingDashGrant.cpp','Source/Project_RPG/Private/Riding/RPGRidingSession.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Riding/RPGGameplayAbility_RidingDash.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashGrantTests.cpp') }
+    if ($IncludeDashPrediction) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingDashIntent.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashGeometry.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashPrediction.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Riding/RPGGameplayAbility_RidingDash.cpp','Source/Project_RPG/Private/Riding/RPGRidingMovementPrediction.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Component/RPGAbilitySystemTargetDataSecurity.cpp','Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashMotionTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashGrantTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashPredictionTests.cpp') }
     [IO.File]::WriteAllLines($fileList,@($compile|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
     $dotnet=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
     $ubt=Join-Path $EngineRoot 'Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll'
     $args=@($ubt,'Project_RPGEditor','Win64','Development',(Join-Path $project 'Project_RPG.uproject'),
         ('-FileList='+$fileList),'-NoMutex','-NoEngineChanges','-NoUBA','-UBADisableRemote',('-UBARootDir='+(Join-Path $temp 'Uba')),
-        '-NoHotReloadFromIDE','-MaxParallelActions=1',('-log='+(Join-Path $proofRoot 'Build.log')))
+        '-NoHotReloadFromIDE',('-MaxParallelActions='+$MaxParallelActions),('-log='+(Join-Path $proofRoot 'Build.log')))
     $proof.Command=@($dotnet)+$args
     Save-Proof
     Write-Output ('Compiling actual Riding integration hooks; proof: '+$proofRoot)

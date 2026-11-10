@@ -1,5 +1,8 @@
 #include "Riding/RPGGameplayAbility_RidingDash.h"
 #include "Riding/RPGRidingComponent.h"
+#include "Riding/RPGRidingDashPrediction.h"
+#include "Engine/World.h"
+#include "TimerManager.h"
 #include "AbilitySystemComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -7,8 +10,9 @@
 URPGGameplayAbility_RidingDash::URPGGameplayAbility_RidingDash()
 {
     InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
-    NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly;
-    // ClientOrServer security permits GAS's owning-client activation request, never client execution.
+    NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
+    // Owning-client prediction carries input only; all movement authority remains on the server.
+    bServerRespectsRemoteAbilityCancellation = false;
     bRetriggerInstancedAbility = false;
 }
 
@@ -43,66 +47,118 @@ void URPGGameplayAbility_RidingDash::ActivateAbility(FGameplayAbilitySpecHandle 
     auto* Character = C ? Cast<ACharacter>(C->GetOwner()) : nullptr;
     auto* Move = Character ? Character->GetCharacterMovement() : nullptr;
     FRPGRidingDashGrant Grant;
-    if (!Character || !Character->HasAuthority() || !Move || !C->OwnsDashAbility(ASC, Handle)
-        || Info->AvatarActor.Get() != Character || !C->TryGetDashGrant(Grant))
+    if (!Character || !Move || Info->AvatarActor.Get() != Character || !C->TryGetDashGrant(Grant))
     { EndAbility(Handle, Info, Activation, true, true); return; }
-    const FRPGRidingDashActivation Context{Grant, Activation.GetActivationPredictionKey()};
-    if (!Context.IsValid() || !CommitAbility(Handle, Info, Activation) || !IsActive() || !C->IsDashActivationCurrent(Context))
+    Context = {Grant, Activation.GetActivationPredictionKey()};
+    if (!Context.IsValid() || !C->IsDashActivationCurrent(Context))
     { EndAbility(Handle, Info, Activation, true, true); return; }
+    Riding = C; StartingKey = C->State.Key;
+    ChangedHandle = C->OnChanged.AddUObject(this, &ThisClass::RidingChanged);
+    GetWorld()->GetTimerManager().SetTimer(WatchTimer, this, &ThisClass::WatchExecution, .05f, true);
 
-    // Use the server's current accepted movement input, falling back to its current facing.
+    if (Character->HasAuthority() && !Info->IsLocallyControlled() && Context.PredictionKey.IsLocalClientKey())
+    {
+        // Reliable GAS activation precedes its target data; no window/cooldown is spent while waiting.
+        bWaitingForIntent = true; IntentDeadline = GetWorld()->GetTimeSeconds() + 2.;
+        DataHandle = ASC->AbilityTargetDataSetDelegate(Handle, Context.PredictionKey).AddUObject(this, &ThisClass::ReceiveIntent);
+        CancelHandle = ASC->AbilityTargetDataCancelledDelegate(Handle, Context.PredictionKey).AddUObject(this, &ThisClass::CancelIntent);
+        ASC->CallReplicatedTargetDataDelegatesIfSet(Handle, Context.PredictionKey);
+        return;
+    }
     FVector Direction = Move->GetCurrentAcceleration(); Direction.Z = 0;
     if (!Direction.Normalize()) { Direction = Character->GetActorForwardVector(); Direction.Z = 0; Direction.Normalize(); }
-    Riding = C;
-    const FRPGRidingStateKey Expected = C->State.Key;
-    StartingKey = Expected;
-    ChangedHandle = C->OnChanged.AddUObject(this, &ThisClass::RidingChanged);
-    ERPGRidingResultCode Result;
+    FRPGRidingDashIntent Intent; Intent.GrantId = Grant.GrantId; Intent.Expected = StartingKey; Intent.Direction = Direction;
+    if (Character->HasAuthority()) { BeginServer(Intent); return; }
+    if (!CommitAbility(Handle, Info, Activation) || !IsActive() || !C->DashPrediction->Start(Context, Intent))
     {
-        TGuardValue<bool> Starting(bStarting, true);
-        Result = C->StartServerDash(Expected, Direction, Context);
+        if (Context.PredictionKey.IsLocalClientKey()) ASC->ServerSetReplicatedTargetDataCancelled(Handle, Context.PredictionKey, ASC->ScopedPredictionKey);
+        EndAbility(Handle, Info, Activation, false, true); return;
     }
-    // Admission callbacks may have ended this ability, revoked its spec or replaced the Pawn.
-    if (!IsActive() || Riding.Get() != C) return;
-    const auto State = C->State;
-    if (State.Key.RiderEpoch == Expected.RiderEpoch && State.Key.StateRevision == Expected.StateRevision
-        && State.Key.ActionSequence == Expected.ActionSequence + 1 && State.Action == ERPGRidingAction::Dash)
-        Ticket = C->ActiveDash;
-    if (Result != ERPGRidingResultCode::Applied || !C->IsDashActivationCurrent(Context) || !C->OwnsDashAbility(ASC, Handle)
-        || State.Key.RiderEpoch != Expected.RiderEpoch || State.Key.StateRevision != Expected.StateRevision
-        || State.Key.ActionSequence != Expected.ActionSequence + 1 || !C->IsServerDashActive())
-    { EndAbility(Handle, Info, Activation, true, true); return; }
+    FGameplayAbilityTargetDataHandle Data; Data.Add(new FRPGRidingDashIntent(Intent));
+    // Both values come from this GAS activation scope, never from a UI- or RPC-selected execution ID.
+    ASC->CallServerSetReplicatedTargetData(Handle, Context.PredictionKey, Data, {}, ASC->ScopedPredictionKey);
 }
 
+void URPGGameplayAbility_RidingDash::ReceiveIntent(const FGameplayAbilityTargetDataHandle& Data, FGameplayTag Tag)
+{
+    if (!IsActive() || !bWaitingForIntent) return;
+    const auto* Value = FRPGRidingDashIntent::Read(Data);
+    const auto Frozen = Value ? *Value : FRPGRidingDashIntent{};
+    auto* ASC = GetAbilitySystemComponentFromActorInfo();
+    if (ASC) ASC->ConsumeClientReplicatedTargetData(CurrentSpecHandle, Context.PredictionKey);
+    bWaitingForIntent = false;
+    if (Tag.IsValid() || !Frozen.IsValid()) { EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true); return; }
+    BeginServer(Frozen);
+}
+void URPGGameplayAbility_RidingDash::CancelIntent()
+{
+    if (IsActive() && bWaitingForIntent) EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+}
+void URPGGameplayAbility_RidingDash::BeginServer(const FRPGRidingDashIntent& Intent)
+{
+    auto* C = Riding.Get(); auto* ASC = GetAbilitySystemComponentFromActorInfo();
+    if (!IsActive() || !C || !C->GetOwner()->HasAuthority() || !Intent.IsValid() || Intent.GrantId != Context.Grant.GrantId
+        || RPGRiding::Compare(Intent.Expected, StartingKey) != ERPGRidingStateOrder::Same || !C->IsDashActivationCurrent(Context)
+        || !CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo) || !IsActive() || !C->IsDashActivationCurrent(Context))
+    { EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true); return; }
+    ERPGRidingResultCode Result;
+    { TGuardValue<bool> Starting(bStarting, true); Result = C->StartServerDash(Intent.Expected, Intent.Direction, Context); }
+    if (!IsActive() || Riding.Get() != C) return;
+    const auto State = C->State;
+    if (State.ExecutionId == Context.ExecutionFor(StartingKey) && State.Action == ERPGRidingAction::Dash) Ticket = C->ActiveDash;
+    if (Result != ERPGRidingResultCode::Applied || !C->IsDashActivationCurrent(Context) || !C->OwnsDashAbility(ASC, CurrentSpecHandle)
+        || State.ExecutionId != Context.ExecutionFor(StartingKey) || !C->IsServerDashActive())
+        EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+}
+void URPGGameplayAbility_RidingDash::WatchExecution()
+{
+    if (!IsActive() || bStarting) return;
+    auto* C = Riding.Get();
+    if (!C || !C->IsDashActivationCurrent(Context)) { EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true); return; }
+    if (C->GetOwner()->HasAuthority())
+    {
+        if (bWaitingForIntent && GetWorld()->GetTimeSeconds() >= IntentDeadline) CancelIntent();
+        return;
+    }
+    C->DashPrediction->Update();
+    if (!C->DashPrediction->IsPending()) EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, false, false);
+}
 void URPGGameplayAbility_RidingDash::RidingChanged(const FRPGRidingRepState&)
 {
     if (bStarting || !IsActive()) return;
     auto* C = Riding.Get();
-    if (!C || !C->MatchesDash(Ticket))
+    if (C && !C->GetOwner()->HasAuthority()) { WatchExecution(); return; }
+    if (!C || (bWaitingForIntent ? RPGRiding::Compare(C->State.Key, StartingKey) != ERPGRidingStateOrder::Same : !C->MatchesDash(Ticket)))
         EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 }
-
 void URPGGameplayAbility_RidingDash::EndAbility(FGameplayAbilitySpecHandle Handle,
     const FGameplayAbilityActorInfo* Info, FGameplayAbilityActivationInfo Activation, bool Replicate, bool Cancelled)
 {
     if (!IsEndAbilityValid(Handle, Info)) return;
     if (ScopeLockCount > 0)
     {
-        WaitingToExecute.Add(FPostLockDelegate::CreateUObject(this, &ThisClass::EndAbility, Handle, Info, Activation, Replicate, Cancelled));
-        return;
+        WaitingToExecute.Add(FPostLockDelegate::CreateUObject(this, &ThisClass::EndAbility, Handle, Info, Activation, Replicate, Cancelled)); return;
     }
-    auto EndingTicket = Ticket;
-    auto* C = Riding.Get();
-    // An earlier publication subscriber can cancel before our own initial state listener runs.
-    if (!EndingTicket.ExecutionId.IsValid() && bStarting && C
-        && C->State.Key.RiderEpoch == StartingKey.RiderEpoch && C->State.Key.StateRevision == StartingKey.StateRevision
-        && C->State.Key.ActionSequence == StartingKey.ActionSequence + 1) EndingTicket = C->ActiveDash;
+    auto EndingTicket = Ticket; auto* C = Riding.Get(); auto* ASC = Info ? Info->AbilitySystemComponent.Get() : nullptr;
+    if (!EndingTicket.ExecutionId.IsValid() && bStarting && C && C->State.ExecutionId == Context.ExecutionFor(StartingKey)) EndingTicket = C->ActiveDash;
     if (C) C->OnChanged.Remove(ChangedHandle);
-    ChangedHandle.Reset(); Riding.Reset(); Ticket = {}; StartingKey = {};
+    UWorld* EndingWorld = C ? C->GetWorld() : (ASC ? ASC->GetWorld() : GetWorld());
+    if (EndingWorld) EndingWorld->GetTimerManager().ClearTimer(WatchTimer);
+    if (ASC)
     {
-        // Finishing motion publishes state and may reenter GAS. Never finish a newer execution.
-        TGuardValue<bool> Ending(bIsAbilityEnding, true);
-        if (C && C->MatchesDash(EndingTicket)) C->FinishDash(EndingTicket, ERPGRidingEndReason::ExecutionRejected);
+        if (DataHandle.IsValid()) ASC->AbilityTargetDataSetDelegate(Handle, Activation.GetActivationPredictionKey()).Remove(DataHandle);
+        if (CancelHandle.IsValid()) ASC->AbilityTargetDataCancelledDelegate(Handle, Activation.GetActivationPredictionKey()).Remove(CancelHandle);
+        ASC->ConsumeAllReplicatedData(Handle, Activation.GetActivationPredictionKey());
     }
-    Super::EndAbility(Handle, Info, Activation, Replicate, Cancelled);
+    ChangedHandle.Reset(); DataHandle.Reset(); CancelHandle.Reset(); Riding.Reset(); Ticket = {}; StartingKey = {}; Context = {}; bWaitingForIntent = false;
+    {
+        TGuardValue<bool> Ending(bIsAbilityEnding, true);
+        if (C)
+        {
+            if (C->GetOwner()->HasAuthority()) { if (C->MatchesDash(EndingTicket)) C->FinishDash(EndingTicket, ERPGRidingEndReason::ExecutionRejected); }
+            else C->DashPrediction->Stop();
+        }
+    }
+    // ClearActorInfo can withdraw the grant before this callback. There is no owning RPC context then.
+    Super::EndAbility(Handle, Info, Activation, Replicate && Info && Info->OwnerActor.IsValid(), Cancelled);
 }

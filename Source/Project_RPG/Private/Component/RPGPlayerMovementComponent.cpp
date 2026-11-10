@@ -18,7 +18,7 @@ bool URPGPlayerMovementComponent::MoveUpdatedComponentImpl(const FVector& Delta,
     if (IsRevokedOnServer()) { if (OutHit) *OutHit = FHitResult(); return false; }
     const FVector OriginalStart = UpdatedComponent ? UpdatedComponent->GetComponentLocation() : FVector::ZeroVector;
     auto* OriginalRiding = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr;
-    const FGuid OriginalExecution = OriginalRiding ? OriginalRiding->GetRidingState().ExecutionId : FGuid();
+    const FGuid OriginalExecution = OriginalRiding ? OriginalRiding->GetDashMovementState().ExecutionId : FGuid();
     FVector AllowedDelta = Delta;
     if (CharacterOwner && CharacterOwner->HasAuthority() && UpdatedComponent)
         if (auto* Riding = CharacterOwner->FindComponentByClass<URPGRidingComponent>())
@@ -38,8 +38,14 @@ bool URPGPlayerMovementComponent::MoveUpdatedComponentImpl(const FVector& Delta,
             if (bEvaluatingRidingMove && (!bHasRidingStamp || !(EvaluatedStamp == FRPGRidingMoveStamp::FromState(Riding->GetRidingState()))))
                 GetPredictionData_Server_Character()->bForceClientUpdate = true;
         }
+    if (CharacterOwner && !CharacterOwner->HasAuthority() && OriginalRiding && UpdatedComponent)
+        AllowedDelta *= OriginalRiding->ConstrainPredictedDashMovement(OriginalStart, OriginalStart + AllowedDelta);
     const bool Moved = Super::MoveUpdatedComponentImpl(AllowedDelta, NewRotation, bSweep, OutHit, Teleport);
-    if (IsValid(OriginalRiding) && UpdatedComponent) OriginalRiding->RecordServerDashMovement(OriginalExecution, OriginalStart, UpdatedComponent->GetComponentLocation());
+    if (IsValid(OriginalRiding) && UpdatedComponent)
+    {
+        OriginalRiding->RecordServerDashMovement(OriginalExecution, OriginalStart, UpdatedComponent->GetComponentLocation());
+        OriginalRiding->RecordPredictedDashMovement(OriginalExecution, OriginalStart, UpdatedComponent->GetComponentLocation());
+    }
     return Moved;
 }
 
@@ -61,7 +67,7 @@ FRPGRidingDashWindow URPGPlayerMovementComponent::OpenRidingDashWindow(float Dur
 FVector URPGPlayerMovementComponent::ConstrainInputAcceleration(const FVector& Input) const
 {
     const auto* R = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr;
-    return R && R->IsServerDashActive() ? FVector::ZeroVector : Super::ConstrainInputAcceleration(Input);
+    return R && R->IsDashMovementActive() ? FVector::ZeroVector : Super::ConstrainInputAcceleration(Input);
 }
 
 bool URPGPlayerMovementComponent::TryGetRidingProfile(FRPGRidingMovementProfile& Out) const
@@ -120,8 +126,10 @@ void URPGPlayerMovementComponent::PerformMovement(float DeltaTime)
 	if (IsRevokedOnServer()) { StopRevokedMovement(); return; }
     if (auto* Riding = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr) Riding->ValidateServerMovementContext();
     if (auto* Riding = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr) Riding->PrepareServerDashMovement();
+    if (auto* Riding = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr) Riding->PrepareDashPredictionMovement();
 	Super::PerformMovement(DeltaTime);
     if (auto* Riding = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr) Riding->FinalizeServerDashMovement();
+    if (auto* Riding = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr) Riding->FinalizeDashPredictionMovement();
 }
 
 void URPGPlayerMovementComponent::ServerMove_HandleMoveData(const FCharacterNetworkMoveDataContainer& MoveDataContainer)
@@ -164,5 +172,5 @@ void URPGPlayerMovementComponent::ClientHandleMoveResponse(const FCharacterMoveR
     // Install current same-epoch authority before the base schedules replay of unacknowledged input.
     Super::ClientHandleMoveResponse(Response);
     if (auto* R = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr)
-        RPGRidingDashMotion::Reconcile(*CharacterOwner, R->GetRidingState(), true);
+        RPGRidingDashMotion::Reconcile(*CharacterOwner, R->GetDashMovementState(), true);
 }

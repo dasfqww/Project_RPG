@@ -19,6 +19,7 @@ class PROJECT_RPG_API FSavedMove_RPGRiding : public FSavedMove_Character
 {
 public:
     FRPGRidingMoveStamp Riding;
+    double PredictedDashTravelled = 0;
     virtual void Clear() override;
     virtual void SetMoveFor(ACharacter* Character, float Delta, const FVector& Accel, FNetworkPredictionData_Client_Character& Data) override;
     virtual bool CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* Character, float MaxDelta) const override;

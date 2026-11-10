@@ -15,6 +15,11 @@ public:
     virtual void PerformMovement(float Delta) override;
     virtual float GetMaxSpeed() const override;
     virtual FVector ConstrainInputAcceleration(const FVector& Input) const override;
+    virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
+    void RemapTestServerSources(FRootMotionSourceGroup& Group, float Time) { ConvertRootMotionServerIDsToLocalIDs(CurrentRootMotion, Group, Time); }
+#if WITH_DEV_AUTOMATION_TESTS
+    void StepTestAutonomous(float Time, float Delta) { MoveAutonomous(Time, Delta, 0, FVector::ZeroVector); }
+#endif
     FGuid Window;
     int32 Opened = 0, Closed = 0;
     float Duration = 0, Distance = 0;

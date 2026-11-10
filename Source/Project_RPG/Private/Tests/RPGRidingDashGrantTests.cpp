@@ -126,7 +126,7 @@ bool FRidingDashGrantActivation::RunTest(const FString&)
     if(!TestNotNull(TEXT("Actual GAS instance"),Ability))return false;
     FRPGRidingDashActivation A{G,Ability->GetCurrentActivationInfo().GetActivationPredictionKey()};
     TestTrue(TEXT("Actual activation key bound to current grant"),A.IsValid() && FRPGRidingDashGrantTestAccess::Current(*F.Riding,A));
-    TestTrue(TEXT("ServerOnly uses an actual server-initiated key"),A.PredictionKey.IsServerInitiatedKey());
+    TestTrue(TEXT("Authority-local activation uses an actual server-initiated key"),A.PredictionKey.IsServerInitiatedKey());
     FPredictionKey ClientKey; ClientKey.Current=A.PredictionKey.Current;
     TestTrue(TEXT("Equal numeric client and server keys have distinct identities"),FRPGRidingDashActivation{G,ClientKey}.ExecutionFor(Expected)!=A.ExecutionFor(Expected));
     const auto S=F.Riding->GetRidingState(); TestEqual(TEXT("Authority computes the agreed execution ID"),S.ExecutionId,A.ExecutionFor(Expected));

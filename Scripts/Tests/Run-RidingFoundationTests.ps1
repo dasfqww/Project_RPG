@@ -1,8 +1,9 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant)
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [ValidateRange(1,4)][int]$MaxParallelActions=1)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
+if ($IncludeDashPrediction) { $IncludeDashGrant = $true }
 if ($IncludeDashGrant) { $IncludeDashReplay = $true }
 if ($IncludeDashReplay) { $IncludeDashGAS = $true }
 if ($IncludeDashGAS) { $IncludeDashMotion = $true }
@@ -19,6 +20,7 @@ if ($IncludeDashGAS) { $suite = 'RidingDashGAS'; $reservation = 'riding-dash-gas
 $proofDate = if ($IncludeDashAdmission) { '20261109' } elseif ($IncludeDamage) { '20261109' } elseif ($IncludePresentation -or $IncludeWorld -or $IncludeAbilities -or $IncludeConsume) { '20261108' } else { '20261106' }
 if ($IncludeDashReplay) { $suite='RidingDashReplay'; $reservation='riding-dash-replay-20261110'; $proofDate='20261110' }
 if ($IncludeDashGrant) { $suite='RidingDashGrant'; $reservation='riding-dash-grant-20261110'; $proofDate='20261110' }
+if ($IncludeDashPrediction) { $suite='RidingDashPrediction'; $reservation='riding-dash-prediction-20261110'; $proofDate='20261110' }
 $proofRoot = Join-Path $workspace ('Saved/BuildChecks/' + $suite + '-' + $proofDate + '/' + $id)
 $tempRoot = Join-Path $workspace 'Saved/RF'
 $temp = Join-Path $tempRoot $id.Substring(0,8)
@@ -72,7 +74,10 @@ try {
     if ($IncludeActors) { $files += @('Source/Project_RPG/Public/Riding/RPGRidingDashRootMotion.h','Source/Project_RPG/Private/Riding/RPGRidingDashRootMotion.cpp') }
     if ($IncludeActors) { $files += @('Source/Project_RPG/Public/Riding/RPGRidingDashGrant.h','Source/Project_RPG/Private/Riding/RPGRidingDashGrant.cpp') }
     if ($IncludeDashGrant) { $files += 'Source/Project_RPG/Private/Tests/RPGRidingDashGrantTests.cpp' }
-    if ($IncludeDashReplay) { $files += @('Source/Project_RPG/Public/Riding/RPGRidingMovementPrediction.h','Source/Project_RPG/Private/Riding/RPGRidingMovementPrediction.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashReplayTests.cpp') }
+    if ($IncludeActors) { $files += @('Source/Project_RPG/Public/Riding/RPGRidingMovementPrediction.h','Source/Project_RPG/Private/Riding/RPGRidingMovementPrediction.cpp') }
+    if ($IncludeDashReplay) { $files += 'Source/Project_RPG/Private/Tests/RPGRidingDashReplayTests.cpp' }
+    if ($IncludeActors) { $files += @('Source/Project_RPG/Public/Riding/RPGRidingDashIntent.h','Source/Project_RPG/Private/Riding/RPGRidingDashIntent.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashGeometry.h','Source/Project_RPG/Private/Riding/RPGRidingDashGeometry.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashPrediction.h','Source/Project_RPG/Private/Riding/RPGRidingDashPrediction.cpp') }
+    if ($IncludeDashPrediction) { $files += @('Source/Project_RPG/Private/Tests/RPGRidingDashPredictionTests.h','Source/Project_RPG/Private/Tests/RPGRidingDashPredictionTests.cpp') }
     if ($IncludeDashGAS) { $files += 'Source/Project_RPG/Private/Tests/RPGRidingDashAbilityTests.cpp' }
     if ($IncludeDashMotion) { $files += @('Source/Project_RPG/Private/Tests/RPGRidingDashMotionTests.h','Source/Project_RPG/Private/Tests/RPGRidingDashMotionTests.cpp','Source/Project_RPG/Private/Tests/RPGTestWorldCleanup.h') }
     if ($IncludeDashAdmission) { $files += 'Source/Project_RPG/Private/Tests/RPGRidingDashAdmissionTests.cpp' }
@@ -146,7 +151,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingFounda
     $ubt = Join-Path $EngineRoot 'Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll'
     # Unique minimal project/rules/intermediates/logs; consume installed engine outputs only.
     # Direct prebuilt UBT avoids Build.bat rebuilding shared tools or holding its global script lock.
-    $buildArgs = @($ubt,'RidingFoundationEditor','Win64','Development',$uproject,'-NoMutex','-NoEngineChanges','-NoUBA','-UBADisableRemote',('-UBARootDir='+(Join-Path $temp 'Uba')),('-UBATraceOutputFile='+(Join-Path $temp 'Build.uba')),'-NoHotReloadFromIDE','-MaxParallelActions=1',('-log='+(Join-Path $proofRoot 'Build.log')))
+    $buildArgs = @($ubt,'RidingFoundationEditor','Win64','Development',$uproject,'-NoMutex','-NoEngineChanges','-NoUBA','-UBADisableRemote',('-UBARootDir='+(Join-Path $temp 'Uba')),('-UBATraceOutputFile='+(Join-Path $temp 'Build.uba')),'-NoHotReloadFromIDE',('-MaxParallelActions='+$MaxParallelActions),('-log='+(Join-Path $proofRoot 'Build.log')))
     $proof.BuildCommand = @($build) + $buildArgs
     Save-Proof
     Write-Output ('Building isolated Riding foundation; proof: '+$proofRoot)
@@ -196,6 +201,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingFounda
     if ($IncludeDashGAS) { $expected += @('Grant','Activation','Cancel','Lifetime','Reentry','DirectionAndRejection') | ForEach-Object {'ProjectRPG.Riding.DashGAS.'+$_} }
     if ($IncludeDashReplay) { $expected += @('Identity','Wire','Ownership','SavedMove','RepNotify') | ForEach-Object {'ProjectRPG.Riding.DashReplay.'+$_} }
     if ($IncludeDashGrant) { $expected += @('Wire','Identity','Lifecycle','Activation','OwnerOrdering','Callback') | ForEach-Object {'ProjectRPG.Riding.DashGrant.'+$_} }
+    if ($IncludeDashPrediction) { $expected += @('Wire','LocalMovement','ServerIntent','Rejection','Reconcile','Replay','Boundaries','Lifetime') | ForEach-Object {'ProjectRPG.Riding.DashPrediction.'+$_} }
     if ($IncludeDashAdmission) { $expected += @('Approval','Reentry','Endings','Lifetime') | ForEach-Object {'ProjectRPG.Riding.DashAdmission.'+$_} }
     if ($IncludeDamage) { $expected += @('HealthAndShield','RejectedAndNested','AuthorityAndTeams','PawnAndIdentity') | ForEach-Object {'ProjectRPG.Riding.Damage.'+$_} }
     if ($IncludeDamage) { $expected += @('ActiveEffect','RejectedEffects','CallbackAndNesting') | ForEach-Object {'ProjectRPG.Riding.Control.'+$_} }

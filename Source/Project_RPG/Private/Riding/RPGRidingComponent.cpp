@@ -7,6 +7,7 @@
 #include "Riding/RPGRidingAbilityGate.h"
 #include "Riding/RPGRidingConsumeLease.h"
 #include "Riding/RPGRidingDashRuntime.h"
+#include "Riding/RPGRidingDashPrediction.h"
 #include "Riding/RPGGameplayAbility_RidingDash.h"
 #include "Riding/RPGRidingDashRootMotion.h"
 #include "Components/CapsuleComponent.h"
@@ -27,12 +28,23 @@
 URPGRidingComponent::URPGRidingComponent()
 {
     DashRuntime.Reset(new FRPGRidingDashRuntime(*this));
+    DashPrediction.Reset(new FRPGRidingDashPrediction(*this));
     SetIsReplicatedByDefault(true);
     PrimaryComponentTick.bCanEverTick = true;
     PrimaryComponentTick.TickInterval = 0.1f;
 }
 void FRPGRidingDashRuntimeDeleter::operator()(FRPGRidingDashRuntime* P) const { delete P; }
+void FRPGRidingDashPredictionDeleter::operator()(FRPGRidingDashPrediction* P) const { delete P; }
 URPGRidingComponent::~URPGRidingComponent() = default;
+
+FRPGRidingRepState URPGRidingComponent::GetDashMovementState() const { return GetOwner() && GetOwner()->HasAuthority() ? State : DashPrediction->View(); }
+bool URPGRidingComponent::IsDashMovementActive() const { return IsServerDashActive() || DashPrediction->HasMotion(); }
+float URPGRidingComponent::GetPredictedDashCooldownRemaining() const { return DashPrediction->CooldownRemaining(); }
+void URPGRidingComponent::PrepareDashPredictionMovement() { DashPrediction->Prepare(); }
+void URPGRidingComponent::FinalizeDashPredictionMovement() { DashPrediction->Finalize(); }
+double URPGRidingComponent::ConstrainPredictedDashMovement(const FVector& A, const FVector& B) { return DashPrediction->Constrain(A, B); }
+void URPGRidingComponent::RecordPredictedDashMovement(FGuid Id, const FVector& A, const FVector& B) { DashPrediction->Record(Id, A, B); }
+void URPGRidingComponent::OnRep_DashGrant() { DashPrediction->Update(); }
 
 ERPGRidingResultCode URPGRidingComponent::StartServerDash(FRPGRidingStateKey Expected, FVector Direction, FRPGRidingDashActivation Activation)
 { return DashRuntime->Start(Expected, Direction, Activation); }
@@ -94,6 +106,7 @@ void URPGRidingComponent::RefreshBinding()
 
 void URPGRidingComponent::ReleaseBinding()
 {
+    DashPrediction->Stop();
     DashRuntime->Stop(ERPGRidingEndReason::ExecutionRejected, false);
     ActiveDash = {}; DashDeadline = 0;
     const FGuid OldEpoch = State.Key.RiderEpoch;
@@ -126,7 +139,10 @@ void URPGRidingComponent::OnRep_State(const FRPGRidingRepState& Previous)
         || (State.Key.RiderEpoch == Previous.Key.RiderEpoch && RPGRiding::Compare(State.Key, Previous.Key) == ERPGRidingStateOrder::Older))
     { State = Previous; return; }
     if (auto* C = Cast<ACharacter>(GetOwner()); C && C->GetLocalRole() == ROLE_AutonomousProxy)
-        RPGRidingDashMotion::Reconcile(*C, State, true);
+    {
+        DashPrediction->Update();
+        RPGRidingDashMotion::Reconcile(*C, GetDashMovementState(), true);
+    }
     const auto Snapshot = State;
     OnChanged.Broadcast(Snapshot);
 }
@@ -235,8 +251,12 @@ void URPGRidingComponent::BuildGuards(FRPGRidingEvaluationContext& Out) const
     const auto* Move = Character ? Character->GetCharacterMovement() : nullptr;
     Out.bActionBlocked |= Character && Character->bIsCrouched;
     Out.bOnGround = Move && Move->MovementMode == MOVE_Walking;
-    const auto Timing = Session->Runtime->GetTiming(FPlatformTime::Seconds());
-    Out.bInCombat = !Timing.bValid || Timing.CombatRemaining > 0;
+    Out.bInCombat = true;
+    if (const auto* S = Session.Get())
+    {
+        const auto Timing = S->Runtime->GetTiming(FPlatformTime::Seconds());
+        Out.bInCombat = !Timing.bValid || Timing.CombatRemaining > 0;
+    }
 }
 
 void URPGRidingComponent::RequestSetMounted(bool bMounted, const FRPGRidingSelector& Selector)
@@ -359,6 +379,7 @@ void URPGRidingComponent::TickComponent(float Delta, ELevelTick Tick, FActorComp
     Super::TickComponent(Delta, Tick, Function);
     ValidateServerMovementContext();
     SyncDashAbility();
+    DashPrediction->Update();
     DashRuntime->Tick();
     if (State.Action == ERPGRidingAction::Dash && FPlatformTime::Seconds() >= DashDeadline)
         FinishDash(ActiveDash, ERPGRidingEndReason::Completed);
@@ -459,7 +480,9 @@ bool URPGRidingComponent::IsDashActivationCurrent(const FRPGRidingDashActivation
 {
     FRPGRidingDashGrant Current;
     if (!Activation.IsValid() || !TryGetDashGrant(Current) || !Current.SameGrant(Activation.Grant)) return false;
-    const auto* ASC = DashAbilityOwner.Get();
+    UAbilitySystemComponent* ASC;
+    const auto Handle = FindDashAbility(ASC);
+    if (Handle != Current.AbilityHandle) return false;
     const auto* Spec = ASC ? ASC->FindAbilitySpecFromHandle(Current.AbilityHandle) : nullptr;
     const auto* Ability = Spec ? Spec->GetPrimaryInstance() : nullptr;
     return Spec && Spec->IsActive() && Ability && Ability->IsActive()
@@ -496,7 +519,13 @@ bool URPGRidingComponent::CanRequestDash() const
     if (!TryGetDashGrant(Approved) || Approved.AbilityHandle != Handle) return false;
     if (Pawn->HasAuthority()) return OwnsDashAbility(ASC, Handle) && EvaluateDashAdmission(State.Key) == ERPGRidingResultCode::Applied;
     if (!Pawn->IsLocallyControlled() || Pawn->GetLocalRole() != ROLE_AutonomousProxy || !PC->IsLocalController()) return false;
-    const auto* PS = Pawn->GetPlayerState();
+    return IsDashOwnerTimingReady();
+}
+
+bool URPGRidingComponent::IsDashOwnerTimingReady() const
+{
+    const auto* Pawn = Cast<APawn>(GetOwner());
+    const auto* PS = Pawn ? Pawn->GetPlayerState() : nullptr;
     const auto* S = PS ? PS->FindComponentByClass<URPGRidingSessionComponent>() : nullptr;
     const auto* Clock = GetWorld() ? GetWorld()->GetGameState() : nullptr;
     if (!S || !Clock) return false;

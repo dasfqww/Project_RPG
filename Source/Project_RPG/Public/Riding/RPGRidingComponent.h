@@ -14,7 +14,11 @@ class UAbilitySystemComponent;
 struct FRPGRidingDecision;
 struct FRPGRidingEvaluationContext;
 class FRPGRidingDashRuntime;
+class FRPGRidingDashPrediction;
+struct FRPGRidingDashIntent;
+struct FRPGRidingMoveStamp;
 struct FRPGRidingDashRuntimeDeleter { void operator()(FRPGRidingDashRuntime*) const; };
+struct FRPGRidingDashPredictionDeleter { void operator()(FRPGRidingDashPrediction*) const; };
 DECLARE_MULTICAST_DELEGATE_OneParam(FRPGRidingChanged, const FRPGRidingRepState&);
 DECLARE_MULTICAST_DELEGATE_OneParam(FRPGRidingResultReceived, const FRPGRidingCommandResult&);
 
@@ -38,6 +42,14 @@ public:
     UFUNCTION(BlueprintPure, Category="Riding") bool CanRequestDash() const;
     /** Read-only approved profile; requires current owner/avatar/source spec and mount generation. */
     bool TryGetDashGrant(FRPGRidingDashGrant& Out) const;
+    /** Movement-only projection. This never replaces the replicated authority state. */
+    FRPGRidingRepState GetDashMovementState() const;
+    bool IsDashMovementActive() const;
+    float GetPredictedDashCooldownRemaining() const;
+    void PrepareDashPredictionMovement();
+    void FinalizeDashPredictionMovement();
+    double ConstrainPredictedDashMovement(const FVector& Start, const FVector& End);
+    void RecordPredictedDashMovement(FGuid Execution, const FVector& Start, const FVector& End);
     /** Native server boundary. Never trusts BP authority metadata or a client-supplied reason. */
     void ForceDismount(ERPGRidingEndReason Reason);
     void RefreshBinding();
@@ -63,12 +75,15 @@ private:
     friend class URPGPlayerMovementComponent;
     friend class URPGGameplayAbility_RidingDash;
     friend class FRPGRidingDashRuntime;
+    friend class FRPGRidingDashPrediction;
+    friend class FSavedMove_RPGRiding;
 #if WITH_DEV_AUTOMATION_TESTS
     friend struct FRPGRidingActorTestAccess;
     friend struct FRPGRidingMovementTestAccess;
     friend struct FRPGRidingDashTestAccess;
     friend struct FRPGRidingDashAbilityTestAccess;
     friend struct FRPGRidingDashGrantTestAccess;
+    friend struct FRPGRidingDashPredictionTestAccess;
 #endif
     UFUNCTION() void HandleControllerChanged(APawn* Pawn, AController* Old, AController* Current);
     UFUNCTION() void HandleRestarted(APawn* Pawn);
@@ -87,6 +102,7 @@ private:
     void ReleaseDashAbility();
     bool OwnsDashAbility(const UAbilitySystemComponent* ASC, FGameplayAbilitySpecHandle Handle) const;
     bool IsDashActivationCurrent(const FRPGRidingDashActivation& Activation) const;
+    bool IsDashOwnerTimingReady() const;
     FGameplayAbilitySpecHandle FindDashAbility(UAbilitySystemComponent*& OutASC) const;
     void ReleaseBinding();
     void Publish();
@@ -109,8 +125,10 @@ private:
     FRPGRidingDashTicket ActiveDash;
     double DashDeadline = 0;
     TUniquePtr<FRPGRidingDashRuntime, FRPGRidingDashRuntimeDeleter> DashRuntime;
+    TUniquePtr<FRPGRidingDashPrediction, FRPGRidingDashPredictionDeleter> DashPrediction;
     ERPGRidingEndReason PendingEnd = ERPGRidingEndReason::None;
     UPROPERTY(EditDefaultsOnly, Category="Riding") TArray<TObjectPtr<URPGMountDefinition>> Definitions;
     UPROPERTY(ReplicatedUsing=OnRep_State) FRPGRidingRepState State;
-    UPROPERTY(Replicated) FRPGRidingDashGrant DashGrant;
+    UPROPERTY(ReplicatedUsing=OnRep_DashGrant) FRPGRidingDashGrant DashGrant;
+    UFUNCTION() void OnRep_DashGrant();
 };

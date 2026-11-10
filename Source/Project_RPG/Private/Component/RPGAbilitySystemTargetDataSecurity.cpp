@@ -11,6 +11,8 @@
 #include "HAL/PlatformTime.h"
 #include "Skill/RPGGameplayAbility_SkillContainer.h"
 #include "Skill/RPGSkillExecutionPolicy.h"
+#include "Riding/RPGRidingDashIntent.h"
+#include "Riding/RPGGameplayAbility_RidingDash.h"
 #if !UE_BUILD_SHIPPING
 #include "Tests/RPGSkillNetworkE2EProbeComponent.h"
 #endif
@@ -112,7 +114,8 @@ bool URPGAbilitySystemComponent::AdmitTargetDataRequest(const FGameplayAbilitySp
 		}
 	}
 	if (!bMatchingActivation) return false;
-	if (Data && !IsBoundedTargetData(*Data))
+    const bool RidingDash = Spec->Ability->GetClass() == URPGGameplayAbility_RidingDash::StaticClass();
+    if (Data && (RidingDash ? !FRPGRidingDashIntent::Read(*Data) : !IsBoundedTargetData(*Data)))
 	{
 		ReportTargetDataAdmissionFailure(TEXT("TargetData contains an oversized, non-finite or unsupported payload."), Now);
 		return false;

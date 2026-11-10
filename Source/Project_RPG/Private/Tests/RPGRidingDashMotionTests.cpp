@@ -1,6 +1,7 @@
 #include "Tests/RPGRidingDashMotionTests.h"
 #include "Riding/RPGRidingComponent.h"
 #include "Riding/RPGRidingSessionComponent.h"
+#include "Riding/RPGRidingMovementPrediction.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/Engine.h"
@@ -30,9 +31,14 @@ FRPGRidingDashWindow URPGRidingDashTestMovement::OpenRidingDashWindow(float D, f
 }
 void URPGRidingDashTestMovement::PerformMovement(float Delta)
 {
-    if (auto* R = CharacterOwner->FindComponentByClass<URPGRidingComponent>()) { R->ValidateServerMovementContext(); R->PrepareServerDashMovement(); }
+    if (auto* R = CharacterOwner->FindComponentByClass<URPGRidingComponent>()) { R->ValidateServerMovementContext(); R->PrepareServerDashMovement(); R->PrepareDashPredictionMovement(); }
     Super::PerformMovement(Delta);
-    if (auto* R = CharacterOwner->FindComponentByClass<URPGRidingComponent>()) R->FinalizeServerDashMovement();
+    if (auto* R = CharacterOwner->FindComponentByClass<URPGRidingComponent>()) { R->FinalizeServerDashMovement(); R->FinalizeDashPredictionMovement(); }
+}
+FNetworkPredictionData_Client* URPGRidingDashTestMovement::GetPredictionData_Client() const
+{
+    if (!ClientPredictionData) const_cast<URPGRidingDashTestMovement*>(this)->ClientPredictionData = new FPredictionData_Client_RPGRiding(*this);
+    return ClientPredictionData;
 }
 float URPGRidingDashTestMovement::GetMaxSpeed() const
 {
@@ -43,16 +49,16 @@ float URPGRidingDashTestMovement::GetMaxSpeed() const
 FVector URPGRidingDashTestMovement::ConstrainInputAcceleration(const FVector& Input) const
 {
     auto* R = CharacterOwner ? CharacterOwner->FindComponentByClass<URPGRidingComponent>() : nullptr;
-    return R && R->IsServerDashActive() ? FVector::ZeroVector : Super::ConstrainInputAcceleration(Input);
+    return R && R->IsDashMovementActive() ? FVector::ZeroVector : Super::ConstrainInputAcceleration(Input);
 }
 bool URPGRidingDashTestMovement::MoveUpdatedComponentImpl(const FVector& Delta, const FQuat& Rotation, bool Sweep, FHitResult* Hit, ETeleportType Teleport)
 {
     auto* R = CharacterOwner->FindComponentByClass<URPGRidingComponent>();
     const FVector Start = UpdatedComponent->GetComponentLocation();
-    const FGuid Execution = R ? R->GetRidingState().ExecutionId : FGuid();
-    const double Fraction = R ? R->ConstrainServerMovement(Start, Start + Delta) : 1;
+    const FGuid Execution = R ? R->GetDashMovementState().ExecutionId : FGuid();
+    const double Fraction = R ? R->ConstrainServerMovement(Start, Start + Delta) * R->ConstrainPredictedDashMovement(Start, Start + Delta) : 1;
     const bool Moved = Super::MoveUpdatedComponentImpl(Delta * Fraction, Rotation, Sweep, Hit, Teleport);
-    if (R) R->RecordServerDashMovement(Execution, Start, UpdatedComponent->GetComponentLocation());
+    if (R) { R->RecordServerDashMovement(Execution, Start, UpdatedComponent->GetComponentLocation()); R->RecordPredictedDashMovement(Execution, Start, UpdatedComponent->GetComponentLocation()); }
     return Moved;
 }
 

@@ -3,6 +3,8 @@
 #include "Abilities/GameplayAbility.h"
 #include "Riding/RPGRidingAbilityPolicy.h"
 #include "Riding/RPGRidingDashAdmission.h"
+#include "Riding/RPGRidingDashGrant.h"
+#include "Riding/RPGRidingDashIntent.h"
 #include "RPGGameplayAbility_RidingDash.generated.h"
 
 class URPGRidingComponent;
@@ -25,10 +27,17 @@ protected:
     virtual void EndAbility(FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* Info,
         FGameplayAbilityActivationInfo Activation, bool Replicate, bool Cancelled) override;
 private:
+    void BeginServer(const FRPGRidingDashIntent& Intent);
+    void ReceiveIntent(const FGameplayAbilityTargetDataHandle& Data, FGameplayTag Tag);
+    void CancelIntent();
+    void WatchExecution();
     void RidingChanged(const struct FRPGRidingRepState& State);
     TWeakObjectPtr<URPGRidingComponent> Riding;
     FRPGRidingDashTicket Ticket;
     FRPGRidingStateKey StartingKey;
-    FDelegateHandle ChangedHandle;
-    bool bStarting = false;
+    FRPGRidingDashActivation Context;
+    FDelegateHandle ChangedHandle, DataHandle, CancelHandle;
+    FTimerHandle WatchTimer;
+    double IntentDeadline = 0;
+    bool bStarting = false, bWaitingForIntent = false;
 };

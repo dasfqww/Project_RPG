@@ -1,7 +1,7 @@
 # Riding 코드 설계 — M1 상태·세션·탑승 기반
 
 - 작성: 2026-11-06 / 담당: `riding-code-design-20261106`
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭·기존 회피 키 입력·RMS 실행 식별/재생 보호·소유자 승인 프로필/GAS 키 결합 구현. 기존 검증은14~24절, 승인 프로필/키는25절을 따른다. 제품 보유 API·Dash LocalPredicted 이동·Emote·실제 맵/다인 검증은 후속이다.**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·GAS 지급/활성화/HUD 클릭·기존 회피 키 입력·RMS 실행 식별/재생 보호·소유자 승인 프로필/GAS 키·LocalPredicted 실행/intent/취소 연결 구현. 기존 검증은14~24절, 승인 프로필/키는25절, 로컬 예측은26절을 따른다. 제품 보유 API·Emote·실제 맵/다인 검증은 후속이다.**
 - 기준: [기능 계약](RIDING_SYSTEM_DESIGN.md), [아키텍처와 HUD 인계](RIDING_SYSTEM_ARCHITECTURE.md), 게시 `d546e392`의 관련 기존 소스. 재개 시 게시 HEAD `2971c97c`와 별도 담당의 미커밋 `Docs/ACTION_BAR_CONTEXT.md`/`UI/ActionBar` 계약을 추가 대조했다. 공용 코드의 빌드/검증 완료 주장은 아니다.
 - 목적: 첫 구현에서 만들 타입, 접근 제한, 판정 순서, 상태 수명, 검사 기준을 정한다. M2 액션 실행/M3 영속 저장은 포트만 정의하고 구현 완료로 취급하지 않는다.
 
@@ -588,7 +588,7 @@ ServerOnly 능력/이동과22절의 서버 승인 경계는 유지한다. 클라
 
 ## 25. M2 Dash 승인 프로필과 GAS 활성화 키 — 2026-11-10
 
-담당 `riding-dash-grant-20261110`. 클라이언트가 이후 예측에 사용할 승인 프로필과 실행 ID 계산을 연결한 단위다. 현재 능력은 **ServerOnly**이며 실제 활성화 키도 엔진의 서버 발급 키다. 이 구현을 클라이언트 예측 실행/원격 RPC 검증으로 취급하지 않는다.
+담당 `riding-dash-grant-20261110`. 클라이언트가 이후 예측에 사용할 승인 프로필과 실행 ID 계산을 연결한 단위다. 이 절 당시 능력은 **ServerOnly**이며 실제 활성화 키도 엔진의 서버 발급 키다. 현재 LocalPredicted 전환은26절을 따른다. 이 절의 검증을 클라이언트 예측 실행/원격 RPC 검증으로 취급하지 않는다.
 
 - [FRPGRidingDashGrant](../Source/Project_RPG/Public/Riding/RPGRidingDashGrant.h)는 새 grant GUID·RiderEpoch/탑승 revision·정확한 능력 spec handle·카탈로그 버전·승인 거리/시간/쿨타임을 담는다. 서버의 Ready 세션에서 복사하며 `COND_OwnerOnly`로 복제한다. 고정 길이 wire는 유효 범위/유한 수치 또는 완전히 빈 회수값만 허용하고 실패한 역직렬화는 값을 비운다. BP/RPC setter나 권한 주입 API는 없다.
 - `SyncDashAbility`는 서버에서만 현재 이동 정책 버전/승인 수치를 함께 확인해 같은 탑승의 grant를 유지한다. 클라이언트 Tick이 수신 프로필을 회수하지 않으며, 이미 빈 서버 grant는 불필요한 dirty/강제 복제를 반복하지 않는다. 하차·재빙의·세션/Avatar 폐기 때 추적 spec과 grant를 먼저 분리한 뒤 능력 제거 callback을 호출한다. 재지급은 새 GUID/handle을 사용한다. `TryGetDashGrant`는 현재 Pawn/Controller/ASC Avatar·SourceObject·spec handle·Epoch/revision/카탈로그가 모두 맞아야 복사하며, 클라이언트는 현재 locally controlled autonomous owner만 허용한다. 늦게 도착한 state/spec/profile 조합은 맞을 때까지 사용할 수 없다.
@@ -598,8 +598,25 @@ ServerOnly 능력/이동과22절의 서버 승인 경계는 유지한다. 클라
 
 `Run-RidingFoundationTests.ps1 -IncludeDashGrant -IncludeControl -IncludeConsume -IncludeAbilities -IncludeWorld`는 새6사례의 정상/빈/손상 wire, 실행 ID의 세대·key 구분, 실제 grant 지급/하차/재지급·owner-only lifetime 설정, 실제 GAS activation key→State→typed RMS 일치, 비활성/다른 키 거절, 복제 조각 불일치·observer 거절 및 자원 callback 중 grant 교체를 기존 Riding 회귀와 실행한다. OwnerOrdering은 native 역할/복제값 fixture이며 실제 전송 검사가 아니다. 실제 GAS/Physics World/Engine CMC와 기존 모의 보안 host를 사용한다. `Run-RidingIntegrationCompile.ps1 -IncludeDashGrant`는 게시 전체 UHT와 grant/session/component/ability/runtime/HUD 제품6+검사1 CPP7를 컴파일하며 전체 게임 DLL을 링크하지 않는다.
 
-후속은 입력 intent를 원래 GAS activation key와 함께 전달하고, 같은 승인 프로필/실행 식별자로 로컬 RMS를 시작한 뒤 서버 승인/거절·RMS ID 매핑/보정과 다인 실행을 검증하는 것이다. 현재 ServerOnly·제품 보유 API의 NotReady/비공개 경계를 유지한다.
+후속은 입력 intent를 원래 GAS activation key와 함께 전달하고, 같은 승인 프로필/실행 식별자로 로컬 RMS를 시작한 뒤 서버 승인/거절·RMS ID 매핑/보정과 다인 실행을 검증하는 것이다. 위25절 당시의 ServerOnly·제품 보유 API NotReady/비공개 경계다. 현재 예측 연결은26절을 따른다.
 
 최종 근거는 `Saved/BuildChecks/RidingDashGrant-20261110/Completion.json`이다. 게시 `baa827a6`+명시 입력의 독립 UHT/39단계 빌드·링크와 `7A650E7A…50FBC28` DLL에서 **native60 Success·검사 오류/경고0·UE0**, 전체 UHT/제품6+검사1 **CPP7 컴파일0**을 확인했다. 고유 입력60/러너2 SHA 일치를 확인했으며 기동 자동화 등록 Error15는 검사 시작 뒤 오류0과 구분한다. 실제 네트워크 전송·클라이언트 예측/보안 CMC 실행·전체 최신 게임 DLL 링크/GPU 결과는 아니다.
 
 초기 검사의 비공개 handle 생성 함수 링크 실패는 공개 spec 생성자를 사용해 고쳤다. 다음 실행은 테스트가 복제 메타데이터 초기화 전에 lifetime 속성을 조회해 엔진 assertion으로 중단됐으며, 정상 초기화 뒤 조회하도록 보완했다. 서버 전용 동기화/빈 grant의 dirty 반복 방지와 소유자12프레임 보존 회귀를 포함한 위 최종 실행과 구분한다. 자기6회 사본/PCH/OBJ/DLL/PDB/runtime/cache **8,813,831,097 bytes(약8.209GiB)**를 finally 폐기했고 소유 실행/Temp/새 정리 예외0이다. 원본 DLL/에셋/공유 출력·다른 담당 변경은 보존했으며 폐기한 DLL 해시는 당시 증거다.
+
+## 26. M2 Dash 로컬 예측과 입력 intent — 2026-11-11
+
+담당 `riding-dash-prediction-20261110`. 25절의 승인 grant/실제 GAS 키를 사용해 능력을 **LocalPredicted**로 전환하고 소유자의 RMS 실행과 서버 승인/종료를 연결한다. 서버의 복제 State·보안 창·세션 쿨타임은 예측 실행기가 수정하지 않는다.
+
+- [입력 intent](../Source/Project_RPG/Public/Riding/RPGRidingDashIntent.h)는 grant GUID·시작 Epoch/revision/ActionSequence·정규 XY 방향만 담는다. 고정 길이 native wire는 손상/비유한/비정규 값·세대/sequence 경계를 거절한다. 기존 ASC의 TargetData 가드는 현재 활성 spec/실제 activation key·수신 rate/sequence를 먼저 확인하고, Dash에만 이 단일 native payload를 허용한다. 다른 전투 능력의 기존 whitelist는 넓히지 않는다.
+- 실제 GAS는 소유자의 활성화 RPC 뒤 같은 활성화 범위의 TargetData를 보낸다. 원격 서버 인스턴스는 intent를 최대2초 기다리며 이때 이동 창/쿨타임을 소비하지 않는다. intent 수신 때 현재 grant·서버 활성화 당시 키·세대를 재검사하고 기존 서버 승인/geometry/요청 budget/쿨타임 경계를 실행한다. 로컬 권위 서버의 직접 활성화는 현재 서버 방향을 사용한다. `ClientActivateAbilitySucceed`는 GAS 활성화 확인이며 Dash 이동 승인으로 간주하지 않는다.
+- [소유자 실행기](../Source/Project_RPG/Private/Riding/RPGRidingDashPrediction.h)는 현재 locally controlled autonomous Pawn·Avatar/source/spec·승인 grant/실제 client key·소유자 Ready/전투/쿨타임 표시·체력/제어/소모품 및 지면/캡슐 조건을 검사한다. 서버와 같은 식별자의 typed RMS를 즉시 만들고 동일 capsule sweep/floor sampling으로 벽·낭떠러지·거리 제한을 적용한다. 추가 보안 창을 열거나 세션 타이밍을 예약하지 않는다. 추가 자발적 입력은 활성 RMS 동안 차단하고 종료 속도는 현재 보행 정책으로 제한하며 외부 source/Z 속도를 보존한다.
+- `GetDashMovementState`는 CMC/SavedMove 전용 projection이다. BP/게임플레이의 `GetRidingState`는 계속 복제된 권위를 읽는다. SavedMove는 예측 실행 식별자와 로컬 누적 거리 사본을 저장한다. 거리는 네트워크 move에 싣지 않으며 현재 같은 실행의 재생에서만 복구한다. 실행 중 move combine은 금지한다. 재생/보정의 현재 상태 검사와 Engine RMS matching은 같은 key/GUID를 사용한다.
+- 현재 승인된 같은 실행은 서버 State로 이어지며 별도 RMS를 중복 생성하지 않는다. 거절/종료·다른 grant/세대·소유권/체력/제어/지면/외부 이동 변경·대기 만료는 자기 typed RMS와 Character/SavedMoves/PendingMove 사본만 제거한다. 끝난 action의 세대 상한은 재시도 뒤 도착한 오래된 source도 차단한다. 다른 native source는 이름이 같아도 보존한다. 키가 다른 GAS 거절은 새 실행을 종료하지 않는다.
+- HUD는 예측 중 임시 쿨타임과 서버 남은 시간 중 큰 값을 표시한다. 예측 종료 시 임시값을 폐기하며, 서버가 승인한 쿨타임은 취소/하차로 환불하지 않는다. 서버 보유 API의 NotReady/비공개 경계와 기존 Roll/재매핑 입력은 유지한다.
+
+`Run-RidingFoundationTests.ps1 -IncludeDashPrediction -IncludeControl -IncludeConsume -IncludeAbilities -IncludeWorld`는 실제 GAS activation/target-data delegate·Physics World/Engine CMC와 모의 보안 창/전송 fixture를 사용한다. NetDriver/Player/possession handshake를 만들지 않으며 fixture가 protected native MoveAutonomous 진입을 전달한다. 새8사례는 wire·로컬 즉시 이동/권위 보존·서버 intent 대기/승인·실제 engine RMS ID mapper·다른 키/실제 GAS 거절·늦은 상태/RMS·SavedMove 거리 복구와 거절 후 재생·벽/지면 경계·timeout/다른 grant/소유권 상실을 검사한다. `Run-RidingIntegrationCompile.ps1 -IncludeDashPrediction`는 게시 전체 UHT 및 제품10+검사3 CPP13을 컴파일한다. **전송은 native RPC interception/serializer fixture다. 실제 NetDriver 패킷·loss/RTT·Iris 복제·실 제품 보안 CMC/다인·전체 최신 게임 DLL 링크/GPU 검증으로 취급하지 않는다.**
+
+최종 근거는 `Saved/BuildChecks/RidingDashPrediction-20261110/Completion.json`이다. 게시 `43bfe51a`+고정 입력의 독립 UHT/43단계 빌드·링크와 `A0870DF4…735DD2C8` DLL에서 **native68 Success·검사 오류/경고0·UE0**, 전체 UHT/제품10+검사3 **CPP13 컴파일0**을 확인했다. 고유 입력70/러너2 SHA가 현재 원본과 일치한다. 마지막 force 프레임의 지면/거리 제한, 실제 GAS 확인 뒤 서버 취소, 체력0/소유권 상실과 Avatar 폐기 수명도 포함한다. 기동 자동화 등록 Error15는 검사 시작 뒤 오류0과 구분한다.
+
+초기 엔진 RMS 조회의 const 제약과 fixture의 Pawn/Controller 역할·무전송 CMC 진입·SavedMoves 등록/보호 진입 보완 과정은 위 최종과 구분한다. 중간68 Success는 Avatar 정보 폐기 후 종료 RPC의 GAS 경고1건으로 엄격 gate에 실패했다. 유효한 소유 문맥에서만 종료를 복제하고 원래 컴포넌트/ASC의 World로 timer를 회수한 최종은 경고0이다. 자기14회 사본/PCH/OBJ/DLL/PDB/runtime/cache **21,093,783,753 bytes(약19.645GiB)**를 finally 폐기했으며 소유 실행/Temp/새 정리 예외0이다. 원본 게임 DLL/Intermediate/에셋·타 담당 변경은 보존했고 엔진 도구의 공유 진단 trace는 별도 삭제하지 않았다. 폐기한 DLL 해시는 당시 증거다.
