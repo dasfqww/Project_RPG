@@ -16,6 +16,17 @@ public static class NarrativeApiEndpoints
 {
     public static void MapNarrativeApi(this WebApplication app)
     {
+        app.MapGet("/api/characters/{characterId:guid}/narrative/account-history", async (
+            Guid characterId, HttpContext context,
+            [Microsoft.AspNetCore.Mvc.FromServices] NarrativeAccountHistory history, CancellationToken ct) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            var principal = context.GetProjectRpgPrincipal();
+            if (principal.Kind != PrincipalKind.Player || principal.SteamId is null)
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            try { return Results.Ok(await history.LoadAsync(characterId, principal.SteamId, ct)); }
+            catch (NarrativeConflictException error) { return Failure(error); }
+        });
         app.MapPost("/api/dungeon-sessions/{sessionId:guid}/narrative/kills/{characterId:guid}", async (
             Guid sessionId, Guid characterId, NarrativeKillRequest request, HttpContext context,
             [Microsoft.AspNetCore.Mvc.FromServices] NarrativeKillCoordinator coordinator, CancellationToken ct) =>
