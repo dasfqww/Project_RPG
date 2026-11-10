@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidateSet('contracts')][string]$Group = 'contracts')
+param([ValidateSet('contracts','queue')][string]$Group = 'contracts', [switch]$UpdateLock)
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $toolRoot = Join-Path $repoRoot 'Tools/Production'
@@ -17,10 +17,11 @@ try {
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
     Push-Location $toolRoot
     try {
-        & $sdk build Tests/ProjectRpg.Production.Tests.csproj -c Release --artifacts-path $artifacts -p:RestoreLockedMode=true --nologo
+        $lockMode = if ($UpdateLock) { 'false' } else { 'true' }
+        & $sdk build Tests/ProjectRpg.Production.Tests.csproj -c Release --artifacts-path $artifacts "-p:RestoreLockedMode=$lockMode" --nologo
         if ($LASTEXITCODE -ne 0) { throw 'Production tests build failed.' }
         $testDll = Join-Path $artifacts 'bin/ProjectRpg.Production.Tests/release/ProjectRpg.Production.Tests.dll'
-        $lines = @(& $sdk $testDll $Group $repoRoot)
+        $lines = @(& $sdk $testDll $Group $repoRoot $runRoot)
         $testExit = $LASTEXITCODE
         $lines | Write-Output
         if ($testExit -ne 0) { throw 'Production regression failed.' }

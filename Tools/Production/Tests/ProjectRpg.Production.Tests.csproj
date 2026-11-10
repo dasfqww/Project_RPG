@@ -1,4 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../Contracts/ProjectRpg.Production.Contracts.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Contracts/ProjectRpg.Production.Contracts.csproj" />
+    <ProjectReference Include="../Coordinator/ProjectRpg.Production.Coordinator.csproj" />
+    <ProjectReference Include="../Coordinator.Cli/ProjectRpg.Production.Coordinator.Cli.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
 </Project>
