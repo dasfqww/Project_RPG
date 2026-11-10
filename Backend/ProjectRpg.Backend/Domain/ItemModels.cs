@@ -189,6 +189,12 @@ public static class ItemRecordRules
         HashSet<Guid> itemIds = [];
         foreach (ItemRecordMutation mutation in request.Mutations)
         {
+            if (mutation.NewRecord.Location.ContainerType == ItemContainerType.Auction
+                || Trading.AuctionEscrowRules.IsOwner(mutation.NewRecord.Owner))
+            {
+                error = "Auction escrow requires its atomic listing operation.";
+                return false;
+            }
             // A stored MaxValue revision remains readable, but cannot advance.
             // Reject before any repository access or revision + 1 arithmetic.
             if (mutation.ExpectedRevision < 0 || mutation.ExpectedRevision == long.MaxValue)

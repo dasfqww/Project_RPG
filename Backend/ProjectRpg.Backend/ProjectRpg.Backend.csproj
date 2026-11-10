@@ -53,4 +53,5 @@
   <ItemGroup><Content Include="../Database/Migrations/0009_operations_service_control.sql" Link="Database/Migrations/0009_operations_service_control.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup><Content Include="../Database/Migrations/0010_trade_sessions.sql" Link="Database/Migrations/0010_trade_sessions.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup><Content Include="../Database/Migrations/0011_inventory_tabs.sql" Link="Database/Migrations/0011_inventory_tabs.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><Content Include="../Database/Migrations/0012_auction_escrow.sql" Link="Database/Migrations/0012_auction_escrow.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
 </Project>

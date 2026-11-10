@@ -66,7 +66,7 @@ static async Task RunPureAsync()
         await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory, default);
     Check("packaged baseline and equipment delta are present", () =>
     {
-        Require(packaged.Count == 10 && packaged[0].Version == 1 && packaged[0].Name == "baseline"
+        Require(packaged.Count == 12 && packaged[0].Version == 1 && packaged[0].Name == "baseline"
             && packaged[0].Sql.Contains("CREATE TABLE IF NOT EXISTS accounts", StringComparison.Ordinal)
             && packaged[1].Version == 2 && packaged[1].Name == "item_equipment_progression"
             && packaged[1].Sql.Contains("equipment_progression", StringComparison.Ordinal)
@@ -84,7 +84,10 @@ static async Task RunPureAsync()
             && packaged[8].Version == 9 && packaged[8].Name == "operations_service_control"
             && packaged[8].Sql.Contains("ops_service_control", StringComparison.Ordinal)
             && packaged[9].Version == 10 && packaged[9].Name == "trade_sessions"
-            && packaged[9].Sql.Contains("trade_session_receipts", StringComparison.Ordinal),
+            && packaged[9].Sql.Contains("trade_session_receipts", StringComparison.Ordinal)
+            && packaged[10].Version == 11 && packaged[10].Name == "inventory_tabs"
+            && packaged[11].Version == 12 && packaged[11].Name == "auction_escrow"
+            && packaged[11].Sql.Contains("auction_escrow_receipts", StringComparison.Ordinal),
             "Packaged baseline or equipment delta is missing.");
     });
     foreach (string environment in new[] { "Development", "Production" })
@@ -153,10 +156,10 @@ static async Task RunPostgresAsync()
     Console.WriteLine("PASS Migration PG: missing history is not repaired and initial failure is atomic");
 
     // Exercise the packaged command against only our generated private schema.
-    (int commandExit, string output) = await RunBackendAsync("Production", fresh.Configuration.ConnectionString, "--migrate-schema");
-    Require(commandExit == 0 && output.Contains("applied 2 version(s). No web host started.", StringComparison.Ordinal)
-        && !output.Contains("Now listening", StringComparison.Ordinal), "Deployment command did not complete without hosting.");
     IReadOnlyList<PostgresSchemaMigration> packaged = await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory, default);
+    (int commandExit, string output) = await RunBackendAsync("Production", fresh.Configuration.ConnectionString, "--migrate-schema");
+    Require(commandExit == 0 && output.Contains($"applied {packaged.Count} version(s). No web host started.", StringComparison.Ordinal)
+        && !output.Contains("Now listening", StringComparison.Ordinal), "Deployment command did not complete without hosting.");
     await PostgresSchemaMigrations.ValidateAsync(fresh.Source, packaged, default);
     Require(await ScalarAsync<bool>(fresh.Source, "SELECT to_regclass('accounts') IS NOT NULL;"), "Real baseline missing.");
     Console.WriteLine("PASS Migration PG: actual command applies packaged baseline without starting a host");

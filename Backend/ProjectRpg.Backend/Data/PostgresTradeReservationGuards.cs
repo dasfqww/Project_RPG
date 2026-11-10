@@ -14,7 +14,10 @@ internal static class PostgresTradeReservationGuards
         await using NpgsqlCommand query = new("""
             SELECT DISTINCT i.item_id FROM trade_reserved_items i
             JOIN trade_asset_reservations r ON r.reservation_id=i.reservation_id
-            WHERE i.item_id=ANY(@ids) AND r.state='Active' AND r.expires_at>clock_timestamp();
+            WHERE i.item_id=ANY(@ids) AND r.state='Active' AND r.expires_at>clock_timestamp()
+            UNION
+            SELECT item_id FROM item_records WHERE item_id=ANY(@ids)
+              AND (container_type='Auction' OR (owner_type='System' AND lower(owner_id) LIKE 'auction:%'));
             """, connection, transaction);
         query.Parameters.AddWithValue("ids", ids);
         HashSet<Guid> result = [];

@@ -18,6 +18,10 @@ public static class DungeonRewardDeliveryPlanner
         IReadOnlyList<int> maxStackSizes, IReadOnlyList<ItemRecord> inventory)
         => PlanDelivery(grant, maxStackSizes, inventory, requireDungeonReward: false);
 
+    internal static ItemRepositoryCommitRequest PlanAuctionReturn(ItemRepositoryCommitRequest grant,
+        IReadOnlyList<int> maxStackSizes, IReadOnlyList<ItemRecord> inventory, IReadOnlySet<Guid> reservedItemIds)
+        => PlanDelivery(grant, maxStackSizes, inventory, requireDungeonReward: false, reservedItemIds);
+
     private static ItemRepositoryCommitRequest PlanDelivery(ItemRepositoryCommitRequest grant,
         IReadOnlyList<int>? maxStackSizes, IReadOnlyList<ItemRecord> inventory, bool requireDungeonReward,
         IReadOnlySet<Guid>? reservedItemIds = null)

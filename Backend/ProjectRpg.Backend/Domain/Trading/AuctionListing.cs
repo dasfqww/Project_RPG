@@ -20,10 +20,19 @@ public sealed class AuctionListing
     public AuctionListingStatus Status { get; }
     public TradeParticipant? Buyer { get; }
 
+    [System.Text.Json.Serialization.JsonConstructor]
     private AuctionListing(Guid listingId, TradeParticipant seller, TradeOfferedItem item, AuctionTerms terms,
         long totalPrice, DateTimeOffset createdAt, DateTimeOffset expiresAt, long revision,
         AuctionListingStatus status, TradeParticipant? buyer = null)
     {
+        if (listingId == Guid.Empty || !AuctionTerms.ValidParticipant(seller) || item is null || terms is null
+            || item.ItemId == Guid.Empty || item.ExpectedRevision <= 0 || item.ExpectedRevision == long.MaxValue || item.Quantity <= 0
+            || totalPrice < terms.MinimumTotalPrice || totalPrice > terms.MaximumTotalPrice || revision <= 0
+            || expiresAt - createdAt < terms.MinimumDuration || expiresAt - createdAt > terms.MaximumDuration
+            || !Enum.IsDefined(status) || (status == AuctionListingStatus.SaleAgreed
+                ? !AuctionTerms.ValidParticipant(buyer) || buyer!.AccountId == seller.AccountId || buyer.CharacterId == seller.CharacterId
+                : buyer is not null))
+            throw new TradeRuleException("invalid_auction_snapshot");
         ListingId = listingId; Seller = seller; Item = item; Terms = terms; TotalPrice = totalPrice;
         CreatedAt = createdAt; ExpiresAt = expiresAt; Revision = revision; Status = status; Buyer = buyer;
     }
