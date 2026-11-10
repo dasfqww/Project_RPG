@@ -17,7 +17,7 @@ public sealed class ConfiguredLogInstrumentation(OperationsOptions options, Oper
         new LogProducerConfiguration("player-trade","개인 거래 명령 관측",options.GameApiDiagnosticsEnabled,
             Values("플레이어 거래의 저장된 명령 결과·완료 영수증 관측"),Values("game.trade.command.observed")),
         new LogProducerConfiguration("game-storage","게임 거래 저장소 호출",options.GameApiDiagnosticsEnabled,
-            Values("일반 아이템 영수증 조회","일반 아이템 커밋 호출","재화 영수증 조회","재화 커밋 호출"),
+            Values("일반 아이템 영수증 조회","일반 아이템 커밋 호출","재화 영수증 조회","재화 커밋 호출","던전 원자 픽업 호출"),
             Values("game.storage.returned","game.storage.failed","game.storage.canceled")),
         new LogProducerConfiguration("settlement","정산 worker 관측",true,
             Values("던전 보상 정산 시도·확정 지급 영수증"),Values("game.settlement.attempt.started","game.settlement.attempt.completed",

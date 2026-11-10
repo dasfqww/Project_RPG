@@ -1,6 +1,6 @@
 namespace ProjectRpg.Backend.Application;
 
-public enum GameStorageOperation { ItemReceiptRead, ItemCommit, CurrencyReceiptRead, CurrencyCommit }
+public enum GameStorageOperation { ItemReceiptRead, ItemCommit, CurrencyReceiptRead, CurrencyCommit, DungeonPickupCommit }
 public enum GameStorageOutcome { Returned, Faulted, Canceled }
 
 /// <summary>A repository invocation, not proof of a database commit or rollback.</summary>

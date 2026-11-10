@@ -5,7 +5,8 @@ namespace ProjectRpg.Backend.Application;
 
 // The application depends on an atomic operation, independent of the storage provider.
 public sealed class DungeonPickupCommitService(IDungeonPickupCommitRepository repository,
-    ILogger<DungeonPickupCommitService> logger, IGameTransactionObserver? observer = null)
+    ILogger<DungeonPickupCommitService> logger, IGameTransactionObserver? observer = null,
+    IGameStorageObserver? storageObserver = null)
 {
     public async Task<DungeonPickupCommitResult> CommitAsync(Guid sessionId, string serverId, Guid requestId,
         CancellationToken cancellationToken)
@@ -15,7 +16,8 @@ public sealed class DungeonPickupCommitService(IDungeonPickupCommitRepository re
             return new(DungeonPickupCommitStatus.InvalidRequest);
         try
         {
-            var result = await repository.CommitAsync(sessionId, serverId, requestId, cancellationToken);
+            var result = await GameStorageCall.RunAsync(storageObserver, GameStorageOperation.DungeonPickupCommit,
+                requestId, () => repository.CommitAsync(sessionId, serverId, requestId, cancellationToken));
             Observe(result, sessionId, requestId);
             return result;
         }

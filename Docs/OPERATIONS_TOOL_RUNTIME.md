@@ -64,6 +64,19 @@ Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복
 
 2026-11-08 집중 Memory/PG와 전체 운영툴 Memory 회귀 모두 Release 0경고/0오류로 통과했다. 원자 저장소/API·DTO 변경 없이 기존 확정 거래 관측 포트를 확장한 범위다.
 
+#### 원자 픽업 저장 호출
+
+2026-11-10: `DungeonPickupCommitService`의 `IDungeonPickupCommitRepository.CommitAsync` 호출을 기존 선택적 `IGameStorageObserver`/`GameStorageCall`로 감쌌다. 고정 operation `GameStorage.DungeonPickupCommit`은 원자 저장 어댑터 한 번의 호출 시간·실제 HTTP child span·요청받은 `transactionRequestId`만 기록한다. 기존 확정 영수증 이벤트는 호출 종료 후 원래 HTTP span에서 기록하므로 부모 관계를 따라갈 수 있다. 새 관측 포트/로그 필드·이벤트·자격·스키마·저장 쿼리는 추가하지 않았다.
+
+- 신규/재생 모두 원자 저장 호출이 필요하므로 매 시도에 하나의 저장 구간을 관측한다. 재생 span의 존재/개수는 새 지급 횟수가 아니다. 동일 원래 영수증과 후속 이동한 현재 아이템을 구분한다.
+- 미존재·거절 등 정상 반환도 `game.storage.returned`/`Returned`다. 저장 예외는 `game.storage.failed`/`Faulted`를 종료한 뒤 서비스의 기존 안전한 `InternalError`로 변환하고, `OperationCanceledException`은 `game.storage.canceled`/`Canceled`를 종료한 뒤 원래 객체를 전파한다. 예외/취소로 커밋/롤백 여부를 단정하지 않으며 확정/재생은 원자 영수증으로 확인한다. 실제 저장 예외/취소 주입의 회귀 검사는 모형 저장소를 사용한다.
+- 잘못된 scope/사전 취소는 저장 호출 전 종료한다. 준비/조회·API 인증/본문 거절은 이 저장 구간이 아니며 직접/background 호출에는 HTTP 문맥을 합성하지 않는다. 저장 구간에는 캐릭터·세션·아이템·계정·드롭/품목/수량·동결 본문/fingerprint·SQL/예외 원문을 채우지 않는다. 확인된 수령인/세션/아이템은 별도 확정 영수증 이벤트에서만 연결한다.
+- 시작/종료 관측기가 실패해도 실제 저장은 한 번 호출하고 원래 반환/안전한 실패·취소를 유지한다. 기존 `GameApiDiagnosticsEnabled` 기본 비활성과 현재 `game-storage` 계측 목록을 재사용한다. 실제 부모 Activity가 없을 때 HTTP ID/시간만 기록하는 정책·유계 큐/검색 권한·부모 탐색 정책을 유지한다. 개별 SQL/DB 내부 span이나 UE 픽업 표시를 추가한 범위가 아니다.
+
+`Scripts/Tests/Run-OperationsPickupStorageTests.ps1 -Postgres`는 게시 Backend+본인5 C# 고정 사본에서 실제 2인 세션의 HTTPS 픽업 준비·단일 원자 소비/지급·후속 이동 뒤 원래 영수증 재생·병렬4재시도를 Memory/격리 tmpfs PostgreSQL로 검사한다. 각 시도의 저장 child span/단조 시간·원래 HTTP 부모 복원·보호 검색/부모 앵커, 미존재의 호출 반환과 확정 기록 구분·권한/비밀·PG 게임 표 불변을 확인한다. 별도 Memory HTTPS의 시작/종료 실패 관측기와 순수 서비스의 원래 실패/취소·invalid/사전 취소 호출0을 검사하고 기존 무부모/동시 문맥·계측 재시작 회귀도 실행한다. `-FullSuite`는 전체 운영툴 Memory 회귀다. 자기 사본/출력/DB/runtime은 finally 폐기하며 실제 UE/두 게임 클라이언트/Steam·브라우저 클릭·운영 부하/배포는 미포함이다.
+
+2026-11-10 게시0e3d6de7 기준 집중 Memory/PG와 전체 운영툴 Memory 회귀를 최종 Release 0경고/0오류로 통과했다. 원자 픽업 저장소/SQL·API·기존 업무 흐름은 변경하지 않았다.
+
 ### 장비 변경 영수증 연결
 
 `POST /api/characters/{characterId}/equipment/{craft|dismantle|upgrade|transfer}`에 공통 [장비 결과 관측 필터](../Backend/ProjectRpg.Backend/Api/EquipmentReceiptObservationFilter.cs)를 적용한다. 필터는 다음 핸들러가 반환한 서버 생성 `ItemCommitResponse`의 성공 상태/확정 영수증만 기존 `IGameTransactionObserver`에 전달한다. 요청 본문·route에서 업무 ID를 추출하지 않으며 장비 규칙·소유권/리스 검사·멱등/저장 트랜잭션·응답/오류 매핑은 기존 [장비 API](../Backend/ProjectRpg.Backend/Api/EquipmentProgressionApiEndpoints.cs)에 그대로 둔다. ASP.NET 결과 처리는 API에, 고정 관측 모델은 Application에, 로그 저장은 Infrastructure에 둔다.
@@ -95,9 +108,9 @@ Drain만으로 모든 쓰기가 멈췄다고 판단하면 안 된다. 배포/복
 `ItemTransactionService`·`CurrencyTransactionService`의 영수증 조회와 커밋 repository 호출에 선택적 [IGameStorageObserver](../Backend/ProjectRpg.Backend/Application/IGameStorageObserver.cs)를 연결했다. [GameStorageCall](../Backend/ProjectRpg.Backend/Application/GameStorageCall.cs)은 원래 호출을 한 번 실행하고 시작/종료 관측 실패를 격리한다. Application은 Activity·HTTP·로그 저장 구현을 참조하지 않는다. 기존 거래 검증·권한·중복 방지·저장소·스키마·기본 설정은 유지한다.
 
 - 기존 `GameApiDiagnosticsEnabled`로 [호스트 어댑터](../Backend/ProjectRpg.Backend/Operations/Infrastructure/Diagnostics/OperationsGameStorageObserver.cs)를 등록한다. 서버 생성 HTTP 시도 번호가 있는 호출만 관측하며 직접/background 호출에 HTTP 관계를 합성하지 않는다. `ProjectRpg.Game.Storage` ActivitySource와 호스트 수명의 listener로 실제 부모 Activity가 있을 때 외부 exporter 없이 child span을 생성하고 종료한다. 부모가 없으면 HTTP ID/시간만 남기고 trace/span/parent는 null로 두며 새 root trace를 합성하지 않는다. span 종료·부모 복원은 기록 실패 시에도 수행한다.
-- 고정 operation은 `GameStorage.ItemReceiptRead`, `GameStorage.ItemCommit`, `GameStorage.CurrencyReceiptRead`, `GameStorage.CurrencyCommit`이다. 호출별 단조 시계 소요 시간과 실제 trace/span/parent·HTTP 시도·요청받은 `transactionRequestId`만 연결한다. 이 번호는 저장을 요청한 식별자이며 해당 이벤트만으로 확정 영수증이 존재한다고 단정하지 않는다. 주체/캐릭터·세션·아이템·통화/금액·caller operation/fingerprint·본문·SQL·연결 문자열·예외 원문은 전달하지 않는다.
+- 고정 operation은 `GameStorage.ItemReceiptRead`, `GameStorage.ItemCommit`, `GameStorage.CurrencyReceiptRead`, `GameStorage.CurrencyCommit`, `GameStorage.DungeonPickupCommit`이다. 호출별 단조 시계 소요 시간과 실제 trace/span/parent·HTTP 시도·요청받은 `transactionRequestId`만 연결한다. 이 번호는 저장을 요청한 식별자이며 해당 이벤트만으로 확정 영수증이 존재한다고 단정하지 않는다. 주체/캐릭터·세션·아이템·통화/금액·caller operation/fingerprint·본문·SQL·연결 문자열·예외 원문은 전달하지 않는다.
 - 정상 반환은 `game.storage.returned`/`Returned`, 전파 예외는 `game.storage.failed`/`Faulted`, `OperationCanceledException`은 `game.storage.canceled`/`Canceled`다. 오류 코드는 해당 고정 이벤트 이름이다. 정상 반환에는 미발견/규칙 거절/충돌도 포함될 수 있다. 예외/취소는 커밋/롤백 여부를 증명하지 않으며 확정/재생은 별도 영수증 이벤트와 원자 저장 결과로 조사한다.
-- 신규 명령은 영수증 조회→커밋의 형제 child span, 정확한 재생은 조회 span만 남긴다. 유효성/권한에서 먼저 거절되면 이 저장 구간을 실행하지 않는다. Memory와 PostgreSQL에 같은 호출 경계를 사용하며 개별 SQL/DB 트랜잭션·권한 조회·원자 픽업·장비/개인 거래·정산 저장 전체의 계측으로 확대하지 않는다. 기존 ID/이벤트 검색·권한/보존/큐 예산을 사용하며 새 필드·migration·외부 수집 의존성은 없다.
+- 일반 아이템/재화의 신규 명령은 영수증 조회→커밋의 형제 child span, 정확한 재생은 조회 span만 남긴다. 유효성/권한에서 먼저 거절되면 이 저장 구간을 실행하지 않는다. Memory와 PostgreSQL에 같은 호출 경계를 사용하며 개별 SQL/DB 트랜잭션·권한 조회·장비/개인 거래·정산 저장 전체의 계측으로 확대하지 않는다. 기존 ID/이벤트 검색·권한/보존/큐 예산을 사용하며 새 필드·migration·외부 수집 의존성은 없다.
 
 `Scripts/Tests/Run-OperationsStorageTracingTests.ps1 -Postgres`는 게시 Backend+본인13 C# 고정 사본에서 실제 HTTPS/Memory·격리 tmpfs PostgreSQL의 기존 아이템/재화 지급·재생·충돌·권한/비밀 경계·DB 불변과 형제 span/부모 복원·시간·보호 조회를 검사한다. 별도 실제 HTTPS의 모형 저장소로 반환/읽기·커밋 예외/취소·동시 요청·exporter 없는 실제 span 종료를 검사하며 이 모형은 DB 롤백 검증이 아니다. 순수 서비스 검사는 null/시작·종료 실패 관측기와 원래 결과/예외 객체·호출1회를 확인한다. `-FullSuite`는 전체 운영툴 Memory 회귀다. 자기 사본/출력/컨테이너/runtime은 finally 폐기하며 실제 UE/Steam·브라우저 시각·운영 부하/배포는 미포함이다.
 
@@ -152,7 +165,7 @@ GitHub 앱 callback은 정확히 `<ManagementOrigin>/ops/auth/github-callback`�
 
 ### 현재 계측 설정과 과거 로그
 
-로그 화면은 검색 전에도 **게임 HTTP**, **게임 확정 거래**, **개인 거래 명령 관측**, **게임 거래 저장소 호출**, **정산 worker 관측**의 현재 계측 설정을 표시한다. 정산 외 네 경계는 현재 `GameApiDiagnosticsEnabled` 값, 정산은 운영 호스트에 등록된 별도 관측 경계를 따른다. 일반 확정 거래는 아이템/재화·원자 픽업·장비 제작/분해/강화/전승이며 개인 거래는 별도 명령 결과 관측, 저장소 호출은 일반 아이템/재화의 조회·커밋4구간이다. UE와 그 밖의 직접 저장 경로를 전체 수집 중이라고 표현하지 않는다. 켜짐은 구성/등록 상태이며 실제 worker 실행·거래 기능 활성화·무손실 수집·sink 저장 성공의 증거가 아니다.
+로그 화면은 검색 전에도 **게임 HTTP**, **게임 확정 거래**, **개인 거래 명령 관측**, **게임 거래 저장소 호출**, **정산 worker 관측**의 현재 계측 설정을 표시한다. 정산 외 네 경계는 현재 `GameApiDiagnosticsEnabled` 값, 정산은 운영 호스트에 등록된 별도 관측 경계를 따른다. 일반 확정 거래는 아이템/재화·원자 픽업·장비 제작/분해/강화/전승이며 개인 거래는 별도 명령 결과 관측, 저장소 호출은 일반 아이템/재화의 조회·커밋4구간과 원자 픽업1구간이다. UE와 그 밖의 직접 저장 경로를 전체 수집 중이라고 표현하지 않는다. 켜짐은 구성/등록 상태이며 실제 worker 실행·거래 기능 활성화·무손실 수집·sink 저장 성공의 증거가 아니다.
 
 성공한 `GET /ops/api/logs` 응답의 `data.instrumentation`에도 같은 [Core 모델/읽기 포트](../Backend/ProjectRpg.Operations.Core/Diagnostics/LogInstrumentation.cs)를 추가한다. `observedAtUtc`, 환경, 등록 `sourceId`, 현재 `bootId`/빌드, 다섯 생산 경계의 `key`/표시 이름/`configuredEnabled`/범위/등록 사건 이름을 담는다. [호스트 어댑터](../Backend/ProjectRpg.Backend/Operations/Infrastructure/Diagnostics/ConfiguredLogInstrumentation.cs)는 설정과 현재 writer 식별자만 읽으며 SQL·파일 재검색·자격/로컬 경로 노출을 하지 않는다. Web·Razor는 Core 포트에 의존한다. 기존 응답 필드와 권한/커서/검색 예산은 유지하며 새 설정 변경 API는 없다.
 

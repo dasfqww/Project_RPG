@@ -8,6 +8,7 @@ if (args.SequenceEqual(["--instrumentation"])) { await CoreTests.RunAsync(); awa
 if (args.SequenceEqual(["--trade-tracing"])) { await CoreTests.RunAsync(); await LogNavigationTests.RunAsync(); await LogInstrumentationTests.RunAsync(); await TradeDiagnosticsTests.RunAsync(); return; }
 if (args.SequenceEqual(["--storage-tracing"])) { await CoreTests.RunAsync(); await GameTransactionDiagnosticsTests.RunAsync(); await StorageDiagnosticsTests.RunAsync(); await LogInstrumentationTests.RunAsync(); return; }
 if (args.SequenceEqual(["--span-navigation"])) { await CoreTests.RunAsync(); await LogNavigationTests.RunAsync(); await SpanNavigationTests.RunAsync(); return; }
+if (args.SequenceEqual(["--pickup-storage"])) { await CoreTests.RunAsync(); await PickupDiagnosticsTests.RunAsync(); await StorageDiagnosticsTests.RunAsync(); await LogInstrumentationTests.RunAsync(); return; }
 if (args.SequenceEqual(["--monitoring"]))
 {
     await MonitoringPolicyTests.RunAsync();
