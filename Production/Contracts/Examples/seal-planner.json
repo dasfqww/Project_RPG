@@ -1,0 +1,49 @@
+{
+    "schema_version":  1,
+    "task_id":  "seal-planner-v1",
+    "parent_goal":  "seal-stone-pilot",
+    "role":  "planner",
+    "priority":  50,
+    "depends_on":  [
+
+                   ],
+    "spec_revision":  "v1",
+    "base_commit":  "e8edb9bd6e7924b4a279eaea95a05bcbb5493679",
+    "inputs":  [
+                   {
+                       "path":  "Docs/CONTINUOUS_GAME_PRODUCTION_PLAN.md",
+                       "sha256":  "deb0f7278290359174f7148ffbda3fb4828387ac72b70d38d79b9e9ea5564f5e"
+                   }
+               ],
+    "write_paths":  [
+                        "Production/Briefs/SealStone"
+                    ],
+    "resources":  [
+                      "codex"
+                  ],
+    "output_paths":  [
+                         "Production/Briefs/SealStone/spec.json"
+                     ],
+    "acceptance_criteria":  [
+                                "Fix P01-P08 acceptance inputs and preserve unresolved art/budget decisions."
+                            ],
+    "check_ids":  [
+                      "SPEC-01"
+                  ],
+    "owner":  "production",
+    "handoff_role":  "developer",
+    "limits":  {
+                   "timeout_seconds":  1800,
+                   "max_attempts":  3,
+                   "max_additional_cost_micros_usd":  0
+               },
+    "workspace":  {
+                      "workspace_id":  "seal-planner-v1",
+                      "temporary_root":  "Saved/Production/Temp/seal-planner-v1",
+                      "evidence_root":  "Saved/Production/Evidence/seal-planner-v1",
+                      "cleanup_paths":  [
+                                            "Saved/Production/Temp/seal-planner-v1"
+                                        ]
+                  },
+    "requires_adoption":  true
+}

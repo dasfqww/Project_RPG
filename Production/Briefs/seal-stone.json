@@ -1,0 +1,13 @@
+{
+  "brief_id": "seal-stone-pilot",
+  "revision": "v1",
+  "status": "proposed",
+  "goal": "개발 전용 맵의 서버 권한 상호작용 봉인석 1종",
+  "map": "/Game/ProductionPilot/Maps/L_SealStonePilot",
+  "art": { "height_cm": 150, "lod0_max_triangles": 5000, "material_slots": 1, "max_texture_px": 2048, "icon_px": 512, "pivot": "bottom_center", "collision": "simple" },
+  "interaction": { "range_cm": 200, "hold_seconds": 1, "reset_seconds": 10, "clients": 2 },
+  "checks": ["P01", "P02", "P03", "P04", "P05", "P06", "P07", "P08"],
+  "source": "Docs/CONTINUOUS_GAME_PRODUCTION_PLAN.md",
+  "unresolved": ["art_style_adoption", "performance_baseline", "paid_generation_budget"],
+  "production_dispatch_enabled": false
+}

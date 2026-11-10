@@ -1,0 +1,94 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "attempt_id": {
+      "type": "string"
+    },
+    "role": {
+      "enum": [
+        "planner",
+        "art_director",
+        "developer",
+        "integrator",
+        "qa_reviewer",
+        "reporter"
+      ]
+    },
+    "spec_revision": {
+      "type": "string"
+    },
+    "input_manifest_hash": {
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "interrupted",
+        "blocked"
+      ]
+    },
+    "artifact_manifest": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "validation_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "handoff": {
+      "type": "string"
+    },
+    "block_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "external_task_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "task_id",
+    "attempt_id",
+    "role",
+    "spec_revision",
+    "input_manifest_hash",
+    "outcome",
+    "artifact_manifest",
+    "validation_refs",
+    "handoff",
+    "block_reason",
+    "external_task_ids"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

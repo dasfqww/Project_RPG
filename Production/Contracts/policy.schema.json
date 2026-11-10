@@ -1,0 +1,71 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer"
+    },
+    "authentication_mode": {
+      "type": "string"
+    },
+    "allow_api_fallback": {
+      "type": "boolean"
+    },
+    "allow_extra_spending": {
+      "type": "boolean"
+    },
+    "daily_additional_budget_micros_usd": {
+      "type": "integer"
+    },
+    "codex_concurrency": {
+      "type": "integer"
+    },
+    "heavy_concurrency": {
+      "type": "integer"
+    },
+    "git_concurrency": {
+      "type": "integer"
+    },
+    "heartbeat_seconds": {
+      "type": "integer"
+    },
+    "stale_after_seconds": {
+      "type": "integer"
+    },
+    "defect_retries": {
+      "type": "integer"
+    },
+    "transient_backoff_seconds": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "review_time_zone": {
+      "type": "string"
+    },
+    "daily_review_time": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "authentication_mode",
+    "allow_api_fallback",
+    "allow_extra_spending",
+    "daily_additional_budget_micros_usd",
+    "codex_concurrency",
+    "heavy_concurrency",
+    "git_concurrency",
+    "heartbeat_seconds",
+    "stale_after_seconds",
+    "defect_retries",
+    "transient_backoff_seconds",
+    "review_time_zone",
+    "daily_review_time"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

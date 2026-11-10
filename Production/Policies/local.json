@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "authentication_mode": "SubscriptionOnly",
+  "allow_api_fallback": false,
+  "allow_extra_spending": false,
+  "daily_additional_budget_micros_usd": 0,
+  "codex_concurrency": 1,
+  "heavy_concurrency": 1,
+  "git_concurrency": 1,
+  "heartbeat_seconds": 30,
+  "stale_after_seconds": 180,
+  "defect_retries": 2,
+  "transient_backoff_seconds": [60, 300, 900],
+  "review_time_zone": "Asia/Seoul",
+  "daily_review_time": null
+}
