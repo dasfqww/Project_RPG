@@ -41,6 +41,22 @@ public sealed class TradeItemPolicy
         if (item.Owner.Type != ItemOwnerType.Character || item.Owner.OwnerId != characterId
             || item.Location.ContainerType != ItemContainerType.Inventory || item.Location.ContainerId != characterId)
             throw new TradeRuleException("item_not_in_owned_inventory");
+        ValidateAvailability(item, offered.Quantity, channel, now);
+    }
+
+    // The store has locked and matched the real vault record with this listing's registration snapshot.
+    internal void ValidateAuctionEscrow(ItemRecord item, AuctionEscrowListing listing, DateTimeOffset now)
+    {
+        if (!ItemRecordRules.TryValidateRecord(item, out _) || item.Owner != AuctionEscrowRules.Owner(listing.State.ListingId)
+            || item.Location != new ItemLocation(ItemContainerType.Auction, listing.State.ListingId.ToString("D"), 0)
+            || item.ItemId != listing.EscrowAtRegistration.ItemId || item.Revision != listing.EscrowAtRegistration.Revision
+            || item.State.Quantity != listing.State.Item.Quantity)
+            throw new TradeRuleException("invalid_trade_item");
+        ValidateAvailability(item, listing.State.Item.Quantity, TradeChannel.Auction, now);
+    }
+
+    private void ValidateAvailability(ItemRecord item, int quantity, TradeChannel channel, DateTimeOffset now)
+    {
         if (item.LifecycleState != ItemLifecycleState.Active || item.Metadata.IsLocked
             || item.Metadata.ExpiresAtUtc is { } expiry && expiry <= now)
             throw new TradeRuleException("item_unavailable");
@@ -49,7 +65,7 @@ public sealed class TradeItemPolicy
         if (!definitions.TryGetValue((item.DefinitionType, item.DefinitionName, item.DefinitionVersion), out var policy)
             || !(channel == TradeChannel.Direct ? policy.AllowDirect : policy.AllowAuction))
             throw new TradeRuleException("item_trade_not_allowed");
-        if (offered.Quantity <= 0 || offered.Quantity > item.State.Quantity || item.State.Quantity > policy.MaximumStackSize)
+        if (quantity <= 0 || quantity > item.State.Quantity || item.State.Quantity > policy.MaximumStackSize)
             throw new TradeRuleException("invalid_trade_quantity");
     }
 

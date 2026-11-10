@@ -26,7 +26,8 @@ internal static class AuctionEscrowCases
                 var catalog = await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory, default);
                 Check(await PostgresSchemaMigrations.ApplyAsync(data, catalog.Take(11).ToArray(), default) == 11, "v11 baseline");
                 var old = await f.Person(); var item = await f.Seed(old);
-                Check(await PostgresSchemaMigrations.ApplyAsync(data, catalog, default) == 1, "v11 to v12 only");
+                Check(await PostgresSchemaMigrations.ApplyAsync(data, catalog.Take(12).ToArray(), default) == 1, "v11 to v12 only");
+                Check(await PostgresSchemaMigrations.ApplyAsync(data, catalog, default) == catalog.Count - 12, "purchase schema dependency");
                 Check((await f.Items.FindAsync(item.ItemId, default))!.Revision == 1, "migration preserves old inventory");
                 await f.Economy.UpsertDefinitionAsync(new("Gold", "Gold", CurrencyScope.Account, long.MaxValue, true), DateTimeOffset.UtcNow, default);
                 await FullAndReplay(f); await PartialAndGuards(f); await Rollback(f); await Returns(f); await Expiry(f); await AccessAndLimits(f); await Races(f);

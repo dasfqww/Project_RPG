@@ -14,17 +14,22 @@ $containerId = $null
 $failure = $null
 $overlay = @(
     'Backend/ProjectRpg.Backend/Domain/Trading/AuctionEscrow.cs',
+    'Backend/ProjectRpg.Backend/Domain/Trading/AuctionPurchase.cs',
     'Backend/ProjectRpg.Backend/Domain/Trading/AuctionListing.cs',
     'Backend/ProjectRpg.Backend/Domain/Trading/TradeItemPolicy.cs',
     'Backend/ProjectRpg.Backend/Domain/ItemModels.cs',
     'Backend/ProjectRpg.Backend/Domain/DungeonRewardDeliveryPlanner.cs',
     'Backend/ProjectRpg.Backend/Data/IAuctionEscrowRepository.cs',
+    'Backend/ProjectRpg.Backend/Data/IAuctionPurchaseRepository.cs',
+    'Backend/ProjectRpg.Backend/Data/PostgresAuctionEscrowRepository.Purchase.cs',
     'Backend/ProjectRpg.Backend/Data/PostgresAuctionEscrowRepository.cs',
     'Backend/ProjectRpg.Backend/Data/PostgresTradeReservationGuards.cs',
     'Backend/ProjectRpg.Backend/Data/PostgresSchemaMigrations.cs',
     'Backend/ProjectRpg.Backend/ProjectRpg.Backend.csproj',
     'Backend/Database/Migrations/0012_auction_escrow.sql',
+    'Backend/Database/Migrations/0013_auction_sales.sql',
     'Backend/ProjectRpg.Backend.TradingTests/AuctionEscrowCases.cs',
+    'Backend/ProjectRpg.Backend.TradingTests/AuctionPurchaseCases.cs',
     'Backend/ProjectRpg.Backend.TradingTests/Program.cs',
     'Backend/ProjectRpg.Backend.MigrationTests/Program.cs'
 )

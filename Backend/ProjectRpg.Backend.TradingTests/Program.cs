@@ -3,6 +3,7 @@ using ProjectRpg.Backend.Domain;
 using ProjectRpg.Backend.Domain.Trading;
 
 if (args is ["--auction-domain"]) return AuctionCases.Run();
+if (args is ["--auction-purchase"] or ["--auction-purchase-restart"]) return await AuctionPurchaseCases.Run(args[0] == "--auction-purchase-restart");
 if (args is ["--auction-escrow"] or ["--auction-restart"]) return await AuctionEscrowCases.Run(args[0] == "--auction-restart");
 if (args is ["--api-memory"] or ["--api-postgres"] or ["--api-restart"]) return await ApiCases.Run(args[0]);
 if (args is ["--sessions-memory"]) return await MemorySessionCases.Run();

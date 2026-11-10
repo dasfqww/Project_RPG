@@ -11,7 +11,9 @@ public sealed record AuctionEscrowCommand(Guid RequestId, Guid ListingId, TradeP
     long ExpectedRevision = 0, TradeOfferedItem? Item = null, long TotalPrice = 0,
     DateTimeOffset ExpiresAt = default, AuctionTerms? Terms = null);
 public sealed record AuctionEscrowListing(AuctionListing State, ItemRecord EscrowAtRegistration,
-    TradeSplitOrigin? Split, int MaximumStackSize);
+    TradeSplitOrigin? Split, int MaximumStackSize,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    AuctionSaleSettlement? Sale = null);
 public sealed record AuctionEscrowResult(Guid RequestId, AuctionEscrowListing Listing,
     IReadOnlyList<ItemRecord> Items, DateTimeOffset CommittedAt);
 
@@ -62,5 +64,16 @@ public static class AuctionEscrowRules
                 : value.Split != new TradeSplitOrigin(s.Item.ItemId, item.ItemId, s.Item.Quantity)
                     || item.ItemId != SplitItemId(s.ListingId) || item.Revision != 1))
             throw new InvalidDataException("Invalid stored auction escrow snapshot.");
+        if (s.Status == AuctionListingStatus.SaleAgreed)
+        {
+            var sale = value.Sale;
+            if (sale is null || sale.RequestId == Guid.Empty || sale.Buyer != s.Buyer
+                || sale.Currency is null || !EconomyRules.TryValidateDefinition(sale.Currency, out _) || !sale.Currency.Enabled
+                || sale.Currency.CurrencyCode != s.Terms.CurrencyCode || !AuctionPurchaseRules.ValidOwner(sale.SellerWallet, s.Seller)
+                || sale.SellerWallet.Scope != sale.Currency.Scope || sale.Amounts != AuctionMoney.Sale(s.TotalPrice, s.Terms.FeeBasisPoints)
+                || sale.CommittedAt < s.CreatedAt || sale.CommittedAt >= s.ExpiresAt)
+                throw new InvalidDataException("Auction sale lacks a valid committed settlement.");
+        }
+        else if (value.Sale is not null) throw new InvalidDataException("Unsold auction has settlement data.");
     }
 }

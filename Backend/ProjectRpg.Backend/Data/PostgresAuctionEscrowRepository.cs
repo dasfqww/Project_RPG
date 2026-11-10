@@ -7,9 +7,9 @@ using static ProjectRpg.Backend.Data.PostgresTradeReservationRepository;
 
 namespace ProjectRpg.Backend.Data;
 
-/// <summary>Registration and unsold return only. No purchase, money movement or public API wiring.</summary>
-public sealed class PostgresAuctionEscrowRepository(NpgsqlDataSource dataSource, TradeItemPolicy policy,
-    AuctionEscrowLimits limits) : IAuctionEscrowRepository
+/// <summary>Atomic registration, unsold return and purchase. Public API/DI wiring remains separate.</summary>
+public sealed partial class PostgresAuctionEscrowRepository(NpgsqlDataSource dataSource, TradeItemPolicy policy,
+    AuctionEscrowLimits limits) : IAuctionEscrowRepository, IAuctionPurchaseRepository
 {
     public async Task<AuctionEscrowListing?> FindAsync(Guid listingId, TradeParticipant seller, CancellationToken ct)
     {
@@ -100,33 +100,20 @@ public sealed class PostgresAuctionEscrowRepository(NpgsqlDataSource dataSource,
             var escrow = await PostgresItemRepository.ReadItemForUpdateAsync(c, tx, previous.EscrowAtRegistration.ItemId, ct);
             if (escrow is null || JsonSerializer.Serialize(escrow) != JsonSerializer.Serialize(previous.EscrowAtRegistration))
                 throw new TradeRuleException("auction_escrow_changed");
-            changes = await Return(c, tx, command, previous, escrow, owner, now, ct);
+            changes = await Deliver(c, tx, command.RequestId, command.ListingId, previous, escrow, owner, now, ct);
             listing = previous with { State = state };
         }
         AuctionEscrowRules.Validate(listing);
-        if (changes.Count > DungeonRewardDeliveryPlanner.InventorySlotCapacity + 1
-            || changes.Any(m => m.ExpectedRevision < 0 || m.ExpectedRevision == long.MaxValue
-                || m.NewRecord.Revision != m.ExpectedRevision || !ItemRecordRules.TryValidateRecord(m.NewRecord, out _)))
-            throw new TradeRuleException("invalid_auction_mutation");
-        foreach (var change in changes.Where(m => m.ExpectedRevision > 0))
-        {
-            var current = await PostgresItemRepository.ReadItemForUpdateAsync(c, tx, change.NewRecord.ItemId, ct);
-            if (current?.Revision != change.ExpectedRevision) throw new TradeRuleException("auction_item_revision_conflict");
-        }
-        foreach (var change in changes.Where(m => m.ExpectedRevision > 0))
-            await PostgresItemRepository.StageExistingRecordAsync(c, tx, change.NewRecord.ItemId, ct);
-        var written = changes.Select(m => ItemRecordRules.SnapshotWithRevision(m.NewRecord, m.ExpectedRevision + 1)).ToArray();
-        foreach (var item in written)
-            await PostgresItemRepository.WriteRecordAsync(c, tx, item,
-                changes.Single(m => m.NewRecord.ItemId == item.ItemId).ExpectedRevision == 0, now, ct);
+        var written = await WriteItems(c, tx, changes, now, ct);
         var result = new AuctionEscrowResult(command.RequestId, listing, Array.AsReadOnly(written), now);
         await Save(c, tx, command, fingerprint, result, before is null, ct);
         await tx.CommitAsync(ct);
         return result;
     }
 
-    private async Task<List<ItemRecordMutation>> Return(NpgsqlConnection c, NpgsqlTransaction tx, AuctionEscrowCommand cmd,
-        AuctionEscrowListing listing, ItemRecord escrow, ItemOwnerRef owner, DateTimeOffset now, CancellationToken ct)
+    private async Task<List<ItemRecordMutation>> Deliver(NpgsqlConnection c, NpgsqlTransaction tx, Guid requestId, Guid listingId,
+        AuctionEscrowListing listing, ItemRecord escrow, ItemOwnerRef owner, DateTimeOffset now, CancellationToken ct,
+        string capacityError = "auction_return_capacity")
     {
         ItemRecord Terminal(ItemLifecycleState status) => escrow with
         { State = escrow.State with { Quantity = 0 }, Location = new(ItemContainerType.Terminal, "", -1), LifecycleState = status };
@@ -143,8 +130,8 @@ public sealed class PostgresAuctionEscrowRepository(NpgsqlDataSource dataSource,
             throw new TradeRuleException("invalid_auction_inventory");
         var held = await PostgresTradeReservationGuards.ReservedItems(c, tx, inventory.Select(i => i.ItemId), ct);
         var virtualArrival = escrow with
-        { Owner = owner, Location = new(ItemContainerType.Mail, cmd.ListingId.ToString("D"), 0), Revision = 0 };
-        var grant = new ItemRepositoryCommitRequest(cmd.RequestId, "AuctionReturn", "auction-return", owner, escrow.State.Quantity, [new(0, virtualArrival)]);
+        { Owner = owner, Location = new(ItemContainerType.Mail, listingId.ToString("D"), 0), Revision = 0 };
+        var grant = new ItemRepositoryCommitRequest(requestId, "AuctionDelivery", "auction-delivery", owner, escrow.State.Quantity, [new(0, virtualArrival)]);
         var plan = DungeonRewardDeliveryPlanner.PlanAuctionReturn(grant, [listing.MaximumStackSize], inventory, held);
         var changes = plan.Mutations.Select(m => m.NewRecord.ItemId == escrow.ItemId
             ? new ItemRecordMutation(escrow.Revision, m.NewRecord with { Revision = escrow.Revision }) : m).ToList();
@@ -155,7 +142,7 @@ public sealed class PostgresAuctionEscrowRepository(NpgsqlDataSource dataSource,
             await using var count = new NpgsqlCommand("SELECT count(*) FROM item_records WHERE owner_type='Character' AND owner_id=@owner AND lifecycle_state='Active'", c, tx);
             count.Parameters.AddWithValue("owner", owner.OwnerId);
             if ((long)(await count.ExecuteScalarAsync(ct))! >= limits.MaximumOwnedRecords)
-                throw new TradeRuleException("auction_return_capacity");
+                throw new TradeRuleException(capacityError);
         }
         return changes;
     }
@@ -186,10 +173,23 @@ public sealed class PostgresAuctionEscrowRepository(NpgsqlDataSource dataSource,
     {
         await using var q = new NpgsqlCommand("SELECT fingerprint,result::text FROM auction_escrow_receipts WHERE request_id=@id", c, tx);
         q.Parameters.AddWithValue("id", cmd.RequestId);
-        await using var r = await q.ExecuteReaderAsync(ct);
-        if (!await r.ReadAsync(ct)) return null;
-        if (r.GetString(0) != fingerprint) throw new TradeRuleException("auction_idempotency_conflict");
-        var result = JsonSerializer.Deserialize<AuctionEscrowResult>(r.GetString(1)) ?? throw new InvalidDataException("Missing auction receipt.");
+        AuctionEscrowResult? result;
+        await using (var r = await q.ExecuteReaderAsync(ct))
+        {
+            if (!await r.ReadAsync(ct)) result = null;
+            else
+            {
+                if (r.GetString(0) != fingerprint) throw new TradeRuleException("auction_idempotency_conflict");
+                result = JsonSerializer.Deserialize<AuctionEscrowResult>(r.GetString(1)) ?? throw new InvalidDataException("Missing auction receipt.");
+            }
+        }
+        if (result is null)
+        {
+            await using var other = new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM auction_sales WHERE request_id=@id)", c, tx);
+            other.Parameters.AddWithValue("id", cmd.RequestId);
+            if ((bool)(await other.ExecuteScalarAsync(ct))!) throw new TradeRuleException("auction_idempotency_conflict");
+            return null;
+        }
         AuctionEscrowRules.Validate(result.Listing);
         if (result.RequestId != cmd.RequestId || result.Listing.State.ListingId != cmd.ListingId || result.Listing.State.Seller != cmd.Seller)
             throw new InvalidDataException("Auction receipt scope mismatch.");
