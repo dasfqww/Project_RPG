@@ -1,5 +1,6 @@
 #pragma once
 #include "Riding/RPGRidingDashAdmission.h"
+#include "Riding/RPGRidingDashGrant.h"
 #include "Riding/RPGRidingDashMotionHost.h"
 
 class URPGRidingComponent;
@@ -11,7 +12,7 @@ class FRPGRidingDashRuntime final
 {
 public:
     explicit FRPGRidingDashRuntime(URPGRidingComponent& InOwner) : Owner(InOwner) {}
-    ERPGRidingResultCode Start(FRPGRidingStateKey Expected, FVector Direction);
+    ERPGRidingResultCode Start(FRPGRidingStateKey Expected, FVector Direction, FRPGRidingDashActivation Activation = {});
     void PrepareMovement();
     void Tick();
     bool HasMotion() const;

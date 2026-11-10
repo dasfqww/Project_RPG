@@ -3,6 +3,7 @@
 #include "Component/PawnExtensionComponentBase.h"
 #include "Riding/RPGRidingTypes.h"
 #include "Riding/RPGRidingDashAdmission.h"
+#include "Riding/RPGRidingDashGrant.h"
 #include "GameplayAbilitySpecHandle.h"
 #include "RPGRidingComponent.generated.h"
 
@@ -35,6 +36,8 @@ public:
     /** Requests only the current source-owned GAS spec; GAS performs the owning-client RPC. */
     UFUNCTION(BlueprintCallable, Category="Riding") bool RequestDash();
     UFUNCTION(BlueprintPure, Category="Riding") bool CanRequestDash() const;
+    /** Read-only approved profile; requires current owner/avatar/source spec and mount generation. */
+    bool TryGetDashGrant(FRPGRidingDashGrant& Out) const;
     /** Native server boundary. Never trusts BP authority metadata or a client-supplied reason. */
     void ForceDismount(ERPGRidingEndReason Reason);
     void RefreshBinding();
@@ -48,7 +51,7 @@ public:
     /** Server CMC: fraction of a proposed capsule segment permitted while mounted; may end Riding. */
     double ConstrainServerMovement(const FVector& Start, const FVector& End);
     /** Native server executor. Admission may be cancelled by callbacks; query active motion before creating FX. */
-    ERPGRidingResultCode StartServerDash(FRPGRidingStateKey Expected, FVector Direction);
+    ERPGRidingResultCode StartServerDash(FRPGRidingStateKey Expected, FVector Direction, FRPGRidingDashActivation Activation = {});
     bool IsServerDashActive() const;
     void PrepareServerDashMovement();
     void FinalizeServerDashMovement();
@@ -65,6 +68,7 @@ private:
     friend struct FRPGRidingMovementTestAccess;
     friend struct FRPGRidingDashTestAccess;
     friend struct FRPGRidingDashAbilityTestAccess;
+    friend struct FRPGRidingDashGrantTestAccess;
 #endif
     UFUNCTION() void HandleControllerChanged(APawn* Pawn, AController* Old, AController* Current);
     UFUNCTION() void HandleRestarted(APawn* Pawn);
@@ -74,7 +78,7 @@ private:
     bool IsBindingCurrent() const;
     /** Trusted native executor preflight only. No client callback, RPC, BP or activation grant. */
     ERPGRidingResultCode TryBeginDash(FRPGRidingStateKey Expected, FVector Direction,
-        TFunctionRef<bool(const FRPGRidingDashProfile&, const FVector&)> Preflight, FRPGRidingDashTicket& Out);
+        TFunctionRef<bool(const FRPGRidingDashProfile&, const FVector&)> Preflight, FRPGRidingDashTicket& Out, FRPGRidingDashActivation Activation = {});
     ERPGRidingResultCode EvaluateDashAdmission(const FRPGRidingStateKey& Expected) const;
     bool IsDashCurrent(const FRPGRidingDashTicket& Ticket) const;
     bool MatchesDash(const FRPGRidingDashTicket& Ticket) const;
@@ -82,6 +86,7 @@ private:
     void SyncDashAbility();
     void ReleaseDashAbility();
     bool OwnsDashAbility(const UAbilitySystemComponent* ASC, FGameplayAbilitySpecHandle Handle) const;
+    bool IsDashActivationCurrent(const FRPGRidingDashActivation& Activation) const;
     FGameplayAbilitySpecHandle FindDashAbility(UAbilitySystemComponent*& OutASC) const;
     void ReleaseBinding();
     void Publish();
@@ -107,4 +112,5 @@ private:
     ERPGRidingEndReason PendingEnd = ERPGRidingEndReason::None;
     UPROPERTY(EditDefaultsOnly, Category="Riding") TArray<TObjectPtr<URPGMountDefinition>> Definitions;
     UPROPERTY(ReplicatedUsing=OnRep_State) FRPGRidingRepState State;
+    UPROPERTY(Replicated) FRPGRidingDashGrant DashGrant;
 };

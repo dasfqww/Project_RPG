@@ -29,6 +29,8 @@ bool URPGGameplayAbility_RidingDash::CanActivateAbility(FGameplayAbilitySpecHand
             || C->EvaluateDashAdmission(C->State.Key) != ERPGRidingResultCode::Applied) return false;
     }
     else if (!C->CanRequestDash()) return false;
+    FRPGRidingDashGrant Grant;
+    if (!C->TryGetDashGrant(Grant) || Grant.AbilityHandle != Handle) return false;
     return Super::CanActivateAbility(Handle, Info, Source, Target, Failures);
 }
 
@@ -40,8 +42,12 @@ void URPGGameplayAbility_RidingDash::ActivateAbility(FGameplayAbilitySpecHandle 
     auto* C = Spec ? Cast<URPGRidingComponent>(Spec->SourceObject.Get()) : nullptr;
     auto* Character = C ? Cast<ACharacter>(C->GetOwner()) : nullptr;
     auto* Move = Character ? Character->GetCharacterMovement() : nullptr;
+    FRPGRidingDashGrant Grant;
     if (!Character || !Character->HasAuthority() || !Move || !C->OwnsDashAbility(ASC, Handle)
-        || Info->AvatarActor.Get() != Character || !CommitAbility(Handle, Info, Activation))
+        || Info->AvatarActor.Get() != Character || !C->TryGetDashGrant(Grant))
+    { EndAbility(Handle, Info, Activation, true, true); return; }
+    const FRPGRidingDashActivation Context{Grant, Activation.GetActivationPredictionKey()};
+    if (!Context.IsValid() || !CommitAbility(Handle, Info, Activation) || !IsActive() || !C->IsDashActivationCurrent(Context))
     { EndAbility(Handle, Info, Activation, true, true); return; }
 
     // Use the server's current accepted movement input, falling back to its current facing.
@@ -54,7 +60,7 @@ void URPGGameplayAbility_RidingDash::ActivateAbility(FGameplayAbilitySpecHandle 
     ERPGRidingResultCode Result;
     {
         TGuardValue<bool> Starting(bStarting, true);
-        Result = C->StartServerDash(Expected, Direction);
+        Result = C->StartServerDash(Expected, Direction, Context);
     }
     // Admission callbacks may have ended this ability, revoked its spec or replaced the Pawn.
     if (!IsActive() || Riding.Get() != C) return;
@@ -62,7 +68,7 @@ void URPGGameplayAbility_RidingDash::ActivateAbility(FGameplayAbilitySpecHandle 
     if (State.Key.RiderEpoch == Expected.RiderEpoch && State.Key.StateRevision == Expected.StateRevision
         && State.Key.ActionSequence == Expected.ActionSequence + 1 && State.Action == ERPGRidingAction::Dash)
         Ticket = C->ActiveDash;
-    if (Result != ERPGRidingResultCode::Applied || !C->OwnsDashAbility(ASC, Handle)
+    if (Result != ERPGRidingResultCode::Applied || !C->IsDashActivationCurrent(Context) || !C->OwnsDashAbility(ASC, Handle)
         || State.Key.RiderEpoch != Expected.RiderEpoch || State.Key.StateRevision != Expected.StateRevision
         || State.Key.ActionSequence != Expected.ActionSequence + 1 || !C->IsServerDashActive())
     { EndAbility(Handle, Info, Activation, true, true); return; }

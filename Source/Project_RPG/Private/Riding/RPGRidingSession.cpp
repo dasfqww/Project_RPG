@@ -159,7 +159,7 @@ bool FRPGRidingSession::CopyDashProfile(FRPGRidingDashProfile& Out) const
 {
     Out = {};
     if (Status != ERPGRidingSessionStatus::Ready) return false;
-    Out.Distance = Policy.DashDistance; Out.Duration = Policy.DashDuration;
+    Out.Distance = Policy.DashDistance; Out.Duration = Policy.DashDuration; Out.Cooldown = Policy.DashCooldown;
     return true; // ConfirmAdmission validated and copied the immutable policy.
 }
 

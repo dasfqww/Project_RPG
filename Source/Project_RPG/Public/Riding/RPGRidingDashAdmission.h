@@ -6,6 +6,7 @@ struct FRPGRidingDashProfile
 {
     float Distance = 0.f;
     float Duration = 0.f;
+    float Cooldown = 0.f;
 };
 
 /** One admitted execution. Consumers must recheck currency after any gameplay callback. */

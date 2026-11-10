@@ -69,13 +69,13 @@ bool FRPGRidingDashRuntime::CanStart(const FRPGRidingDashProfile& P, const FVect
     return SafeFraction(*C, *M, Start, Start + Direction * FMath::Min(P.Distance, 1.f), 1.) > .001;
 }
 
-ERPGRidingResultCode FRPGRidingDashRuntime::Start(FRPGRidingStateKey Expected, FVector Direction)
+ERPGRidingResultCode FRPGRidingDashRuntime::Start(FRPGRidingStateKey Expected, FVector Direction, FRPGRidingDashActivation Activation)
 {
     if (!IsInGameThread()) return ERPGRidingResultCode::AuthorityRevoked;
     if (bStarting || bStopping || Active.Ticket.ExecutionId.IsValid()) return ERPGRidingResultCode::Busy;
     TGuardValue<bool> Starting(bStarting, true);
     FRPGRidingDashTicket T;
-    const auto Result = Owner.TryBeginDash(Expected, Direction, [this](const auto& P, const auto& D) { return CanStart(P, D); }, T);
+    const auto Result = Owner.TryBeginDash(Expected, Direction, [this](const auto& P, const auto& D) { return CanStart(P, D); }, T, Activation);
     if (Result != ERPGRidingResultCode::Applied) return Result;
     if (!Owner.IsDashCurrent(T)) return Result; // Accepted then cancelled: retain cooldown; allocate nothing.
     auto* C = Cast<ACharacter>(Owner.GetOwner()); auto* M = C ? C->GetCharacterMovement() : nullptr;

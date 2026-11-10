@@ -34,8 +34,8 @@ URPGRidingComponent::URPGRidingComponent()
 void FRPGRidingDashRuntimeDeleter::operator()(FRPGRidingDashRuntime* P) const { delete P; }
 URPGRidingComponent::~URPGRidingComponent() = default;
 
-ERPGRidingResultCode URPGRidingComponent::StartServerDash(FRPGRidingStateKey Expected, FVector Direction)
-{ return DashRuntime->Start(Expected, Direction); }
+ERPGRidingResultCode URPGRidingComponent::StartServerDash(FRPGRidingStateKey Expected, FVector Direction, FRPGRidingDashActivation Activation)
+{ return DashRuntime->Start(Expected, Direction, Activation); }
 bool URPGRidingComponent::IsServerDashActive() const
 { return GetOwner() && GetOwner()->HasAuthority() && DashRuntime->HasMotion(); }
 void URPGRidingComponent::PrepareServerDashMovement()
@@ -135,6 +135,7 @@ void URPGRidingComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(ThisClass, State);
+    DOREPLIFETIME_CONDITION(ThisClass, DashGrant, COND_OwnerOnly);
 }
 
 const URPGMountDefinition* URPGRidingComponent::FindDefinition(const FString& Id) const
@@ -368,6 +369,7 @@ bool URPGRidingComponent::OwnsDashAbility(const UAbilitySystemComponent* ASC, FG
     return ASC && IsBindingCurrent() && State.Mode == ERPGRidingMode::Mounted
         && DashAbilityOwner.Get() == ASC && Handle.IsValid() && DashAbilityHandle == Handle
         && DashGrantKey.RiderEpoch == State.Key.RiderEpoch && DashGrantKey.StateRevision == State.Key.StateRevision
+        && DashGrant.Matches(State) && DashGrant.AbilityHandle == Handle
         && ASC->GetAvatarActor() == GetOwner();
 }
 
@@ -376,6 +378,13 @@ void URPGRidingComponent::ReleaseDashAbility()
     auto* ASC = DashAbilityOwner.Get();
     const auto Handle = DashAbilityHandle;
     DashAbilityOwner.Reset(); DashAbilityHandle = {}; DashGrantKey = {};
+    const bool HadGrant = !DashGrant.IsEmpty();
+    DashGrant = {};
+    if (HadGrant && GetOwner() && GetOwner()->HasAuthority())
+    {
+        MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, DashGrant, this);
+        GetOwner()->ForceNetUpdate();
+    }
     const auto* Spec = ASC ? ASC->FindAbilitySpecFromHandle(Handle) : nullptr;
     if (Spec && Spec->SourceObject.Get() == this && Spec->Ability
         && Spec->Ability->GetClass() == URPGGameplayAbility_RidingDash::StaticClass()) ASC->ClearAbility(Handle);
@@ -383,12 +392,15 @@ void URPGRidingComponent::ReleaseDashAbility()
 
 void URPGRidingComponent::SyncDashAbility()
 {
+    if (!GetOwner() || !GetOwner()->HasAuthority()) return;
     if (!GetOwner() || !GetOwner()->HasAuthority() || bSyncingDashAbility) return;
     TGuardValue<bool> Syncing(bSyncingDashAbility, true);
     const auto ReadyASC = [this]() -> UAbilitySystemComponent*
     {
         if (!IsRegistered() || !IsBindingCurrent() || State.Mode != ERPGRidingMode::Mounted
             || Session->Runtime->GetStatus() != ERPGRidingSessionStatus::Ready) return nullptr;
+        FRPGRidingMovementProfile Movement;
+        if (!Session->Runtime->CopyMovementProfile(Movement) || Movement.Version != State.Movement.Version) return nullptr;
         auto* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner(), true);
         return IsValid(ASC) && ASC->GetAvatarActor() == GetOwner() && ASC->GetWorld() == GetWorld() ? ASC : nullptr;
     };
@@ -396,16 +408,62 @@ void URPGRidingComponent::SyncDashAbility()
     const auto* Current = ASC ? ASC->FindAbilitySpecFromHandle(DashAbilityHandle) : nullptr;
     if (OwnsDashAbility(ASC, DashAbilityHandle) && Current && !Current->PendingRemove && !Current->RemoveAfterActivation
         && Current->SourceObject.Get() == this && Current->Ability
-        && Current->Ability->GetClass() == URPGGameplayAbility_RidingDash::StaticClass()) return;
+        && Current->Ability->GetClass() == URPGGameplayAbility_RidingDash::StaticClass())
+    {
+        FRPGRidingDashProfile P;
+        if (Session->Runtime->CopyDashProfile(P) && P.Distance == DashGrant.Distance && P.Duration == DashGrant.Duration && P.Cooldown == DashGrant.Cooldown) return;
+    }
     ReleaseDashAbility();
     // Removal can execute arbitrary ability-end delegates and change the binding.
     ASC = ReadyASC();
     if (!ASC) return;
+    FRPGRidingDashProfile Profile;
+    if (!Session->Runtime->CopyDashProfile(Profile)) return;
     FGameplayAbilitySpec Spec(URPGGameplayAbility_RidingDash::StaticClass(), 1, INDEX_NONE, this);
     DashAbilityOwner = ASC; DashAbilityHandle = Spec.Handle; DashGrantKey = State.Key;
+    DashGrant.GrantId = FGuid::NewGuid(); DashGrant.RiderEpoch = State.Key.RiderEpoch;
+    DashGrant.MountRevision = State.Key.StateRevision; DashGrant.AbilityHandle = Spec.Handle;
+    DashGrant.CatalogVersion = State.Movement.Version; DashGrant.Distance = Profile.Distance;
+    DashGrant.Duration = Profile.Duration; DashGrant.Cooldown = Profile.Cooldown;
+    if (!DashGrant.IsValid()) { ReleaseDashAbility(); return; }
+    MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, DashGrant, this);
+    GetOwner()->ForceNetUpdate();
     const auto GrantedHandle = Spec.Handle;
     ASC->GiveAbility(Spec);
     if (ReadyASC() != ASC || !OwnsDashAbility(ASC, GrantedHandle)) ReleaseDashAbility();
+}
+
+bool URPGRidingComponent::TryGetDashGrant(FRPGRidingDashGrant& Out) const
+{
+    Out = {};
+    const auto* Pawn = Cast<APawn>(GetOwner());
+    const auto* PC = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
+    if (bEnding || !IsRegistered() || !IsValid(Pawn) || Pawn->IsActorBeingDestroyed() || !IsValid(PC)
+        || PC->GetPawn() != Pawn || PC->GetWorld() != GetWorld() || !DashGrant.Matches(State)) return false;
+    UAbilitySystemComponent* ASC;
+    const auto Handle = FindDashAbility(ASC);
+    const auto* Spec = Handle.IsValid() ? ASC->FindAbilitySpecFromHandle(Handle) : nullptr;
+    if (!Spec || Handle != DashGrant.AbilityHandle) return false;
+    if (Pawn->HasAuthority())
+    {
+        FRPGRidingDashProfile P;
+        if (!OwnsDashAbility(ASC, Handle) || !Session->Runtime->CopyDashProfile(P)
+            || P.Distance != DashGrant.Distance || P.Duration != DashGrant.Duration || P.Cooldown != DashGrant.Cooldown) return false;
+    }
+    else if (Pawn->GetLocalRole() != ROLE_AutonomousProxy || !Pawn->IsLocallyControlled() || !PC->IsLocalController()) return false;
+    Out = DashGrant;
+    return true;
+}
+
+bool URPGRidingComponent::IsDashActivationCurrent(const FRPGRidingDashActivation& Activation) const
+{
+    FRPGRidingDashGrant Current;
+    if (!Activation.IsValid() || !TryGetDashGrant(Current) || !Current.SameGrant(Activation.Grant)) return false;
+    const auto* ASC = DashAbilityOwner.Get();
+    const auto* Spec = ASC ? ASC->FindAbilitySpecFromHandle(Current.AbilityHandle) : nullptr;
+    const auto* Ability = Spec ? Spec->GetPrimaryInstance() : nullptr;
+    return Spec && Spec->IsActive() && Ability && Ability->IsActive()
+        && Ability->GetCurrentActivationInfo().GetActivationPredictionKey() == Activation.PredictionKey;
 }
 
 FGameplayAbilitySpecHandle URPGRidingComponent::FindDashAbility(UAbilitySystemComponent*& OutASC) const
@@ -434,6 +492,8 @@ bool URPGRidingComponent::CanRequestDash() const
     const auto Handle = FindDashAbility(ASC);
     const auto* Spec = Handle.IsValid() ? ASC->FindAbilitySpecFromHandle(Handle) : nullptr;
     if (!Spec || Spec->IsActive()) return false;
+    FRPGRidingDashGrant Approved;
+    if (!TryGetDashGrant(Approved) || Approved.AbilityHandle != Handle) return false;
     if (Pawn->HasAuthority()) return OwnsDashAbility(ASC, Handle) && EvaluateDashAdmission(State.Key) == ERPGRidingResultCode::Applied;
     if (!Pawn->IsLocallyControlled() || Pawn->GetLocalRole() != ROLE_AutonomousProxy || !PC->IsLocalController()) return false;
     const auto* PS = Pawn->GetPlayerState();
@@ -475,11 +535,12 @@ ERPGRidingResultCode URPGRidingComponent::EvaluateDashAdmission(const FRPGRiding
 }
 
 ERPGRidingResultCode URPGRidingComponent::TryBeginDash(FRPGRidingStateKey Expected, FVector Direction,
-    TFunctionRef<bool(const FRPGRidingDashProfile&, const FVector&)> Preflight, FRPGRidingDashTicket& Out)
+    TFunctionRef<bool(const FRPGRidingDashProfile&, const FVector&)> Preflight, FRPGRidingDashTicket& Out, FRPGRidingDashActivation Activation)
 {
     Out = {};
     if (bPreparingDash || bApplying) return ERPGRidingResultCode::Busy;
     if (Direction.ContainsNaN() || Direction.Z != 0 || !Direction.IsNormalized()) return ERPGRidingResultCode::ActionBlocked;
+    if (!Activation.IsEmpty() && !IsDashActivationCurrent(Activation)) return ERPGRidingResultCode::StaleState;
     auto Result = EvaluateDashAdmission(Expected);
     if (Result != ERPGRidingResultCode::Applied) return Result;
     if (State.Key.ActionSequence >= MAX_uint32 - 1) return ERPGRidingResultCode::NotReady;
@@ -492,9 +553,12 @@ ERPGRidingResultCode URPGRidingComponent::TryBeginDash(FRPGRidingStateKey Expect
     if (Session != S) return ERPGRidingResultCode::AuthorityRevoked;
     Result = EvaluateDashAdmission(Expected);
     if (Result != ERPGRidingResultCode::Applied) return Result;
+    if (!Activation.IsEmpty() && !IsDashActivationCurrent(Activation)) return ERPGRidingResultCode::StaleState;
+    const FGuid Execution = Activation.IsEmpty() ? FGuid::NewGuid() : Activation.ExecutionFor(Expected);
+    if (!Execution.IsValid()) return ERPGRidingResultCode::StaleState;
     auto Approved = State;
     ++Approved.Key.ActionSequence;
-    Approved.Action = ERPGRidingAction::Dash; Approved.ExecutionId = FGuid::NewGuid();
+    Approved.Action = ERPGRidingAction::Dash; Approved.ExecutionId = Execution;
     Approved.ActionDuration = Profile.Duration; Approved.ActionDirection = Direction;
     Approved.ActionStartServerWorldSeconds = GetWorld()->GetTimeSeconds();
     Approved.LastEndReason = ERPGRidingEndReason::None;

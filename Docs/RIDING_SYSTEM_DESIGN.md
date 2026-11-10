@@ -1,7 +1,7 @@
 # Riding System 상세 설계 v1 — 로스트아크 벤치마크
 
 - 작성·상세화: 2026-11-06
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭·기존 회피 키 입력·RMS 실행 식별/재생 보호 구현 / 단위별 검증은 코드 설계14~24절 / 제품 보유 API·Dash LocalPredicted 이동·Emote·맵 배치/최종 자세·다인 네트워크 검증 후속**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭·기존 회피 키 입력·RMS 실행 식별/재생 보호·소유자 승인 프로필/GAS 키 결합 구현 / 단위별 검증은 코드 설계14~25절 / 제품 보유 API·Dash LocalPredicted 이동·Emote·맵 배치/최종 자세·다인 네트워크 검증 후속**
 - 담당: `riding-detail-20261106`
 - 대체 문서: 기존 `MOUNT_SYSTEM_DESIGN.md` 초안. 그 경로는 이 문서로 안내한다.
 - 구현 구조: [Riding System 아키텍처](RIDING_SYSTEM_ARCHITECTURE.md) — 클래스 책임·의존 방향·수명·기존 코드 연결·구현 분할. 게임 규칙과 저장 계약은 본 문서를 기준으로 한다.
@@ -237,6 +237,7 @@ Mounted에서는 600에 기존 절대 상한을 적용하고 전투 MoveSpeed �
 Dash는 기존 GAS의 LocalPredicted 능력으로 구현한다.
 클라이언트는 이미 승인된 Mounted 상태에서 입력 방향과 고정 정책으로 RMS를 예측 생성한다.
 서버는 활성화/방향·상태/쿨타임을 검사하고 승인된 prediction key에 ExecutionId를 연결한다.
+현재 [승인 프로필/GAS 키 구현](RIDING_SYSTEM_CODE_DESIGN.md#25-m2-dash-승인-프로필과-gas-활성화-키--2026-11-10)은 서버가 지급한 spec handle·탑승 세대·카탈로그 버전·거리/시간/쿨타임을 소유자 전용 불변 grant로 묶고, 실제 활성 GAS 키와 시작 전 ActionSequence에서 같은 실행 식별자를 계산한다. 프로필과 식별자만으로 권한이 생기지 않으며 현재 소유·활성 spec·서버 승인 조건을 다시 검사한다. GAS는 ServerOnly여서 현재 실제 활성화 키도 서버 발급 키다. 클라이언트 입력 intent 전송·LocalPredicted 실행/거절·원격 RMS 매핑은 후속이다.
 기존 GAS 예측/거절 경로를 사용하며 클라이언트에 새로운 능력 지급 권한을 주지 않는다.
 
 실제 이동은 CMC의 Root Motion Source와 capsule sweep을 사용한다.

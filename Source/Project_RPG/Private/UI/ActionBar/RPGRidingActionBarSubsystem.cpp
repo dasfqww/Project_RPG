@@ -69,6 +69,8 @@ public:
             }
             auto* C = Riding.Get();
             View.bAvailable = C && C->CanRequestDash();
+            FRPGRidingDashGrant Grant;
+            if (C && C->TryGetDashGrant(Grant)) View.CooldownDuration = Grant.Cooldown;
             View.UnavailableReason = LOCTEXT("DashUnavailable", "현재 질주를 사용할 수 없습니다.");
             const auto* PS = GetActionBarPawn()->GetPlayerState();
             const auto* S = PS ? PS->FindComponentByClass<URPGRidingSessionComponent>() : nullptr;
