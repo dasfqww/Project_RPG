@@ -898,3 +898,33 @@ Temp/자기 프로세스/컨테이너/정리 예외0이며 근거는 Saved/Build
 
 이 변경은 로컬 화면의 신선도 조건만 강화한다. 백엔드 정산, 장비 캐시의 자산 값, 원래 거래 명령의 재전송 계약은 유지한다.
 회귀 검사는 첫 완료 조회→닫기→다음 거래 관측→다음 완료 응답→첫 ticker 전 이전 요약 차단→새 조회 후 표시를 확인한다.
+
+## 26. 미확정 거래 명령 저널 기반 (2026-11-10)
+
+재시작 뒤에도 원래 명령을 재전송할 수 있도록 `FRPGTradeClient::ExportPending/RestorePending`과
+`FRPGTradeIntentJournal`을 추가한다. 이번 단위는 저장·검증·클라이언트 상태 복원 API까지다.
+기존 coordinator/LocalPlayer/로비가 이 API를 자동 호출하는 연결은 후속이며, 현재 화면의 재시작 자동 복구가 완료됐다는 뜻은 아니다.
+
+- scope는 정규화한 endpoint·계정·캐릭터다. credential/query/fragment가 섞인 endpoint는 거절한다.
+  디스크 파일명과 scope 필드는 별도 SHA-256 영역의 해시이며 raw endpoint/계정과 인증 토큰은 기록하지 않는다.
+  파일에는 version 문자열 `1`, scope 해시, 캐릭터·거래·요청 ID, 원래 상대 경로·본문과 전체 명령 지문만 기록한다.
+- 모든 원래 명령 7종의 경로/본문 일치, 정확한 ID, 중복/알 수 없는 필드, 정규 10진 revision/금액,
+  최대 8개 물품·정수 quantity와 16KiB 본문 한도를 검사한다. 원래 JSON 본문은 다시 직렬화하지 않는다.
+  지문은 손상·다른 scope의 파일 오용을 검출하는 장치이며 서버 권한 확인이나 정산 영수증을 대신하지 않는다.
+- Windows에서 scope별 배타 `.lock`을 잡고 읽기/생성/비교 삭제한다. 동일 디렉터리의 임시 파일을 flush한 뒤
+  기존 대상을 교체하지 않는 move로 생성한다. 기존/손상/새 버전·64KiB 초과 파일은 보존하며 새 명령으로 덮어쓰지 않는다.
+  junction/symlink와 상대·드라이브 루트 경로는 거절한다. 다른 플랫폼은 검증된 배타 잠금 구현 전까지 Unavailable이다.
+- 복원은 같은 scope에 바인딩한 빈 클라이언트에만 가능하다. 과거 callback ticket을 무효화하고 세션 결과를 추정하지 않으며,
+  저장 시점이 Prepared였어도 반드시 Unknown으로 복원한다. 이후 active-null 또는 일반 400/403/404/409로 원래 명령을 지우지 않는다.
+  일치하는 서버 영수증이 기존 클라이언트의 확인 규칙을 통과해야 불확정 상태가 해소된다.
+- `Clear`는 scope·요청/거래 ID·경로·원문 본문을 같은 잠금에서 비교한다. 호출자는 확인된 결과에 대해서만 삭제해야 한다.
+  후속 coordinator는 전송 전 저장 실패와 결과 확인 후 삭제 실패를 모두 새 명령 차단 상태로 유지해야 한다.
+
+유지 러너 `Scripts/Tests/Run-TradeIntentJournalTests.ps1`는 원래 거래 상태 회귀와 실제 Windows 파일 I/O를 검사하고,
+UE writer가 종료된 뒤 별도 UE reader에서 저장한 요청 ID·경로·본문을 복원하는 두 프로세스 검사를 수행한다.
+실제 HTTP/PG 재전송, coordinator 저장 장벽, 로비 재로그인/자동 재개와 Steam 검증은 이 단위의 범위가 아니다.
+
+최종 독립 UE 모듈 빌드·링크와 writer 11개/별도 reader 1개가 Success·오류/경고0·두 UE 종료0으로 통과했다.
+정수 JSON 원문 처리와 초대 fixture 형식의 초기 실패를 보완했으며, 손상 보존·scope 격리·배타 잠금/junction 거절과
+원래 명령의 Unknown 복원·일치 영수증 확인을 포함한다. 자기 세 사본/fixture 76,553,396 bytes를 폐기하고 작은 근거만 유지했다.
+근거: `Saved/BuildChecks/TradeIntentJournal-20261110/Completion.json`. 폐기한 모듈 해시는 당시 실행 증거다.

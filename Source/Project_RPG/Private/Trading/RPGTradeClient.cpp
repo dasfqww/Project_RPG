@@ -164,6 +164,78 @@ const TCHAR* ActionName(ERPGTradeAction Action)
     default: return nullptr;
     }
 }
+
+bool ReadIntent(const FRPGTradePendingIntent& Intent, FGuid& Invitee)
+{
+    Invitee.Invalidate();
+    const auto& R=Intent.Request;
+    if (!Intent.Scope.IsValid() || !R.RequestId.IsValid() || !R.TradeId.IsValid()) return false;
+    const FString Prefix=TEXT("/api/characters/")+Id(Intent.Scope.Character)+TEXT("/trades/")+Id(R.TradeId)+TEXT("/");
+    const TCHAR* Action=nullptr;
+    for (const auto A : {ERPGTradeAction::Invite,ERPGTradeAction::Accept,ERPGTradeAction::Offer,ERPGTradeAction::Ready,ERPGTradeAction::Withdraw,ERPGTradeAction::Confirm,ERPGTradeAction::Cancel})
+        if (R.RelativePath==Prefix+ActionName(A)) Action=ActionName(A);
+    FObject Obj; FGuid Request; int64 Revision=0,OfferRevision=0;
+    if (!Action || !ReadObject(R.Body,Obj,16384) || !Guid(Obj,TEXT("requestId"),Request) || Request!=R.RequestId) return false;
+    if (FCString::Strcmp(Action,TEXT("invite"))==0)
+        return Obj->Values.Num()==2 && Guid(Obj,TEXT("inviteeCharacterId"),Invitee) && Invitee!=Intent.Scope.Character;
+    const bool Consent=FCString::Strcmp(Action,TEXT("ready"))==0 || FCString::Strcmp(Action,TEXT("confirm"))==0;
+    const bool Offer=FCString::Strcmp(Action,TEXT("offer"))==0;
+    if (Obj->Values.Num()!=(Consent||Offer ? 3 : 2) || !Integer(Obj,TEXT("expectedRevision"),Revision,true) || Revision==MAX_int64) return false;
+    if (Consent && (!Integer(Obj,TEXT("expectedOfferRevision"),OfferRevision,true) || OfferRevision==MAX_int64 || OfferRevision>Revision)) return false;
+    if (Offer)
+    {
+        const FObject* OfferObj;FRPGTradeOffer Value;
+        if (!Obj->TryGetObjectField(TEXT("offer"),OfferObj) || (*OfferObj)->Values.Num()!=2 || !ReadOffer(*OfferObj,Value)) return false;
+        // Unlike session display, an original request must contain integer JSON tokens.
+        FObject Lexical;
+        if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(R.Body),Lexical,FJsonSerializer::EFlags::StoreNumbersAsStrings)) return false;
+        const auto& Rows=(*OfferObj)->GetArrayField(TEXT("items"));
+        const auto& RawRows=Lexical->GetObjectField(TEXT("offer"))->GetArrayField(TEXT("items"));
+        for (int32 I=0;I<Rows.Num();++I)
+        {
+            int64 Quantity=0;FString Token;const auto Raw=RawRows[I]->AsObject()->TryGetField(TEXT("quantity"));
+            if (Rows[I]->AsObject()->Values.Num()!=3 || !Raw || !Raw->TryGetString(Token))return false;
+            auto Number=MakeShared<FJsonObject>();Number->SetStringField(TEXT("quantity"),Token);
+            if(!Integer(Number,TEXT("quantity"),Quantity,true) || Quantity>MAX_int32)return false;
+        }
+    }
+    return true;
+}
+}
+
+bool FRPGTradeIntentScope::Create(FString Endpoint, const FString& Account, FGuid Character, FRPGTradeIntentScope& Out)
+{
+    Out={};Endpoint.TrimStartAndEndInline();while(Endpoint.EndsWith(TEXT("/")))Endpoint.LeftChopInline(1);
+    FRPGTradeIntentScope Candidate{MoveTemp(Endpoint),Account,Character};
+    if(!Candidate.IsValid())return false;Out=MoveTemp(Candidate);return true;
+}
+bool FRPGTradeIntentScope::IsValid() const
+{
+    if(!Character.IsValid() || Account.IsEmpty() || Account.Len()>128 || Endpoint.Len()<=8 || Endpoint.Len()>2048
+        || !(Endpoint.StartsWith(TEXT("http://")) || Endpoint.StartsWith(TEXT("https://"))) || Endpoint.EndsWith(TEXT("/"))
+        || Endpoint.Contains(TEXT("@")) || Endpoint.Contains(TEXT("?")) || Endpoint.Contains(TEXT("#")) || Endpoint.Contains(TEXT("\\")))return false;
+    for(TCHAR C:Endpoint)if(FChar::IsControl(C)||FChar::IsWhitespace(C))return false;
+    for(TCHAR C:Account)if(!((C>='a'&&C<='z')||(C>='A'&&C<='Z')||(C>='0'&&C<='9')||C=='.'||C=='_'||C=='-'))return false;
+    return true;
+}
+bool FRPGTradeIntentScope::operator==(const FRPGTradeIntentScope& Other) const
+{return Endpoint==Other.Endpoint && Account==Other.Account && Character==Other.Character;}
+bool FRPGTradePendingIntent::IsValid() const {FGuid Invitee;return RPGTradeClient::ReadIntent(*this,Invitee);}
+
+bool FRPGTradeClient::ExportPending(FRPGTradePendingIntent& Out) const
+{
+    Out={};if(!Pending.IsSet())return false;
+    FRPGTradePendingIntent Candidate{{BoundEndpoint,BoundAccount,BoundCharacter},*Pending};
+    if(!Candidate.IsValid())return false;Out=MoveTemp(Candidate);return true;
+}
+bool FRPGTradeClient::RestorePending(const FRPGTradePendingIntent& Intent)
+{
+    FGuid Invitee;
+    if(Pending.IsSet() || Session.IsSet() || Intent.Scope.Endpoint!=BoundEndpoint || Intent.Scope.Account!=BoundAccount
+        || Intent.Scope.Character!=BoundCharacter || !RPGTradeClient::ReadIntent(Intent,Invitee))return false;
+    Generation=FGuid::NewGuid();Sequence=0;AttemptTicket={};ReadTicket={};ReadTradeId.Invalidate();
+    Pending=Intent.Request;Pending->Delivery=ERPGTradeDelivery::Unknown;PendingInvitee=Invitee;
+    bHadUncertainAttempt=true;LastRejection.Reset();return true;
 }
 
 bool FRPGTradeItem::operator==(const FRPGTradeItem& Other) const

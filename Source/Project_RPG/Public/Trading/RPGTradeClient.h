@@ -53,6 +53,23 @@ struct PROJECT_RPG_API FRPGTradeRequest
     ERPGTradeDelivery Delivery = ERPGTradeDelivery::Prepared;
 };
 
+struct PROJECT_RPG_API FRPGTradeIntentScope
+{
+    FString Endpoint, Account;
+    FGuid Character;
+    static bool Create(FString Endpoint, const FString& Account, FGuid Character, FRPGTradeIntentScope& Out);
+    bool IsValid() const;
+    bool operator==(const FRPGTradeIntentScope& Other) const;
+};
+
+/** Original command bytes only; no credential or inferred server result. */
+struct PROJECT_RPG_API FRPGTradePendingIntent
+{
+    FRPGTradeIntentScope Scope;
+    FRPGTradeRequest Request;
+    bool IsValid() const;
+};
+
 /** Game-thread state for the authenticated HTTP adapter. No UObject, credentials, timers or I/O.
  *  Pending requests are immutable until a matching receipt or a definitive FIRST-attempt refusal.
  *  Bind/Reset are identity boundaries, NOT a timeout/retry operation. In-memory lifetime only.
@@ -66,6 +83,9 @@ public:
     const FRPGTradeRequest* GetPending() const { return Pending.IsSet() ? &Pending.GetValue() : nullptr; }
     const FString& GetLastRejection() const { return LastRejection; }
     bool ClearClosedSession();
+    bool ExportPending(FRPGTradePendingIntent& Out) const;
+    // A restored command is always Unknown, even if it was saved before its first send.
+    bool RestorePending(const FRPGTradePendingIntent& Intent);
 
     bool PrepareInvite(const FGuid& InviteeCharacterId);
     bool Prepare(ERPGTradeAction Action, const FRPGTradeOffer* Offer = nullptr);
