@@ -3,6 +3,7 @@
 #include "Narrative/RPGScenarioManager.h"
 #include "Narrative/RPGDialogueManager.h"
 #include "Narrative/RPGNarrativeTransport.h"
+#include "Narrative/RPGNarrativeHistory.h"
 #include "Online/RPGDungeonSessionSubsystem.h"
 #include "Manager/HttpWebManager.h"
 #include "Engine/GameInstance.h"
@@ -46,6 +47,25 @@ bool URPGNarrativeCoordinator::ContextMatches() const
     return !bShuttingDown && IsInGameThread() && Transport && SelectedCharacter.IsValid()
         && Transport->GetContext(CurrentEndpoint, CurrentSteam) && CurrentEndpoint == Endpoint && CurrentSteam == SteamId;
 }
+TSharedPtr<FRPGNarrativeHistoryClient> URPGNarrativeCoordinator::GetAccountHistoryClient()
+{
+    if (bShuttingDown || !EnsureTransport()) return nullptr;
+    if (!HistoryClient)
+    {
+        auto* Player = GetLocalPlayer(); auto* Instance = Player ? Player->GetGameInstance() : nullptr;
+        auto* Web = Instance ? Instance->GetSubsystem<UHttpWebManager>() : nullptr;
+        if (!Web) return nullptr;
+        const TWeakObjectPtr<ThisClass> WeakThis(this);
+        HistoryClient = MakeShared<FRPGNarrativeHistoryClient>(MakeShared<FRPGHttpNarrativeTransport>(Web),
+            [WeakThis](const FGuid Id)
+            {
+                const auto* Owner = WeakThis.Get(); FGuid ActualSelection;
+                return Owner && Owner->SelectedCharacter == Id && Owner->ContextMatches() && Owner->DungeonFlow
+                    && FGuid::Parse(Owner->DungeonFlow->GetSelectedCharacterId(), ActualSelection) && ActualSelection == Id;
+            });
+    }
+    return HistoryClient;
+}
 bool URPGNarrativeCoordinator::HasCurrentSnapshot() const
 {
     return bHasView && ContextMatches() && Quests && Scenarios && Dialogues
@@ -66,6 +86,7 @@ bool URPGNarrativeCoordinator::SelectCharacter(const FGuid CharacterId)
     // Another account cannot inherit this account's display or pending request.
     if (HasPendingChoice() && CurrentEndpoint == Endpoint && CurrentSteam == SteamId) return false;
     if (!BindManagers()) return false;
+    if (HistoryClient) HistoryClient->Reset();
     ++RequestGeneration; Transport->Cancel(); PendingChoice.Reset(); PendingDungeon.Reset(); PendingBody.Reset();
     FTSTicker::GetCoreTicker().RemoveTicker(DungeonSyncTick); DungeonSyncTick.Reset(); bDungeonRefreshNeeded = false; LastObservedDungeonResult.Invalidate();
     SelectedCharacter = CharacterId; Endpoint = MoveTemp(CurrentEndpoint); SteamId = MoveTemp(CurrentSteam);
@@ -142,7 +163,7 @@ void URPGNarrativeCoordinator::Receive(const uint64 Generation, const bool bWrit
     if (bDecoded)
     {
         const bool bWasDungeon = PendingDungeon.IsSet();
-        if (bWrite) { PendingChoice.Reset(); PendingDungeon.Reset(); PendingBody.Reset(); }
+        if (bWrite) { PendingChoice.Reset(); PendingDungeon.Reset(); PendingBody.Reset(); if (HistoryClient) HistoryClient->Reset(); }
         Apply(MoveTemp(Snapshot)); OnRequestFinished.Broadcast(true, FString(), false);
         if (bWrite) ScheduleDungeonSync(true, !bWasDungeon);
         else if (bDungeonRefreshNeeded || !DungeonCandidates.IsEmpty()) ScheduleDungeonSync(false);
@@ -183,6 +204,8 @@ void URPGNarrativeCoordinator::Deinitialize()
     if (DungeonFlow) DungeonFlow->OnDungeonSessionChanged.RemoveDynamic(this, &ThisClass::HandleDungeonSessionChanged);
     if (DungeonFlow) DungeonFlow->OnFlowStateChanged.RemoveDynamic(this, &ThisClass::HandleDungeonFlowChanged);
     if (Transport) Transport->Cancel();
+    if (HistoryClient) HistoryClient->Reset();
+    HistoryClient.Reset();
     Transport.Reset(); bBusy = false; PendingChoice.Reset(); PendingDungeon.Reset(); PendingBody.Reset(); ClearView();
     DungeonFlow = nullptr;
     Quests = nullptr; Scenarios = nullptr; Dialogues = nullptr;

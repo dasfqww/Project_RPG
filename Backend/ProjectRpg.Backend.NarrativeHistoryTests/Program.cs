@@ -94,6 +94,15 @@ static async Task Cases(IGameRepository game, Func<INarrativeHistoryRepository> 
     await Complete(hero, "Q.A");
     var direct = await history.LoadAsync(hero.CharacterId, owner, default);
     Check(direct.Chapters.SequenceEqual([new("Chapter.A1", true, true), new("Chapter.A2", true, true), new("Chapter.Z", true, false)]), "Stable union/dedup/selected flags failed");
+    var titled = new NarrativeCatalog(catalog.Version, catalog.Quests.Values,
+        catalog.Chapters.Values.Select(c => c with { Title = c.Id == "Chapter.Z" ? "서장" : null }), catalog.Dialogues.Values);
+    Check((await new NarrativeAccountHistory(reopen(), titled).LoadAsync(hero.CharacterId, owner, default))
+        .Chapters.Single(c => c.ChapterId == "Chapter.Z").Title == "서장", "Cosmetic chapter title lost");
+    foreach (var title in new[] { "", "   ", new string('x', 257) })
+    {
+        try { _ = new NarrativeCatalog(11, catalog.Quests.Values, catalog.Chapters.Values.Select(c => c with { Title = title }), catalog.Dialogues.Values); throw new Failure("Invalid title accepted"); }
+        catch (ArgumentException e) when (e.Message == "invalid_chapter_definition") { }
+    }
     var before = await repository.LoadNarrativeAsync(alt.CharacterId, owner, default);
     var growth = JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(alt.CharacterId, clock.GetUtcNow(), default));
     string? fingerprint = source is null ? null : await Fingerprint(source);
@@ -108,7 +117,7 @@ static async Task Cases(IGameRepository game, Func<INarrativeHistoryRepository> 
         try { await history.LoadAsync(alt.CharacterId, owner, cancellation.Token); throw new Failure("Cancellation ignored"); }
         catch (OperationCanceledException) { }
     }
-    await Http(game, catalog, hero, alt, foreign);
+    await Http(game, titled, hero, alt, foreign);
     Check(JsonSerializer.Serialize(before) == JsonSerializer.Serialize(await repository.LoadNarrativeAsync(alt.CharacterId, owner, default)), "History changed selected progress");
     Check(before.Revision == 0 && before.Quests.IsEmpty && before.StoryUnlocks.IsEmpty && before.CompletedChapters.IsEmpty, "Account completion became selected unlocks");
     Check(growth == JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(alt.CharacterId, clock.GetUtcNow(), default)), "History changed growth");
@@ -186,6 +195,8 @@ static async Task Http(IGameRepository game, NarrativeCatalog catalog, GameChara
             && body.EnumerateObject().Count() == 3 && body.GetProperty("chapters").GetArrayLength() == 3, "History DTO shape failed");
         Check(!body.ToString().Contains(hero.CharacterId.ToString()) && !body.ToString().Contains(foreign.CharacterId.ToString())
             && !body.ToString().Contains(alt.SteamId) && !body.ToString().Contains("Story."), "History leaks identities/unlocks");
+        Check(body.GetProperty("chapters").EnumerateArray().Single(c => c.GetProperty("chapterId").GetString() == "Chapter.Z")
+            .GetProperty("title").GetString() == "서장", "HTTP chapter title missing");
         foreach (var id in new[] { foreign.CharacterId, Guid.NewGuid() })
         {
             using var denied = await client.GetAsync(route.Replace(alt.CharacterId.ToString(), id.ToString()));

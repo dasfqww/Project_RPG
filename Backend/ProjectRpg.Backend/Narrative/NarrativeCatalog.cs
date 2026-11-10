@@ -78,6 +78,7 @@ public sealed class NarrativeCatalog
         foreach (string id in Quests.Keys) Visit(id);
         foreach (ChapterDefinition c in Chapters.Values)
             Require(NarrativeCommand.ValidId(c.Id) && !c.RequiredQuests.IsDefaultOrEmpty
+                && (c.Title is null || !string.IsNullOrWhiteSpace(c.Title) && c.Title.Length <= 256)
                 && c.RequiredQuests.All(Quests.ContainsKey) && !c.StoryUnlocks.IsDefault
                 && c.StoryUnlocks.All(NarrativeCommand.ValidId)
                 && c.RequiredQuests.Length == c.RequiredQuests.Distinct().Count()

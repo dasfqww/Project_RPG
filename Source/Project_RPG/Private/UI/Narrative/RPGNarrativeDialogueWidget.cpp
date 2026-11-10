@@ -14,6 +14,7 @@
 #include "Narrative/RPGNarrativeCoordinator.h"
 #include "Narrative/RPGDialogueManager.h"
 #include "Narrative/RPGQuestManager.h"
+#include "UI/Narrative/RPGNarrativeHistoryPanel.h"
 #include "Narrative/RPGNarrativePresentation.h"
 #include "Actor/Narrative/RPGNarrativeNPC.h"
 #include "GameFramework/PlayerController.h"
@@ -67,6 +68,8 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
         auto* JournalScroll = WidgetTree->ConstructWidget<UScrollBox>(); JournalHeight->SetContent(JournalScroll);
         Journal = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("NarrativeQuestJournal"));
         Journal->SetAutoWrapText(true); JournalScroll->AddChild(Journal);
+        AccountHistory = WidgetTree->ConstructWidget<URPGNarrativeHistoryPanel>(URPGNarrativeHistoryPanel::StaticClass(), TEXT("NarrativeAccountHistory"));
+        JournalScroll->AddChild(AccountHistory);
         auto* Height = WidgetTree->ConstructWidget<USizeBox>(); Height->SetHeightOverride(180.f); Page->AddChildToVerticalBox(Height);
         auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>(); Height->SetContent(Scroll);
         Actions = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("NarrativeActions")); Scroll->AddChild(Actions);
@@ -82,6 +85,7 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
         RetryButton->OnClicked.AddUniqueDynamic(this, &ThisClass::RetryChoice);
         Button(TEXT("NarrativeClose"), NSLOCTEXT("RPGNarrative", "Close", "닫기"))->OnClicked.AddUniqueDynamic(this, &ThisClass::CloseScreen);
     }
+    if (AccountHistory && Coordinator && Character.IsValid()) AccountHistory->Configure(Coordinator->GetAccountHistoryClient(), Character);
     return Super::RebuildWidget();
 }
 bool URPGNarrativeDialogueWidget::MatchesSelection() const
@@ -128,6 +132,7 @@ bool URPGNarrativeDialogueWidget::OpenContext(const FGuid CharacterId)
     if (bNPCContext && !Flow->HasPendingChoice()) Flow->CloseDialogue();
     Coordinator->OnChanged.AddUniqueDynamic(this, &ThisClass::HandleChanged);
     Coordinator->OnRequestFinished.AddUniqueDynamic(this, &ThisClass::HandleFinished);
+    if (AccountHistory) AccountHistory->Configure(Coordinator->GetAccountHistoryClient(), Character);
     if (bNPCContext)
     {
         const auto* Skills = GetOwningPlayer()->FindComponentByClass<URPGSkillWindowComponent>();

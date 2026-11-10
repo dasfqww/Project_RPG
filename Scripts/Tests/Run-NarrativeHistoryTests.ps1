@@ -12,6 +12,8 @@ $containerName='rpg-narrative-history-'+$runId;$containerId=$null
 $result=[ordered]@{Passed=$false;BaseCommit=$null;Postgres=[bool]$Postgres;Inputs=@();InputsUnchanged=$false;Cleanup=$null;ContainerDeleted=$false;TempDeleted=$false;Failure=$null}
 $result.RunnerSHA256=(Get-FileHash -LiteralPath $PSCommandPath).Hash
 $overlay=@(
+ 'Backend/ProjectRpg.Backend/Narrative/NarrativeTypes.cs',
+ 'Backend/ProjectRpg.Backend/Narrative/NarrativeCatalog.cs',
  'Backend/ProjectRpg.Backend/Data/INarrativeHistoryRepository.cs',
  'Backend/ProjectRpg.Backend/Data/InMemoryGameRepository.NarrativeHistory.cs',
  'Backend/ProjectRpg.Backend/Data/PostgresGameRepository.NarrativeHistory.cs',

@@ -4,7 +4,7 @@ using ProjectRpg.Backend.Data;
 namespace ProjectRpg.Backend.Narrative;
 
 public sealed record AccountChapterHistory(string ChapterId,
-    bool CompletedOnSelectedCharacter, bool CompletedOnOtherCharacter);
+    bool CompletedOnSelectedCharacter, bool CompletedOnOtherCharacter, string? Title = null);
 public sealed record NarrativeAccountHistoryView(Guid CharacterId, int CatalogVersion,
     ImmutableArray<AccountChapterHistory> Chapters);
 
@@ -32,6 +32,6 @@ public sealed class NarrativeAccountHistory(INarrativeHistoryRepository reposito
         }
         return new(characterId, catalog.Version,
             [.. selected.Union(others).Order(StringComparer.Ordinal)
-                .Select(id => new AccountChapterHistory(id, selected.Contains(id), others.Contains(id)))]);
+                .Select(id => new AccountChapterHistory(id, selected.Contains(id), others.Contains(id), catalog.Chapters[id].Title))]);
     }
 }

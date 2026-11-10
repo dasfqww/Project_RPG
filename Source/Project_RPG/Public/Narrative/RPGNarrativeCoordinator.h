@@ -11,6 +11,7 @@ class URPGQuestManager;
 class URPGScenarioManager;
 class URPGDialogueManager;
 class IRPGNarrativeTransport;
+class FRPGNarrativeHistoryClient;
 class URPGDungeonSessionSubsystem;
 struct FRPGDungeonSession;
 
@@ -42,6 +43,7 @@ public:
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") URPGDialogueManager* GetDialogueManager() const { return Dialogues; }
     UPROPERTY(BlueprintAssignable, Category="RPG|Narrative") FRPGNarrativeChanged OnChanged;
     UPROPERTY(BlueprintAssignable, Category="RPG|Narrative") FRPGNarrativeRequestFinished OnRequestFinished;
+    TSharedPtr<FRPGNarrativeHistoryClient> GetAccountHistoryClient();
 private:
     friend struct FRPGNarrativeTestAccess;
     bool BindManagers();
@@ -60,6 +62,7 @@ private:
     UPROPERTY(Transient) TObjectPtr<URPGDialogueManager> Dialogues;
     UPROPERTY(Transient) TObjectPtr<URPGDungeonSessionSubsystem> DungeonFlow;
     TSharedPtr<IRPGNarrativeTransport> Transport;
+    TSharedPtr<FRPGNarrativeHistoryClient> HistoryClient;
     TOptional<FRPGNarrativeCommand> PendingChoice;
     TOptional<FRPGNarrativeDungeonCommand> PendingDungeon;
     TArray<FRPGNarrativeDungeonCandidate> DungeonCandidates;
