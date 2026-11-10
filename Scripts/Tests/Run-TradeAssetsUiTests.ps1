@@ -36,6 +36,7 @@ try {
     $files += @('Source/Project_RPG/Private/Tests/RPGTradeTargetUiTests.cpp')
     $files += @('Source/Project_RPG/Public/Trading/RPGTradeAssets.h','Source/Project_RPG/Private/Trading/RPGTradeAssets.cpp','Source/Project_RPG/Public/Economy/RPGCurrencyTypes.h','Source/Project_RPG/Public/Economy/Backend/RPGEconomyBackendTypes.h','Source/Project_RPG/Public/Economy/Backend/RPGEconomyBackendJsonCodec.h','Source/Project_RPG/Private/Economy/Backend/RPGEconomyBackendJsonCodec.cpp')
     $files += @('Source/Project_RPG/Private/Tests/RPGTradeAssetsUiTests.cpp','Source/Project_RPG/Public/Progression/RPGEquipmentReadGuard.h')
+    $files += @('Source/Project_RPG/Public/Trading/RPGTradeIntentJournal.h','Source/Project_RPG/Private/Trading/RPGTradeIntentJournal.cpp')
     foreach ($relative in $files) {
         $source = Join-Path $workspace $relative
         $destination = Join-Path $project $relative
@@ -74,6 +75,7 @@ public class Project_RPG : ModuleRules {
         PCHUsage = PCHUsageMode.NoPCHs;
         bUseUnity = false;
         PublicDependencyModuleNames.AddRange(new string[] {"RPGInventoryRuntime", "Core", "CoreUObject", "Engine", "Json", "HTTP", "UMG", "Slate", "SlateCore", "InputCore"});
+        AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenSSL");
     }
 }
 '@

@@ -9,6 +9,7 @@
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
 #include "Progression/RPGEquipmentMutationSubsystem.h"
 #include "HAL/PlatformTime.h"
+#include "Misc/Paths.h"
 #include "Item/Policy/RPGItemInventoryPolicy.h"
 
 void URPGTradeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -53,7 +54,8 @@ TSharedPtr<FRPGTradeLobbyOwner> URPGTradeSubsystem::GetTradeOwner()
         if (!GI || GI->GetFirstGamePlayer() != Player || !Web) return nullptr;
         TWeakObjectPtr<ThisClass> WeakThis(this);
         Owner = FRPGTradeLobbyOwner::Create(Web->CreatePlayerTradeTransport(), [WeakThis]
-            { auto* Self = WeakThis.Get(); return Self ? Self->ReadContext() : FRPGTradeLobbyContext{}; });
+            { auto* Self = WeakThis.Get(); return Self ? Self->ReadContext() : FRPGTradeLobbyContext{}; }, {},
+            FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir()/TEXT("TradingIntents/v1")));
         Owner->SetDefinitionResolver([WeakThis](const FRPGTradeItemDetails& Item, FText& Name, FText& Description)
             { const auto* Self = WeakThis.Get(); return Self && Self->ResolveItem(Item,Name,Description); });
         EquipmentReader = GI->GetSubsystem<URPGEquipmentMutationSubsystem>();

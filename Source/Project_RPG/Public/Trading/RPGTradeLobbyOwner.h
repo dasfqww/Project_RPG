@@ -44,8 +44,8 @@ class PROJECT_RPG_API FRPGTradeLobbyOwner final : public TSharedFromThis<FRPGTra
 {
 public:
     using FContext = TFunction<FRPGTradeLobbyContext()>;
-    static TSharedRef<FRPGTradeLobbyOwner> Create(TSharedRef<IRPGTradeTransport> Transport, FContext Context, TFunction<double()> Clock = {});
-    FRPGTradeLobbyOwner(TSharedRef<IRPGTradeTransport> Transport, FContext Context, TFunction<double()> Clock);
+    static TSharedRef<FRPGTradeLobbyOwner> Create(TSharedRef<IRPGTradeTransport> Transport, FContext Context, TFunction<double()> Clock = {}, FString JournalRoot = FString());
+    FRPGTradeLobbyOwner(TSharedRef<IRPGTradeTransport> Transport, FContext Context, TFunction<double()> Clock, FString JournalRoot = FString());
     ~FRPGTradeLobbyOwner();
     void Tick();
     void Shutdown();

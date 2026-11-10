@@ -6,12 +6,12 @@ bool FRPGTradeLobbyContext::operator==(const FRPGTradeLobbyContext& O) const
     return Endpoint == O.Endpoint && Account == O.Account && Character == O.Character && bEnabled == O.bEnabled
         && bLocalLobby == O.bLocalLobby && bAuthenticated == O.bAuthenticated && bEligible == O.bEligible;
 }
-FRPGTradeLobbyOwner::FRPGTradeLobbyOwner(TSharedRef<IRPGTradeTransport> Transport, FContext InContext, TFunction<double()> InClock)
+FRPGTradeLobbyOwner::FRPGTradeLobbyOwner(TSharedRef<IRPGTradeTransport> Transport, FContext InContext, TFunction<double()> InClock, FString JournalRoot)
     : Context(MoveTemp(InContext)), Clock(InClock ? MoveTemp(InClock) : TFunction<double()>([] { return FPlatformTime::Seconds(); })),
-      Coordinator(MakeShared<FRPGTradeCoordinator>(Transport, Clock)) {}
-TSharedRef<FRPGTradeLobbyOwner> FRPGTradeLobbyOwner::Create(TSharedRef<IRPGTradeTransport> Transport, FContext Context, TFunction<double()> Clock)
+      Coordinator(MakeShared<FRPGTradeCoordinator>(Transport, Clock, MoveTemp(JournalRoot))) {}
+TSharedRef<FRPGTradeLobbyOwner> FRPGTradeLobbyOwner::Create(TSharedRef<IRPGTradeTransport> Transport, FContext Context, TFunction<double()> Clock, FString JournalRoot)
 {
-    auto Owner = MakeShared<FRPGTradeLobbyOwner>(Transport, MoveTemp(Context), MoveTemp(Clock));
+    auto Owner = MakeShared<FRPGTradeLobbyOwner>(Transport, MoveTemp(Context), MoveTemp(Clock), MoveTemp(JournalRoot));
     TWeakPtr<FRPGTradeLobbyOwner> WeakOwner = Owner;
     Owner->Coordinator->OnChanged = [WeakOwner] { if (auto Self = WeakOwner.Pin()) Self->Changed(); };
     return Owner;
@@ -23,7 +23,7 @@ void FRPGTradeLobbyOwner::Shutdown()
 }
 void FRPGTradeLobbyOwner::Changed() { if (!bEnding) OnChanged.Broadcast(); }
 bool FRPGTradeLobbyOwner::HasLiveTrade() const
-{ const auto* S = GetClient().GetSession(); return GetClient().GetPending() || (S && S->IsOpen()); }
+{ const auto* S = GetClient().GetSession(); return Coordinator->IsRecoveryBlocked() || GetClient().GetPending() || (S && S->IsOpen()); }
 bool FRPGTradeLobbyOwner::IsAvailable() const { return !bEnding && (Current.bEnabled || HasLiveTrade()); }
 bool FRPGTradeLobbyOwner::BlocksTransitions() const { return !bEnding && (HasLiveTrade() || Coordinator->IsBusy()); }
 bool FRPGTradeLobbyOwner::Update(bool bPoll)
@@ -45,7 +45,8 @@ bool FRPGTradeLobbyOwner::Update(bool bPoll)
     }
     if (!Current.Character.IsValid()) BlockedSelection.Invalidate();
     if (Account.IsEmpty() || Endpoint.IsEmpty()) return false;
-    const bool bCanBind = Current.bEnabled && Current.bEligible && Current.Character.IsValid() && Current.Character != BlockedSelection;
+    const bool RecoveryContext=Coordinator->HasPersistence() && Current.bLocalLobby && Current.bAuthenticated;
+    const bool bCanBind = ((Current.bEnabled && Current.bEligible) || RecoveryContext) && Current.Character.IsValid() && Current.Character != BlockedSelection;
     if (bCanBind && Current.Character != BoundCharacter && !HasLiveTrade() && !Coordinator->IsBusy())
     {
         Draft.Reset(); BoundCharacter = Current.Character;
@@ -57,7 +58,8 @@ bool FRPGTradeLobbyOwner::Update(bool bPoll)
     if (bEnding) return false;
     const bool bCanAct = BoundCharacter.IsValid() && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible;
     const double Now = Clock();
-    if (bPoll && bCanAct && FMath::IsFinite(Now) && Now >= NextPoll && !Coordinator->IsBusy() && !GetClient().GetPending())
+    if (bPoll && bCanAct && (Current.bEnabled || HasLiveTrade()) && !Coordinator->IsRecoveryBlocked()
+        && FMath::IsFinite(Now) && Now >= NextPoll && !Coordinator->IsBusy() && !GetClient().GetPending())
     {
         const auto* S = GetClient().GetSession();
         if (!S || S->IsOpen())
@@ -80,7 +82,7 @@ bool FRPGTradeLobbyOwner::CanReadAssets() const
 {
     const auto* S=GetClient().GetSession();
     return !bEnding && S && S->Status==ERPGTradeStatus::Completed && !GetClient().GetPending() && !Coordinator->IsBusy()
-        && !bAssetsLoading && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible && Current.Character==BoundCharacter
+        && !bAssetsLoading && !Coordinator->IsRecoveryBlocked() && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible && Current.Character==BoundCharacter
         && bool(AssetBegin) && bool(AssetApply) && bool(AssetCurrent);
 }
 bool FRPGTradeLobbyOwner::ReloadAssets()
@@ -110,7 +112,7 @@ bool FRPGTradeLobbyOwner::ReloadAssets()
 }
 bool FRPGTradeLobbyOwner::CanDiscover() const
 {
-    return !bEnding && Current.bEnabled && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible
+    return !bEnding && !Coordinator->IsRecoveryBlocked() && Current.bEnabled && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible
         && BoundCharacter.IsValid() && Current.Character==BoundCharacter && !GetClient().GetSession() && !GetClient().GetPending();
 }
 FRPGTradeTargetView FRPGTradeLobbyOwner::GetTargetView() const
@@ -180,7 +182,7 @@ void FRPGTradeLobbyOwner::DismissClosed()
 {
     const auto* Before=GetClient().GetSession();
     if(Before && Before->Status==ERPGTradeStatus::Completed && AssetAttemptedTrade!=Before->TradeId && CanReadAssets())ReloadAssets();
-    if(bAssetsLoading || Coordinator->IsBusy())return;
+    if(bAssetsLoading || Coordinator->IsBusy() || Coordinator->IsRecoveryBlocked())return;
     const auto* S = GetClient().GetSession();
     if (S && !S->IsOpen() && Coordinator->ClearClosedSession()) { Draft.Reset(); NextPoll = 0; Changed(); }
 }
@@ -197,7 +199,7 @@ void FRPGTradeLobbyOwner::SetBagSource(TFunction<FRPGTradeBagSnapshot()> Read, T
 bool FRPGTradeLobbyOwner::CanEditOffer() const
 {
     const auto* S = GetClient().GetSession();
-    return !bEnding && !bSubmittingDraft && Current.bEnabled && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible
+    return !bEnding && !Coordinator->IsRecoveryBlocked() && !bSubmittingDraft && Current.bEnabled && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible
         && BoundCharacter.IsValid() && Current.Character == BoundCharacter && S && S->Status == ERPGTradeStatus::Negotiating
         && S->CurrencyCode == TEXT("Gold") && !Coordinator->IsBusy() && !GetClient().GetPending();
 }
@@ -274,11 +276,13 @@ FRPGTradeLobbyView FRPGTradeLobbyOwner::GetView() const
     const auto* S = GetClient().GetSession();
     const auto* P = GetClient().GetPending();
     const bool Eligible = !bEnding && BoundCharacter.IsValid() && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible;
-    const bool Free = Eligible && !Coordinator->IsBusy() && !P;
-    V.bRefresh = Eligible && !Coordinator->IsBusy(); V.bRetry = Eligible && P && !Coordinator->IsBusy();
+    const bool RecoveryBlocked=Coordinator->IsRecoveryBlocked();
+    const bool Free = Eligible && !Coordinator->IsBusy() && !P && !RecoveryBlocked;
+    V.bRefresh = Eligible && !Coordinator->IsBusy() && !RecoveryBlocked; V.bRetry = Eligible && (P || RecoveryBlocked) && !Coordinator->IsBusy();
     V.bAccept = Free && Current.bEnabled && Current.Character == BoundCharacter && S && S->Status == ERPGTradeStatus::Invited && BoundCharacter == S->InviteeCharacterId;
     V.bCancel = Free && S && S->IsOpen(); V.bWithdraw = Free && S && S->Status == ERPGTradeStatus::Negotiating;
     if (!Current.bLocalLobby) V.Status = NSLOCTEXT("RPGTrade", "LobbyOnly", "로비에서 거래 상태를 확인할 수 있습니다.");
+    else if (RecoveryBlocked) V.Status = NSLOCTEXT("RPGTrade", "StorageBlocked", "거래 기록을 안전하게 확인하거나 정리하지 못했습니다. 새 거래를 보내기 전에 다시 확인하세요.");
     else if (P) V.Status = NSLOCTEXT("RPGTrade", "Unknown", "거래 요청의 처리 결과를 확인하고 있습니다. 새 요청을 보내기 전에 결과를 확인하세요.");
     else if (!Current.bAuthenticated) V.Status = NSLOCTEXT("RPGTrade", "Login", "같은 계정으로 다시 로그인해 거래를 확인하세요.");
     else if (!S) V.Status = NSLOCTEXT("RPGTrade", "Empty", "진행 중인 거래가 없습니다.");
@@ -290,14 +294,14 @@ FRPGTradeLobbyView FRPGTradeLobbyOwner::GetView() const
     case ERPGTradeStatus::Cancelled: V.Status = NSLOCTEXT("RPGTrade", "Cancelled", "거래가 취소되었습니다."); break;
     case ERPGTradeStatus::Expired: V.Status = NSLOCTEXT("RPGTrade", "Expired", "거래 시간이 만료되었습니다."); break;
     }
-    if (!P && Coordinator->GetLastResponse() == ERPGTradeResponse::Rejected && (!S || S->IsOpen()))
+    if (!RecoveryBlocked && !P && Coordinator->GetLastResponse() == ERPGTradeResponse::Rejected && (!S || S->IsOpen()))
         V.Status = NSLOCTEXT("RPGTrade", "Rejected", "거래 요청을 처리할 수 없습니다. 현재 상태를 다시 확인하세요.");
     if (S)
     {
         if(S->Status==ERPGTradeStatus::Completed)
         {
             V.bReloadAssets=CanReadAssets();
-            const bool Fresh=Assets.IsSet() && AssetAttemptedTrade==S->TradeId && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible
+            const bool Fresh=!RecoveryBlocked && Assets.IsSet() && AssetAttemptedTrade==S->TradeId && Current.bLocalLobby && Current.bAuthenticated && Current.bEligible
                 && Current.Character==BoundCharacter && AssetCurrent && AssetCurrent();
             V.AssetStatus=bAssetsLoading ? NSLOCTEXT("RPGTrade","AssetsLoading","거래는 완료되었습니다. 최신 자산을 불러오고 있습니다.")
                 : Fresh ? NSLOCTEXT("RPGTrade","AssetsReady","완료 후 최신 자산을 확인했습니다.")

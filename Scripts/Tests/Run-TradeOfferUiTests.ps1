@@ -30,6 +30,7 @@ try {
     $files = @('Source/Project_RPG/Public/Trading/RPGTradeClient.h','Source/Project_RPG/Private/Trading/RPGTradeClient.cpp','Source/Project_RPG/Private/Tests/RPGTradeClientTests.cpp','Source/Project_RPG/Public/Trading/RPGTradeTransport.h','Source/Project_RPG/Private/Trading/RPGTradeTransport.cpp','Source/Project_RPG/Public/Trading/RPGTradeCoordinator.h','Source/Project_RPG/Private/Trading/RPGTradeCoordinator.cpp','Source/Project_RPG/Private/Tests/RPGTradeTransportTests.cpp','Scripts/Tests/trade_offer_fixture.py','Source/Project_RPG/Public/Trading/RPGTradeLobbyOwner.h','Source/Project_RPG/Private/Trading/RPGTradeLobbyOwner.cpp','Source/Project_RPG/Public/UI/Lobby/RPGTradeWidget.h','Source/Project_RPG/Private/UI/Lobby/RPGTradeWidget.cpp','Source/Project_RPG/Private/Tests/RPGTradeLobbyTests.cpp','Source/Project_RPG/Private/Trading/RPGTradeJson.h','Source/Project_RPG/Public/Trading/RPGTradePreview.h','Source/Project_RPG/Private/Trading/RPGTradePreview.cpp','Source/Project_RPG/Private/Tests/RPGTradePreviewTests.cpp','Source/Project_RPG/Public/Trading/RPGTradeOfferDraft.h','Source/Project_RPG/Private/Trading/RPGTradeOfferDraft.cpp','Source/Project_RPG/Private/Tests/RPGTradeOfferTests.cpp')
     $files += @('Source/Project_RPG/Public/Trading/RPGTradeTargets.h','Source/Project_RPG/Private/Trading/RPGTradeTargets.cpp')
     $files += @('Source/Project_RPG/Public/Trading/RPGTradeAssets.h','Source/Project_RPG/Private/Trading/RPGTradeAssets.cpp','Source/Project_RPG/Public/Economy/RPGCurrencyTypes.h','Source/Project_RPG/Public/Economy/Backend/RPGEconomyBackendTypes.h','Source/Project_RPG/Public/Economy/Backend/RPGEconomyBackendJsonCodec.h','Source/Project_RPG/Private/Economy/Backend/RPGEconomyBackendJsonCodec.cpp')
+    $files += @('Source/Project_RPG/Public/Trading/RPGTradeIntentJournal.h','Source/Project_RPG/Private/Trading/RPGTradeIntentJournal.cpp')
     foreach ($relative in $files) {
         $source = Join-Path $workspace $relative
         $destination = Join-Path $project $relative
@@ -68,6 +69,7 @@ public class Project_RPG : ModuleRules {
         PCHUsage = PCHUsageMode.NoPCHs;
         bUseUnity = false;
         PublicDependencyModuleNames.AddRange(new string[] {"RPGInventoryRuntime", "Core", "CoreUObject", "Engine", "Json", "HTTP", "UMG", "Slate", "SlateCore", "InputCore"});
+        AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenSSL");
     }
 }
 '@

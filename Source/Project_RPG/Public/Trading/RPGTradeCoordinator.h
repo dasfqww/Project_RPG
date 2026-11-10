@@ -11,7 +11,7 @@
 class PROJECT_RPG_API FRPGTradeCoordinator final : public TSharedFromThis<FRPGTradeCoordinator>
 {
 public:
-    explicit FRPGTradeCoordinator(TSharedRef<IRPGTradeTransport> InTransport, TFunction<double()> InClock = {});
+    explicit FRPGTradeCoordinator(TSharedRef<IRPGTradeTransport> InTransport, TFunction<double()> InClock = {}, FString InJournalRoot = FString());
     ~FRPGTradeCoordinator();
     bool SelectCharacter(FGuid Character);
     void Reset();
@@ -31,7 +31,9 @@ public:
     bool Retry();
     // Identity changes are still observed when lobby dispatch is paused.
     void Pump(bool bAllowDispatch = true);
-    bool ClearClosedSession() { return Client.ClearClosedSession(); }
+    bool ClearClosedSession() { return !IsRecoveryBlocked() && Client.ClearClosedSession(); }
+    bool HasPersistence() const { return !JournalRoot.IsEmpty(); }
+    bool IsRecoveryBlocked() const { return HasPersistence() && Character.IsValid() && bPersistenceBlocked; }
     const FRPGTradeClient& GetClient() const { return Client; }
     bool IsBusy() const { return bBusy; }
     ERPGTradeResponse GetLastResponse() const { return LastResponse; }
@@ -43,6 +45,7 @@ private:
     void Notify();
     void UpdateTime();
     void InvalidatePreview();
+    bool ReconcilePersistence();
     TFunction<double()> Clock;
     TSharedRef<IRPGTradeTransport> Transport;
     FRPGTradeClient Client;
@@ -62,4 +65,8 @@ private:
     uint64 TargetGeneration = 0;
     double TargetDeadline = 0, NextSearch = 0;
     mutable double TargetNow = 0;
+    FString JournalRoot;
+    TOptional<FRPGTradePendingIntent> ClearIntent;
+    bool bPersistenceBlocked = false;
+    double NextPersistenceAttempt = 0;
 };

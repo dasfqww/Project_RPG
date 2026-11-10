@@ -1,8 +1,9 @@
 #include "Trading/RPGTradeCoordinator.h"
 #include "HAL/PlatformTime.h"
+#include "Trading/RPGTradeIntentJournal.h"
 
-FRPGTradeCoordinator::FRPGTradeCoordinator(TSharedRef<IRPGTradeTransport> InTransport, TFunction<double()> InClock)
-    : Clock(InClock ? MoveTemp(InClock) : TFunction<double()>([] { return FPlatformTime::Seconds(); })), Transport(MoveTemp(InTransport)) {}
+FRPGTradeCoordinator::FRPGTradeCoordinator(TSharedRef<IRPGTradeTransport> InTransport, TFunction<double()> InClock, FString InJournalRoot)
+    : Clock(InClock ? MoveTemp(InClock) : TFunction<double()>([] { return FPlatformTime::Seconds(); })), Transport(MoveTemp(InTransport)), JournalRoot(MoveTemp(InJournalRoot)) {}
 FRPGTradeCoordinator::~FRPGTradeCoordinator() { Transport->Cancel(); }
 void FRPGTradeCoordinator::Notify() { auto Callback = OnChanged; if (Callback) Callback(); }
 void FRPGTradeCoordinator::Reset()
@@ -12,6 +13,41 @@ void FRPGTradeCoordinator::Reset()
     Retries = 0; NextAttempt = 0; LastResponse = ERPGTradeResponse::Ignored;
     InvalidatePreview();
     ClearTargets(); NextSearch = 0; TargetNow=0;
+    ClearIntent.Reset(); bPersistenceBlocked=HasPersistence(); NextPersistenceAttempt=0;
+}
+bool FRPGTradeCoordinator::ReconcilePersistence()
+{
+    if(!HasPersistence())return true;
+    UpdateTime();
+    auto Block=[this]{bPersistenceBlocked=true;NextPersistenceAttempt=Now+2;return false;};
+    FRPGTradeIntentScope Scope;
+    if(!FRPGTradeIntentScope::Create(Endpoint,Account,Character,Scope))return Block();
+    FRPGTradePendingIntent Saved;
+    if(ClearIntent.IsSet())
+    {
+        if(!(ClearIntent->Scope==Scope))return Block();
+        if(!FRPGTradeIntentJournal::Clear(JournalRoot,*ClearIntent)
+            && FRPGTradeIntentJournal::Load(JournalRoot,Scope,Saved)!=ERPGTradeJournalRead::Missing)return Block();
+        ClearIntent.Reset();bPersistenceBlocked=false;return true;
+    }
+    const auto Read=FRPGTradeIntentJournal::Load(JournalRoot,Scope,Saved);
+    if(Client.GetPending())
+    {
+        FRPGTradePendingIntent Current;if(!Client.ExportPending(Current) || !(Current.Scope==Scope))return Block();
+        if(Read==ERPGTradeJournalRead::Missing)
+        {if(!FRPGTradeIntentJournal::Create(JournalRoot,Current))return Block();}
+        else if(Read!=ERPGTradeJournalRead::Ready || Saved.Request.RequestId!=Current.Request.RequestId
+            || Saved.Request.TradeId!=Current.Request.TradeId || Saved.Request.RelativePath!=Current.Request.RelativePath
+            || Saved.Request.Body!=Current.Request.Body)return Block();
+    }
+    else if(Read==ERPGTradeJournalRead::Ready)
+    {
+        if(!Client.RestorePending(Saved))return Block();
+        PendingAction=Saved.Request.RelativePath.Mid(Saved.Request.RelativePath.Find(TEXT("/"),ESearchCase::CaseSensitive,ESearchDir::FromEnd)+1);
+        Retries=0;NextAttempt=Now;InvalidatePreview();ClearTargets();
+    }
+    else if(Read!=ERPGTradeJournalRead::Missing)return Block();
+    bPersistenceBlocked=false;return true;
 }
 bool FRPGTradeCoordinator::SyncContext()
 {
@@ -29,11 +65,12 @@ bool FRPGTradeCoordinator::SelectCharacter(FGuid Selected)
     Reset();
     if (!Client.Bind(CurrentEndpoint, CurrentAccount, Selected)) return false;
     Character = Selected; Endpoint = CurrentEndpoint; Account = CurrentAccount;
+    ReconcilePersistence();
     Notify(); return true;
 }
 bool FRPGTradeCoordinator::Refresh(FGuid Trade)
 {
-    if (!SyncContext() || bBusy || !Transport->CanSend()) return false;
+    if (!SyncContext() || IsRecoveryBlocked() || bBusy || !Transport->CanSend()) return false;
     const auto Ticket = Client.BeginRead(Trade);
     const auto Expected = ++Operation;
     bBusy = true;
@@ -59,7 +96,7 @@ void FRPGTradeCoordinator::InvalidatePreview()
 { Preview.Reset(); PreviewToken.Invalidate(); PreviewDeadline = 0; }
 bool FRPGTradeCoordinator::RefreshAssets(TFunction<void(FRPGTradeHttpResult)> Completion)
 {
-    if(!Completion || !SyncContext() || bBusy || !Transport->CanSend() || Client.GetPending()
+    if(!Completion || !SyncContext() || IsRecoveryBlocked() || bBusy || !Transport->CanSend() || Client.GetPending()
         || !Client.GetSession() || Client.GetSession()->Status!=ERPGTradeStatus::Completed) return false;
     const auto Trade=Client.GetSession()->TradeId;const auto Expected=++Operation;bBusy=true;
     TWeakPtr<FRPGTradeCoordinator> Weak=AsShared();
@@ -78,7 +115,7 @@ const FRPGTradePreview* FRPGTradeCoordinator::GetPreview() const
 }
 bool FRPGTradeCoordinator::RefreshPreview()
 {
-    if (!SyncContext() || bBusy || !Transport->CanSend() || Client.GetPending() || !Client.GetSession()) return false;
+    if (!SyncContext() || IsRecoveryBlocked() || bBusy || !Transport->CanSend() || Client.GetPending() || !Client.GetSession()) return false;
     UpdateTime();
     const auto Trade = Client.GetSession()->TradeId;
     const auto Ticket = Client.BeginRead(Trade);
@@ -114,15 +151,21 @@ bool FRPGTradeCoordinator::RefreshPreview()
 }
 bool FRPGTradeCoordinator::Invite(FGuid Invitee)
 {
-    if (!SyncContext() || bBusy || !Client.PrepareInvite(Invitee)) return false;
+    const auto KeepAlive=AsShared();
+    if (!SyncContext() || bBusy) return false;
+    if(!ReconcilePersistence() || Client.GetPending()){Notify();return false;}
+    if(!Client.PrepareInvite(Invitee))return false;
     InvalidatePreview();
     ClearTargets();
     PendingAction = TEXT("invite"); Retries = 0; NextAttempt = Now;
-    Dispatch(); return true;
+    ReconcilePersistence();Dispatch();Notify();return true;
 }
 bool FRPGTradeCoordinator::Submit(ERPGTradeAction Action, const FRPGTradeOffer* Offer)
 {
-    if (!SyncContext() || bBusy || !Client.Prepare(Action, Offer)) return false;
+    const auto KeepAlive=AsShared();
+    if (!SyncContext() || bBusy) return false;
+    if(!ReconcilePersistence() || Client.GetPending()){Notify();return false;}
+    if(!Client.Prepare(Action, Offer))return false;
     InvalidatePreview();
     ClearTargets();
     switch (Action)
@@ -136,7 +179,7 @@ bool FRPGTradeCoordinator::Submit(ERPGTradeAction Action, const FRPGTradeOffer* 
     default: return false;
     }
     Retries = 0; NextAttempt = Now;
-    Dispatch(); return true;
+    ReconcilePersistence();Dispatch();Notify();return true;
 }
 void FRPGTradeCoordinator::ClearTargets()
 {
@@ -145,7 +188,7 @@ void FRPGTradeCoordinator::ClearTargets()
 bool FRPGTradeCoordinator::CanSearchTargets() const
 {
     const double Raw=Clock();
-    return !bBusy && !Client.GetSession() && !Client.GetPending() && FMath::IsFinite(Raw) && Raw>=0
+    return !IsRecoveryBlocked() && !bBusy && !Client.GetSession() && !Client.GetPending() && FMath::IsFinite(Raw) && Raw>=0
         && FMath::Max(Now,Raw)>=NextSearch && Transport->CanSend();
 }
 const TArray<FRPGTradeTarget>* FRPGTradeCoordinator::GetTargets() const
@@ -198,14 +241,17 @@ bool FRPGTradeCoordinator::SearchTargets(const FString& Input)
 bool FRPGTradeCoordinator::Dispatch()
 {
     UpdateTime();
-    if (!SyncContext() || bBusy || !Transport->CanSend() || Now < NextAttempt || !Client.GetPending()) return false;
+    if (!SyncContext() || IsRecoveryBlocked() || bBusy || !Transport->CanSend() || Now < NextAttempt || !Client.GetPending()) return false;
+    if(!ReconcilePersistence()) {Notify();return false;}
+    FRPGTradePendingIntent Original;
+    if(HasPersistence() && !Client.ExportPending(Original))return false;
     FRPGTradeTicket Ticket;
     if (!Client.BeginAttempt(Ticket)) return false;
     const auto Request = *Client.GetPending();
     const auto Expected = ++Operation;
     bBusy = true;
     TWeakPtr<FRPGTradeCoordinator> WeakThis = AsShared();
-    auto Completion = [WeakThis, Ticket, Expected](FRPGTradeHttpResult Result)
+    auto Completion = [WeakThis, Ticket, Expected, Original](FRPGTradeHttpResult Result)
     {
         auto Self = WeakThis.Pin();
         if (!Self || Self->Operation != Expected || !Self->SyncContext()) return;
@@ -218,7 +264,11 @@ bool FRPGTradeCoordinator::Dispatch()
             const double Backoff = FMath::Min(30.0, FMath::Pow(2.0, FMath::Min(Self->Retries - 1, 5)));
             Self->NextAttempt = Self->Now + FMath::Max(Backoff, FMath::IsFinite(Result.RetryAfterSeconds) ? FMath::Clamp(Result.RetryAfterSeconds, 0.0, 3600.0) : 60.0);
         }
-        else { Self->PendingAction.Reset(); Self->Retries = 0; }
+        else
+        {
+            Self->PendingAction.Reset(); Self->Retries = 0;
+            if(Self->HasPersistence()){Self->ClearIntent=Original;Self->ReconcilePersistence();}
+        }
         Self->Notify();
     };
     const bool bSent = Transport->Send(Character, Request.TradeId, PendingAction, Request.Body, Completion);
@@ -227,8 +277,13 @@ bool FRPGTradeCoordinator::Dispatch()
 }
 bool FRPGTradeCoordinator::Retry()
 {
+    const auto KeepAlive=AsShared();
     UpdateTime();
-    if (!SyncContext() || bBusy || !Client.GetPending() || Now < NextAttempt) return false;
+    if (!SyncContext() || bBusy) return false;
+    const bool WasBlocked=IsRecoveryBlocked();
+    if(!ReconcilePersistence()){Notify();return false;}
+    if(!Client.GetPending()){if(WasBlocked)Notify();return WasBlocked;}
+    if(Now < NextAttempt)return false;
     Retries = 0;
     return Dispatch();
 }
@@ -240,6 +295,14 @@ void FRPGTradeCoordinator::UpdateTime()
 }
 void FRPGTradeCoordinator::Pump(bool bAllowDispatch)
 {
+    const auto KeepAlive=AsShared();
     UpdateTime();
-    if (SyncContext() && bAllowDispatch && Retries < 6) Dispatch();
+    if(!SyncContext() || !bAllowDispatch)return;
+    if(IsRecoveryBlocked())
+    {
+        if(Now<NextPersistenceAttempt)return;
+        const auto Epoch=Operation;ReconcilePersistence();Notify();
+        if(Epoch!=Operation || IsRecoveryBlocked())return;
+    }
+    if(Retries<6)Dispatch();
 }
