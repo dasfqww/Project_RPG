@@ -1,7 +1,7 @@
 # Riding System 아키텍처 v1
 
 - 작성: 2026-11-06 / 담당: `riding-architecture-20261106`
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭 구현. 코드 설계14~22절의 단위별 검증 범위를 따른다. 제품 snapshot/API·Dash Space/LocalPredicted 이동·Emote·맵 배치/최종 자세·다인 네트워크 검증은 후속이다.**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭·기존 회피 키/기본 Space 입력 구현. 코드 설계14~23절의 단위별 검증 범위를 따른다. 제품 snapshot/API·Dash LocalPredicted 이동·Emote·맵 배치/최종 자세·다인 네트워크 검증은 후속이다.**
 - 기준: 게시 `92fdb7bf`와 [Riding 상세 설계](RIDING_SYSTEM_DESIGN.md). 게임 규칙·수치·API/DB 계약은 상세 설계가 기준이고, 이 문서는 책임·의존·연결 방법을 정의한다.
 - 이번 산출물: 아키텍처와 구현 분할. C++ 골격, 백엔드, 에셋 생성 및 런타임 검증은 포함하지 않는다.
 - 다음 코드 설계: [M1 상태·세션·컴포넌트 계약](RIDING_SYSTEM_CODE_DESIGN.md) — C++ 값/시그니처·요청 ledger·초기화/재진입/복제·검사 순서. 공용 HUD의 구체 API 인계와 독립적으로 진행하며 제품 구현과 구분한다.
@@ -9,7 +9,7 @@
 
 ## 1. 구조 결정
 
-Dash의 [서버 승인/종료 수명](RIDING_SYSTEM_CODE_DESIGN.md#20-m2-dash-서버-승인과-종료-수명--2026-11-09)과 [실제 서버 이동/자원](RIDING_SYSTEM_CODE_DESIGN.md#21-m2-실제-서버-dash-이동과-자원-수명--2026-11-09)을 분리한다. Pawn native 실행기가 현재 ticket에 Engine RMS/보안 창을 연결하고 Player CMC가 실제 이동 구간의 지형/거리를 제한한다. 제어 이동은 Dash 자기 창 회수 뒤 시작한다. [ServerOnly GAS/클릭 연결](RIDING_SYSTEM_CODE_DESIGN.md#22-m2-dash-gas-지급활성화와-hud-클릭--2026-11-09)은 현재 Mounted 세대의 source/handle만 지급·회수하며 원래 실행 ticket으로만 취소한다. Space·GAS 클라이언트 예측과 제품 보유 권한은 후속이며 제품 경로는 NotReady다.
+Dash의 [서버 승인/종료 수명](RIDING_SYSTEM_CODE_DESIGN.md#20-m2-dash-서버-승인과-종료-수명--2026-11-09)과 [실제 서버 이동/자원](RIDING_SYSTEM_CODE_DESIGN.md#21-m2-실제-서버-dash-이동과-자원-수명--2026-11-09)을 분리한다. Pawn native 실행기가 현재 ticket에 Engine RMS/보안 창을 연결하고 Player CMC가 실제 이동 구간의 지형/거리를 제한한다. 제어 이동은 Dash 자기 창 회수 뒤 시작한다. [ServerOnly GAS/클릭 연결](RIDING_SYSTEM_CODE_DESIGN.md#22-m2-dash-gas-지급활성화와-hud-클릭--2026-11-09)은 현재 Mounted 세대의 source/handle만 지급·회수하며 원래 실행 ticket으로만 취소한다. [기존 회피 키 입력](RIDING_SYSTEM_CODE_DESIGN.md#23-m2-기존-회피-키와-dash-입력--2026-11-10)은 Roll 태그/기본 Space와 현재 재매핑·공통 held 경계를 사용한다. GAS 클라이언트 예측과 제품 보유 권한은 후속이며 제품 경로는 NotReady다.
 
 피해 결과는 [M2 적대 피해 결과와 탑승 전투 잠금](RIDING_SYSTEM_CODE_DESIGN.md#18-m2-적대-피해-결과와-탑승-전투-잠금--2026-11-09), 승인된 기절/경직/감속/넉백/공중제어의 성공 결과는 [19절](RIDING_SYSTEM_CODE_DESIGN.md#19-m2-승인-제어-성공과-탑승-전투-잠금--2026-11-09)의 실제 연결·검증 범위를 따른다. 원래 인증 세션의 scope가 처리 callback·Pawn 교체 중 새 탑승을 막고, 실제 피해 또는 활성 제어/성공한 이동의 결과로 양측 잠금과 하차를 기록한다. 미래 Dash의 자기 창 회수→외부 제어 이동 시작 순서는 Dash 통합 때 연결·실행 검증한다.
 

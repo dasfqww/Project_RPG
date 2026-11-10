@@ -1,7 +1,7 @@
 # Riding 코드 설계 — M1 상태·세션·탑승 기반
 
 - 작성: 2026-11-06 / 담당: `riding-code-design-20261106`
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭 구현. 기존 검증은14~21절, GAS 연결은22절을 따른다. 제품 보유 API·Dash Space/LocalPredicted 이동·Emote·실제 맵/다인 검증은 후속이다.**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·ServerOnly GAS 지급/활성화/HUD 클릭·기존 회피 키 입력 연결 구현. 기존 검증은14~22절, 회피 키/기본 Space 입력은23절을 따른다. 제품 보유 API·Dash LocalPredicted 이동·Emote·실제 맵/다인 검증은 후속이다.**
 - 기준: [기능 계약](RIDING_SYSTEM_DESIGN.md), [아키텍처와 HUD 인계](RIDING_SYSTEM_ARCHITECTURE.md), 게시 `d546e392`의 관련 기존 소스. 재개 시 게시 HEAD `2971c97c`와 별도 담당의 미커밋 `Docs/ACTION_BAR_CONTEXT.md`/`UI/ActionBar` 계약을 추가 대조했다. 공용 코드의 빌드/검증 완료 주장은 아니다.
 - 목적: 첫 구현에서 만들 타입, 접근 제한, 판정 순서, 상태 수명, 검사 기준을 정한다. M2 액션 실행/M3 영속 저장은 포트만 정의하고 구현 완료로 취급하지 않는다.
 
@@ -554,3 +554,17 @@ CMC는 기존 도보 속도/제약 계산과 SavedMove·packed move/response가 
 최종 근거는 `Saved/BuildChecks/RidingDashGAS-20261109/Completion.json`이다. 게시 `d9c53e77`+고정 입력의 native `05b6e42c29cd4eeeaa568ee4378c19dc`에서 UHT/34단계 빌드·링크0, 같은 `3557B31B…FBE356B4` DLL의 기존43+Dash GAS6 **49 Success·검사 오류/예상 밖 경고0·UE0**이다. `Integration-e52268686aa14f538153cc72470de49e`의 전체 UHT/제품4+검사1 CPP5 컴파일0과 함께 고유 입력53/러너2 SHA가 현재 원본과 일치했다.
 
 첫 실행은 검사 프레임 번호 재사용으로 착지하지 않아5사례가 실패했다. 프레임/실제 시작 전제를 보강한 다음49개는 Success였지만 의도한 invalid-handle Warning1로 엄격 gate가 실패했다. 경고1건을 좁게 예상 처리하고 회수 callback의 새 세대 덮어쓰기 결함/회귀를 추가한 위 최종 실행과 구분한다. 중간 CPP4/CPP5 성공도 최종 입력의 근거로 대체하지 않는다. 자기7회 사본/PCH/OBJ/DLL/PDB/runtime/cache **8,832,105,907 bytes(약8.226GiB)**를 finally 폐기했고 실행/Temp/새 정리 예외0이다. 작은 결과/해시/필요 로그만 유지하며 원본 DLL/에셋/공유 출력/기존 예외와 타 담당 변경은 보존했다. 폐기한 DLL의 해시는 당시 증거다.
+
+## 23. M2 기존 회피 키와 Dash 입력 — 2026-11-10
+
+담당 `riding-dash-input-20261110`. Riding ActionBar의 Dash entry에 기존 `InputTag.Roll`을 연결했다. 기존 InputConfig의 Roll action/기본 Space 매핑과 현재 사용자 재매핑을 그대로 사용한다. 별도 키 바인딩/MappingContext·저장 설정·Controller 입력 호스트를 추가하지 않는다. Dash는 첫 시각 칸, 수동 하차는 네 번째 skill binding이며 기존 도보 회피의 GAS 지급/몽타주와 저장된 클래스·아이템 슬롯은 바꾸지 않는다.
+
+기존 `BindAbilityInputAction`의 Started→실제 Controller `Input_AbilityInputPressed`→ActionBar `PressTag`→현재 제공자의 Dash→`RequestDash`→기존 GAS 요청 순서다. 탑승 중에는 unavailable/쿨타임 입력도 액션바가 소비하며 도보 회피로 흘리지 않는다. Completed/Canceled는 기존 `ReleaseTag`로 해제한다. 기존 Context의 physical down 기록이 모드 전환에도 유지되므로 도보에서 누른 채 탑승하거나 질주를 누른 채 하차하면 새 release/press가 필요하다. 창 입력 차단과 읽기 재검사도 기존 경계를 사용한다. HUD 키 라벨은 실제 Controller의 `GetCurrentKeyForTag(InputTag.Roll)`을 매번 읽어 변경한 키를 표시하며 Space를 고정 문구로 넣지 않는다.
+
+`Run-ActionBarContextTests.ps1 -IncludeRidingDashInput -RepairWindowSeconds 120`은 게시 전체 Source/Config/Plugins의 사설 Editor 빌드·링크와 native 회귀를 실행한다. opt-in 모드는 본인 provider/test3경로만 overlay한다. 새2사례는 실제 저작 InputConfig/Roll action의 기본 Space, transient runtime 매핑의 K 변경/원본 보존·현재 HUD 라벨, 실제 input binder delegate/Controller/Context/native GAS/서버 RMS 이동을 확인한다. 실제 GAS/Actor test 준비 snapshot과 Physics World/Engine CMC·모의 보안 host를 사용한다. held 전환·중복/Triggered 금지·쿨타임·창·release/cancel도 확인한다. **delegate 직접 실행 검사이며 실제 키보드 장치/EnhancedPlayerInput의 키 평가·도보 회피 몽타주·실 제품 보안 CMC/다인 RPC·GPU 플레이 검증은 아니다.**
+
+ServerOnly 능력/이동과22절의 서버 승인 경계는 유지한다. 클라이언트 RMS 예측·RMS ID 매핑/거절과 저장 move 취소는 아직 구현하지 않았으며, 제품 보유 snapshot/API 부재의 NotReady도 유지한다.
+
+최종 근거는 `Saved/BuildChecks/RidingDashInput-20261110/Completion.json`이다. 게시 `a1e4323f`+본인3입력 고정 사본의 전체 UHT/Editor 빌드·링크와 같은 `DBDE433F…CD4A7AF6` DLL에서 입력2/Dash GAS6/이동5·ActionBar/퀵슬롯/HUD 포함 **40 Success·검사 오류0·입력2의 예상 밖 경고0·UE0**를 확인했다. 기존 예제/서드파티 에셋의 특정 경고139건은 정확한 패턴·건수로 예상 처리한다. 다른 기존 UI·퀵슬롯 사례의 에셋/의도한 거절 경고108건과 기동 자동화 등록 Error15는 입력 성공과 별도로 기록했다. 후발 게시 소스5경로는 거래 저널뿐이며 본인 입력/호출 코드는 바뀌지 않았다.
+
+초기 CPP3 사전 컴파일 후 전체 빌드의 자기 wrapper/UBT를 식별해 종료하고 CL 사용 해제를 확인, 완료된 자기 OBJ를 재사용해 병렬도2→4로 재개했다. 첫 실행40개는 Success였으나 입력 사례에 섞인 기존 에셋 경고139로 엄격 gate가 실패했다. 해당 경고만 좁게 예상 처리한 최종3차를 별도로 기록한다. 최종 overlay3·러너/로컬 드라이버3·InputConfig 에셋1 SHA가 원본과 일치했다. 자기 사전/전체 사본2개와 PCH/OBJ/DLL/PDB/runtime/cache **6,804,798,944 bytes(약6.337GiB)**·읽기 링크7을 finally 정리했고 소유 실행/Temp/새 예외0이다. 원본 DLL/에셋/공유 출력/기존 예외·타 담당은 보존했으며 폐기한 DLL 해시는 당시 증거다.

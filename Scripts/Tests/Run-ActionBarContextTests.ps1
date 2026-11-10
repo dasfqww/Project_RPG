@@ -1,13 +1,15 @@
 [CmdletBinding()]
 param([string]$EngineRoot='D:/UE_5.8', [int]$RepairWindowSeconds=600,
-    [switch]$IncludeRidingBridge, [switch]$IncludeIdentity,
+    [switch]$IncludeRidingBridge, [switch]$IncludeIdentity, [switch]$IncludeRidingDashInput,
     [ValidateRange(1,4)][int]$MaxParallelActions=2)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id=[Guid]::NewGuid().ToString('N')
 if($IncludeIdentity){$IncludeRidingBridge=$true}
+if($IncludeRidingDashInput){$IncludeRidingBridge=$true}
 $suite=if($IncludeIdentity){'ActionBarIdentity-20261108'}elseif($IncludeRidingBridge){'ActionBarRiding-20261108'}else{'ActionBarContext-20261106'}
 $reservation=if($IncludeIdentity){'actionbar-identity-20261108'}elseif($IncludeRidingBridge){'actionbar-riding-20261108'}else{'actionbar-context-20261106'}
+if($IncludeRidingDashInput){$suite='RidingDashInput-20261110';$reservation='riding-dash-input-20261110'}
 $root=Join-Path $workspace ('Saved/BuildChecks/'+$suite+'/'+$id)
 $tempRoot=Join-Path $workspace 'Saved/AB'
 $temp=Join-Path $tempRoot $id.Substring(0,8)
@@ -57,7 +59,11 @@ try {
     if($LASTEXITCODE-ne0){throw 'Extraction failed'}
     # Identity validation overlays only this feature's owned inputs. Common callers
     # and existing tests stay at the archived HEAD, including after a repair retry.
-    if($IncludeIdentity){
+    if($IncludeRidingDashInput){
+        $overlay=@('Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp',
+            'Source/Project_RPG/Private/Tests/RPGRidingDashInputTests.cpp',
+            'Source/Project_RPG/Private/Tests/RPGRidingActionBarTests.cpp')
+    }elseif($IncludeIdentity){
         $overlay=@(
             'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarActionView.h',
             'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarProvider.h',
@@ -143,6 +149,7 @@ try {
             $report=Join-Path $temp ('Report-'+$attempt)
             $editor=Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe'
             $tests='ProjectRPG.UI.ActionBar+ProjectRPG.Skill.QuickSlot+ProjectRPG.UI.PlayerHUD'
+            if($IncludeRidingDashInput){$tests+=' +ProjectRPG.Riding.DashInput+ProjectRPG.Riding.DashGAS+ProjectRPG.Riding.DashMotion';$tests=$tests.Replace(' +','+')}
             $args=@(('"'+$uproject+'"'),'/Engine/Maps/Entry',('-ExecCmds="Automation RunTests '+$tests+'"'),'-TestExit="Automation Test Queue Empty"','-unattended','-nullrhi','-nosound','-nosteam','-nop4','-nosplash','-NoLiveCoding','-DisablePython','-NoLoadingScreen','-Multiprocess','-DDC=(InstalledEnginePak,Local)',('-LocalDataCachePath="'+(Join-Path $temp 'Cache')+'"'),('-ShaderWorkingDir="'+(Join-Path $temp 'Shaders')+'"'),'-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bAutoStartServer=False',('-UserDir="'+(Join-Path $temp 'User')+'"'),('-abslog="'+(Join-Path $root ('Native-'+$attempt+'.log'))+'"'),('-ReportExportPath="'+$report+'"'))
             $proof.NativeCommand=@($editor)+$args
             Save-Proof
@@ -162,6 +169,10 @@ try {
             $expected=@()
             if($IncludeRidingBridge){$expected+=@('OwnershipAndCleanup','PossessionAndHUDLifetime','TransitionsAndCommand')|ForEach-Object{'ProjectRPG.UI.ActionBar.Riding.'+$_}}
             if($IncludeIdentity){$expected+=@('ProjectRPG.UI.ActionBar.Riding.IdentityAndMovement','ProjectRPG.UI.ActionBar.IdentityReadBoundary')}
+            if($IncludeRidingDashInput){
+                $expected+=@('RoutingAndHeldTransitions','MappingAndWindows')|ForEach-Object{'ProjectRPG.Riding.DashInput.'+$_}
+                if(@($proof.Tests|Where-Object{$_.fullTestPath-like'ProjectRPG.Riding.DashInput.*'-and($_.errors-ne0-or$_.warnings-ne0)}).Count){throw 'Dash input errors/unexpected warnings'}
+            }
             if(@($expected|Where-Object{$_-notin$proof.Tests.fullTestPath}).Count){throw 'Missing Riding/identity cases'}
             foreach($entry in $proof.Overlay){
                 if((Get-FileHash -LiteralPath (Join-Path $workspace $entry.Path)).Hash-ne$entry.SHA256){throw 'Source changed after validation'}

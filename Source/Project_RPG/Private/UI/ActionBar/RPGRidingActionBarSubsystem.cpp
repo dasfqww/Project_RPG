@@ -2,6 +2,8 @@
 #include "UI/ActionBar/RPGActionBarContext.h"
 #include "UI/ActionBar/RPGActionBarIdentityWidget.h"
 #include "Component/UI/QuickSlotComponent.h"
+#include "Controller/RPGPlayerController.h"
+#include "RPGInputTags.h"
 #include "Riding/RPGRidingComponent.h"
 #include "Riding/RPGRidingSessionComponent.h"
 #include "Riding/RPGMountDefinition.h"
@@ -32,7 +34,8 @@ public:
         Profile->CenterLayout.Offsets = FMargin(0.f, -88.f, 240.f, 88.f);
         FRPGActionBarEntry Dash;
         Dash.ActionId = TEXT("Dash"); Dash.Label = LOCTEXT("Dash", "질주"); Dash.DisplaySlot = 0;
-        // Pointer/provider input until the existing physical Space binding is integrated.
+        // The existing dodge action owns the physical key, including player remaps.
+        Dash.InputTag = RPGGameplayTags::InputTag_Roll;
         Profile->Actions.Add(Dash);
         FRPGActionBarEntry Entry;
         Entry.ActionId = TEXT("Dismount");
@@ -59,6 +62,11 @@ public:
         {
             auto View = ReadAction(TEXT("Dismount"));
             if (!View.bAvailable) return View;
+            if (const auto* PC = Cast<ARPGPlayerController>(Controller.Get()))
+            {
+                const FKey Key = PC->GetCurrentKeyForTag(RPGGameplayTags::InputTag_Roll);
+                if (Key.IsValid()) View.KeyLabel = Key.GetDisplayName(false);
+            }
             auto* C = Riding.Get();
             View.bAvailable = C && C->CanRequestDash();
             View.UnavailableReason = LOCTEXT("DashUnavailable", "현재 질주를 사용할 수 없습니다.");
