@@ -1,9 +1,9 @@
 # Riding 코드 설계 — M1 상태·세션·탑승 기반
 
 - 작성: 2026-11-06 / 담당: `riding-code-design-20261106`
-- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어 결과, Dash 서버 승인·실제 RMS/지형 제한·GAS 지급/활성화/HUD 클릭·기존 회피 키 입력·RMS 실행 식별/재생 보호·소유자 승인 프로필/GAS 키·LocalPredicted 실행/intent/취소 연결 구현. 기존 검증은14~24절, 승인 프로필/키는25절, 로컬 예측은26절을 따른다. 제품 보유 API·Emote·실제 맵/다인 검증은 후속이다.**
+- 상태: **M1 상태/이동·기본 외형/구역과 M2 전투 입력/소모품·피해/제어, Dash 서버 이동·GAS/기존 회피 키·LocalPredicted/Iris 전송, Emote 서버 수명·취소·기존 키/HUD·몽타주 인스턴스 연결 구현. 단위 검증과 경계는 코드 설계14~28절을 따른다. 상호작용 하차 연계·제품 보유 API·실제 맵/최종 자세·물리 입력/GPU·패키징과 Emote 실제 NetDriver 검증은 후속이다.**
 - 기준: [기능 계약](RIDING_SYSTEM_DESIGN.md), [아키텍처와 HUD 인계](RIDING_SYSTEM_ARCHITECTURE.md), 게시 `d546e392`의 관련 기존 소스. 재개 시 게시 HEAD `2971c97c`와 별도 담당의 미커밋 `Docs/ACTION_BAR_CONTEXT.md`/`UI/ActionBar` 계약을 추가 대조했다. 공용 코드의 빌드/검증 완료 주장은 아니다.
-- 목적: 첫 구현에서 만들 타입, 접근 제한, 판정 순서, 상태 수명, 검사 기준을 정한다. M2 액션 실행/M3 영속 저장은 포트만 정의하고 구현 완료로 취급하지 않는다.
+- 목적: 첫 구현의 타입, 접근 제한, 판정 순서, 상태 수명, 검사 기준을 정한다. 최초 문서에서 M2 액션/M3 영속 저장은 포트만 정의했으며 실제 구현 현황과 검증은 위 상태 및 아래 최신 절을 따른다.
 
 ## 1. 구현 의존과 파일 단위
 
@@ -634,3 +634,21 @@ ServerOnly 능력/이동과22절의 서버 승인 경계는 유지한다. 클라
 최종 근거는 위 경로의 `Completion.json`이다. 게시 `c9552ea6`+제품2소스 수정의 전체 Editor/UHT/링크 성공 뒤, 실제 세 네트워크 프로세스와 별도 native 프로세스가 모두 **`9708F7DC…BD4C27A`** DLL을 사용했다. 세 시나리오·관전자 raw grant 비복제·실제 RMS ID mapping을 통과했으며 정상 서버 이동 **768.842cm**, 소유자 보정41회/매핑 최대1을 기록했다. 같은 DLL의 **native9 Success·검사 오류/경고0·종료0**, 기존 사설 소스1283개 불변·명시 제품/fixture/probe 입력 해시 일치를 확인했다. 네트워크 로그의 Error/SecurityViolation/Fatal은0이며 엔진/에셋·미설정 backend·Iris descriptor/모듈 기동 경고는 별도 보존했다. native 기동 자동화 등록 Error15도 검사 구간 오류0과 구분한다.
 
 초기 사설 probe 컴파일 오류와 자기 빌드 메모리 조정, 실행기의 기동 제한/로그 동시 읽기/빈 인자 중단은 최종 결과와 구분한다. 네트워크 통과 뒤 native 실행 인자를 보완하고 **동일 DLL/제품/검증 입력을 재대조해** 별도 native 검사를 완료했다. 자기 사본/PCH/OBJ/DLL/PDB/runtime/cache **6,705,571,578 bytes(약6.245GiB)**와 원본 Content를 가리키던 읽기 링크7개를 finally 폐기했고 Temp/소유 실행/새 정리 예외0이다. 원본 DLL/Intermediate/에셋·다른 담당 변경과 엔진 공유 진단 trace는 보존했다. 폐기한 DLL 해시는 당시 증거다.
+
+## 28. M2 Emote 실행과 Dash 선점 — 2026-11-12
+
+담당 `riding-emote-20261112`. [전용 Emote 능력](../Source/Project_RPG/Public/Riding/RPGGameplayAbility_RidingEmote.h)은 source-owned **ServerOnly GAS**로 실행한다. 클라이언트는 현재 소유 spec을 기존 GAS 경로로 요청하며 실행 시간·프로필·종료 이유·실행 ID를 전송하지 않는다. 서버는 현재 Pawn/Controller/ASC Avatar·정확한 source/spec/탑승 세대, Ready·생존·행동/제어·소모품/피해 예약·지면/구역·전투 잠금과 Emote 쿨타임을 검사한다. 클라이언트의 표시상 준비 판정은 서버 승인을 대신하지 않는다.
+
+- `FRPGRidingSession::CopyEmoteProfile`에서 승인 정책의 최대3초 실행/최대2초 공통 재사용 간격을 복사한다. `BeginEmote`는 서버 전용 실행 ticket과 단조 deadline을 만들고 세션 budget/쿨타임을 먼저 예약한 뒤 상태를 발행한다. 거절은 쿨타임을 소비하지 않으며, 승인 뒤 취소·하차·탈것/Pawn 교체는 기존 세션의 남은 시간을 환불하지 않는다. 새로운 인증 연결의 초기2초 보호를 유지한다.
+- 이동 속도/가속 입력이 생기면 기존 서버 CMC의 문맥 검사와 능력 watch에서 Emote만 끝낸다. 이동 입력이나 이동속도를 차단하지 않는다. 피격/제어·공중 이동·사망·신원/Avatar 해제·교체/하차는 기존 탑승 종료 경로와 결합하며 현재 자기 ticket만 종료한다. 정상 deadline 종료도 GAS/상태를 함께 정리한다. Emote는 RMS/보안 이동 창·피해/면역을 만들지 않는다.
+- Dash는 진행 중 Emote를 **한 번의 ActionSequence 증가**로 대체한다. Emote→None→Dash의 중간 상태를 발행하지 않으며 기존 Emote 쿨타임을 유지한다. 원래 Emote의 종료 callback은 새 Dash와 일치하지 않아 새 실행을 지울 수 없다. owner Dash 예측은 원래 authoritative Emote key에서 시작하고, 승인 전 `GetRidingState`는 Emote를 유지한다. 거절되면 원래 권위 projection으로 돌아간다. 서버에서 intent를 기다리는 Dash가 있으면 새 Emote는 시작하지 않는다.
+- Riding 제공자의 두 번째 시각 칸은 **기존 첫 스킬 슬롯의 현재 재매핑 키**를 사용한다. 새 물리 키 매핑이나 클래스 편성을 만들지 않고 기존 dispatch/누른 키 억제를 재사용한다. 첫 칸 Dash/기존 회피 키와 네 번째 하차도 유지한다. Emote 클릭/키는 `RequestEmote` 하나로 연결한다. HUD는 서버 시각 기준 Emote 남은 초를 표시하며, 승인된 전체 쿨타임 프로필을 별도로 복제하지 않으므로 임의 길이의 비율 게이지를 만들지 않는다.
+- 시각 컴포넌트는 현재 public 상태와 owner Dash 이동 projection을 읽어 전용 mount model에서만 Emote 몽타주를 비동기로 재생한다. 실행 key/ID·모델 수명 token을 확인하고 서버 경과 시간에 맞춰 시작한다. root motion/잘못된 스켈레톤·길이/누락 에셋은 시각 재생만 거절한다. 재생 전후의 인스턴스 집합에서 이번 실행을 식별하고 해당 instance ID만 정리하며 같은 에셋의 더 새로운 재생은 보존한다. 늦은 로드와 몽타주 callback은 새 실행/모델을 되살리거나 지우지 못한다. 캐릭터 transform/캡슐·무기 AnimLayer는 수정하지 않는다.
+
+`Run-RidingFoundationTests.ps1 -IncludeEmote -IncludePresentation -IncludeControl -IncludeConsume -IncludeAbilities -IncludeWorld`는 Emote 승인/보호 시간·중복/거절·이동 취소·Dash 원자 선점·위조 source/지면·승인 정책·하차/재탑승·발행 callback·Avatar 해제와 owner 예측 선점을 기존 회귀에 추가한다. 실제 Engine GAS/CMC 및 기존 모의 보안 host를 사용한다. 시각 검사는 읽기 전용 mannequin/Idle 에셋과 transient 몽타주로 실제 재생·종료/오래된 callback·같은 에셋의 다른 인스턴스 보존·root motion 거절을 검사한다. 분리 모듈은 Iris descriptor 회귀에 필요한 `IrisCore`를 명시적으로 링크한다.
+
+`Run-RidingIntegrationCompile.ps1 -IncludeEmote`는 게시 전체 UHT와 수정된 제품/유지 검사 CPP를 고정 사본에서 컴파일한다. 전체 게임 DLL 링크/실제 HUD 클릭·물리 입력/GPU·Emote NetDriver 전송/Steam 검증을 대신하지 않는다. 실제 탈것 두 종과 전용 Emote 모션 저작, 보유 API의 Ready 연결은 후속이며 제품 경로의 NotReady/비공개는 유지한다.
+
+최종 근거는 `Saved/BuildChecks/RidingEmote-20261112/Completion.json`이다. 게시 `965e47ab`+고정 입력의 분리 UHT/48단계 빌드·링크0과 실제 로드한 **`43C60B3D…62052C69`** DLL에서 **native85 Success·검사 오류/경고0·종료0**을 확인했다. Emote7/owner Dash 선점1/시각3 새 검사와 기존 회귀를 포함한다. 게시 전체 UHT/관련 **CPP20** 컴파일 성공 뒤 마지막 시각 구현/fixture 보완은 **CPP2**로 재검사했다. 고유 소스79/러너2/읽기 전용 에셋5 SHA 일치를 확인했으며 기동 자동화 등록 Error15는 검사 구간 오류0과 구분한다. HUD 경로와 유지할 HUD 검사 CPP는 컴파일 근거이며 실제 HUD/물리 키 실행으로 표시하지 않는다.
+
+초기 분리 실행기의 IrisCore 링크 누락, 몽타주 fixture/인스턴스 추적 및 시각 컴파일 보완 과정의 실패는 위 최종과 구분한다. 원본 에셋은 저장하지 않았으며 root-motion 거절 fixture의 메모리 플래그도 검사 범위에서 복구한다. 자기9회 사본/PCH/OBJ/DLL/PDB/runtime/cache **14,911,903,638 bytes(약13.888GiB)**와 Content 읽기 링크4개를 finally 폐기했고 Temp/소유 실행/새 정리 예외0이다. 원본 게임 DLL/Intermediate/에셋·다른 담당 변경과 엔진 공유 진단 trace는 보존했다. 폐기한 DLL 해시는 당시 증거다.

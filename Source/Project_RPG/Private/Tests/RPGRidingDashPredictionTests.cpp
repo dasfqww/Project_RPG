@@ -227,6 +227,20 @@ bool FRidingDashPredictionLocalMovement::RunTest(const FString&)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingDashPredictionEmote,"ProjectRPG.Riding.DashPrediction.EmotePreemption",Flags)
+bool FRidingDashPredictionEmote::RunTest(const FString&)
+{
+    FFixture F;auto Emote=F.Riding->GetRidingState();++Emote.Key.ActionSequence;
+    Emote.Action=ERPGRidingAction::Emote;Emote.ExecutionId=FGuid::NewGuid();Emote.ActionDuration=3;
+    Emote.ActionStartServerWorldSeconds=F.World->GetTimeSeconds();
+    F.Client();FRPGRidingDashPredictionTestAccess::State(*F.Riding,Emote);
+    if(!TestTrue(TEXT("Dash predicts while authoritative Emote remains"),F.Riding->RequestDash()&&F.Riding->IsDashMovementActive()))return false;
+    F.Tick(2);const auto View=F.Riding->GetDashMovementState();
+    TestTrue(TEXT("Prediction keeps authority and advances one action"),F.Riding->GetRidingState().Action==ERPGRidingAction::Emote&&View.Action==ERPGRidingAction::Dash&&View.Key.ActionSequence==Emote.Key.ActionSequence+1);
+    F.Reject();TestTrue(TEXT("Rejected Dash restores original Emote projection"),!F.Riding->IsDashMovementActive()&&F.Riding->GetDashMovementState().ExecutionId==Emote.ExecutionId);
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingDashPredictionServerIntent,"ProjectRPG.Riding.DashPrediction.ServerIntent",Flags)
 bool FRidingDashPredictionServerIntent::RunTest(const FString&)
 {

@@ -37,6 +37,10 @@ public:
         // The existing dodge action owns the physical key, including player remaps.
         Dash.InputTag = RPGGameplayTags::InputTag_Roll;
         Profile->Actions.Add(Dash);
+        FRPGActionBarEntry Emote;
+        Emote.ActionId = TEXT("Emote"); Emote.Label = LOCTEXT("Emote", "특수 동작");
+        Emote.SkillSlot = 0; Emote.DisplaySlot = 1;
+        Profile->Actions.Add(Emote);
         FRPGActionBarEntry Entry;
         Entry.ActionId = TEXT("Dismount");
         Entry.Label = LOCTEXT("Dismount", "내리기");
@@ -58,29 +62,32 @@ public:
     virtual const URPGActionBarProfile* GetActionBarProfile() const override { return Profile.Get(); }
     virtual FRPGActionBarActionView ReadAction(FName Id) const override
     {
-        if (Id == TEXT("Dash"))
+        if (Id == TEXT("Dash") || Id == TEXT("Emote"))
         {
             auto View = ReadAction(TEXT("Dismount"));
             if (!View.bAvailable) return View;
-            if (const auto* PC = Cast<ARPGPlayerController>(Controller.Get()))
+            const bool IsDash = Id == TEXT("Dash");
+            if (IsDash) if (const auto* PC = Cast<ARPGPlayerController>(Controller.Get()))
             {
                 const FKey Key = PC->GetCurrentKeyForTag(RPGGameplayTags::InputTag_Roll);
                 if (Key.IsValid()) View.KeyLabel = Key.GetDisplayName(false);
             }
             auto* C = Riding.Get();
-            View.bAvailable = C && C->CanRequestDash();
+            View.bAvailable = C && (IsDash ? C->CanRequestDash() : C->CanRequestEmote());
             FRPGRidingDashGrant Grant;
-            if (C && C->TryGetDashGrant(Grant)) View.CooldownDuration = Grant.Cooldown;
-            View.UnavailableReason = LOCTEXT("DashUnavailable", "현재 질주를 사용할 수 없습니다.");
+            if (IsDash && C && C->TryGetDashGrant(Grant)) View.CooldownDuration = Grant.Cooldown;
+            View.UnavailableReason = IsDash ? LOCTEXT("DashUnavailable", "현재 질주를 사용할 수 없습니다.")
+                : LOCTEXT("EmoteUnavailable", "현재 특수 동작을 사용할 수 없습니다.");
             const auto* PS = GetActionBarPawn()->GetPlayerState();
             const auto* S = PS ? PS->FindComponentByClass<URPGRidingSessionComponent>() : nullptr;
             const auto* Clock = C->GetWorld()->GetGameState();
             if (S && Clock)
             {
-                const double Remaining = S->GetOwnerState().DashEndServerSeconds - Clock->GetServerWorldTimeSeconds();
+                const auto Timing = S->GetOwnerState();
+                const double Remaining = (IsDash ? Timing.DashEndServerSeconds : Timing.EmoteEndServerSeconds) - Clock->GetServerWorldTimeSeconds();
                 if (FMath::IsFinite(Remaining)) View.CooldownRemaining = static_cast<float>(FMath::Clamp(Remaining, 0., 3600.));
             }
-            View.CooldownRemaining = FMath::Max(View.CooldownRemaining, C->GetPredictedDashCooldownRemaining());
+            if (IsDash) View.CooldownRemaining = FMath::Max(View.CooldownRemaining, C->GetPredictedDashCooldownRemaining());
             return View;
         }
         FRPGActionBarActionView View;
@@ -116,6 +123,7 @@ public:
             if (auto* C = Riding.Get())
             {
                 if (Id == TEXT("Dash")) C->RequestDash();
+                else if (Id == TEXT("Emote")) C->RequestEmote();
                 else if (Id == TEXT("Dismount")) C->RequestSetMounted(false, FRPGRidingSelector{});
             }
     }

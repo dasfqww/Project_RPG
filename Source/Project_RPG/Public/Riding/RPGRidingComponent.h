@@ -4,6 +4,7 @@
 #include "Riding/RPGRidingTypes.h"
 #include "Riding/RPGRidingDashAdmission.h"
 #include "Riding/RPGRidingDashGrant.h"
+#include "Riding/RPGRidingEmoteAdmission.h"
 #include "GameplayAbilitySpecHandle.h"
 #include "RPGRidingComponent.generated.h"
 
@@ -40,6 +41,8 @@ public:
     /** Requests only the current source-owned GAS spec; GAS performs the owning-client RPC. */
     UFUNCTION(BlueprintCallable, Category="Riding") bool RequestDash();
     UFUNCTION(BlueprintPure, Category="Riding") bool CanRequestDash() const;
+    UFUNCTION(BlueprintCallable, Category="Riding") bool RequestEmote();
+    UFUNCTION(BlueprintPure, Category="Riding") bool CanRequestEmote() const;
     /** Read-only approved profile; requires current owner/avatar/source spec and mount generation. */
     bool TryGetDashGrant(FRPGRidingDashGrant& Out) const;
     /** Movement-only projection. This never replaces the replicated authority state. */
@@ -74,6 +77,7 @@ private:
     friend class URPGRidingSessionComponent;
     friend class URPGPlayerMovementComponent;
     friend class URPGGameplayAbility_RidingDash;
+    friend class URPGGameplayAbility_RidingEmote;
     friend class FRPGRidingDashRuntime;
     friend class FRPGRidingDashPrediction;
     friend class FSavedMove_RPGRiding;
@@ -84,6 +88,7 @@ private:
     friend struct FRPGRidingDashAbilityTestAccess;
     friend struct FRPGRidingDashGrantTestAccess;
     friend struct FRPGRidingDashPredictionTestAccess;
+    friend struct FRPGRidingEmoteTestAccess;
 #endif
     UFUNCTION() void HandleControllerChanged(APawn* Pawn, AController* Old, AController* Current);
     UFUNCTION() void HandleRestarted(APawn* Pawn);
@@ -104,6 +109,15 @@ private:
     bool IsDashActivationCurrent(const FRPGRidingDashActivation& Activation) const;
     bool IsDashOwnerTimingReady() const;
     FGameplayAbilitySpecHandle FindDashAbility(UAbilitySystemComponent*& OutASC) const;
+    void SyncEmoteAbility();
+    void ReleaseEmoteAbility();
+    bool OwnsEmoteAbility(const UAbilitySystemComponent* ASC, FGameplayAbilitySpecHandle Handle) const;
+    FGameplayAbilitySpecHandle FindEmoteAbility(UAbilitySystemComponent*& OutASC) const;
+    ERPGRidingResultCode EvaluateEmoteAdmission() const;
+    bool BeginEmote(FRPGRidingEmoteTicket& Out);
+    bool MatchesEmote(const FRPGRidingEmoteTicket& Ticket) const;
+    bool FinishEmote(const FRPGRidingEmoteTicket& Ticket, ERPGRidingEndReason Reason);
+    void UpdateEmote();
     void ReleaseBinding();
     void Publish();
     bool Commit(const FRPGRidingDecision& Decision);
@@ -124,6 +138,12 @@ private:
     FRPGRidingStateKey DashGrantKey;
     FRPGRidingDashTicket ActiveDash;
     double DashDeadline = 0;
+    bool bSyncingEmoteAbility = false;
+    TWeakObjectPtr<UAbilitySystemComponent> EmoteAbilityOwner;
+    FGameplayAbilitySpecHandle EmoteAbilityHandle;
+    FRPGRidingStateKey EmoteAbilityKey;
+    FRPGRidingEmoteTicket ActiveEmote;
+    double EmoteDeadline = 0;
     TUniquePtr<FRPGRidingDashRuntime, FRPGRidingDashRuntimeDeleter> DashRuntime;
     TUniquePtr<FRPGRidingDashPrediction, FRPGRidingDashPredictionDeleter> DashPrediction;
     ERPGRidingEndReason PendingEnd = ERPGRidingEndReason::None;

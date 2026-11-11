@@ -173,7 +173,9 @@ bool FRPGRidingActionBarTransitions::RunTest(const FString&)
     const auto State = Mounted();
     TestTrue(TEXT("RepNotify receives canonical Mounted"), Replicate(*F.Pawn->Riding, State));
     if (!TestTrue(TEXT("Mounted activates Riding profile"), C->HasOverride())) return false;
-    TestEqual(TEXT("Dash and manual dismount actions"), C->GetProfile()->Actions.Num(), 2);
+    TestEqual(TEXT("Dash, Emote and manual dismount actions"), C->GetProfile()->Actions.Num(), 3);
+    const auto* Emote = C->GetProfile()->Actions.FindByPredicate([](const auto& E){ return E.ActionId == TEXT("Emote"); });
+    TestTrue(TEXT("Emote reuses the first skill key in the second visual cell"), Emote && Emote->SkillSlot == 0 && Emote->DisplaySlot == 1);
     TestTrue(TEXT("Manual dismount available"), C->ReadAction(TEXT("Dismount")).bAvailable);
     TestTrue(TEXT("Class left and identity hidden"), HUD.Left->GetVisibility() == ESlateVisibility::Collapsed && HUD.Center->GetVisibility() == ESlateVisibility::Collapsed);
     TestTrue(TEXT("Utility region kept"), HUD.Right->GetVisibility() != ESlateVisibility::Collapsed);

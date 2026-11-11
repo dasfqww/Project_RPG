@@ -5,6 +5,7 @@
 #include "RPGRidingPresentationComponent.generated.h"
 
 class UAnimInstance;
+class UAnimMontage;
 class UStaticMesh;
 class UStaticMeshComponent;
 class USkeletalMeshComponent;
@@ -60,6 +61,9 @@ private:
     void CompleteLoad(const FGuid& Token);
     void LoadPlaceholder();
     void UpdateVisibility();
+    void RefreshEmote();
+    void CompleteEmote(FGuid Token);
+    void StopEmote();
     TWeakObjectPtr<URPGRidingComponent> Riding;
     TWeakObjectPtr<UWorld> BoundWorld;
     TWeakObjectPtr<USkeletalMeshComponent> RiderMesh;
@@ -70,6 +74,13 @@ private:
     FTransform MountOffset, RiderOffset;
     FName SaddleSocket;
     TSharedPtr<FStreamableHandle> LoadHandle, PlaceholderHandle;
+    TSharedPtr<FStreamableHandle> EmoteLoadHandle;
+    FGuid EmoteToken;
+    FRPGRidingRepState EmoteState;
+    TWeakObjectPtr<UAnimInstance> EmoteAnim;
+    int32 EmoteInstanceId = INDEX_NONE;
+    bool bUpdatingEmote = false, bPlayingEmote = false;
+    UPROPERTY(Transient) TObjectPtr<UAnimMontage> EmoteMontage;
     ERPGRidingVisualStatus Status = ERPGRidingVisualStatus::Hidden;
     bool bEnding = false, bInstalling = false, bClearPending = false, bRefreshPending = false;
     UPROPERTY(Transient) TObjectPtr<USceneComponent> VisualRoot;

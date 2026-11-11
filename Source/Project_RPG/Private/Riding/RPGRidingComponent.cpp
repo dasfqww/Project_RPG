@@ -106,9 +106,11 @@ void URPGRidingComponent::RefreshBinding()
 
 void URPGRidingComponent::ReleaseBinding()
 {
+    const auto OldEmoteHandle = EmoteAbilityHandle;
     DashPrediction->Stop();
     DashRuntime->Stop(ERPGRidingEndReason::ExecutionRejected, false);
     ActiveDash = {}; DashDeadline = 0;
+    ActiveEmote = {}; EmoteDeadline = 0;
     const FGuid OldEpoch = State.Key.RiderEpoch;
     auto* Previous = Session.Get();
     Session.Reset(); Controller.Reset();
@@ -120,6 +122,7 @@ void URPGRidingComponent::ReleaseBinding()
         DashRuntime->ClampAfterStateChange();
     }
     ReleaseDashAbility();
+    if (EmoteAbilityHandle == OldEmoteHandle) ReleaseEmoteAbility();
     // A removal callback may have published a new epoch. The old release cannot clear it.
     if (WasBound && !State.Key.RiderEpoch.IsValid() && !Session.IsValid()) Publish();
 }
@@ -127,6 +130,7 @@ void URPGRidingComponent::ReleaseBinding()
 void URPGRidingComponent::Publish()
 {
     SyncDashAbility();
+    SyncEmoteAbility();
     MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, State, this);
     if (GetOwner()) GetOwner()->ForceNetUpdate();
     const auto Snapshot = State;
@@ -329,6 +333,7 @@ void URPGRidingComponent::MakeOnFoot(ERPGRidingEndReason Reason)
 {
     DashRuntime->Stop(Reason, false);
     ActiveDash = {}; DashDeadline = 0;
+    ActiveEmote = {}; EmoteDeadline = 0;
     const auto Key = State.Key;
     State = {};
     State.Key = Key;
@@ -348,6 +353,7 @@ bool URPGRidingComponent::Commit(const FRPGRidingDecision& Decision)
     if (Decision.Transition == ERPGRidingTransition::Dismount) MakeOnFoot(ERPGRidingEndReason::Manual);
     else
     {
+        ActiveEmote = {}; EmoteDeadline = 0;
         const auto Key = State.Key;
         State = {}; State.Key = Key; ++State.Key.StateRevision;
         State.Mode = ERPGRidingMode::Mounted;
@@ -379,6 +385,7 @@ void URPGRidingComponent::TickComponent(float Delta, ELevelTick Tick, FActorComp
     Super::TickComponent(Delta, Tick, Function);
     ValidateServerMovementContext();
     SyncDashAbility();
+    SyncEmoteAbility();
     DashPrediction->Update();
     DashRuntime->Tick();
     if (State.Action == ERPGRidingAction::Dash && FPlatformTime::Seconds() >= DashDeadline)
@@ -510,7 +517,8 @@ bool URPGRidingComponent::CanRequestDash() const
     const auto* PC = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
     if (bEnding || !IsRegistered() || !IsValid(Pawn) || Pawn->IsActorBeingDestroyed() || !IsValid(PC)
         || PC->GetPawn() != Pawn || PC->GetWorld() != GetWorld() || !RPGRiding::IsCanonical(State)
-        || State.Mode != ERPGRidingMode::Mounted || State.Action != ERPGRidingAction::None) return false;
+        || State.Mode != ERPGRidingMode::Mounted
+        || (State.Action != ERPGRidingAction::None && State.Action != ERPGRidingAction::Emote)) return false;
     UAbilitySystemComponent* ASC;
     const auto Handle = FindDashAbility(ASC);
     const auto* Spec = Handle.IsValid() ? ASC->FindAbilitySpecFromHandle(Handle) : nullptr;
@@ -548,7 +556,7 @@ ERPGRidingResultCode URPGRidingComponent::EvaluateDashAdmission(const FRPGRiding
     if (!IsInGameThread() || !IsBindingCurrent()) return ERPGRidingResultCode::AuthorityRevoked;
     if (RPGRiding::Compare(Expected, State.Key) != ERPGRidingStateOrder::Same) return ERPGRidingResultCode::StaleState;
     if (!RPGRiding::IsCanonical(State) || State.Mode != ERPGRidingMode::Mounted) return ERPGRidingResultCode::NotReady;
-    if (State.Action != ERPGRidingAction::None) return ERPGRidingResultCode::Busy;
+    if (State.Action != ERPGRidingAction::None && State.Action != ERPGRidingAction::Emote) return ERPGRidingResultCode::Busy;
     FRPGRidingEvaluationContext C; BuildGuards(C);
     if (!C.bReady) return ERPGRidingResultCode::NotReady;
     if (!C.bAlive || C.bActionBlocked || C.bSlowActive || Session->PendingDamageScopes.Num()) return ERPGRidingResultCode::ActionBlocked;
@@ -594,6 +602,8 @@ ERPGRidingResultCode URPGRidingComponent::TryBeginDash(FRPGRidingStateKey Expect
     const double Now = FPlatformTime::Seconds();
     if (!S->Runtime->TryReserveApprovedAction(Approved, Now)) return ERPGRidingResultCode::RateLimited;
     State = Approved;
+    // Replace the action atomically: the old Emote's end callback cannot clear this Dash.
+    ActiveEmote = {}; EmoteDeadline = 0;
     ActiveDash = {State.Key, State.ExecutionId, Profile}; DashDeadline = Now + Profile.Duration;
     Out = ActiveDash; // Remains an admitted ticket even if a publication callback immediately cancels it.
     S->PublishOwnerState();
@@ -643,6 +653,7 @@ void URPGRidingComponent::ValidateServerMovementContext()
     else if (!Context.bOnGround) ForceDismount(ERPGRidingEndReason::MovementMode);
     else if (const auto* Definition = FindDefinition(State.MountId); !Definition || !IsRegionAllowed(*Definition))
         ForceDismount(ERPGRidingEndReason::Region);
+    UpdateEmote();
 }
 
 double URPGRidingComponent::ConstrainServerMovement(const FVector& Start, const FVector& End)

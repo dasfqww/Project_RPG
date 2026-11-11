@@ -70,6 +70,7 @@ public:
     bool CopySnapshot(FRPGRidingAdmissionSnapshot& Out) const;
     bool CopyMovementProfile(FRPGRidingMovementProfile& Out) const;
     bool CopyDashProfile(FRPGRidingDashProfile& Out) const;
+    bool CopyEmoteProfile(struct FRPGRidingEmoteProfile& Out) const;
 
     FGuid BindPawn();
     bool UnbindPawn(const FGuid& ExpectedEpoch);
@@ -85,6 +86,7 @@ public:
 private:
 #if WITH_DEV_AUTOMATION_TESTS
     friend struct FRPGRidingDashTestAccess;
+    friend struct FRPGRidingEmoteTestAccess;
 #endif
     bool ObserveTime(double Now);
     bool MatchesPending(const FRPGRidingSnapshotTicket& Ticket) const;

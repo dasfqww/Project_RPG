@@ -34,7 +34,8 @@ bool FRPGRidingDashPrediction::Start(FRPGRidingDashActivation A, const FRPGRidin
     auto* C = Cast<ACharacter>(Owner.GetOwner()); auto* M = C ? C->GetCharacterMovement() : nullptr;
     if (IsPending() || !A.PredictionKey.IsLocalClientKey() || !Intent.IsValid() || Intent.GrantId != A.Grant.GrantId
         || !Owner.IsDashActivationCurrent(A) || !Owner.IsDashOwnerTimingReady()
-        || Owner.State.Action != ERPGRidingAction::None || RPGRiding::Compare(Intent.Expected, Owner.State.Key) != ERPGRidingStateOrder::Same
+        || (Owner.State.Action != ERPGRidingAction::None && Owner.State.Action != ERPGRidingAction::Emote)
+        || RPGRiding::Compare(Intent.Expected, Owner.State.Key) != ERPGRidingStateOrder::Same
         || !C || C->GetLocalRole() != ROLE_AutonomousProxy || !RPGRidingDashGeometry::Usable(C, M)) return false;
     const auto Execution = A.ExecutionFor(Intent.Expected);
     if (!Execution.IsValid()) return false;
@@ -62,7 +63,8 @@ FRPGRidingRepState FRPGRidingDashPrediction::View() const
     const auto State = Owner.State;
     if (IsPending() && ContextCurrent())
     {
-        if (RPGRiding::Compare(State.Key, Expected) == ERPGRidingStateOrder::Same && State.Action == ERPGRidingAction::None) return Predicted;
+        if (RPGRiding::Compare(State.Key, Expected) == ERPGRidingStateOrder::Same
+            && (State.Action == ERPGRidingAction::None || State.Action == ERPGRidingAction::Emote)) return Predicted;
         if (State.ExecutionId == Predicted.ExecutionId && RPGRiding::Compare(State.Key, Predicted.Key) == ERPGRidingStateOrder::Same) return State;
     }
     // A stopped prediction must not revive through a delayed authority source, even after a retry.
@@ -103,7 +105,8 @@ void FRPGRidingDashPrediction::Update()
     const bool Accepted = S.ExecutionId == Predicted.ExecutionId && RPGRiding::Compare(S.Key, Predicted.Key) == ERPGRidingStateOrder::Same
         && S.Action == ERPGRidingAction::Dash && S.ActionDuration == Activation.Grant.Duration && S.ActionDirection.Equals(Predicted.ActionDirection, .001);
     if (Accepted) bAcknowledged = true;
-    else if (bAcknowledged || S.Action != ERPGRidingAction::None || RPGRiding::Compare(S.Key, Expected) != ERPGRidingStateOrder::Same) { Stop(); return; }
+    else if (bAcknowledged || (S.Action != ERPGRidingAction::None && S.Action != ERPGRidingAction::Emote)
+        || RPGRiding::Compare(S.Key, Expected) != ERPGRidingStateOrder::Same) { Stop(); return; }
     if ((!bAcknowledged && Owner.GetWorld()->GetTimeSeconds() - StartedAt >= 2.) || (bAcknowledged && !HasMotion())) { Stop(); return; }
     if (!HasMotion()) ClampVelocity(); // Keep the bounded receipt wait, never extend the local force.
 }

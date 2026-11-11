@@ -1,9 +1,11 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [ValidateRange(1,4)][int]$MaxParallelActions=1)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$EmotePresentationOnly, [ValidateRange(1,4)][int]$MaxParallelActions=1)
 $ErrorActionPreference='Stop'
+if ($EmotePresentationOnly -and !$IncludeEmote) { throw 'EmotePresentationOnly requires IncludeEmote' }
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $run=[Guid]::NewGuid().ToString('N')
 if ($IncludeControl) { $IncludeDamage = $true }
+if ($IncludeEmote) { $IncludeDashPrediction = $true }
 $proofFolder = if ($IncludeDashMotion) { 'RidingDashMotion-20261109' } elseif ($IncludeDashAdmission) { 'RidingDashAdmission-20261109' } elseif ($IncludeControl) { 'RidingControl-20261109' } elseif ($IncludeDamage) { 'RidingDamage-20261109' } elseif ($IncludeConsume) { 'RidingConsume-20261108' } elseif ($IncludeAbilities) { 'RidingAbilityGate-20261108' } elseif ($IncludeWorld) { 'RidingRegions-20261108' } elseif ($IncludePresentation) { 'RidingPresentation-20261108' } else { 'RidingActors-20261106' }
 $reservation = if ($IncludeDashMotion) { 'riding-dash-motion-20261109' } elseif ($IncludeDashAdmission) { 'riding-dash-admission-20261109' } elseif ($IncludeControl) { 'riding-control-20261109' } elseif ($IncludeDamage) { 'riding-damage-20261109' } elseif ($IncludeConsume) { 'riding-consume-20261108' } elseif ($IncludeAbilities) { 'riding-ability-gate-20261108' } elseif ($IncludeWorld) { 'riding-regions-20261108' } elseif ($IncludePresentation) { 'riding-presentation-20261108' } else { 'riding-actors-20261106' }
 $proofRoot=Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/Integration-'+$run)
@@ -27,6 +29,10 @@ if ($IncludeDashGrant) {
     $reservation='riding-dash-grant-20261110'
 }
 $proof=[ordered]@{Passed=$false;Scope='Full published project UHT and focused integration CPP compile, no module link/runtime';Head='';Inputs=@();Cleanup=$null;Failure=$null}
+if ($IncludeEmote) {
+    $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingEmote-20261112/Integration-'+$run)
+    $reservation='riding-emote-20261112'
+}
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Save-Proof { [IO.File]::WriteAllText((Join-Path $proofRoot 'Result.json'),($proof|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false)) }
 function Assert-Reservation {
@@ -98,7 +104,10 @@ try {
     if ($IncludeDashReplay) { $files=@('Source/Project_RPG/Public/Riding/RPGRidingDashRootMotion.h','Source/Project_RPG/Private/Riding/RPGRidingDashRootMotion.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Private/Riding/RPGRidingMovementPrediction.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashReplayTests.cpp') }
     if ($IncludeDashGrant) { $files=@('Source/Project_RPG/Public/Riding/RPGRidingDashGrant.h','Source/Project_RPG/Private/Riding/RPGRidingDashGrant.cpp','Source/Project_RPG/Public/Riding/RPGRidingDashAdmission.h','Source/Project_RPG/Private/Riding/RPGRidingSession.cpp','Source/Project_RPG/Public/Riding/RPGRidingComponent.h','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Riding/RPGGameplayAbility_RidingDash.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.h','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashGrantTests.cpp') }
     if ($IncludeDashPrediction) { $files=@('Source/Project_RPG/Public/Riding/RPGRidingDashIntent.h','Source/Project_RPG/Private/Riding/RPGRidingDashIntent.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashGeometry.h','Source/Project_RPG/Private/Riding/RPGRidingDashGeometry.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashPrediction.h','Source/Project_RPG/Private/Riding/RPGRidingDashPrediction.cpp','Source/Project_RPG/Public/Riding/RPGRidingComponent.h','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Public/Riding/RPGGameplayAbility_RidingDash.h','Source/Project_RPG/Private/Riding/RPGGameplayAbility_RidingDash.cpp','Source/Project_RPG/Public/Riding/RPGRidingMovementPrediction.h','Source/Project_RPG/Private/Riding/RPGRidingMovementPrediction.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Component/RPGAbilitySystemTargetDataSecurity.cpp','Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashMotionTests.h','Source/Project_RPG/Private/Tests/RPGRidingDashMotionTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashGrantTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashPredictionTests.h','Source/Project_RPG/Private/Tests/RPGRidingDashPredictionTests.cpp') }
-    foreach($relative in $files) {
+    if ($IncludeEmote) {
+        $files+=@('Source/Project_RPG/Public/Riding/RPGRidingEmoteAdmission.h','Source/Project_RPG/Public/Riding/RPGGameplayAbility_RidingEmote.h','Source/Project_RPG/Private/Riding/RPGGameplayAbility_RidingEmote.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponentEmote.cpp','Source/Project_RPG/Private/Riding/RPGRidingSession.h','Source/Project_RPG/Private/Riding/RPGRidingSession.cpp','Source/Project_RPG/Public/Riding/RPGRidingSessionComponent.h','Source/Project_RPG/Public/Riding/RPGRidingPresentationComponent.h','Source/Project_RPG/Private/Riding/RPGRidingPresentationComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingEmoteTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingPresentationTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingActionBarTests.cpp')
+    }
+    foreach($relative in @($files|Select-Object -Unique)) {
         $source=Join-Path $workspace $relative
         $destination=Join-Path $project $relative
         $sha=(Get-FileHash -LiteralPath $source).Hash
@@ -123,7 +132,12 @@ try {
     if ($IncludeDashReplay) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingDashRootMotion.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Private/Riding/RPGRidingMovementPrediction.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashReplayTests.cpp') }
     if ($IncludeDashGrant) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingDashGrant.cpp','Source/Project_RPG/Private/Riding/RPGRidingSession.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Riding/RPGGameplayAbility_RidingDash.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashGrantTests.cpp') }
     if ($IncludeDashPrediction) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingDashIntent.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashGeometry.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashPrediction.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Riding/RPGGameplayAbility_RidingDash.cpp','Source/Project_RPG/Private/Riding/RPGRidingMovementPrediction.cpp','Source/Project_RPG/Private/Riding/RPGRidingDashRuntime.cpp','Source/Project_RPG/Private/Component/RPGPlayerMovementComponent.cpp','Source/Project_RPG/Private/Component/RPGAbilitySystemTargetDataSecurity.cpp','Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashMotionTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashGrantTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingDashPredictionTests.cpp') }
-    [IO.File]::WriteAllLines($fileList,@($compile|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
+    if ($IncludeEmote) {
+        $compile+=@('Source/Project_RPG/Private/Riding/RPGRidingComponentEmote.cpp','Source/Project_RPG/Private/Riding/RPGGameplayAbility_RidingEmote.cpp','Source/Project_RPG/Private/Riding/RPGRidingSession.cpp','Source/Project_RPG/Private/Riding/RPGRidingPresentationComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingEmoteTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingPresentationTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingActionBarTests.cpp')
+    }
+    if ($EmotePresentationOnly) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingPresentationComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingPresentationTests.cpp') }
+    $proof.CompileFiles=@($compile|Select-Object -Unique)
+    [IO.File]::WriteAllLines($fileList,@($compile|Select-Object -Unique|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
     $dotnet=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
     $ubt=Join-Path $EngineRoot 'Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll'
     $args=@($ubt,'Project_RPGEditor','Win64','Development',(Join-Path $project 'Project_RPG.uproject'),

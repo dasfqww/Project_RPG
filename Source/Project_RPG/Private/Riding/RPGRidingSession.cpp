@@ -1,4 +1,5 @@
 #include "Riding/RPGRidingSession.h"
+#include "Riding/RPGRidingEmoteAdmission.h"
 
 bool FRPGRidingSessionIdentity::IsValid() const
 {
@@ -210,6 +211,14 @@ bool FRPGRidingSession::CompleteCommand(const FRPGRidingRequestToken& Token, con
 {
     if (Token.Sequence != ActiveRequest || !Ledger.Complete(Token, Receipt)) return false;
     ActiveRequest = 0;
+    return true;
+}
+
+bool FRPGRidingSession::CopyEmoteProfile(FRPGRidingEmoteProfile& Out) const
+{
+    Out = {};
+    if (Status != ERPGRidingSessionStatus::Ready) return false;
+    Out.Duration = Policy.EmoteDuration; Out.Cooldown = Policy.EmoteCooldown;
     return true;
 }
 
