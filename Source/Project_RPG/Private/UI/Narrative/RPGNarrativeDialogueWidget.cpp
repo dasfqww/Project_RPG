@@ -91,14 +91,14 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
 bool URPGNarrativeDialogueWidget::MatchesSelection() const
 {
     if (!IsValid(Coordinator) || !Character.IsValid() || Coordinator->GetSelectedCharacterId() != Character) return false;
-    if (!bNPCContext) return true;
     const auto* Dungeon = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGDungeonSessionSubsystem>() : nullptr;
-    const auto* Web = GetGameInstance() ? GetGameInstance()->GetSubsystem<UHttpWebManager>() : nullptr;
     FGuid Selected;
+    if (!Dungeon || !FGuid::Parse(Dungeon->GetSelectedCharacterId(), Selected) || Selected != Character) return false;
+    if (!bNPCContext) return true;
+    const auto* Web = GetGameInstance() ? GetGameInstance()->GetSubsystem<UHttpWebManager>() : nullptr;
     return SourceNPC.IsValid() && GetOwningPlayer() && SourcePawn.IsValid() && GetOwningPlayer()->GetPawn() == SourcePawn.Get()
-        && SourceNPC->CanInteractWith(GetOwningPlayer()) && Dungeon && Web && Web->HasAccessToken()
-        && Web->GetAuthenticatedSteamId() == NPCAccount && Web->GetApiUrl() == NPCEndpoint
-        && FGuid::Parse(Dungeon->GetSelectedCharacterId(), Selected) && Selected == Character;
+        && SourceNPC->CanInteractWith(GetOwningPlayer()) && Web && Web->HasAccessToken()
+        && Web->GetAuthenticatedSteamId() == NPCAccount && Web->GetApiUrl() == NPCEndpoint;
 }
 bool URPGNarrativeDialogueWidget::OpenForCharacter(const FGuid CharacterId)
 {
@@ -126,7 +126,10 @@ bool URPGNarrativeDialogueWidget::OpenContext(const FGuid CharacterId)
 {
     auto* Player = GetOwningLocalPlayer();
     auto* Flow = Player ? Player->GetSubsystem<URPGNarrativeCoordinator>() : nullptr;
-    if (!CharacterId.IsValid() || !Flow) return false;
+    const auto* Dungeon = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGDungeonSessionSubsystem>() : nullptr;
+    FGuid Selected;
+    if (!CharacterId.IsValid() || !Flow || !Dungeon
+        || !FGuid::Parse(Dungeon->GetSelectedCharacterId(), Selected) || Selected != CharacterId) return false;
     if (Flow->GetSelectedCharacterId() != CharacterId && !Flow->SelectCharacter(CharacterId)) return false;
     Unbind(); Coordinator = Flow; Character = CharacterId; FailureText = FText::GetEmpty(); OwnedDialogue.Reset();
     if (bNPCContext && !Flow->HasPendingChoice()) Flow->CloseDialogue();

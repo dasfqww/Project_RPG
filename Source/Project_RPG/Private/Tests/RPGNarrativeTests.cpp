@@ -15,6 +15,7 @@
 #include "HAL/PlatformTime.h"
 #include "Serialization/JsonSerializer.h"
 #include "UObject/StrongObjectPtr.h"
+#include "UObject/Package.h"
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
@@ -150,6 +151,8 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
             auto* Web = Instance->GetSubsystem<UHttpWebManager>();
             if (!Player || !Web) return false;
             FRPGNarrativeTestAccess::Login(Web);
+            auto* Dungeon = Instance->GetSubsystem<URPGDungeonSessionSubsystem>();
+            if (!Dungeon || !Dungeon->SelectCharacter(Character.ToString(EGuidFormats::DigitsWithHyphensLower))) return false;
             return Player->GetSubsystem<URPGNarrativeCoordinator>() && Player->GetSubsystem<URPGDialogueManager>()
                 && Instance->GetSubsystem<URPGQuestManager>() && Instance->GetSubsystem<URPGScenarioManager>();
         }
@@ -461,9 +464,29 @@ bool FRPGNarrativeDialogueWidgetTest::RunTest(const FString&)
     TStrongObjectPtr<URPGNarrativeDialogueWidget> Panel(CreateWidget<URPGNarrativeDialogueWidget>(Controller));
     if (!TestNotNull(TEXT("Native story widget"), Panel.Get())) return false;
     Panel->SetOwningLocalPlayer(Fixture.Player);
+    auto* Dungeon = Fixture.Instance->GetSubsystem<URPGDungeonSessionSubsystem>();
+    const FGuid Alt(9, 8, 7, 6);
+    auto Select = [&](const FGuid Id) { return Dungeon->SelectCharacter(Id.ToString(EGuidFormats::DigitsWithHyphensLower).ToUpper()); };
+    TestTrue(TEXT("Select another character globally"), Select(Alt));
+    TestFalse(TEXT("Stale character cannot open a story window"), Panel->OpenForCharacter(Character));
+    TestEqual(TEXT("Rejected open sends no request"), Transport->Sends, 0);
+    TestTrue(TEXT("Restore global character"), Select(Character));
     TestTrue(TEXT("Open exact character"), Panel->OpenForCharacter(Character));
     const TSharedRef<SWidget> PanelSlate = Panel->TakeWidget();
+    TestTrue(TEXT("Global selection changes while the old GET is in flight"), Select(Alt));
     Transport->Complete(Snapshot(0));
+    auto* Actions = Cast<UVerticalBox>(Panel->GetWidgetFromName(TEXT("NarrativeActions")));
+    auto* Refresh = Cast<UButton>(Panel->GetWidgetFromName(TEXT("NarrativeRefresh")));
+    auto* Journal = Cast<UTextBlock>(Panel->GetWidgetFromName(TEXT("NarrativeQuestJournal")));
+    if (!TestNotNull(TEXT("Actions control"), Actions) || !TestNotNull(TEXT("Refresh control"), Refresh)
+        || !TestNotNull(TEXT("Journal control"), Journal)) return false;
+    TestEqual(TEXT("Late old-character GET cannot expose its actions"), Actions->GetChildrenCount(), 0);
+    TestTrue(TEXT("Late old-character GET cannot expose its journal"), Journal->GetText().IsEmpty());
+    const int32 BeforeRefresh = Transport->Sends;
+    Refresh->OnClicked.Broadcast();
+    TestEqual(TEXT("Stale refresh callback sends no request"), Transport->Sends, BeforeRefresh);
+    TestTrue(TEXT("Select original character for its cached view"), Select(Character));
+    FRPGNarrativeTestAccess::TickNPC(Panel.Get());
     auto Click = [&](const FString& Node, const FString& Choice) -> bool
     {
         auto* List = Cast<UVerticalBox>(Panel->GetWidgetFromName(TEXT("NarrativeActions")));
@@ -480,6 +503,16 @@ bool FRPGNarrativeDialogueWidgetTest::RunTest(const FString&)
     };
     TestTrue(TEXT("Open from rendered server node"), Click(TEXT("DEV.Contact.Offer"), FString()));
     TestFalse(TEXT("Opening a conversation does not accept"), Flow->HasPendingChoice());
+    TestTrue(TEXT("Switch before the old choice's click handler runs"), Select(Alt));
+    const int32 BeforeChoice = Transport->Sends;
+    TestTrue(TEXT("Previously rendered accept button still exists before tick"), Click(TEXT("DEV.Contact.Offer"), TEXT("accept")));
+    TestEqual(TEXT("Stale choice callback sends no command"), Transport->Sends, BeforeChoice);
+    TestFalse(TEXT("Stale choice creates no uncertain command"), Flow->HasPendingChoice());
+    FRPGNarrativeTestAccess::TickNPC(Panel.Get());
+    TestEqual(TEXT("Tick hides old-character actions"), Actions->GetChildrenCount(), 0);
+    TestTrue(TEXT("Tick hides old-character journal"), Journal->GetText().IsEmpty());
+    TestTrue(TEXT("Restore selection after stale click"), Select(Character));
+    FRPGNarrativeTestAccess::TickNPC(Panel.Get());
     Panel->CloseScreen();
     FRPGDialogueNode Active;
     TestFalse(TEXT("Closing clears only local conversation"), Flow->GetDialogueManager()->GetActiveDialogue(Active));
@@ -491,15 +524,21 @@ bool FRPGNarrativeDialogueWidgetTest::RunTest(const FString&)
     const FString Intent = Transport->LastBody;
     TestTrue(TEXT("No local progress before server reply"), Flow->GetQuestManager()->GetQuests(Character).IsEmpty());
     if (!TestTrue(TEXT("Accept POST callback exists"), Transport->Complete(FString(), 0))) return false;
-    Panel->CloseScreen(); Panel->OpenForCharacter(Character);
     auto* Retry = Cast<UButton>(Panel->GetWidgetFromName(TEXT("NarrativeRetry")));
     if (!TestNotNull(TEXT("Uncertain result has retry control"), Retry)) return false;
+    TestTrue(TEXT("Switch globally while a choice outcome is uncertain"), Select(Alt));
+    const int32 BeforeRetry = Transport->Sends;
+    Retry->OnClicked.Broadcast(); Refresh->OnClicked.Broadcast();
+    TestEqual(TEXT("Stale retry and refresh callbacks send nothing"), Transport->Sends, BeforeRetry);
+    TestTrue(TEXT("Switching preserves the original uncertain command"), Flow->HasPendingChoice());
+    Panel->CloseScreen();
+    TestFalse(TEXT("Cannot reopen a pending command for a different global selection"), Panel->OpenForCharacter(Character));
+    TestTrue(TEXT("Restore original selection for recovery"), Select(Character));
+    TestTrue(TEXT("Reopen preserves uncertain command without replacing it"), Panel->OpenForCharacter(Character));
     Retry->OnClicked.Broadcast();
     TestEqual(TEXT("Widget retry retains the original command"), Transport->LastBody, Intent);
     if (!TestTrue(TEXT("Retry POST callback exists"), Transport->Complete(Snapshot(1)))) return false;
     TestEqual(TEXT("Server approval populates progress"), Flow->GetQuestManager()->GetQuests(Character).Num(), 1);
-    auto* Journal = Cast<UTextBlock>(Panel->GetWidgetFromName(TEXT("NarrativeQuestJournal")));
-    if (!TestNotNull(TEXT("Quest journal control"), Journal)) return false;
     TestTrue(TEXT("Journal displays authored title and unfinished goal"), Journal->GetText().ToString().Contains(TEXT("Test quest"))
         && Journal->GetText().ToString().Contains(TEXT("Contact briefing")));
     int32 Revision = 1;
