@@ -15,6 +15,10 @@
 #include "GameFramework/WorldSettings.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
+#include "UObject/UnrealType.h"
+#if UE_WITH_IRIS
+#include "Iris/ReplicationState/ReplicationStateDescriptorBuilder.h"
+#endif
 #include <limits>
 
 ARPGRidingDashPredictionTestPawn::ARPGRidingDashPredictionTestPawn(const FObjectInitializer& I)
@@ -175,6 +179,35 @@ bool FRidingDashPredictionWire::RunTest(const FString&)
     FGameplayAbilityTargetDataHandle D;TestNull(TEXT("Empty data rejected"),FRPGRidingDashIntent::Read(D));D.Add(new FRPGRidingDashIntent(I));
     TestNotNull(TEXT("Exactly one native input"),FRPGRidingDashIntent::Read(D));D.Add(new FGameplayAbilityTargetData_ActorArray());TestNull(TEXT("Mixed or multiple entries rejected"),FRPGRidingDashIntent::Read(D));
     Bytes.SetNum(3);FMemoryReader Short(Bytes);TestFalse(TEXT("Truncated input rejected"),Copy.NetSerialize(Short,nullptr,Ok));TestFalse(TEXT("Partial input cannot be used"),Copy.IsValid());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingDashPredictionReflectedWire,"ProjectRPG.Riding.DashPrediction.ReflectedWire",Flags)
+bool FRidingDashPredictionReflectedWire::RunTest(const FString&)
+{
+    // A native NetSerialize round trip cannot detect fields missing from Iris target data.
+    FRPGRidingDashIntent Input; Input.GrantId=FGuid::NewGuid(); Input.Expected={FGuid::NewGuid(),7,13};
+    Input.Direction=FVector(3,4,0).GetSafeNormal();
+    TArray<uint8> Bytes; FMemoryWriter Writer(Bytes); FRPGRidingDashIntent::StaticStruct()->SerializeBin(Writer,&Input);
+    FRPGRidingDashIntent Received; FMemoryReader Reader(Bytes); FRPGRidingDashIntent::StaticStruct()->SerializeBin(Reader,&Received);
+    TestTrue(TEXT("Reflected payload preserves grant, exact state key and normalized direction"),
+        !Writer.IsError() && !Reader.IsError() && Received.IsValid() && Received.GrantId==Input.GrantId
+        && RPGRiding::Compare(Received.Expected,Input.Expected)==ERPGRidingStateOrder::Same && Received.Direction==Input.Direction);
+#if UE_WITH_IRIS
+    UE::Net::FReplicationStateDescriptorBuilder::FParameters Parameters;
+    Parameters.SkipCheckForCustomNetSerializerForStruct=true;
+    const auto Descriptor=UE::Net::FReplicationStateDescriptorBuilder::CreateDescriptorForStruct(FRPGRidingDashIntent::StaticStruct(),Parameters);
+    if(TestTrue(TEXT("Iris creates the full bounded input descriptor"),Descriptor.IsValid() && Descriptor->MemberCount==3))
+    {
+        for(const TCHAR* Name:{TEXT("GrantId"),TEXT("Expected"),TEXT("Direction")})
+        {
+            bool Found=false;
+            for(uint16 Index=0;Index<Descriptor->MemberCount;++Index)
+                Found |= Descriptor->MemberProperties[Index] && Descriptor->MemberProperties[Index]->GetFName()==FName(Name);
+            TestTrue(FString::Printf(TEXT("Iris includes %s"),Name),Found);
+        }
+    }
+#endif
     return true;
 }
 

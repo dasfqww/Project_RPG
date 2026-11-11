@@ -201,7 +201,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingFounda
     if ($IncludeDashGAS) { $expected += @('Grant','Activation','Cancel','Lifetime','Reentry','DirectionAndRejection') | ForEach-Object {'ProjectRPG.Riding.DashGAS.'+$_} }
     if ($IncludeDashReplay) { $expected += @('Identity','Wire','Ownership','SavedMove','RepNotify') | ForEach-Object {'ProjectRPG.Riding.DashReplay.'+$_} }
     if ($IncludeDashGrant) { $expected += @('Wire','Identity','Lifecycle','Activation','OwnerOrdering','Callback') | ForEach-Object {'ProjectRPG.Riding.DashGrant.'+$_} }
-    if ($IncludeDashPrediction) { $expected += @('Wire','LocalMovement','ServerIntent','Rejection','Reconcile','Replay','Boundaries','Lifetime') | ForEach-Object {'ProjectRPG.Riding.DashPrediction.'+$_} }
+    if ($IncludeDashPrediction) { $expected += @('Wire','ReflectedWire','LocalMovement','ServerIntent','Rejection','Reconcile','Replay','Boundaries','Lifetime') | ForEach-Object {'ProjectRPG.Riding.DashPrediction.'+$_} }
     if ($IncludeDashAdmission) { $expected += @('Approval','Reentry','Endings','Lifetime') | ForEach-Object {'ProjectRPG.Riding.DashAdmission.'+$_} }
     if ($IncludeDamage) { $expected += @('HealthAndShield','RejectedAndNested','AuthorityAndTeams','PawnAndIdentity') | ForEach-Object {'ProjectRPG.Riding.Damage.'+$_} }
     if ($IncludeDamage) { $expected += @('ActiveEffect','RejectedEffects','CallbackAndNesting') | ForEach-Object {'ProjectRPG.Riding.Control.'+$_} }

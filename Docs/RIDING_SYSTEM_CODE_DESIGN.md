@@ -620,3 +620,17 @@ ServerOnly 능력/이동과22절의 서버 승인 경계는 유지한다. 클라
 최종 근거는 `Saved/BuildChecks/RidingDashPrediction-20261110/Completion.json`이다. 게시 `43bfe51a`+고정 입력의 독립 UHT/43단계 빌드·링크와 `A0870DF4…735DD2C8` DLL에서 **native68 Success·검사 오류/경고0·UE0**, 전체 UHT/제품10+검사3 **CPP13 컴파일0**을 확인했다. 고유 입력70/러너2 SHA가 현재 원본과 일치한다. 마지막 force 프레임의 지면/거리 제한, 실제 GAS 확인 뒤 서버 취소, 체력0/소유권 상실과 Avatar 폐기 수명도 포함한다. 기동 자동화 등록 Error15는 검사 시작 뒤 오류0과 구분한다.
 
 초기 엔진 RMS 조회의 const 제약과 fixture의 Pawn/Controller 역할·무전송 CMC 진입·SavedMoves 등록/보호 진입 보완 과정은 위 최종과 구분한다. 중간68 Success는 Avatar 정보 폐기 후 종료 RPC의 GAS 경고1건으로 엄격 gate에 실패했다. 유효한 소유 문맥에서만 종료를 복제하고 원래 컴포넌트/ASC의 World로 timer를 회수한 최종은 경고0이다. 자기14회 사본/PCH/OBJ/DLL/PDB/runtime/cache **21,093,783,753 bytes(약19.645GiB)**를 finally 폐기했으며 소유 실행/Temp/새 정리 예외0이다. 원본 게임 DLL/Intermediate/에셋·타 담당 변경은 보존했고 엔진 도구의 공유 진단 trace는 별도 삭제하지 않았다. 폐기한 DLL 해시는 당시 증거다.
+
+## 27. M2 Iris Dash intent 전송 — 2026-11-12
+
+담당 `riding-netdriver-20261112`. 게시 `c9552ea6`의 실제 IpNetDriver/Iris 연결에서 소유자 Dash 예측은 시작되지만 서버가 정상 TargetData를 `InvalidTargetData`로 거절하는 결함을 재현했다. Iris의 GAS TargetData serializer는 파생 구조체의 리플렉션 descriptor를 사용한다. native `NetSerialize`만 구현하고 필드를 등록하지 않았던 intent는 값이 전송되지 않았다. 26절의 native RPC interception/직접 serializer 검사는 이 경로를 실행하지 않았다.
+
+- `FRPGRidingDashIntent`의 grant GUID·시작 state key·방향 세 필드를 `UPROPERTY`로 등록한다. 별도 권한 필드나 RPC는 추가하지 않는다. 기존 native 고정 길이 serializer와 서버의 단일 payload/수치·방향·현재 spec/key·grant·state 검사는 유지한다. Iris 수신도 ASC의 같은 검증을 통과한 뒤에만 서버 이동 승인을 시도한다.
+- 유지할 `ProjectRPG.Riding.DashPrediction.ReflectedWire` 검사는 native wire와 별도로 리플렉션 직렬화의 정확한 grant/state key/정규 XY 방향 왕복을 확인한다. Iris 지원 빌드에서는 실제 descriptor에 세 필드가 모두 포함되는지도 확인한다. `Run-RidingFoundationTests.ps1 -IncludeDashPrediction`의 엄격한 예상 목록에도 새 검사를 추가하고, 실행기 구문·선언9개와 실제 통과한 native9의 일치를 확인했다. 별도 Foundation 사본의 전체 빌드/실행은 반복하지 않았다.
+- 실제 네트워크 검증은 게시 전체 게임 모듈과 위 수정 입력을 고정한 사설 Editor에서 서버·소유자·관전자 세 프로세스, 실제 product ASC/Player CMC/보안 컴포넌트, Iris·지연 80~160ms·손실 5%를 사용한다. 정상 승인, 서버의 기존 외부 보안 창 때문에 거절되는 예측, 승인 도중 강제 하차와 쿨타임 보존·소유 RMS/SavedMoves 정리, 관전자에 대한 raw owner-only grant 비복제를 검사한다. 강제 보정 요청은 사설 probe에서만 설정하며 엔진의 이동 보정/RMS ID mapping 처리는 그대로 실행한다.
+
+검증의 Ready/보유 승인·바닥은 사설 dev fixture이며 bootstrap GameInstance/온라인 서비스는 기본 GameInstance/Null로 대체한다. 제품 보유 API의 NotReady/비공개 경계는 유지한다. 이 결과를 실제 보유 API·Steam 인증/원격 장비·GPU/물리 키 입력 검증으로 확대하지 않는다. 검증 실행기·probe·결과는 `Saved/BuildChecks/RidingNetDriver-20261112/`에 로컬로 보존한다.
+
+최종 근거는 위 경로의 `Completion.json`이다. 게시 `c9552ea6`+제품2소스 수정의 전체 Editor/UHT/링크 성공 뒤, 실제 세 네트워크 프로세스와 별도 native 프로세스가 모두 **`9708F7DC…BD4C27A`** DLL을 사용했다. 세 시나리오·관전자 raw grant 비복제·실제 RMS ID mapping을 통과했으며 정상 서버 이동 **768.842cm**, 소유자 보정41회/매핑 최대1을 기록했다. 같은 DLL의 **native9 Success·검사 오류/경고0·종료0**, 기존 사설 소스1283개 불변·명시 제품/fixture/probe 입력 해시 일치를 확인했다. 네트워크 로그의 Error/SecurityViolation/Fatal은0이며 엔진/에셋·미설정 backend·Iris descriptor/모듈 기동 경고는 별도 보존했다. native 기동 자동화 등록 Error15도 검사 구간 오류0과 구분한다.
+
+초기 사설 probe 컴파일 오류와 자기 빌드 메모리 조정, 실행기의 기동 제한/로그 동시 읽기/빈 인자 중단은 최종 결과와 구분한다. 네트워크 통과 뒤 native 실행 인자를 보완하고 **동일 DLL/제품/검증 입력을 재대조해** 별도 native 검사를 완료했다. 자기 사본/PCH/OBJ/DLL/PDB/runtime/cache **6,705,571,578 bytes(약6.245GiB)**와 원본 Content를 가리키던 읽기 링크7개를 finally 폐기했고 Temp/소유 실행/새 정리 예외0이다. 원본 DLL/Intermediate/에셋·다른 담당 변경과 엔진 공유 진단 trace는 보존했다. 폐기한 DLL 해시는 당시 증거다.
