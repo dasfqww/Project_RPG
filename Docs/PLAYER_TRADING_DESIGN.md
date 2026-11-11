@@ -1236,3 +1236,17 @@ Temp/소유 프로세스/컨테이너/새 정리 예외0이다. 초기 namespace
 작은 명령·fixture/소스/모듈 해시와 결과는 `Saved/BuildChecks/AuctionClient-20261112/Completion.json`에 로컬 보관한다.
 폐기한 DLL 해시는 당시 근거이며 원본 게임 DLL 설치/전체 게임 링크·경매 HTTP·저널 파일·실제 UI/Steam 검증과 구분한다.
 다음은 Player 인증 HTTP 어댑터·전송 전 저널 저장/복구·로비 수명 연결 후 경매 위젯/최신 자산 갱신이다.
+
+## 35. T5e2 UE Player 경매 HTTP 전송 (2026-11-12)
+
+`UHttpWebManager::CreatePlayerAuctionTransport()`가 비공개 Player 인증을 사용하는 `IRPGAuctionTransport`를 만든다. DungeonServer/dedicated 역할과 잘못된 Player 신원은 생성한 어댑터의 전송 문맥에서 거절한다. 로그인 갱신·로그아웃 중에는 신원만 유지하고 새 전송을 막는다. 완료 시에도 같은 계정·설정 주소·정확한 인증 값과 Player 전송 가능 상태를 확인하며, 이전 문맥의 상태 코드·본문·재시도 지연을 전달하지 않는다. 현재 인증의 401만 기존 인증 상태를 무효화한다. 서비스/관리자 인증으로 대체하지 않는다.
+
+- 모델이 검증한 등록/구매/취소/수령 의도의 계정·캐릭터·주소를 현재 문맥과 비교하고 원래 요청 ID/본문을 그대로 POST한다. 모델의 `/api/characters/...` 경로를 기존 API 루트 주소(`/api`)에 맞춰 연결해 중복 `/api`를 만들지 않는다. 어댑터는 자동 재시도·nonce 교체·영수증의 자산 delta 적용을 하지 않는다.
+- 검색/내 판매글·상세·대기금·원래 요청의 영수증 조회를 별도 고정 경로로 제공한다. 검색은 형식화된 limit/정의명/재화/양수 int64 가격 범위/불투명 cursor만 받고 값을 URL 인코딩한다. 임의 URL/헤더/동작을 받는 공개 전송 메서드는 없다.
+- 게임 스레드 단일 요청, 1~30초 timeout, JSON/no-store, 페이지 2MiB·상세/대기금64KiB·명령/영수증4MiB 응답 한도를 적용한다. 429/503의 숫자 Retry-After를 1~3600초로 제한하고 없는/잘못된 값은60초로 돌려준다. 빈/초과 응답의 최종 결과 판정은 기존 모델이 맡는다. 취소/폐기 후 늦은 콜백을 막고, 정상 콜백 전에 단일 요청 상태를 해제해 다음 요청의 재진입을 허용한다.
+
+유지 검사 `Run-AuctionTransportTests.ps1`은 사설 소스 사본의 최소 UE5.8 HTTP 모듈과 실제 ASP.NET Memory bearer 경매 API를 실행한다. 테스트 전용 저장소 decorator만 첫 구매의 **커밋 후 503**을 주입한다. 실제 원래 요청 영수증 복구와 동일 UUID/본문 재전송의 성공을 함께 확인하며 POST2회의 SHA가 같고 구매자 잔액301/수량4로 결제·배달이 한 번이다. 공개/내 판매 이력·대기금·인코딩된 한글/구분자 필터, 잘못된 토큰401·관리자/외부 캐릭터403, 토큰/계정/주소 변경 응답 차단·인증 부재/변조 의도/검색 입력 거절·단일 요청·콜백 재진입·취소/폐기를 검사한다. 실제 배포 factory 실행이나 Steam 증명은 아니다.
+
+최종 native `ProjectRPG.Auction.Transport.MemoryHttp` Success/검사 오류·경고0/UE 종료0, 최소 모듈12단계 컴파일/링크0·Backend Release 경고0/오류0이다. native 시작 전 기존 자동화 조건 Error15·ACL 에셋 경고4는 검사 결과와 구분한다. `Run-AuctionIntegrationCompile.ps1`은 게시 프로젝트/플러그인 전체 UHT와 실제 Manager factory·어댑터 CPP2를 분리 NoPCH로 컴파일해 종료0을 확인했다. 전체 게임 모듈 링크·설치 DLL 반영·PG/Steam/화면/저널 파일 검증은 포함하지 않는다. 14개 native/Backend 입력 및 통합4입력·실행기 SHA가 유지됐다. 초기 테스트 서버 필드/latent 캡처 컴파일 실패와 최종 성공을 구분한다.
+
+자기5시도의 임시 사본/인증 fixture/프로세스/OBJ/DLL/cache **248,394,618 bytes**를 finally 폐기했고 `Saved/AH` 잔여/새 예외0이다. 원본 게임 DLL·공유 빌드·DB·다른 담당 변경은 보존했다. 작은 로컬 근거 `Saved/BuildChecks/AuctionHttp-20261112/Completion.json`과 각 실행의 최소 로그/해시만 유지하며 폐기한 바이너리 해시는 당시 증거다. 다음 범위는 미확정 의도의 디스크 저널과 로비 소유 조율자 연결이다.

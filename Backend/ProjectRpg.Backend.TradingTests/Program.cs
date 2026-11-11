@@ -3,6 +3,7 @@ using ProjectRpg.Backend.Domain;
 using ProjectRpg.Backend.Domain.Trading;
 
 if (args is ["--auction-domain"]) return AuctionCases.Run();
+if (args is ["--auction-transport-host", var hostDirectory]) return await AuctionTransportHost.Run(hostDirectory);
 if (args is ["--auction-memory"]) return await AuctionMemoryCases.Run();
 if (args is ["--auction-wire-fixtures", var fixtureDirectory]) return await AuctionWireFixtures.Run(fixtureDirectory);
 if (args is ["--auction-api-memory"] or ["--auction-api-postgres"] or ["--auction-api-restart"]) return await AuctionApiCases.Run(args[0]);
