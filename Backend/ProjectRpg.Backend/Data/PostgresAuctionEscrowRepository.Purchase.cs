@@ -130,7 +130,7 @@ public sealed partial class PostgresAuctionEscrowRepository
                 return result;
             }
         }
-        await using var other = new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM auction_escrow_receipts WHERE request_id=@id)", c, tx);
+        await using var other = new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM auction_escrow_receipts WHERE request_id=@id UNION ALL SELECT 1 FROM auction_claim_receipts WHERE request_id=@id)", c, tx);
         other.Parameters.AddWithValue("id", cmd.RequestId);
         if ((bool)(await other.ExecuteScalarAsync(ct))!) throw new TradeRuleException("auction_idempotency_conflict");
         return null;

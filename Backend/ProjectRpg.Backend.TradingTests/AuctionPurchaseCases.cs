@@ -28,7 +28,8 @@ internal static class AuctionPurchaseCases
                 var catalog = await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory, default);
                 Check(await PostgresSchemaMigrations.ApplyAsync(data, catalog.Take(12).ToArray(), default) == 12, "v12 baseline");
                 var old = await f.Person(); var item = await f.Seed(old);
-                Check(await PostgresSchemaMigrations.ApplyAsync(data, catalog, default) == 1, "v12 to v13 only");
+                Check(await PostgresSchemaMigrations.ApplyAsync(data, catalog.Take(13).ToArray(), default) == 1, "v12 to v13 only");
+                Check(await PostgresSchemaMigrations.ApplyAsync(data, catalog, default) == catalog.Count - 13, "claim schema dependency");
                 Check((await f.Items.FindAsync(item.ItemId, default))!.Revision == 1, "v13 preserves old inventory");
                 await f.Define("Gold", CurrencyScope.Account, 1000);
                 await SuccessAndReplay(f); await Delivery(f); await Guards(f); await Rollback(f); await Access(f); await Races(f); await CurrencyScopes(f);

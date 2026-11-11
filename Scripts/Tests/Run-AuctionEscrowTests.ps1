@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -13,6 +13,11 @@ $containerName = 'rpg-auction-escrow-' + $runId
 $containerId = $null
 $failure = $null
 $overlay = @(
+    'Backend/ProjectRpg.Backend/Domain/Trading/AuctionClaim.cs',
+    'Backend/ProjectRpg.Backend/Data/IAuctionClaimRepository.cs',
+    'Backend/ProjectRpg.Backend/Data/PostgresAuctionClaimRepository.cs',
+    'Backend/Database/Migrations/0014_auction_claims.sql',
+    'Backend/ProjectRpg.Backend.TradingTests/AuctionClaimCases.cs',
     'Backend/ProjectRpg.Backend/Domain/Trading/AuctionEscrow.cs',
     'Backend/ProjectRpg.Backend/Domain/Trading/AuctionPurchase.cs',
     'Backend/ProjectRpg.Backend/Domain/Trading/AuctionListing.cs',
