@@ -11,6 +11,9 @@ public sealed class InMemoryTransactionGate(TimeProvider? clock = null)
     // Stored JSON isolates callers from mutable collections in deserialized receipts; instances sharing this gate share state.
     internal Dictionary<Guid, string> TradeSessions { get; } = [];
     internal Dictionary<Guid, (string Fingerprint, string Result)> TradeSessionReceipts { get; } = [];
+    internal Dictionary<Guid, string> AuctionListings { get; } = [];
+    internal Dictionary<Guid, string> AuctionPayables { get; } = [];
+    internal Dictionary<Guid, (string Kind, string Fingerprint, string Result)> AuctionReceipts { get; } = [];
 
     // All callers hold SyncRoot, the same gate used by every item/currency mutation.
     internal bool IsItemReserved(Guid itemId) => TradeReservations.Values.Any(value =>

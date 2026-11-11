@@ -28,4 +28,13 @@ public sealed partial class InMemoryGameRepository
         if (people.Any(p => _characterLeases.TryGetValue(p.CharacterId, out var lease) && lease.ExpiresAt > now))
             throw new TradeRuleException("trade_requires_lobby");
     }
+
+    internal void EnsureAuctionAccess(IReadOnlyList<TradeParticipant> people, TradeParticipant lobbyActor, DateTimeOffset now)
+    {
+        if (!Monitor.IsEntered(_dungeonGate)) throw new InvalidOperationException("Game state gate required.");
+        EnsureServiceOpen();
+        foreach (var p in people) EnsureAccountAllowed(p.AccountId, now);
+        if (_characterLeases.TryGetValue(lobbyActor.CharacterId, out var lease) && lease.ExpiresAt > now)
+            throw new TradeRuleException("auction_requires_lobby");
+    }
 }

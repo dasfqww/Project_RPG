@@ -1119,3 +1119,32 @@ Git 분리 스테이징의 중복 문서 `Saved/BuildChecks/AuctionPurchase-2026
 자기 두 시도의 임시 사본 37,377,612 bytes(약35.6MiB)와 사설 PG를 정리했고 Temp/소유 프로세스/컨테이너/새 정리 예외0이다.
 이전에 삭제 정책 거절로 보존한 다른 작업의 파일은 이번 정리 범위에서 제외했다. 폐기한 모듈 해시는 당시 실행 근거로만 남긴다.
 원본 개발 DB migration·UE/Steam 실행 검증은 수행하지 않는다. 다음은 Memory 경매 저장소의 동일 계약과 경매 조회/인증 API 연결이다.
+
+## 32. T5c Memory 경매 원자 저장 (2026-11-12)
+
+`InMemoryAuctionRepository`가 기존 `IAuctionEscrowRepository`·`IAuctionPurchaseRepository`·`IAuctionClaimRepository`를 구현한다.
+등록/부분 보관/취소/만료, 구매자 차감/배달/판매 대기금/수수료, 판매대금 부분·0원 수령에 PostgreSQL과 같은 명령·도메인 규칙을 적용한다.
+이번 범위는 내부 Memory 저장소이며 경매 조회·검색/인증 API·DI/UI 공개는 후속이다.
+
+- 기존 `InMemoryGameRepository`의 dungeon gate→아이템·재화가 공유하는 `InMemoryTransactionGate` 순서로 처리한다.
+  생성자는 game/item/economy가 같은 gate를 사용하는지 검사한다. 잠금 안에서는 동기 완료하는 구체 Memory 저장소만 호출하며 외부 I/O는 하지 않는다.
+- 아이템·지갑·판매글·대기금·영수증을 하나의 작업으로 처리한다. 예외나 마지막 취소 검사 실패 시 아이템/재화 스냅샷과 경매 상태를 모두 복원한다.
+  직거래 예약금/예약 스택은 기존 공통 gate로 보호하며 임의 해제하지 않는다. 일반 아이템 commit은 실제 Auction 위치/전용 보관 owner와
+  그 owner에 남은 tombstone의 변경을 거절하므로 보관 물품 탈취나 소비 ID 부활이 불가능하다.
+- 등록 수/소유 레코드 한도, 현재 Auction 허용·만료·귀속·중첩 상한, 검토한 Revision/가격/재화,
+  계정 제재/Open/입장 lease, 가방 합치기→빈 칸→우편, Account/Roster/Character 지갑 권한과 수령 잔여금 보존을 적용한다.
+  판매자 던전 lease는 구매를 막지 않으며 구매자/수령자만 로비를 요구한다. 취소/만료 반환과 확정 영수증 복원은 Drain/제재 중에도 가능하다.
+- 등록/반환·구매·수령의 공통 요청 ID와 종류/명령 지문을 함께 비교해 교차 종류 재사용도 거절한다.
+  판매글/대기금/영수증은 gate에 JSON으로 저장해 호출자가 반환 컬렉션을 수정해도 저장 상태가 바뀌지 않는다.
+  같은 gate를 사용하는 저장소 인스턴스를 다시 만들어도 원래 영수증을 복원한다. 프로세스 종료 뒤의 영속성은 제공하지 않는다.
+
+유지 러너 `Scripts/Tests/Run-AuctionMemoryTests.ps1`이 게시 HEAD+명시7소스/러너를 자기 사본에서 고정했다.
+최종 실제 Memory 경매186·경매 도메인1134·기존 Memory 직거래 세션320·기존 직거래 HTTP541·직거래 도메인105를 통과했다.
+전체/부분 보관·반환/자연 만료·배달/우편·예약 자산/수령 한도·세 지갑 범위/최대 int64·제재/Drain/입장,
+반환 JSON 격리/같은 gate 재개방·구매/취소/두 구매자/수령 경합과 구매/수령의 늦은 취소 전체 복원을 확인했다.
+기존 `MemorySessionCases`의 재료 슬롯/교환 위치 fixture 두 곳만 현재 재료 탭160~239 기준으로 갱신해 실제 직거래 회귀를 유지한다.
+초기 결과 컬렉션 형식 가정 실패와 기존 탭 이전 fixture 실패는 최종 성공과 구분한다. 최종 Release 경고0/오류0·입력/러너 SHA 동일이다.
+자기3사본74,408,676 bytes(약71.0MiB)를 폐기했고 Temp/소유 프로세스/새 정리 예외0이다. 원본 UE/DB/공유 빌드/타 담당 변경은 보존했다.
+작은 명령/소스·모듈 해시/정리 근거는 `Saved/BuildChecks/AuctionMemory-20261112/Completion.json`에 로컬 보관한다.
+이번 결과는 Memory 내부 원자 처리/기존 직거래 HTTP 검사이며 PostgreSQL 재검증·경매 API/UE/Steam 검증과 구분한다.
+다음은 두 저장소에 대한 경매 조회·검색 및 인증 API 연결이다.

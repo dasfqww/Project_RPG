@@ -226,7 +226,9 @@ public sealed class InMemoryItemRepository(
             if (!InventoryBagLayout.ValidNewDestinations(request))
                 return Task.FromResult(Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt));
 
-            if (request.Mutations.Any(mutation => transactionGate.IsItemReserved(mutation.NewRecord.ItemId)))
+            if (request.Mutations.Any(mutation => transactionGate.IsItemReserved(mutation.NewRecord.ItemId)
+                || _records.TryGetValue(mutation.NewRecord.ItemId, out var held)
+                    && (held.Location.ContainerType == ItemContainerType.Auction || Trading.AuctionEscrowRules.IsOwner(held.Owner))))
                 return Task.FromResult(Failure(request, ItemRepositoryCommitStatus.ValidationFailed, committedAt));
 
             foreach (ItemRecordMutation mutation in request.Mutations)
