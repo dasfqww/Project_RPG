@@ -5,7 +5,7 @@ using ProjectRpg.Backend.Domain.Trading;
 namespace ProjectRpg.Backend.Data;
 
 // Process-local implementation of the same internal commands as PostgreSQL. Not restart persistence.
-public sealed class InMemoryAuctionRepository : IAuctionEscrowRepository, IAuctionPurchaseRepository, IAuctionClaimRepository
+public sealed partial class InMemoryAuctionRepository : IAuctionEscrowRepository, IAuctionPurchaseRepository, IAuctionClaimRepository
 {
     private readonly InMemoryTransactionGate gate;
     private readonly InMemoryGameRepository game;

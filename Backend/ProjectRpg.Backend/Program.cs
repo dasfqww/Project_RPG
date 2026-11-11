@@ -177,6 +177,8 @@ builder.Services.AddSingleton<IOptions<TradingOptions>>(Options.Create(tradingOp
 builder.Services.AddSingleton<TradeRequestLimiter>();
 builder.Services.AddSingleton<TradeApplication>();
 builder.Services.AddHostedService<TradeExpiryWorker>();
+builder.Services.AddAuctionServices(builder.Configuration.GetSection("Auctions").Get<AuctionOptions>() ?? new(),
+    string.Equals(storageProvider, "Postgres", StringComparison.OrdinalIgnoreCase));
 builder.Services.AddSingleton<ItemTransactionService>();
 builder.Services.AddSingleton(narrativeCatalog);
 builder.Services.AddSingleton<INarrativeRepository>(provider =>
@@ -1249,6 +1251,7 @@ app.MapCharacterProgressionApi();
 app.MapNarrativeApi();
 app.MapEquipmentProgressionApi();
 app.MapTradeApi();
+app.MapAuctionApi();
 app.MapDungeonAbandonmentApi();
 app.MapDungeonMembershipSnapshotApi();
 app.MapDungeonAdmissionApi();

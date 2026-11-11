@@ -1148,3 +1148,54 @@ Git 분리 스테이징의 중복 문서 `Saved/BuildChecks/AuctionPurchase-2026
 작은 명령/소스·모듈 해시/정리 근거는 `Saved/BuildChecks/AuctionMemory-20261112/Completion.json`에 로컬 보관한다.
 이번 결과는 Memory 내부 원자 처리/기존 직거래 HTTP 검사이며 PostgreSQL 재검증·경매 API/UE/Steam 검증과 구분한다.
 다음은 두 저장소에 대한 경매 조회·검색 및 인증 API 연결이다.
+
+## 33. T5d 경매 조회·인증 API·만료 worker 연결 (2026-11-12)
+
+`AuctionApplication`/`AuctionApiEndpoints`와 `AddAuctionServices`가 PG/Memory 경매 저장소를 실제 Backend에 연결한다.
+`Auctions:Enabled`는 기본 false이며 기존 `TradeItemPolicy([])`는 유지한다. 이 연결은 실제 콘텐츠의 거래 허용이나 UE/UI 공개를 뜻하지 않는다.
+새 DDL은 없으며 기존 스키마 v14가 필요하다. 새 정책 설정은 `AuctionOptions`에서 가격/기간/수수료·등록 수/보유 레코드 한도를 검사한다.
+비활성 기본값은 출시 경제 정책 확정이 아니다.
+
+경로 기준은 `/api/characters/{characterId}/auctions`다. 모든 요청은 유효한 Player bearer와 해당 캐릭터 소유권을 요구한다.
+관리자·GameServer·telemetry 전용 자격은 거절하며 요청 body에서 계정/판매자/구매자/지갑/서버 수수료/ItemRecord를 지정할 수 없다.
+
+| 메서드/하위 경로 | 동작 |
+|---|---|
+| `GET /` | 현재 미만료 Active 공개 검색 |
+| `GET /mine` | 인증 계정의 판매글/종료 이력 페이지 |
+| `GET /{listingId}` | 공개 Active 상세 또는 본인 계정의 종료/대기 상세 |
+| `GET /{listingId}/payable` | 저장소의 지갑 범위 권한을 만족하는 현재 대기금 |
+| `GET /requests/{requestId}` | 같은 계정·같은 캐릭터가 실행한 불변 요청 영수증 |
+| `POST /{listingId}/register` | `requestId,itemId,expectedItemRevision,quantity,totalPrice,expiresAt` |
+| `POST /{listingId}/purchase` | `requestId,expectedRevision,expectedCurrencyCode,totalPrice` |
+| `POST /{listingId}/cancel` | `requestId,expectedRevision` |
+| `POST /{listingId}/claim` | `requestId,expectedRevision,expectedCurrencyCode,requestedAmount` |
+
+- 공개 검색은 `limit`(기본20/최대50), 정확한 `definitionName`/`currencyCode`, `minimumPrice`/`maximumPrice`, 불투명 `cursor`만 받는다.
+  SQL/Memory 모두 마이크로초 만료 시각→판매글 UUID 순서로 이동한다. 고정된 필터로 다음 cursor를 사용하며 검색 중 종료된 행은 빠질 수 있다.
+  응답은 가격/재화/수량/아이템 옵션/만료·Revision만 제공하고 계정·지갑 소유자·보관 ID·생성 seed/출처·내부 영수증을 내보내지 않는다.
+  본인 계정의 상세/이력에만 판매 캐릭터와 판매 순대금을 표시한다. 종료된 외부 판매글과 외부 대기금/요청 영수증은 404로 숨긴다.
+- 금액과 Revision은 정규형 십진 문자열이다. 양수·int64 범위·Revision 소진 여부를 검사하며 숫자 JSON/부호/선행0을 거절한다.
+  본문은 JSON만 허용하며 8KiB/깊이12 한도, 중복 키·알 수 없는 필드·동작에 맞지 않는 필드를 거절한다. chunked 본문도 같은 한도를 적용한다.
+  등록 만료 시각은 절대 시각으로 보내고 재시도 때 유지한다. 재화/가격 범위/수수료는 서버가 구성하며 등록 이후 재시도는 원래 서버 조건을 사용한다.
+- 새 등록/구매/공개 검색은 기능 플래그를 검사한다. 플래그를 꺼도 내 이력/영수증·취소·대금 수령은 열어 자산 회수와 확정 결과 확인을 유지한다.
+  등록/구매 재전송이 비활성으로 거절되면 원래 요청 ID의 GET 영수증으로 복구한다. 404는 현재 확인된 영수증이 없다는 뜻이며 진행 중 커밋의 실패 증거가 아니다.
+  불확정 요청은 원래 ID/본문을 보존하고 임의의 새 ID로 다시 지급받으려 하지 않는다. mutation/영수증의 아이템·잔액은 커밋 당시 스냅샷이며,
+  이를 현재 자산에 delta로 재적용하지 않는다. UE 연결 시 기존 소유 아이템/지갑 조회로 최신 상태를 갱신해야 한다.
+- 계정 기준 검색30회/분·명령/기타 조회120회/분 제한을 적용하며 부캐도 예산을 공유한다. 이는 단일 Backend 인스턴스 제한이다.
+  인증 실패401·역할/소유 거절403·숨김/비활성404·입력400·충돌409·제한429와 Retry-After를 사용한다.
+  실제 제재는 세션을 회수하므로 기존 토큰은401로 거절된다. 저장소 Open/제재/입장·자산 최종 검사는 유지하며 Drain은503으로 응답한다.
+  경매 핸들러에서 처리한 응답은 오류와 함께 no-store를 사용한다.
+- `AuctionExpiryWorker`는 비활성/Drain 중에도 5초마다 최대50개를 조회해 서버 전용 Expire 명령을 수행한다.
+  새 worker 요청 ID와 판매글 CAS가 다중 worker의 중복 반환을 막는다. 막힌 반환이 앞50개를 채워도 cursor로 뒤의 판매글을 순회하고 끝에서 다시 재시도한다.
+  HTTP에 Expire 동작은 제공하지 않는다. 보유 한도 등으로 반환이 막히면 보관/미종료 상태를 유지한다.
+
+유지 러너 `Scripts/Tests/Run-AuctionApiTests.ps1`은 게시 HEAD+명시15소스/러너의 사설 사본과 라벨 PG17/tmpfs·독립 DB·loopback 동적 HTTP 포트를 사용한다.
+실제 bearer HTTP에서 Memory405/PG306, 새 실제 Program 프로세스의 인증/DI·비활성 영수증 복구·hosted 만료4를 확인했다.
+공개 필드/외부 이력 비공개, 같은 만료 시각의 페이지 이동, 중복 구매/수령·정책 변경 뒤 등록 재시도, 최대 int64,
+역할/소유·제재 세션 회수·Drain/입장·본문/쿼리 한도와 계정 예산, 두 만료 worker/막힌50개 뒤 반환을 검사한다.
+기존 Memory경매186/경매 도메인1134/직거래105·기존 직거래 HTTP Memory541/PG553·migration 순수/명령7도 통과했다.
+최종 명령·소스/러너·모듈 해시와 정리 근거는 `Saved/BuildChecks/AuctionApi-20261112/Completion.json`에 로컬 보관한다.
+최종 Release 두 빌드 경고0/오류0·입력/러너 SHA 동일이며 자기4사본96,153,846 bytes(약91.7MiB)/사설 PG를 정리했다.
+Temp/소유 프로세스/컨테이너/새 정리 예외0이다. 초기 namespace/제재 세션 회수 기대값 보완과 동적 포트 고정을 최종 실행과 구분한다.
+원본 개발 DB migration·경매 UE/Steam/다중 PC 검증은 수행하지 않는다. 다음은 UE 경매 화면·전송/복구·최신 자산 갱신 연결이다.

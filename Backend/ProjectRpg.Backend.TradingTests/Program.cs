@@ -4,6 +4,7 @@ using ProjectRpg.Backend.Domain.Trading;
 
 if (args is ["--auction-domain"]) return AuctionCases.Run();
 if (args is ["--auction-memory"]) return await AuctionMemoryCases.Run();
+if (args is ["--auction-api-memory"] or ["--auction-api-postgres"] or ["--auction-api-restart"]) return await AuctionApiCases.Run(args[0]);
 if (args is ["--auction-claim"] or ["--auction-claim-restart"]) return await AuctionClaimCases.Run(args[0] == "--auction-claim-restart");
 if (args is ["--auction-purchase"] or ["--auction-purchase-restart"]) return await AuctionPurchaseCases.Run(args[0] == "--auction-purchase-restart");
 if (args is ["--auction-escrow"] or ["--auction-restart"]) return await AuctionEscrowCases.Run(args[0] == "--auction-restart");
