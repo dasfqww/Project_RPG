@@ -15,6 +15,7 @@
 #include "Narrative/RPGDialogueManager.h"
 #include "Narrative/RPGQuestManager.h"
 #include "UI/Narrative/RPGNarrativeHistoryPanel.h"
+#include "UI/Narrative/RPGNarrativeStorySkipPanel.h"
 #include "Narrative/RPGNarrativePresentation.h"
 #include "Actor/Narrative/RPGNarrativeNPC.h"
 #include "GameFramework/PlayerController.h"
@@ -70,6 +71,8 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
         Journal->SetAutoWrapText(true); JournalScroll->AddChild(Journal);
         AccountHistory = WidgetTree->ConstructWidget<URPGNarrativeHistoryPanel>(URPGNarrativeHistoryPanel::StaticClass(), TEXT("NarrativeAccountHistory"));
         JournalScroll->AddChild(AccountHistory);
+        StorySkip = WidgetTree->ConstructWidget<URPGNarrativeStorySkipPanel>(URPGNarrativeStorySkipPanel::StaticClass(), TEXT("NarrativeStorySkip"));
+        JournalScroll->AddChild(StorySkip);
         auto* Height = WidgetTree->ConstructWidget<USizeBox>(); Height->SetHeightOverride(180.f); Page->AddChildToVerticalBox(Height);
         auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>(); Height->SetContent(Scroll);
         Actions = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("NarrativeActions")); Scroll->AddChild(Actions);
@@ -86,6 +89,11 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
         Button(TEXT("NarrativeClose"), NSLOCTEXT("RPGNarrative", "Close", "닫기"))->OnClicked.AddUniqueDynamic(this, &ThisClass::CloseScreen);
     }
     if (AccountHistory && Coordinator && Character.IsValid()) AccountHistory->Configure(Coordinator->GetAccountHistoryClient(), Character);
+    if (StorySkip && Coordinator && Character.IsValid())
+    {
+        StorySkip->SetVisibility(bNPCContext ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+        StorySkip->Configure(bNPCContext ? nullptr : Coordinator->GetStorySkipClient(), Coordinator->GetAccountHistoryClient(), Character);
+    }
     return Super::RebuildWidget();
 }
 bool URPGNarrativeDialogueWidget::MatchesSelection() const
@@ -136,6 +144,11 @@ bool URPGNarrativeDialogueWidget::OpenContext(const FGuid CharacterId)
     Coordinator->OnChanged.AddUniqueDynamic(this, &ThisClass::HandleChanged);
     Coordinator->OnRequestFinished.AddUniqueDynamic(this, &ThisClass::HandleFinished);
     if (AccountHistory) AccountHistory->Configure(Coordinator->GetAccountHistoryClient(), Character);
+    if (StorySkip)
+    {
+        StorySkip->SetVisibility(bNPCContext ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+        StorySkip->Configure(bNPCContext ? nullptr : Coordinator->GetStorySkipClient(), Coordinator->GetAccountHistoryClient(), Character);
+    }
     if (bNPCContext)
     {
         const auto* Skills = GetOwningPlayer()->FindComponentByClass<URPGSkillWindowComponent>();

@@ -10,6 +10,7 @@ class UTextBlock;
 class UVerticalBox;
 class URPGNarrativeCoordinator;
 class URPGNarrativeHistoryPanel;
+class URPGNarrativeStorySkipPanel;
 class ARPGNarrativeNPC;
 class APawn;
 class FRPGWindowInputState;
@@ -75,6 +76,7 @@ private:
     UPROPERTY(Transient) TObjectPtr<UTextBlock> Progress;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> Journal;
     UPROPERTY(Transient) TObjectPtr<URPGNarrativeHistoryPanel> AccountHistory;
+    UPROPERTY(Transient) TObjectPtr<URPGNarrativeStorySkipPanel> StorySkip;
     UPROPERTY(Transient) TObjectPtr<UButton> RefreshButton;
     UPROPERTY(Transient) TObjectPtr<UButton> RetryButton;
     FGuid Character;

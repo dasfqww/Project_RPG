@@ -17,9 +17,12 @@ public:
     virtual bool Send(FGuid CharacterId, const FString& ChoiceBody, TFunction<void(FRPGNarrativeHttpResult)> Completion) override;
     virtual bool SendDungeon(FGuid CharacterId, const FString& Body, TFunction<void(FRPGNarrativeHttpResult)> Completion) override;
     virtual bool SendHistory(FGuid CharacterId, TFunction<void(FRPGNarrativeHttpResult)> Completion) override;
+    virtual bool SendSkipPreview(FGuid CharacterId, const FString& Chapter, TFunction<void(FRPGNarrativeHttpResult)> Completion) override;
+    virtual bool SendSkip(FGuid CharacterId, const FString& Body, TFunction<void(FRPGNarrativeHttpResult)> Completion) override;
     virtual void Cancel() override;
 private:
-    bool SendRequest(FGuid CharacterId, const FString& Body, bool bDungeon, TFunction<void(FRPGNarrativeHttpResult)> Completion, bool bHistory = false);
+    bool SendRequest(FGuid CharacterId, const FString& Body, bool bDungeon, TFunction<void(FRPGNarrativeHttpResult)> Completion,
+        bool bHistory = false, const FString& Suffix = FString());
     TWeakObjectPtr<UHttpWebManager> Web;
     FHttpRequestPtr ActiveRequest;
     uint64 Generation = 0;

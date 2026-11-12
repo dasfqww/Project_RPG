@@ -11,5 +11,7 @@ public:
     virtual bool Send(FGuid CharacterId, const FString& ChoiceBody, TFunction<void(FRPGNarrativeHttpResult)> Completion) = 0;
     virtual bool SendDungeon(FGuid CharacterId, const FString& Body, TFunction<void(FRPGNarrativeHttpResult)> Completion) = 0;
     virtual bool SendHistory(FGuid, TFunction<void(FRPGNarrativeHttpResult)>) { return false; }
+    virtual bool SendSkipPreview(FGuid, const FString&, TFunction<void(FRPGNarrativeHttpResult)>) { return false; }
+    virtual bool SendSkip(FGuid, const FString&, TFunction<void(FRPGNarrativeHttpResult)>) { return false; }
     virtual void Cancel() = 0;
 };

@@ -4,6 +4,7 @@
 #include "Narrative/RPGDialogueManager.h"
 #include "Narrative/RPGNarrativeTransport.h"
 #include "Narrative/RPGNarrativeHistory.h"
+#include "Narrative/RPGNarrativeStorySkip.h"
 #include "Online/RPGDungeonSessionSubsystem.h"
 #include "Manager/HttpWebManager.h"
 #include "Engine/GameInstance.h"
@@ -72,6 +73,55 @@ bool URPGNarrativeCoordinator::HasCurrentSnapshot() const
         && Quests->HasRevision(SelectedCharacter, Revision) && Scenarios->HasRevision(SelectedCharacter, Revision)
         && Dialogues->Readable();
 }
+bool URPGNarrativeCoordinator::IsBusy() const { return bBusy || (SkipClient && SkipClient->IsBusy()); }
+bool URPGNarrativeCoordinator::HasPendingChoice() const
+{ return PendingChoice.IsSet() || PendingDungeon.IsSet() || (SkipClient && SkipClient->HasPending()); }
+TSharedPtr<FRPGNarrativeSkipClient> URPGNarrativeCoordinator::GetStorySkipClient()
+{
+    if (bShuttingDown || !EnsureTransport()) return nullptr;
+    if (!SkipClient)
+    {
+        auto* Player = GetLocalPlayer(); auto* Instance = Player ? Player->GetGameInstance() : nullptr;
+        auto* Web = Instance ? Instance->GetSubsystem<UHttpWebManager>() : nullptr;
+        if (!Web) return nullptr;
+        const TWeakObjectPtr<ThisClass> WeakThis(this);
+        SkipClient = MakeShared<FRPGNarrativeSkipClient>(MakeShared<FRPGHttpNarrativeTransport>(Web),
+            [WeakThis](FGuid Id, int64& OutRevision, int32& OutCatalog, bool bNew)
+            {
+                auto* Owner = WeakThis.Get(); FGuid Selected;
+                if (!Owner || Owner->SelectedCharacter != Id || !Owner->ContextMatches() || !Owner->DungeonFlow
+                    || !FGuid::Parse(Owner->DungeonFlow->GetSelectedCharacterId(), Selected) || Selected != Id
+                    || Owner->bBusy || Owner->PendingChoice || Owner->PendingDungeon) return false;
+                OutRevision = Owner->Revision; OutCatalog = Owner->CatalogVersion;
+                return !bNew || (Owner->HasCurrentSnapshot() && !Owner->DungeonFlow->HasActiveDungeonSession()
+                    && !Owner->DungeonFlow->IsRequestInFlight());
+            },
+            [WeakThis](FGuid Id, const FString& Chapter)
+            {
+                const auto* Owner = WeakThis.Get();
+                return Owner && Owner->Scenarios && Owner->Scenarios->IsChapterCompleted(Id, Chapter);
+            },
+            [WeakThis](FRPGNarrativeSnapshot Snapshot)
+            {
+                if (auto* Owner = WeakThis.Get())
+                {
+                    const FGuid Id = Snapshot.CharacterId; Owner->Apply(MoveTemp(Snapshot));
+                    if (Owner->SelectedCharacter == Id && Owner->ContextMatches()) Owner->ScheduleDungeonSync(true, true);
+                }
+            });
+        SkipClient->OnChanged.AddLambda([WeakThis]
+        {
+            if (auto* Owner = WeakThis.Get(); Owner && !Owner->bShuttingDown)
+            {
+                Owner->OnChanged.Broadcast();
+                // The one-shot dungeon ticker may have deferred work while this client was busy.
+                if (!Owner->IsBusy() && !Owner->HasPendingChoice()
+                    && (Owner->bDungeonRefreshNeeded || !Owner->DungeonCandidates.IsEmpty())) Owner->ScheduleDungeonSync(false);
+            }
+        });
+    }
+    return SkipClient;
+}
 void URPGNarrativeCoordinator::ClearView()
 {
     bHasView = false; Revision = 0; CatalogVersion = 0; DungeonCandidates.Reset();
@@ -79,7 +129,7 @@ void URPGNarrativeCoordinator::ClearView()
 }
 bool URPGNarrativeCoordinator::SelectCharacter(const FGuid CharacterId)
 {
-    if (!IsInGameThread() || bShuttingDown || bBusy || !CharacterId.IsValid() || !EnsureTransport()) return false;
+    if (!IsInGameThread() || bShuttingDown || IsBusy() || !CharacterId.IsValid() || !EnsureTransport()) return false;
     FString CurrentEndpoint, CurrentSteam;
     if (!Transport->GetContext(CurrentEndpoint, CurrentSteam)) return false;
     // Resolve an uncertain command before switching within the same account/endpoint.
@@ -87,6 +137,7 @@ bool URPGNarrativeCoordinator::SelectCharacter(const FGuid CharacterId)
     if (HasPendingChoice() && CurrentEndpoint == Endpoint && CurrentSteam == SteamId) return false;
     if (!BindManagers()) return false;
     if (HistoryClient) HistoryClient->Reset();
+    if (SkipClient) SkipClient->Reset();
     ++RequestGeneration; Transport->Cancel(); PendingChoice.Reset(); PendingDungeon.Reset(); PendingBody.Reset();
     FTSTicker::GetCoreTicker().RemoveTicker(DungeonSyncTick); DungeonSyncTick.Reset(); bDungeonRefreshNeeded = false; LastObservedDungeonResult.Invalidate();
     SelectedCharacter = CharacterId; Endpoint = MoveTemp(CurrentEndpoint); SteamId = MoveTemp(CurrentSteam);
@@ -94,14 +145,14 @@ bool URPGNarrativeCoordinator::SelectCharacter(const FGuid CharacterId)
 }
 bool URPGNarrativeCoordinator::Refresh()
 {
-    if (bBusy || HasPendingChoice() || !ContextMatches()) return false;
+    if (IsBusy() || HasPendingChoice() || !ContextMatches()) return false;
     DungeonSyncBudget = 256;
     bDungeonRefreshNeeded = false;
     return Dispatch(false);
 }
 bool URPGNarrativeCoordinator::BeginDialogue(const FString& DialogueId)
 {
-    if (!HasCurrentSnapshot() || bBusy || HasPendingChoice()
+    if (!HasCurrentSnapshot() || IsBusy() || HasPendingChoice()
         || !Dialogues->Dialogues.ContainsByPredicate([&](const auto& D) { return D.Id == DialogueId && D.bEntryPoint; })) return false;
     Dialogues->ActiveId = DialogueId; OnChanged.Broadcast(); return true;
 }
@@ -113,7 +164,7 @@ void URPGNarrativeCoordinator::CloseDialogue()
 bool URPGNarrativeCoordinator::Choose(const FString& ChoiceId)
 {
     FRPGDialogueNode Active;
-    if (!HasCurrentSnapshot() || bBusy || HasPendingChoice() || !Dialogues->GetActiveDialogue(Active)
+    if (!HasCurrentSnapshot() || IsBusy() || HasPendingChoice() || !Dialogues->GetActiveDialogue(Active)
         || !Active.Choices.ContainsByPredicate([&](const auto& C) { return C.Id == ChoiceId; })) return false;
     if (Active.bInformational)
     {
@@ -128,7 +179,9 @@ bool URPGNarrativeCoordinator::Choose(const FString& ChoiceId)
 }
 bool URPGNarrativeCoordinator::RetryPendingChoice()
 {
-    return !bBusy && HasPendingChoice() && ContextMatches() && Dispatch(true, PendingDungeon.IsSet());
+    if (IsBusy() || !ContextMatches()) return false;
+    if (SkipClient && SkipClient->HasPending()) return SkipClient->Retry(SelectedCharacter);
+    return HasPendingChoice() && Dispatch(true, PendingDungeon.IsSet());
 }
 bool URPGNarrativeCoordinator::Dispatch(const bool bWrite, const bool bDungeon)
 {
@@ -205,6 +258,8 @@ void URPGNarrativeCoordinator::Deinitialize()
     if (DungeonFlow) DungeonFlow->OnFlowStateChanged.RemoveDynamic(this, &ThisClass::HandleDungeonFlowChanged);
     if (Transport) Transport->Cancel();
     if (HistoryClient) HistoryClient->Reset();
+    if (SkipClient) SkipClient->Reset();
+    SkipClient.Reset();
     HistoryClient.Reset();
     Transport.Reset(); bBusy = false; PendingChoice.Reset(); PendingDungeon.Reset(); PendingBody.Reset(); ClearView();
     DungeonFlow = nullptr;
@@ -250,7 +305,7 @@ void URPGNarrativeCoordinator::ScheduleDungeonSync(const bool bRefresh, const bo
 bool URPGNarrativeCoordinator::TickDungeonSync(float)
 {
     DungeonSyncTick.Reset();
-    if (bBusy || HasPendingChoice() || !ContextMatches() || DungeonSyncBudget <= 0) return false;
+    if (IsBusy() || HasPendingChoice() || !ContextMatches() || DungeonSyncBudget <= 0) return false;
     if (bDungeonRefreshNeeded)
     {
         bDungeonRefreshNeeded = false; Dispatch(false); return false;

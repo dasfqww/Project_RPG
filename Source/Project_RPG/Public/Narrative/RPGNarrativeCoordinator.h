@@ -12,6 +12,7 @@ class URPGScenarioManager;
 class URPGDialogueManager;
 class IRPGNarrativeTransport;
 class FRPGNarrativeHistoryClient;
+class FRPGNarrativeSkipClient;
 class URPGDungeonSessionSubsystem;
 struct FRPGDungeonSession;
 
@@ -34,8 +35,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="RPG|Narrative") bool RetryPendingChoice();
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") bool HasCurrentSnapshot() const;
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") FGuid GetSelectedCharacterId() const { return SelectedCharacter; }
-    UFUNCTION(BlueprintPure, Category="RPG|Narrative") bool IsBusy() const { return bBusy; }
-    UFUNCTION(BlueprintPure, Category="RPG|Narrative") bool HasPendingChoice() const { return PendingChoice.IsSet() || PendingDungeon.IsSet(); }
+    UFUNCTION(BlueprintPure, Category="RPG|Narrative") bool IsBusy() const;
+    UFUNCTION(BlueprintPure, Category="RPG|Narrative") bool HasPendingChoice() const;
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") bool HasPendingDungeonObjective() const { return PendingDungeon.IsSet(); }
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") FString GetPendingDialogueId() const { return PendingChoice ? PendingChoice->DialogueId : FString(); }
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") URPGQuestManager* GetQuestManager() const { return Quests; }
@@ -44,6 +45,7 @@ public:
     UPROPERTY(BlueprintAssignable, Category="RPG|Narrative") FRPGNarrativeChanged OnChanged;
     UPROPERTY(BlueprintAssignable, Category="RPG|Narrative") FRPGNarrativeRequestFinished OnRequestFinished;
     TSharedPtr<FRPGNarrativeHistoryClient> GetAccountHistoryClient();
+    TSharedPtr<FRPGNarrativeSkipClient> GetStorySkipClient();
 private:
     friend struct FRPGNarrativeTestAccess;
     bool BindManagers();
@@ -63,6 +65,7 @@ private:
     UPROPERTY(Transient) TObjectPtr<URPGDungeonSessionSubsystem> DungeonFlow;
     TSharedPtr<IRPGNarrativeTransport> Transport;
     TSharedPtr<FRPGNarrativeHistoryClient> HistoryClient;
+    TSharedPtr<FRPGNarrativeSkipClient> SkipClient;
     TOptional<FRPGNarrativeCommand> PendingChoice;
     TOptional<FRPGNarrativeDungeonCommand> PendingDungeon;
     TArray<FRPGNarrativeDungeonCandidate> DungeonCandidates;
