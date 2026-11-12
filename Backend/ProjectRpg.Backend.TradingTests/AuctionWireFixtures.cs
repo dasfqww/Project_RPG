@@ -14,7 +14,8 @@ internal static class AuctionWireFixtures
     {
         if (!Guid.TryParseExact(Environment.GetEnvironmentVariable("PROJECT_RPG_AUCTION_CLIENT_RUN"),"N",out _)) throw new Exception("Owned client fixture run required.");
         string path=Path.GetFullPath(directory);
-        if (!path.Contains(Path.DirectorySeparatorChar+"Saved"+Path.DirectorySeparatorChar+"AU"+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)) throw new Exception("Owned fixture output required.");
+        if (!path.Contains(Path.DirectorySeparatorChar+"Saved"+Path.DirectorySeparatorChar+"AU"+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)
+            && !path.Contains(Path.DirectorySeparatorChar+"Saved"+Path.DirectorySeparatorChar+"AR"+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)) throw new Exception("Owned fixture output required.");
         Directory.CreateDirectory(path);
         var clock=new Clock();var gate=new InMemoryTransactionGate(clock);var items=new InMemoryItemRepository(gate);var money=new InMemoryEconomyRepository(gate);var game=new InMemoryGameRepository(gate,items,clock);
         var store=new InMemoryAuctionRepository(gate,game,items,money,new([new("Material","Ore",1,true,true,100)]),new(10,500));

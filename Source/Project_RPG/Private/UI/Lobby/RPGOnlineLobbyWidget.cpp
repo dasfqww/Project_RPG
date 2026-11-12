@@ -4,6 +4,7 @@
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
 #include "UI/Lobby/RPGTradeWidget.h"
 #include "Trading/RPGTradeSubsystem.h"
+#include "Auction/RPGAuctionSubsystem.h"
 #include "Narrative/RPGNarrativeCoordinator.h"
 #include "Engine/LocalPlayer.h"
 
@@ -470,8 +471,10 @@ bool URPGOnlineLobbyWidget::IsFrontendRequestInFlight() const
 {
 	const auto* Narrative = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGNarrativeCoordinator>() : nullptr;
 	auto* Trades = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGTradeSubsystem>() : nullptr;
+	auto* Auctions = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGAuctionSubsystem>() : nullptr;
 	return bLoadingCharacters || bCreatingCharacter || bLoggingIn || bLoggingOut || bAbandonmentConfirmationOpen
 		|| (Trades && Trades->BlocksTransitions())
+		|| (Auctions && Auctions->BlocksTransitions())
 		|| (Narrative && (Narrative->IsBusy() || Narrative->HasPendingChoice()))
 		|| (Web && Web->IsPlayerProgressionRequestInFlight())
 		|| (ConfigurationPanel && (ConfigurationPanel->IsRequestInFlight() || ConfigurationPanel->HasUnresolvedSave()))
@@ -558,7 +561,9 @@ FRPGOnlineLobbyPresentation URPGOnlineLobbyWidget::CurrentPresentation() const
 	{
 		View.bCanSelectCharacter = View.bCanCreateSession = View.bCanResume = View.bCanEnter = false;
 	}
-	if (auto* Trades = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGTradeSubsystem>() : nullptr; Trades && Trades->BlocksTransitions())
+	auto* Auctions = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGAuctionSubsystem>() : nullptr;
+	if (auto* Trades = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGTradeSubsystem>() : nullptr;
+		(Trades && Trades->BlocksTransitions()) || (Auctions && Auctions->BlocksTransitions()))
 	{
 		View.bCanSelectCharacter = View.bCanCreateSession = View.bCanResume = View.bCanEnter = false;
 		View.bBusy = true;
