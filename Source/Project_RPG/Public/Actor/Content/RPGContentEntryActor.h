@@ -19,6 +19,8 @@ class PROJECT_RPG_API ARPGContentEntryActor : public AActor, public IInteraction
 public:	
 	// Sets default values for this actor's properties
 	ARPGContentEntryActor();
+	virtual bool CanApproveRidingLocalInteraction(APlayerController* Controller) const override;
+	virtual FGuid GetRidingLocalInteractionIdentity() const override;
 
 protected:
 	// Called when the game starts or when spawned

@@ -256,7 +256,9 @@ SavedMove는 Epoch/리비전/프로필 버전/액션 키를 보존하고 전이 
 
 ASC의 수동 전투/소모 자격 판정과 탑승 판정은 같은 서버 게임 스레드에서 현재 행동 상태를 검사한다. 입력 IMC 차단과 별개로 직접 활성화/RPC 경로도 막는다. Mounted 일반 공격 입력은 하차만 요청하고 같은 입력을 새 공격으로 재생하지 않는다.
 상호작용은 현재 대상·거리·권한 확인 → 하차 → 대상/세대 재확인 → 한 번 실행하는 어댑터를 두며, 결과 미확정/새 대상에 기존 요청을 이월하지 않는다.
-획득·조사 서버 진입점은 `FRPGRidingInteractionScope`로 이 순서를 적용한다. 하차와 실행 callback 동안 원래 Pawn의 새 탑승·중첩 상호작용을 막고, 원래 possession/탑승 epoch·접속/대상 세대를 재검사한다. 이미 승인한 비동기 관측의 기존 재시도는 원래 불변 요청을 사용한다. NPC 로컬 화면·시간형 입력 승인/취소 연계는 후속이다. [구현 경계](RIDING_SYSTEM_CODE_DESIGN.md#29-m2-서버-상호작용의-하차와-재검사--2026-11-12).
+획득·조사 서버 진입점은 `FRPGRidingInteractionScope`로 이 순서를 적용한다. 하차와 실행 callback 동안 원래 Pawn의 새 탑승·중첩 상호작용을 막고, 원래 possession/탑승 epoch·접속/대상 세대를 재검사한다. 이미 승인한 비동기 관측의 기존 재시도는 원래 불변 요청을 사용한다. NPC·콘텐츠 화면은 아래 로컬 승인 경계로 연결하며 시간형 hold 전체 수명은 후속이다. [구현 경계](RIDING_SYSTEM_CODE_DESIGN.md#29-m2-서버-상호작용의-하차와-재검사--2026-11-12).
+
+NPC·콘텐츠 화면 입력은 Controller 소유 `URPGRidingLocalInteractionComponent`에서 대상 설정 fingerprint/거리와 서버 하차 승인을 확인한 뒤, 동일 key의 복제된 도보 상태까지 도착해야 한 번 실행한다. 입력 해제·대상/Pawn/세대 변경·5초 만료는 로컬 continuation을 폐기한다. 응답이 Riding 상태를 직접 쓰거나 새 Pawn을 Possess하지 않는다. [구현/경계](RIDING_SYSTEM_CODE_DESIGN.md#30-m2-npc콘텐츠-화면의-하차-승인--2026-11-13).
 
 ## 6. 영속 저장 아키텍처
 

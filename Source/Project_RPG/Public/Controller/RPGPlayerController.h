@@ -412,7 +412,7 @@ private:
 #pragma endregion
 
 public:
-	FORCEINLINE bool IsInteracting() const { return GetWorldTimerManager().IsTimerActive(TimerHandle_Interaction); };
+	bool IsInteracting() const;
 private:
 	UPROPERTY(VisibleAnywhere, Category="Interaction")
 	TObjectPtr<URPGInteractionProgressComponent> InteractionProgress;

@@ -73,4 +73,9 @@ public:
 	virtual void BeginInteract();
 	virtual void EndInteract();
 	virtual void Interact(APlayerController* PlayerController);
+
+	/** Opt-in for server-approved dismount before a local screen. Read-only on both peers. */
+	virtual bool CanApproveRidingLocalInteraction(APlayerController* Controller) const { return false; }
+	virtual FGuid GetRidingLocalInteractionIdentity() const { return {}; }
+	static FGuid MakeRidingLocalInteractionIdentity(const FString& Value);
 };

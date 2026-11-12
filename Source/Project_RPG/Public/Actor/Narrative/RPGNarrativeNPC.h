@@ -21,6 +21,8 @@ public:
     virtual void BeginFocus() override;
     virtual void EndFocus() override;
     virtual void Interact(APlayerController* PlayerController) override;
+    virtual bool CanApproveRidingLocalInteraction(APlayerController* Controller) const override;
+    virtual FGuid GetRidingLocalInteractionIdentity() const override;
     UFUNCTION(BlueprintCallable, Category="RPG|Narrative") bool OpenDialogue(APlayerController* PlayerController);
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") bool CanInteractWith(APlayerController* PlayerController) const;
     UFUNCTION(BlueprintPure, Category="RPG|Narrative") URPGNarrativeDialogueWidget* GetOpenDialogue(APlayerController* PlayerController) const;
@@ -37,5 +39,6 @@ protected:
 private:
     friend struct FRPGNarrativeTestAccess;
     bool HasValidEntries() const;
+    bool CanOpenDialogue(APlayerController* Controller) const;
     TMap<TWeakObjectPtr<ULocalPlayer>, TWeakObjectPtr<URPGNarrativeDialogueWidget>> OpenPanels;
 };

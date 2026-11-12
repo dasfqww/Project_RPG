@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$EmotePresentationOnly, [ValidateRange(1,4)][int]$MaxParallelActions=1)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$EmotePresentationOnly, [ValidateRange(1,4)][int]$MaxParallelActions=1)
 $ErrorActionPreference='Stop'
 if ($EmotePresentationOnly -and !$IncludeEmote) { throw 'EmotePresentationOnly requires IncludeEmote' }
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -34,6 +34,7 @@ if ($IncludeEmote) {
     $reservation='riding-emote-20261112'
 }
 if ($IncludeInteraction) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingInteraction-20261112/Integration-'+$run); $reservation='riding-interaction-20261112' }
+if ($IncludeLocalInteraction) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingLocalInteraction-20261113/Integration-'+$run); $reservation='riding-local-interaction-20261113' }
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Save-Proof { [IO.File]::WriteAllText((Join-Path $proofRoot 'Result.json'),($proof|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false)) }
 function Assert-Reservation {
@@ -109,6 +110,7 @@ try {
         $files+=@('Source/Project_RPG/Public/Riding/RPGRidingEmoteAdmission.h','Source/Project_RPG/Public/Riding/RPGGameplayAbility_RidingEmote.h','Source/Project_RPG/Private/Riding/RPGGameplayAbility_RidingEmote.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponentEmote.cpp','Source/Project_RPG/Private/Riding/RPGRidingSession.h','Source/Project_RPG/Private/Riding/RPGRidingSession.cpp','Source/Project_RPG/Public/Riding/RPGRidingSessionComponent.h','Source/Project_RPG/Public/Riding/RPGRidingPresentationComponent.h','Source/Project_RPG/Private/Riding/RPGRidingPresentationComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingEmoteTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingPresentationTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingActionBarTests.cpp')
     }
     if ($IncludeInteraction) { $files+=@('Source/Project_RPG/Public/Riding/RPGRidingInteractionScope.h','Source/Project_RPG/Private/Riding/RPGRidingInteractionScope.cpp','Source/Project_RPG/Public/Riding/RPGRidingComponent.h','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Component/RPGItemCommandComponent.cpp','Source/Project_RPG/Private/Narrative/RPGNarrativeInvestigationComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingInteractionTests.cpp') }
+    if ($IncludeLocalInteraction) { $files+=@('Source/Project_RPG/Public/Riding/RPGRidingLocalInteractionComponent.h','Source/Project_RPG/Private/Riding/RPGRidingLocalInteractionComponent.cpp','Source/Project_RPG/Public/Interface/InteractionInterface.h','Source/Project_RPG/Private/Interface/InteractionInterface.cpp','Source/Project_RPG/Public/Actor/Narrative/RPGNarrativeNPC.h','Source/Project_RPG/Private/Actor/Narrative/RPGNarrativeNPC.cpp','Source/Project_RPG/Public/Actor/Content/RPGContentEntryActor.h','Source/Project_RPG/Private/Actor/Content/RPGContentEntryActor.cpp','Source/Project_RPG/Public/Controller/RPGPlayerController.h','Source/Project_RPG/Private/Controller/RPGPlayerController.cpp','Source/Project_RPG/Private/Tests/RPGRidingLocalInteractionTests.h','Source/Project_RPG/Private/Tests/RPGRidingLocalInteractionTests.cpp') }
     foreach($relative in @($files|Select-Object -Unique)) {
         $source=Join-Path $workspace $relative
         $destination=Join-Path $project $relative
@@ -139,6 +141,7 @@ try {
     }
     if ($EmotePresentationOnly) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingPresentationComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingPresentationTests.cpp') }
     if ($IncludeInteraction) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingInteractionScope.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Component/RPGItemCommandComponent.cpp','Source/Project_RPG/Private/Narrative/RPGNarrativeInvestigationComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingInteractionTests.cpp') }
+    if ($IncludeLocalInteraction) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingLocalInteractionComponent.cpp','Source/Project_RPG/Private/Interface/InteractionInterface.cpp','Source/Project_RPG/Private/Actor/Narrative/RPGNarrativeNPC.cpp','Source/Project_RPG/Private/Actor/Content/RPGContentEntryActor.cpp','Source/Project_RPG/Private/Controller/RPGPlayerController.cpp','Source/Project_RPG/Private/Tests/RPGRidingLocalInteractionTests.cpp') }
     $proof.CompileFiles=@($compile|Select-Object -Unique)
     [IO.File]::WriteAllLines($fileList,@($compile|Select-Object -Unique|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
     $dotnet=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'

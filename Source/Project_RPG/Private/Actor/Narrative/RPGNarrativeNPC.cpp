@@ -12,9 +12,11 @@
 #include "Narrative/RPGNarrativeCoordinator.h"
 #include "Online/RPGDungeonSessionSubsystem.h"
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
+#include "Riding/RPGRidingLocalInteractionComponent.h"
 
 ARPGNarrativeNPC::ARPGNarrativeNPC()
 {
+    bReplicates = true;
     PrimaryActorTick.bCanEverTick = false;
     InteractionBounds = CreateDefaultSubobject<USphereComponent>(TEXT("InteractionBounds"));
     SetRootComponent(InteractionBounds); InteractionBounds->InitSphereRadius(40.f);
@@ -51,9 +53,17 @@ bool ARPGNarrativeNPC::HasValidEntries() const
 }
 bool ARPGNarrativeNPC::CanInteractWith(APlayerController* Controller) const
 {
+    return CanApproveRidingLocalInteraction(Controller) && Controller->IsLocalController() && Controller->GetLocalPlayer();
+}
+FGuid ARPGNarrativeNPC::GetRidingLocalInteractionIdentity() const
+{
+    return HasValidEntries() ? MakeRidingLocalInteractionIdentity(FString::Join(DialogueEntryIds, TEXT("|"))) : FGuid{};
+}
+bool ARPGNarrativeNPC::CanApproveRidingLocalInteraction(APlayerController* Controller) const
+{
     const APawn* Pawn = IsValid(Controller) ? Controller->GetPawn() : nullptr;
     return !IsActorBeingDestroyed() && GetWorld() && !GetWorld()->bIsTearingDown
-        && IsValid(Controller) && !Controller->IsActorBeingDestroyed() && Controller->IsLocalController() && Controller->GetLocalPlayer()
+        && IsValid(Controller) && !Controller->IsActorBeingDestroyed()
         && IsValid(Pawn) && !Pawn->IsActorBeingDestroyed() && Controller->GetWorld() == GetWorld()
         && Pawn->GetWorld() == GetWorld() && HasValidEntries() && FMath::IsFinite(InteractionDistance)
         && !GetActorLocation().ContainsNaN() && !Pawn->GetActorLocation().ContainsNaN()
@@ -65,23 +75,45 @@ URPGNarrativeDialogueWidget* ARPGNarrativeNPC::GetOpenDialogue(APlayerController
     auto* Panel = Found ? Found->Get() : nullptr;
     return IsValid(Panel) && Panel->IsInViewport() ? Panel : nullptr;
 }
-void ARPGNarrativeNPC::Interact(APlayerController* Controller) { OpenDialogue(Controller); }
-bool ARPGNarrativeNPC::OpenDialogue(APlayerController* Controller)
+void ARPGNarrativeNPC::Interact(APlayerController* Controller)
+{
+    if (!CanOpenDialogue(Controller)) return;
+    if (URPGRidingLocalInteractionComponent::NeedsApproval(Controller))
+    {
+        if (auto* Gate = Controller->FindComponentByClass<URPGRidingLocalInteractionComponent>())
+            Gate->Request(*this, [Self = TWeakObjectPtr<ARPGNarrativeNPC>(this), Owner = TWeakObjectPtr<APlayerController>(Controller)]
+                { if (Self.IsValid() && Owner.IsValid()) Self->Interact(Owner.Get()); });
+        return;
+    }
+    OpenDialogue(Controller);
+}
+bool ARPGNarrativeNPC::CanOpenDialogue(APlayerController* Controller) const
 {
     if (!CanInteractWith(Controller) || !Controller->GetLocalPlayer()) return false;
     auto* Player = Controller->GetLocalPlayer();
-    if (auto* Existing = GetOpenDialogue(Controller)) { Existing->FocusNPCInput(); return Existing->IsInViewport(); }
+    if (GetOpenDialogue(Controller)) return true;
     auto* UI = UUIManager::Get(Player);
     auto* Game = Controller->GetGameInstance();
     auto* Web = Game ? Game->GetSubsystem<UHttpWebManager>() : nullptr;
     auto* Dungeon = Game ? Game->GetSubsystem<URPGDungeonSessionSubsystem>() : nullptr;
     auto* Flow = Player->GetSubsystem<URPGNarrativeCoordinator>();
     FGuid Character;
-    if (!Web || !Web->HasAccessToken() || Web->GetAuthenticatedSteamId().IsEmpty() || !Dungeon || !Flow
+    if (!UI || !Web || !Web->HasAccessToken() || Web->GetAuthenticatedSteamId().IsEmpty() || !Dungeon || !Flow
         || UI->HasUIOpen() || Dungeon->IsRequestInFlight() || Dungeon->HasUnresolvedDeparture()
         || Dungeon->HasUnresolvedDungeonAbandonment() || Flow->IsBusy()
         || (Flow->HasPendingChoice() && !Flow->HasPendingDungeonObjective() && !HasEntry(Flow->GetPendingDialogueId()))
         || !FGuid::Parse(Dungeon->GetSelectedCharacterId(), Character) || !Character.IsValid()) return false;
+    return true;
+}
+bool ARPGNarrativeNPC::OpenDialogue(APlayerController* Controller)
+{
+    if (!CanOpenDialogue(Controller) || URPGRidingLocalInteractionComponent::NeedsApproval(Controller)) return false;
+    auto* Player = Controller->GetLocalPlayer();
+    if (auto* Existing = GetOpenDialogue(Controller)) { Existing->FocusNPCInput(); return Existing->IsInViewport(); }
+    auto* UI = UUIManager::Get(Player);
+    auto* Dungeon = Controller->GetGameInstance()->GetSubsystem<URPGDungeonSessionSubsystem>();
+    FGuid Character;
+    if (!Dungeon || !FGuid::Parse(Dungeon->GetSelectedCharacterId(), Character)) return false;
     auto* Panel = CreateWidget<URPGNarrativeDialogueWidget>(Controller);
     if (!Panel || !Panel->OpenForNPC(Character, this)) return false;
     OpenPanels.Add(Player, Panel); UI->PushUI(Panel);

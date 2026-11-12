@@ -74,12 +74,14 @@
 #include "Component/UI/RPGInteractionProgressComponent.h"
 #include "Narrative/RPGNarrativeInvestigationComponent.h"
 #include "Narrative/RPGNarrativeProgressComponent.h"
+#include "Riding/RPGRidingLocalInteractionComponent.h"
 #include "Widgets/Layout/Anchors.h"
 
 ARPGPlayerController::ARPGPlayerController()
 {
 	InputBindingTransactions = MakeShared<FRPGInputBindingTransactions>(*this);
 	InteractionProgress = CreateDefaultSubobject<URPGInteractionProgressComponent>(TEXT("InteractionProgress"));
+	CreateDefaultSubobject<URPGRidingLocalInteractionComponent>(TEXT("RidingLocalInteraction"));
 	CreateDefaultSubobject<URPGNarrativeInvestigationComponent>(TEXT("NarrativeInvestigation"));
 	CreateDefaultSubobject<URPGNarrativeProgressComponent>(TEXT("NarrativeProgress"));
 	PlayerTeamID = FGenericTeamId(0);
@@ -310,6 +312,7 @@ void ARPGPlayerController::BeginInteract()
 
 void ARPGPlayerController::EndInteract()
 {
+	if (auto* Gate = FindComponentByClass<URPGRidingLocalInteractionComponent>()) Gate->Cancel();
 	const auto PreviousTarget = TargetInteractable;
 	TStrongObjectPtr<UObject> KeepTargetAlive(PreviousTarget.GetObject());
 	GetWorldTimerManager().ClearTimer(TimerHandle_Interaction);
@@ -324,6 +327,12 @@ void ARPGPlayerController::Interact()
 	GetWorldTimerManager().ClearTimer(TimerHandle_Interaction);
 	InteractionProgress->EndInteraction(ERPGActionProgressEndReason::Completed);
 	if (IsValid(CompletedTarget.GetObject())) CompletedTarget->Interact(this);
+}
+
+bool ARPGPlayerController::IsInteracting() const
+{
+	const auto* Gate = FindComponentByClass<URPGRidingLocalInteractionComponent>();
+	return GetWorldTimerManager().IsTimerActive(TimerHandle_Interaction) || (Gate && Gate->IsPending());
 }
 
 void ARPGPlayerController::PressSkillSlot(const int32 SlotIndex)

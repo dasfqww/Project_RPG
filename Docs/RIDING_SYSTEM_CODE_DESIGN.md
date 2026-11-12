@@ -665,8 +665,26 @@ ServerOnly 능력/이동과22절의 서버 승인 경계는 유지한다. 클라
 
 `Run-RidingFoundationTests.ps1 -IncludeInteraction -IncludeEmote -IncludeControl -IncludeConsume`는 실제 Riding/Engine GAS 상태에 대해 하차 전 거절·두 번의 도메인 검사/단일 실행·callback 재탑승/중첩 거절·하차 후 거리/세대 변경·같은 Pawn의 possession epoch 교체·상태 발행 중 재진입·실행 실패/대상 파괴/예약 해제와 실제 Dash·Emote 실행 중 하차를 검사한다. BeginPlay를 거친 Pawn·물리 지면/CMC·실제 GAS와 모의 보안 host를 사용하며 기존 Riding 회귀도 함께 실행한다. `Run-RidingIntegrationCompile.ps1 -IncludeInteraction`은 게시 전체 UHT와 실제 두 호출자/공통 경계·컴포넌트·유지 검사 CPP5를 독립 사본에서 컴파일한다.
 
-NPC 대화/콘텐츠 화면은 로컬 실행 경로이므로 이 서버 경계를 우회해 수정하지 않는다. 해당 입력의 서버 하차 승인과 취소/시간형 상호작용 수명 연결은 후속이다. 실제 게임 DLL의 획득/조사·HTTP/PG·Iris 런타임과 HUD/물리 키 검증을 분리 모듈 검사/선택 컴파일 성공으로 표시하지 않는다. 제품 보유 snapshot의 NotReady/비공개 경계는 유지한다.
+NPC 대화/콘텐츠 화면은 로컬 실행 경로이므로 30절의 전용 승인 경계로 이어서 연결한다. 시간형 상호작용의 전체 수명 연결은 후속이다. 실제 게임 DLL의 획득/조사·HTTP/PG·Iris 런타임과 HUD/물리 키 검증을 분리 모듈 검사/선택 컴파일 성공으로 표시하지 않는다. 제품 보유 snapshot의 NotReady/비공개 경계는 유지한다.
 
 최종 근거는 `Saved/BuildChecks/RidingInteraction-20261112/Completion.json`이다. 게시 `d77c9f2e`+고정 입력의 분리 UHT/46단계 빌드·링크0과 실제 로드한 **`3E696AB1…3125C6BC`** DLL에서 **native76 Success(신규7/기존69)·검사 오류/경고0·종료0**을 확인했다. 게시 전체 UHT/실제 두 호출자·경계/컴포넌트·유지 검사 **CPP5 컴파일0**, 고유 입력80/러너2 SHA 일치를 확인했다. 첫 검사 환경의 BeginPlay 누락과 후속 액션 검사의 초기2초 보호시간 미충족은 보완본 성공과 구분한다. 엔진 기동 자동화 등록 Error15도 검사 구간 오류0과 구분한다.
 
 자기6회 사본/PCH/OBJ/DLL/PDB/runtime/cache **8,842,054,000 bytes(약8.235GiB)**를 finally 폐기했고 원본 Content 링크 생성0·Temp/소유 실행/새 정리 예외0이다. 원본 게임 DLL/Intermediate/DDC/에셋과 타 담당 변경·공유 진단 trace는 보존했다. 폐기한 DLL 해시는 당시 증거이며 실제 획득·조사 HTTP/PG/Iris 실행을 대신하지 않는다. 완료 기록은 2026-11-13이다.
+
+## 30. M2 NPC·콘텐츠 화면의 하차 승인 — 2026-11-13
+
+담당 `riding-local-interaction-20261113`. [Controller 소유 컴포넌트](../Source/Project_RPG/Public/Riding/RPGRidingLocalInteractionComponent.h)는 Mounted NPC·콘텐츠 입력의 로컬 continuation을 최대 하나 보관한다. 도보 입력은 기존 UI 진입을 유지하고, Mounted 공개 `OpenDialogue` 직접 호출은 승인 우회로 사용하지 못한다. NPC는 기존 로그인/선택 캐릭터·던전/진도·UI 조건을 먼저 확인하며 승인 뒤 실제 화면을 열기 전에 다시 검사한다. 콘텐츠 화면도 소유 LocalPlayer의 UIManager와 PlayerController로 생성한다.
+
+- `IInteractionInterface`의 선택적 읽기 전용 opt-in으로 대상의 서버 거리/설정 검사와 fingerprint를 제공한다. NPC는 유효한 대화 entry ID 목록, 콘텐츠 액터는 위젯 클래스 경로를 UTF-8 MD5 기반 FGuid로 식별한다. 이는 설정 변경 감지이며 인증 자격이 아니다. NPC·콘텐츠 액터는 동적 생성 시에도 서버 참조를 보낼 수 있게 복제한다. 승인되지 않은 다른 상호작용 타입의 서버 실행을 이 RPC로 대체하지 않는다.
+- 소유 Controller의 Reliable 서버 RPC는 원래 Pawn/탑승 epoch·revision, 단조 요청 번호, 0.2초 요청 간격, 생존 ASC Avatar, 대상 거리/설정 식별자를 검사한다. 기존 `FRPGRidingInteractionScope` 안에서 하차 전후 재검사와 승인 응답을 한 번 수행한다. 서버는 클라이언트가 보낸 하차 이유/속도/프로필·실행 시간을 받지 않는다. 중복/오래된 번호와 다른 대상·새 탑승에는 원래 요청을 적용하지 않는다.
+- 클라이언트는 승인 key만 보관하며 **RPC 응답으로 Riding 상태를 쓰지 않는다**. 같은 원래 Pawn/컴포넌트/PlayerState·epoch와 대상/설정/거리, 승인 key와 정확히 같은 복제 도보 상태가 있어야 callback을 한 번 호출한다. 승인 먼저/상태 먼저 모두 허용하며 더 새로운 탑승·관련 없는 epoch는 폐기한다. callback을 호출하기 전에 pending 상태를 지워 늦거나 중복된 결과로 UI가 재실행되지 않게 한다.
+- 승인 대기는 `IsInteracting`에 포함한다. 기존 입력 해제/취소·대상 교체/포커스 해제·UnPossess·Pawn 참조 갱신은 `EndInteract`를 통해 continuation을 취소한다. 컴포넌트 해제/EndPlay, 타깃 파괴/설정 변경·거리 이탈, 새 탑승/다른 세대 및 단조 시각 5초 만료도 취소한다. 서버에서 이미 처리한 하차를 뒤늦은 입력 취소로 되돌리지는 않으며, 취소된 화면/입력을 자동 재생하지 않는다.
+- 소유 Character의 possession·캡슐/CMC·복제 상태 소유권은 유지한다. 화면이 열린 전체 시간의 서버 탑승 잠금이나 시간형 hold 전체 수명 예약은 이 경계의 범위가 아니다. 기존 시간형 진행 완료 후 로컬 화면을 열 때도 승인 대기를 적용하지만 hold 시작부터의 서버 상호 배제는 후속이다.
+
+`Run-RidingFoundationTests.ps1 -IncludeLocalInteraction`은 실제 서버/소유자 receipt 구현·Riding 상태와 모의 대상의 승인/거절/중복 요청, 하차 callback의 설정 변경, 응답/상태 도착 순서, 입력 취소에 해당하는 Cancel과 늦은 응답, 타깃/소유 Pawn/컴포넌트/새 탑승/시간 만료, Reliable RPC와 key의 UHT 반영·Unicode fingerprint를 기존 회귀와 검사한다. 복제 도착 순서는 개발용 fixture에서 주입하며 실제 NetDriver/Iris 전송 성공으로 표시하지 않는다. `-IncludeInteraction`을 더하면 앞선 서버 상호작용/Dash 이동 회귀를 함께 실행한다.
+
+`Run-RidingIntegrationCompile.ps1 -IncludeLocalInteraction`은 게시 전체 UHT와 실제 Controller/NPC/콘텐츠/인터페이스/컴포넌트·유지 검사 CPP6를 독립 사본에서 컴파일한다. 실제 화면 클릭·물리 키/게임 DLL·몽타주/네트워크/HTTP/PG/Steam의 통합 실행을 대신하지 않는다. 제품 보유 NotReady/비공개 경계는 유지한다.
+
+최종 근거는 `Saved/BuildChecks/RidingLocalInteraction-20261113/Completion.json`이다. 게시 `c30a5698`+고정 입력의 분리 UHT/38단계 빌드·링크0과 실제 로드한 **`9DB6E2A8…6102566`** DLL에서 **native21 Success(신규6/기존15)·검사 오류/경고0·종료0**을 확인했다. 직전 확장37의 기능 판정은 Success였지만 모의 클라이언트 정리 경고로 엄격 gate가 실패했으며, 역할 복원·클라이언트 Pawn 참조 상실 fixture를 보완한 뒤 관련21을 재검사했다. 전체 게시 UHT/실제 경로 **CPP6 컴파일0** 뒤 바뀐 것은 위 fixture의 두 수명 처리뿐이다. 이전 fixture SHA가 해당 두 변경을 되돌린 메모리 사본과 일치함을 확인했고, 제품 CPP5는 동일하며 최종 fixture는 native에서 다시 컴파일/실행했다. 고유 입력75/러너2의 현재 SHA 일치를 확인했다.
+
+초기 UHT 매개변수/멤버 이름 충돌, 명시 APawn 포인터·콘텐츠 DataTable include 보완과 위 fixture 경고는 최종 성공과 구분한다. 엔진 기동 자동화 등록 Error15도 검사 구간 오류0과 구분한다. 자기6회 사본/PCH/OBJ/DLL/PDB/runtime/cache **11,333,074,332 bytes(약10.555GiB)**를 finally 폐기했고 Temp/소유 실행/링크/새 정리 예외0이다. 원본 게임 DLL/Intermediate/DDC/에셋과 타 담당 변경·공유 진단 trace는 보존했다. 폐기한 DLL 해시는 당시 증거다.
