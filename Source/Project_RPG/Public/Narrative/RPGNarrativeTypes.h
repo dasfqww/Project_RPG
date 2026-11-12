@@ -6,6 +6,9 @@
 UENUM(BlueprintType)
 enum class ERPGQuestStatus : uint8 { Active, ReadyToReport, Completed };
 
+UENUM(BlueprintType)
+enum class ERPGQuestCategory : uint8 { Unspecified, Main, Side };
+
 USTRUCT(BlueprintType)
 struct PROJECT_RPG_API FRPGQuestObjectiveView
 {
@@ -29,6 +32,7 @@ struct PROJECT_RPG_API FRPGQuestProgress
     UPROPERTY(BlueprintReadOnly) TArray<FString> CompletedObjectives;
     UPROPERTY(BlueprintReadOnly) FText Title;
     UPROPERTY(BlueprintReadOnly) TArray<FRPGQuestObjectiveView> Objectives;
+    UPROPERTY(BlueprintReadOnly) ERPGQuestCategory Category = ERPGQuestCategory::Unspecified;
 };
 
 USTRUCT(BlueprintType)

@@ -6,6 +6,7 @@ using System.Text.Json;
 namespace ProjectRpg.Backend.Narrative;
 
 public enum QuestStatus { Active, ReadyToReport, Completed }
+public enum QuestCategory { Unspecified, Main, Side }
 public enum DialogueEffect { AcceptQuest, RecordObjective, ReportQuest, None }
 
 public sealed record QuestDefinition(string Id, int Version, ImmutableArray<string> Prerequisites,
@@ -13,7 +14,8 @@ public sealed record QuestDefinition(string Id, int Version, ImmutableArray<stri
     ImmutableDictionary<string, ImmutableArray<string>>? ObjectivePrerequisites = null,
     ImmutableDictionary<string, DungeonClearObjective>? DungeonObjectives = null,
     ImmutableDictionary<string, InteractionObjective>? InteractionObjectives = null,
-    ImmutableDictionary<string, KillObjective>? KillObjectives = null)
+    ImmutableDictionary<string, KillObjective>? KillObjectives = null,
+    QuestCategory Category = QuestCategory.Unspecified)
 {
     internal ImmutableArray<string> RequiredObjectives(string objectiveId) =>
         ObjectivePrerequisites?.GetValueOrDefault(objectiveId, []) ?? [];
@@ -84,7 +86,8 @@ public sealed record DialogueView(string Id, string Speaker, string Text,
 public sealed record DialogueChoiceView(string Id, string Text, string? NextDialogueId = null);
 public sealed record QuestObjectiveView(string Id, string? Text, bool Completed, int? CurrentCount = null, int? RequiredCount = null);
 public sealed record QuestJournalEntry(string QuestId, int DefinitionVersion, string Status,
-    ImmutableArray<string> CompletedObjectives, string? Title, ImmutableArray<QuestObjectiveView> Objectives)
+    ImmutableArray<string> CompletedObjectives, string? Title, ImmutableArray<QuestObjectiveView> Objectives,
+    string Category = "Unspecified")
 {
     public static QuestJournalEntry From(QuestProgress progress, QuestDefinition definition) => new(
         progress.QuestId, progress.DefinitionVersion, progress.Status.ToString(), progress.CompletedObjectives,
@@ -92,7 +95,7 @@ public sealed record QuestJournalEntry(string QuestId, int DefinitionVersion, st
             definition.ObjectiveTexts?.GetValueOrDefault(id), progress.CompletedObjectives.Contains(id),
             definition.KillObjectives?.ContainsKey(id) == true ? progress.KillObjectives?.GetValueOrDefault(id)?.Count
                 ?? (progress.CompletedObjectives.Contains(id) ? definition.KillObjectives[id].RequiredCount : 0) : null,
-            definition.KillObjectives?.GetValueOrDefault(id)?.RequiredCount))]);
+            definition.KillObjectives?.GetValueOrDefault(id)?.RequiredCount))], definition.Category.ToString());
 }
 public sealed record NarrativeView(int CatalogVersion, NarrativeState State,
     ImmutableArray<DialogueView> AvailableDialogues, ImmutableArray<QuestJournalEntry> Journal,

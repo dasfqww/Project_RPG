@@ -16,6 +16,7 @@ public static class NarrativeCatalogLoader
         RespectNullableAnnotations = true,
         MaxDepth = 16,
         Converters = { new JsonStringEnumConverter<QuestStatus>(allowIntegerValues: false),
+            new JsonStringEnumConverter<QuestCategory>(allowIntegerValues: false),
             new JsonStringEnumConverter<DialogueEffect>(allowIntegerValues: false) }
     };
 

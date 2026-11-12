@@ -22,6 +22,7 @@ public sealed class NarrativeCatalog
             "narrative_catalog_limit_exceeded");
         foreach (QuestDefinition q in Quests.Values)
         {
+            Require(Enum.IsDefined(q.Category), "invalid_quest_category");
             Require(NarrativeCommand.ValidId(q.Id) && q.Version > 0 && !q.Objectives.IsDefaultOrEmpty
                 && !q.Prerequisites.IsDefault && q.Objectives.Length == q.Objectives.Distinct().Count()
                 && q.Objectives.All(NarrativeCommand.ValidId)
@@ -76,6 +77,17 @@ public sealed class NarrativeCatalog
             visiting.Remove(id); visited.Add(id);
         }
         foreach (string id in Quests.Keys) Visit(id);
+        // Optional side quests cannot become a mandatory main-story prerequisite,
+        // including through legacy/unclassified or other main quests.
+        Dictionary<string, bool> requiresSide = new(StringComparer.Ordinal);
+        bool RequiresSide(string id)
+        {
+            if (requiresSide.TryGetValue(id, out bool value)) return value;
+            return requiresSide[id] = Quests[id].Category == QuestCategory.Side
+                || Quests[id].Prerequisites.Any(RequiresSide);
+        }
+        Require(Quests.Values.Where(q => q.Category == QuestCategory.Main).All(q => !RequiresSide(q.Id)),
+            "side_quest_required_by_main");
         foreach (ChapterDefinition c in Chapters.Values)
             Require(NarrativeCommand.ValidId(c.Id) && !c.RequiredQuests.IsDefaultOrEmpty
                 && (c.Title is null || !string.IsNullOrWhiteSpace(c.Title) && c.Title.Length <= 256)
@@ -85,6 +97,8 @@ public sealed class NarrativeCatalog
                 && c.StoryUnlocks.Length == c.StoryUnlocks.Distinct().Count(), "invalid_chapter_definition");
         Require(Chapters.Values.SelectMany(c => c.StoryUnlocks).Distinct().Count() <= 256,
             "narrative_catalog_limit_exceeded");
+        Require(Chapters.Values.SelectMany(c => c.RequiredQuests).All(id => !RequiresSide(id)),
+            "side_quest_required_by_story");
         // Opt-in chapters contain only reviewed story quests. Shared quest membership would
         // otherwise make a one-chapter skip silently terminate another chapter's quest.
         Require(Chapters.Values.Where(c => c.AllowStorySkip).SelectMany(c => c.RequiredQuests)

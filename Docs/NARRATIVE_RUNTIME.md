@@ -13,6 +13,16 @@
 | `DungeonObjectiveCoordinator` | 본인 캐릭터의 확정 클리어 증거를 검증하고 던전 목표 기록 |
 | `NarrativeInteractionCoordinator` | 세션 서버의 개인 승인 사건을 원자 처리하고 당시 적용 결과 반환 |
 
+## 메인·서브 의뢰와 선택 진행
+
+`QuestDefinition.Category`는 기본 `Unspecified`인 `Main`/`Side` 분류다. 기존 JSON·코드 생성 정의는 기본값으로 호환한다. 카탈로그는 퀘스트의 순환/참조 검사가 끝난 뒤 선행 그래프를 검사해, 명시 메인 의뢰와 이야기 챕터가 선택 서브를 직접·간접 필수화하는 정의를 거절한다. 서브→메인 선행과 독립 서브 체인은 허용한다. 분류를 추가하는 것만으로 수락·완료·해금·보상을 실행하지 않는다.
+
+서버 `QuestJournalEntry.From`이 현재 카탈로그의 분류를 문자열로 반환하며 개인 `NarrativeState`나 명령 fingerprint에는 저장하지 않는다. 기존 저장/리비전·영수증·스킵 정의 해시 형식은 그대로다. UE `FRPGNarrativeCodec`은 생략/null을 미분류로 읽고 정규 문자열 세 값만 허용하며 잘못된 응답은 기존 뷰를 보존한다. `FRPGNarrativePresentation::QuestHeading`이 NPC/로비 공용 저널의 메인·선택 서브/기존 미분류 제목과 상태를 구성한다. 실제 콘텐츠 저작은 [분류 계약](NARRATIVE_CONTENT_AUTHORING.md#메인선택-서브-의뢰-분류)을 따른다.
+
+검사 진입점은 `Scripts/Tests/Run-NarrativeCategoryTests.ps1`과 `Run-NarrativeCategoryUETests.ps1 -HttpWirePath <앞 검사의 HttpWire.json>`이다. 후자는 인증 HTTP에서 얻은 실제 스냅샷을 UE 파서/표시에 전달하고 기존 목표 수량 회귀를 함께 실행한다. 작은 native 모듈의 링크/실행과 전체 UHT·관련 실제 CPP 컴파일을 구분하며 전체 게임 링크·GPU/물리 입력·Steam 검증을 뜻하지 않는다.
+
+2026-11-13 확인: 게시 `2132b0b1`+고정 입력의 backend `0022cd57be934d099b48a2fb966f9fea`에서 Release3종 경고/오류0, 정의/직접·간접 선행·미분류 호환·서브 미수행 메인 완료/해금·기존 저장/스킵 자격·실제 인증 HTTP와 기존 이야기/스킵 회귀가 통과했다. 그 실제 HTTP 바이트를 사용한 UE `6a8cd2fcc91c4bf5b8e543a8d413a45f`의 `C6D3CC60…2A572D43`에서 native8 Success/검사 오류·경고0/종료0, 전체 UHT/실제 CPP5 컴파일0을 확인했다. 제품/검사·러너 입력 SHA와 생산자/소비자 HTTP SHA가 일치한다. 초기 검사 코드의 예외 접근/생성자 오류와 분류의 대소문자 비교 문제는 수정 후 결과와 구분하며 기동 Error15/Warning4는 검사 구간과 별도다. 자기 backend2/UE2회221,675,712 bytes(211.41MiB)를 폐기해 Temp/소유 PID/새 예외0이다. 작은 근거 `Saved/BuildChecks/NarrativeCategory-20261113/CompletionAudit.json`을 유지한다. 사본 DLL은 폐기되어 해시는 당시 증거이며 실제 월드 화면/PG/Steam/다인 검증을 뜻하지 않는다.
+
 ## 던전 클리어 증거 반영
 
 `POST /api/characters/{characterId}/narrative/dungeon-objectives`는 본인 플레이어 인증으로 아래 입력을 받는다. 클라이언트는 기존 클리어 기록을 참조하며 결과·참가자·발생 시각·완료 수치를 제출하지 않는다. 관리자·게임 서버 토큰은 이 개인 요청을 대행할 수 없다. 기존 세션 종료 후 서버 토큰 권한은 그대로 유지한다.

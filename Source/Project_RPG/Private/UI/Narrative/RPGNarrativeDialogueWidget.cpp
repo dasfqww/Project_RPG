@@ -288,11 +288,7 @@ void URPGNarrativeDialogueWidget::Render()
         TArray<FText> Lines;
         for (const auto& Quest : Quests)
         {
-            const FText Title = Quest.Title.IsEmpty() ? NSLOCTEXT("RPGNarrative", "UnnamedQuest", "의뢰") : Quest.Title;
-            const FText State = Quest.Status == ERPGQuestStatus::Completed ? NSLOCTEXT("RPGNarrative", "CompletedQuest", "완료")
-                : Quest.Status == ERPGQuestStatus::ReadyToReport ? NSLOCTEXT("RPGNarrative", "ReportableQuest", "보고 가능")
-                : NSLOCTEXT("RPGNarrative", "ActiveQuest", "진행 중");
-            Lines.Add(FText::Format(NSLOCTEXT("RPGNarrative", "JournalHeading", "{0} · {1}"), Title, State));
+            Lines.Add(FRPGNarrativePresentation::QuestHeading(Quest));
             if (Quest.Status == ERPGQuestStatus::Completed) continue;
             if (Quest.Objectives.IsEmpty())
                 Lines.Add(FText::Format(NSLOCTEXT("RPGNarrative", "LegacyGoals", "  완료한 목표 {0}개"), FText::AsNumber(Quest.CompletedObjectives.Num())));

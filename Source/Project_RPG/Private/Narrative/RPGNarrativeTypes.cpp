@@ -6,6 +6,18 @@
 
 namespace RPGNarrativeJson
 {
+    bool Category(const FJsonObject& Object, ERPGQuestCategory& Out)
+    {
+        const auto Field = Object.TryGetField(TEXT("category"));
+        if (!Field || Field->IsNull()) return true; // legacy, never infer main/side from an ID
+        FString Value;
+        if (Field->Type != EJson::String || !Field->TryGetString(Value)) return false;
+        if (Value.Equals(TEXT("Unspecified"), ESearchCase::CaseSensitive)) Out = ERPGQuestCategory::Unspecified;
+        else if (Value.Equals(TEXT("Main"), ESearchCase::CaseSensitive)) Out = ERPGQuestCategory::Main;
+        else if (Value.Equals(TEXT("Side"), ESearchCase::CaseSensitive)) Out = ERPGQuestCategory::Side;
+        else return false;
+        return true;
+    }
     bool CountPair(const FJsonObject& Object, FRPGQuestObjectiveView& Out)
     {
         const auto Current = Object.TryGetField(TEXT("currentCount"));
@@ -123,6 +135,7 @@ bool FRPGNarrativeCodec::Decode(const FString& Body, const FGuid ExpectedCharact
             const bool bAllDone = Quest.CompletedObjectives.Num() == Quest.Objectives.Num();
             if ((Quest.Status == ERPGQuestStatus::Active) == bAllDone) return false;
         }
+        if (!Category(**Item, Quest.Category)) return false;
         QuestIds.Add(Quest.QuestId); Parsed.Quests.Add(MoveTemp(Quest));
     }
     if (!Object->TryGetArrayField(TEXT("availableDialogues"), Values) || Values->Num() > 256) return false;
