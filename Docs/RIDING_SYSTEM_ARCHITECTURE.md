@@ -288,6 +288,8 @@ UI HTTP 어댑터와 게임 서버 snapshot 어댑터는 분리한다. 전자는
 
 M3a1의 실제 구현은 서버의 불변 `RidingCatalog`와 `RidingRegistrationRules` 판정/트랜잭션 제안이다. 기존 Item V2 규칙·인벤토리 탭·귀속 메타데이터를 사용하지만 저장·인증·로비 판정이나 영수증 재생을 수행하지 않는다. Memory/PG 어댑터는 실제 잠금 안에서 이 계획의 소비·해금·부모/자식 영수증을 함께 확정해야 한다. API/UE snapshot·Ready 연결은 후속이다. [카탈로그/등록 규칙](RIDING_SYSTEM_CODE_DESIGN.md#32-m3a1-백엔드-카탈로그와-등록-계획--2026-11-13).
 
+M3a2에서는 `InMemoryGameRepository`가 `IRidingRegistrationStore`를 구현한다. 기존 공용 dungeon→item→character 잠금으로 현재 계정/소유·로비/미정산·예약을 검사하고 실제 공통 Item V2 소비·원정대 해금·두 영수증을 함께 확정/롤백한다. 현재 소유 범위를 통과한 재시도는 최초 영수증을 현재 아이템/CAS/카탈로그·로비 쓰기 검사보다 먼저 재생한다. 이 포트는 아직 DI/HTTP에 등록하지 않았으며 재시작 보존을 제공하지 않는다. PostgreSQL 트랜잭션·API·서버 snapshot/UE Ready는 후속이다. [Memory 원자 등록](RIDING_SYSTEM_CODE_DESIGN.md#33-m3a2-메모리-원자-등록과-영수증--2026-11-13).
+
 ## 7. 코드와 에셋 배치
 
 이 목록은 향후 파일 지도다. 이번 문서 예약으로 아래 공통 파일을 선점하지 않는다.

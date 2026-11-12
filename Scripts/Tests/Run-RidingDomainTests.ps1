@@ -1,20 +1,26 @@
 [CmdletBinding()]
-param([string]$BaseCommit='HEAD')
+param([string]$BaseCommit='HEAD', [switch]$IncludeMemory)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $runId=[Guid]::NewGuid().ToString('N')
-$root=Join-Path $workspace ('Saved/BuildChecks/RidingDomain-20261113/'+$runId)
-$tempRoot=Join-Path $workspace 'Saved/RD'
+$proofName=if($IncludeMemory){'RidingMemory-20261113'}else{'RidingDomain-20261113'}
+$root=Join-Path $workspace ('Saved/BuildChecks/'+$proofName+'/'+$runId)
+$tempRoot=Join-Path $workspace $(if($IncludeMemory){'Saved/RM'}else{'Saved/RD'})
 $temp=Join-Path $tempRoot $runId.Substring(0,8)
 $repo=Join-Path $temp 'Repo'
 $proof=[ordered]@{Passed=$false;Scope='Riding catalog/registration proposal and real Item V2 record rules; no persistence/API/auth/PG/UE';Head='';Inputs=@();BuildExit=$null;TestExit=$null;Tests=$null;Cleanup=$null;Failure=$null}
 $files=@('Backend/ProjectRpg.Backend/Riding/RidingIdentity.cs','Backend/ProjectRpg.Backend/Riding/RidingCatalog.cs',
  'Backend/ProjectRpg.Backend/Riding/RidingRegistration.cs','Backend/ProjectRpg.Backend.RidingTests/Program.cs',
  'Backend/ProjectRpg.Backend.RidingTests/ProjectRpg.Backend.RidingTests.csproj')
+# The test entry point references MemoryCases even when only the original domain suite is selected.
+$files+=@('Backend/ProjectRpg.Backend/Riding/RidingStore.cs','Backend/ProjectRpg.Backend/Data/InMemoryGameRepository.Riding.cs',
+ 'Backend/ProjectRpg.Backend.RidingTests/MemoryCases.cs')
+$reservation=if($IncludeMemory){'riding-memory-20261113'}else{'riding-domain-20261113'}
+if($IncludeMemory){$proof.Scope='Real shared Memory item/unlock/parent-child receipt transaction, concurrency/replay/rollback; no HTTP/PG/UE'}
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Assert-Reservation {
  if(@([IO.File]::ReadAllLines((Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md'))|
-  Where-Object{$_-match'^\|[^|]* / riding-domain-20261113 \|'}).Count-ne1){throw 'Own reservation missing'}
+  Where-Object{$_-match('^\|[^|]* / '+[regex]::Escape($reservation)+' \|')}).Count-ne1){throw 'Own reservation missing'}
 }
 function Save-Proof {
  $null=[IO.Directory]::CreateDirectory($root)
@@ -68,12 +74,18 @@ try {
  $proof.BuildExit=Invoke-OwnDotnet ('build "'+$project+'" -c Release --nologo --disable-build-servers -p:UseSharedCompilation=false') 'Build.log'
  if($proof.BuildExit-ne0){throw 'Riding backend/test build failed'}
  $proof.ModuleSHA256=(Get-FileHash -LiteralPath $dll).Hash
- $proof.TestExit=Invoke-OwnDotnet ('"'+$dll+'"') 'Tests.log'
+ $testArguments='"'+$dll+'"';if($IncludeMemory){$testArguments+=' --memory'}
+ $proof.TestExit=Invoke-OwnDotnet $testArguments 'Tests.log'
  if($proof.TestExit-ne0){throw 'Riding domain tests failed'}
  $proof.Tests=[IO.File]::ReadAllText((Join-Path $root 'Tests.log'))|ConvertFrom-Json
  $expected=@('canonical_order_and_culture','catalog_defensive_snapshot','catalog_compatibility','catalog_shape_and_limits',
   'catalog_mapping_exclusivity','policy_bounds_match_ue','registration_stack_plan','registration_tombstone_and_snapshot',
   'already_owned_is_noop','registration_inventory_and_availability','registration_fail_closed_shapes_and_limits','command_fingerprint_and_child_identity')
+ if($IncludeMemory){$expected+=@('memory_atomic_commit','memory_terminal_commit','memory_replay_current_item_and_catalog_independent',
+  'memory_same_request_concurrency','memory_shared_roster_concurrency','memory_different_mount_concurrency','memory_request_scope_conflicts',
+  'memory_current_account_and_service_access','memory_lobby_and_unsettled_guards','memory_live_reservations_and_expiry',
+  'memory_reservation_registration_race','memory_child_receipt_collision','memory_cancel_after_child_commit_rolls_back',
+  'memory_receipt_and_collection_isolation','memory_fail_closed_configuration_and_cancel')}
  if(!$proof.Tests.Passed-or(Compare-Object $expected @($proof.Tests.Cases.Name))-or@($proof.Tests.Cases|Where-Object{!$_.Passed-or$_.Assertions-le0}).Count){throw 'Missing or failing domain cases'}
  foreach($f in $proof.Inputs){if((Get-FileHash -LiteralPath (Join-Path $workspace $f.Path)).Hash-ne$f.SHA256){throw 'Original input changed'}}
  $proof.Passed=$true

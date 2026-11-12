@@ -724,3 +724,17 @@ NPC 대화/콘텐츠 화면은 로컬 실행 경로이므로 30절의 전용 승
 `Run-RidingDomainTests.ps1`은 게시 Backend 사본+명시5입력만 짧은 `Saved/RD/<run8>`에 고정해 실제 Backend 프로젝트/참조 ItemRecordRules와 새 검사 프로젝트를 Release 빌드한다. 정렬/문화권/독립 hash·UUID 기준 벡터, 불변 사본·호환성/한계·등록 역할 독점, 한 개 소비/tombstone/기존 commit schema·AlreadyOwned no-op·소유/탭/CAS/예약/잠금/만료/귀속·잘못된 nested 모델/overflow·명령 의미 필드 지문을 검사한다. 실제 소비/해금 저장·동시 경합·영수증 재생·HTTP/PG/UE를 실행한 결과가 아니다.
 
 최종 근거는 `Saved/BuildChecks/RidingDomain-20261113/Completion.json`이다. 게시 `4d05bd17`+고정5입력의 Release 빌드 **0오류/0경고**, 도메인 **12개/114 assertion·종료0**, 입력/러너 문법·SHA 일치를 확인했다. 첫 실행도 기능 검사는 통과했으나 긴 private NuGet 경로의 PowerShell5 정리에 실패했다. 자기 경로·실행 종료·reparse 없음 확인 후 확장 길이 경로의 파일별 정리로 복구했고, 짧은 경로/자기 NuGet 캐시의 최종 실행은 자동 정리를 통과했다. 초기 제거의 미계측분을 더하지 않은 자기2회 폐기 **최소112,579,656 bytes(107.364MiB)**이며 Temp/PID/링크/정리 예외0이다. 원본 backend 빌드/DB·게임 DLL/에셋·타 담당 변경은 보존했고 폐기한 검사 assembly hash는 당시 증거다.
+
+## 33. M3a2 메모리 원자 등록과 영수증 — 2026-11-13
+
+담당 `riding-memory-20261113`. [IRidingRegistrationStore](../Backend/ProjectRpg.Backend/Riding/RidingStore.cs)는 등록 전체 명령·현재 원정대 보관함·원래 등록 영수증 조회 포트다. [InMemoryGameRepository.Riding](../Backend/ProjectRpg.Backend/Data/InMemoryGameRepository.Riding.cs)가 실제 기존 계정/캐릭터/원정대·던전/정산·공용 아이템/거래 예약 저장소에 연결한다. 계정 문자열은 향후 애플리케이션의 인증 결과, catalog는 서버 구성에서 전달해야 한다. 클라이언트 roster/보유/시각을 받지 않는다. 이 단계는 DI/HTTP 경로에 등록하지 않으며 메모리 재시작 후 보존·PG·설정 저장·입장 snapshot/UE Ready를 제공하지 않는다.
+
+- 기존 Memory의 dungeon→공용 transaction/item→character 잠금을 그대로 사용한다. dungeon은 계정 제재·서비스/입장·미정산 상태를, item gate는 거래 예약·모든 Item V2 쓰기 및 Riding 원정대/요청 상태를 직렬화한다. 별도 Riding 잠금이나 잠금 내부 await/외부 I/O를 만들지 않는다. PG의 행/advisory 잠금 구현과 구분한다.
+- 현재 계정 존재/제재·캐릭터 및 원정대 소유를 검사한 뒤 부모 영수증을 먼저 찾는다. 같은 ID의 다른 캐릭터/원정대/본문은 충돌이다. 정상 재생은 원래 payload·시각·결과/당시 revision을 반환하고 최신 인벤토리/CAS/만료/카탈로그 배포·로비/서비스 쓰기 차단을 다시 적용하지 않는다. 최신 보관함은 별도 조회한다. 영수증 조회도 현재 소유/제재 검사를 통과해야 한다.
+- 새 요청만 서비스 Open·활성 lease·Waiting/Loading/InProgress/SettlementPending 멤버십·Pending/Processing 정산을 검사한다. 같은 잠금 안의 gate 시각과 실제 아이템/예약으로 32절의 Plan을 평가한다. 다른 부캐도 같은 RosterId를 사용하며 새 해금은 원정대 revision을 한 번 증가시킨다. AlreadyOwned는 부모 영수증만 기록하고 소비·자식 영수증·원정대 revision 쓰기가 없다.
+- 신규 소비는 결정적 자식 ID의 기존 공통 영수증이 있으면 충돌로 막으며 이를 소비 성공으로 채택하지 않는다. 공통 `InMemoryItemRepository.CommitAsync`가 실제 revision 증가/tombstone·예약 검사를 수행한다. 이 호출은 바깥의 같은 공용 gate와 아이템 snapshot/rollback 안에 있으므로 아이템 소비만 먼저 공개되지 않는다. 소비·해금·두 영수증을 게시한 뒤 취소가 확인되거나 중간 오류가 나면 전부 이전 값으로 복원한다. 다른 writer는 이 gate가 풀리기 전 상태를 볼 수 없다.
+- 부모 영수증은 JSON으로 격리하고 응답마다 새 사본을 반환한다. 자식 영수증과 원래 부모 payload의 일치도 재생/조회 때 확인하며 누락/불일치는 재소비하지 않고 실패한다. 보관함은 정렬된 읽기 전용 사본이다. 같은 RequestId의 다른 기능 namespace는 분리하되 아이템 자식 ID는 공통 Item V2 영수증 공간에서 충돌을 검사한다. v1 영수증 TTL 삭제는 없다.
+
+검사는 `Scripts/Tests/Run-RidingDomainTests.ps1 -IncludeMemory`다. 게시 `2132b0b1` Backend+명시8입력의 사설 `Saved/RM/<run8>`에서 실제 Backend/검사 Release **0오류/0경고**, 기존 도메인12+Memory15=**27개/227 assertion·종료0**을 확인했다. 실제 Item V2/캐릭터/던전 생성·거래 예약과 시작 barrier를 사용해 동일 요청16개, 원정대 부캐/다른 탈것, 예약과 등록8회 경합·기존 결과 재생·현재 소유·로비/CAS/만료·자식 충돌·응답 사본을 검사한다. 제재/서비스·미정산 및 고의 영수증 훼손은 저장 상태 fixture이며 운영 명령/보상 worker E2E가 아니다. 취소 검사는 기존 TimeProvider가 공통 소비 내부 예약 검사 시 취소하도록 하여 실제 아이템/자식 저장 후 바깥 롤백과 같은 요청의 정상 재시도를 확인한다. 제품 코드에 검사용 fault hook은 추가하지 않았다.
+
+첫 검사 파일의 JSON using 누락을 수정한 뒤 최종 통과했고 두 시도 모두 자동 정리했다. 자기 임시 **112,109,852 bytes(106.916MiB)** 폐기·Temp/PID/링크/정리 예외0이며 작은 근거는 `Saved/BuildChecks/RidingMemory-20261113/Completion.json`이다. 이후 게시 `069d20e4`는 이번 Backend/검사/러너·Riding 계약 입력을 바꾸지 않았다. 원본 DB/UE/공유 출력과 타 담당 변경은 보존한다. 실제 PostgreSQL 등록·동시 경합/응답 유실/재시작, 인증 HTTP·UE 연결은 다음 범위다.

@@ -5,7 +5,7 @@ using System.Text.Json;
 using ProjectRpg.Backend.Domain;
 using ProjectRpg.Backend.Riding;
 
-static class Program
+static partial class Program
 {
     static int assertions;
     static readonly List<object> cases = [];
@@ -33,12 +33,15 @@ static class Program
     }
     static void Case(string name, Action test)
     { int before = assertions; test(); cases.Add(new { Name = name, Assertions = assertions - before, Passed = true }); }
-    static int Main()
+    static int Main(string[] args)
     {
         try
         {
             CatalogCases(); RegistrationCases();
-            Console.WriteLine(JsonSerializer.Serialize(new { Passed = true, Scope = "Catalog and transaction proposal only; no store/API/auth/PG/UE authority", CaseCount = cases.Count, Assertions = assertions, Cases = cases }));
+            bool memory = args.SequenceEqual(new[] { "--memory" });
+            if (args.Length > 0 && !memory) throw new ArgumentException("Unknown test arguments");
+            if (memory) MemoryCases();
+            Console.WriteLine(JsonSerializer.Serialize(new { Passed = true, Scope = memory ? "Catalog/planning and real shared Memory transaction; no HTTP/PG/UE" : "Catalog and transaction proposal only; no store/API/auth/PG/UE authority", CaseCount = cases.Count, Assertions = assertions, Cases = cases }));
             return 0;
         }
         catch (Exception e)
