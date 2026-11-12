@@ -78,4 +78,7 @@ public:
 	virtual bool CanApproveRidingLocalInteraction(APlayerController* Controller) const { return false; }
 	virtual FGuid GetRidingLocalInteractionIdentity() const { return {}; }
 	static FGuid MakeRidingLocalInteractionIdentity(const FString& Value);
+	/** Timed interaction opt-in; duration is read from the server actor, never an RPC argument. */
+	virtual bool CanApproveRidingTimedInteraction(APlayerController* Controller) const { return CanApproveRidingLocalInteraction(Controller); }
+	virtual FGuid GetRidingTimedInteractionIdentity() const { return GetRidingLocalInteractionIdentity(); }
 };

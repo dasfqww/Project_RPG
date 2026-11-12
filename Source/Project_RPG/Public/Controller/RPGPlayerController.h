@@ -416,4 +416,8 @@ public:
 private:
 	UPROPERTY(VisibleAnywhere, Category="Interaction")
 	TObjectPtr<URPGInteractionProgressComponent> InteractionProgress;
+	uint64 InteractionGeneration = 0;
+	bool MatchesInteraction(uint64 Generation, APawn* InPawn, AActor* Target) const;
+	void StartTimedInteraction(uint64 Generation, APawn* InPawn, AActor* Target, float Duration);
+	void CompleteInteraction(uint64 Generation, APawn* InPawn, AActor* Target);
 };

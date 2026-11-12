@@ -240,6 +240,18 @@ void ARPGPickUpBase::TakePickup(APlayerController* PlayerController)
     }
 }
 
+bool ARPGPickUpBase::CanApproveRidingTimedInteraction(APlayerController* Controller) const
+{
+    const APawn* Pawn = IsValid(Controller) ? Controller->GetPawn() : nullptr;
+    const auto* Commands = IsValid(Controller) ? Controller->FindComponentByClass<URPGItemCommandComponent>() : nullptr;
+    const float Range = Commands ? Commands->GetMaximumPickupDistance() : 0;
+    return !IsActorBeingDestroyed() && GetWorld() && !GetWorld()->bIsTearingDown
+        && IsValid(Controller) && !Controller->IsActorBeingDestroyed() && IsValid(Pawn) && !Pawn->IsActorBeingDestroyed()
+        && Pawn->GetWorld() == GetWorld() && Controller->GetWorld() == GetWorld() && IsAvailableForPickup() && !IsHidden()
+        && GetPickupDropId().IsValid() && FMath::IsFinite(Range) && Range > 0
+        && FVector::DistSquared(Pawn->GetActorLocation(), GetActorLocation()) <= FMath::Square(Range);
+}
+
 //void ARPGPickUpBase::OnPickedUp()
 //{
 //}

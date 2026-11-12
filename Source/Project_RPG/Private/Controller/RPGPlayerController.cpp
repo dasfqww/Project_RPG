@@ -75,6 +75,7 @@
 #include "Narrative/RPGNarrativeInvestigationComponent.h"
 #include "Narrative/RPGNarrativeProgressComponent.h"
 #include "Riding/RPGRidingLocalInteractionComponent.h"
+#include "Riding/RPGRidingTimedInteractionComponent.h"
 #include "Widgets/Layout/Anchors.h"
 
 ARPGPlayerController::ARPGPlayerController()
@@ -82,6 +83,7 @@ ARPGPlayerController::ARPGPlayerController()
 	InputBindingTransactions = MakeShared<FRPGInputBindingTransactions>(*this);
 	InteractionProgress = CreateDefaultSubobject<URPGInteractionProgressComponent>(TEXT("InteractionProgress"));
 	CreateDefaultSubobject<URPGRidingLocalInteractionComponent>(TEXT("RidingLocalInteraction"));
+	CreateDefaultSubobject<URPGRidingTimedInteractionComponent>(TEXT("RidingTimedInteraction"));
 	CreateDefaultSubobject<URPGNarrativeInvestigationComponent>(TEXT("NarrativeInvestigation"));
 	CreateDefaultSubobject<URPGNarrativeProgressComponent>(TEXT("NarrativeProgress"));
 	PlayerTeamID = FGenericTeamId(0);
@@ -296,22 +298,57 @@ void ARPGPlayerController::BeginInteract()
 	{
 		TWeakObjectPtr<UObject> StartedTarget(TargetInteractable.GetObject());
 		TWeakObjectPtr<APawn> StartedPawn(GetPawn());
-		TargetInteractable->BeginInteract();
-		if (!StartedTarget.IsValid() || StartedTarget.Get() != TargetInteractable.GetObject() || StartedPawn.Get() != GetPawn()) return;
+		const uint64 Generation = ++InteractionGeneration;
 		const float Duration = TargetInteractable->InteractableData.InteractionDuration;
 		if (!FMath::IsFinite(Duration) || Duration < 0.f) { EndInteract(); return; }
-		if (FMath::IsNearlyZero(TargetInteractable->InteractableData.InteractionDuration, 0.1f)) Interact();
-		else
+		if (!FMath::IsNearlyZero(Duration, .1f))
 		{
-			GetWorldTimerManager().SetTimer(TimerHandle_Interaction, this, &ThisClass::Interact, TargetInteractable->InteractableData.InteractionDuration, false);
-			InteractionProgress->BeginInteraction(GetPawn(), Cast<AActor>(TargetInteractable.GetObject()),
-				TargetInteractable->InteractableData.Action, TargetInteractable->InteractableData.InteractionDuration);
+			auto* Timed = FindComponentByClass<URPGRidingTimedInteractionComponent>();
+			const TWeakObjectPtr<ARPGPlayerController> Self(this);
+			const TWeakObjectPtr<AActor> Target(Cast<AActor>(StartedTarget.Get()));
+			if (!Timed || !Target.IsValid() || !Timed->Begin(*Target.Get(),
+				[Self, Target, StartedPawn, Generation](float ApprovedDuration)
+				{ if (auto* PC = Self.Get()) PC->StartTimedInteraction(Generation, StartedPawn.Get(), Target.Get(), ApprovedDuration); },
+				[Self, Target, StartedPawn, Generation]
+				{ if (auto* PC = Self.Get()) PC->CompleteInteraction(Generation, StartedPawn.Get(), Target.Get()); },
+				[Self, Generation]
+				{ if (auto* PC = Self.Get(); PC && PC->InteractionGeneration == Generation) PC->EndInteract(); }))
+				if (InteractionGeneration == Generation) EndInteract();
+			return;
 		}
+		TargetInteractable->BeginInteract();
+		if (InteractionGeneration != Generation || !StartedTarget.IsValid() || StartedTarget.Get() != TargetInteractable.GetObject() || StartedPawn.Get() != GetPawn()) return;
+		// A Begin callback cannot promote an immediate interaction into an unapproved hold.
+		if (!FMath::IsFinite(TargetInteractable->InteractableData.InteractionDuration)
+			|| !FMath::IsNearlyZero(TargetInteractable->InteractableData.InteractionDuration, .1f)) { EndInteract(); return; }
+		Interact();
 	}
+}
+
+bool ARPGPlayerController::MatchesInteraction(uint64 Generation, APawn* InPawn, AActor* Target) const
+{
+	return InteractionGeneration == Generation && IsValid(InPawn) && GetPawn() == InPawn && IsValid(Target)
+		&& InteractionData.CurrentInteractable == Target && TargetInteractable.GetObject() == Target;
+}
+
+void ARPGPlayerController::StartTimedInteraction(uint64 Generation, APawn* InPawn, AActor* Target, float Duration)
+{
+	if (!MatchesInteraction(Generation, InPawn, Target)) { if (InteractionGeneration == Generation) EndInteract(); return; }
+	TargetInteractable->BeginInteract();
+	if (!MatchesInteraction(Generation, InPawn, Target)) { if (InteractionGeneration == Generation) EndInteract(); return; }
+	if (TargetInteractable->InteractableData.InteractionDuration != Duration) { EndInteract(); return; }
+	const TWeakObjectPtr<ARPGPlayerController> Self(this);
+	FTimerDelegate Finish;
+	Finish.BindLambda([Self, Generation]
+		{ if (auto* PC = Self.Get(); PC && PC->InteractionGeneration == Generation) PC->Interact(); });
+	GetWorldTimerManager().SetTimer(TimerHandle_Interaction, Finish, Duration, false);
+	InteractionProgress->BeginInteraction(InPawn, Target, TargetInteractable->InteractableData.Action, Duration);
 }
 
 void ARPGPlayerController::EndInteract()
 {
+	++InteractionGeneration;
+	if (auto* Timed = FindComponentByClass<URPGRidingTimedInteractionComponent>()) Timed->Cancel();
 	if (auto* Gate = FindComponentByClass<URPGRidingLocalInteractionComponent>()) Gate->Cancel();
 	const auto PreviousTarget = TargetInteractable;
 	TStrongObjectPtr<UObject> KeepTargetAlive(PreviousTarget.GetObject());
@@ -322,17 +359,29 @@ void ARPGPlayerController::EndInteract()
 
 void ARPGPlayerController::Interact()
 {
+	if (auto* Timed = FindComponentByClass<URPGRidingTimedInteractionComponent>(); Timed && Timed->HasRequest())
+	{
+		if (Timed->IsActive()) { GetWorldTimerManager().ClearTimer(TimerHandle_Interaction); Timed->Finish(); }
+		return;
+	}
+	CompleteInteraction(InteractionGeneration, GetPawn(), Cast<AActor>(TargetInteractable.GetObject()));
+}
+
+void ARPGPlayerController::CompleteInteraction(uint64 Generation, APawn* InPawn, AActor* Target)
+{
+	if (!MatchesInteraction(Generation, InPawn, Target)) { if (InteractionGeneration == Generation) EndInteract(); return; }
 	const auto CompletedTarget = TargetInteractable;
 	TStrongObjectPtr<UObject> KeepTargetAlive(CompletedTarget.GetObject());
 	GetWorldTimerManager().ClearTimer(TimerHandle_Interaction);
 	InteractionProgress->EndInteraction(ERPGActionProgressEndReason::Completed);
-	if (IsValid(CompletedTarget.GetObject())) CompletedTarget->Interact(this);
+	if (MatchesInteraction(Generation, InPawn, Target)) CompletedTarget->Interact(this);
 }
 
 bool ARPGPlayerController::IsInteracting() const
 {
 	const auto* Gate = FindComponentByClass<URPGRidingLocalInteractionComponent>();
-	return GetWorldTimerManager().IsTimerActive(TimerHandle_Interaction) || (Gate && Gate->IsPending());
+	const auto* Timed = FindComponentByClass<URPGRidingTimedInteractionComponent>();
+	return GetWorldTimerManager().IsTimerActive(TimerHandle_Interaction) || (Gate && Gate->IsPending()) || (Timed && Timed->HasRequest());
 }
 
 void ARPGPlayerController::PressSkillSlot(const int32 SlotIndex)

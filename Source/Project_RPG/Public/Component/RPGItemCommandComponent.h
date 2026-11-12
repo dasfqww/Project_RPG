@@ -69,6 +69,7 @@ class PROJECT_RPG_API URPGItemCommandComponent final
 	GENERATED_BODY()
 
 public:
+	float GetMaximumPickupDistance() const { return MaximumPickupDistance; }
 	URPGItemCommandComponent();
 
 	virtual void BeginPlay() override;

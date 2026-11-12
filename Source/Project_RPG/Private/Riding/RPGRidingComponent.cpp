@@ -7,6 +7,7 @@
 #include "Riding/RPGRidingAbilityGate.h"
 #include "Riding/RPGRidingConsumeLease.h"
 #include "Riding/RPGRidingInteractionScope.h"
+#include "Riding/RPGRidingTimedInteractionLease.h"
 #include "Riding/RPGRidingDashRuntime.h"
 #include "Riding/RPGRidingDashPrediction.h"
 #include "Riding/RPGGameplayAbility_RidingDash.h"
@@ -251,6 +252,7 @@ void URPGRidingComponent::BuildGuards(FRPGRidingEvaluationContext& Out) const
     Out.bActionBlocked |= Has(TEXT("Player.Status.Rolling")) || Has(TEXT("Player.Status.Blocking"));
     Out.bActionBlocked |= FRPGRidingConsumeLease::HasPending(Pawn);
     Out.bActionBlocked |= FRPGRidingInteractionScope::HasPending(Pawn);
+    Out.bActionBlocked |= FRPGRidingTimedInteractionLease::HasPending(Pawn);
     for (const auto& Spec : ASC->GetActivatableAbilities())
         if (Spec.IsActive() && FRPGRidingAbilityGate::BlocksMounting(Spec.Ability)) Out.bActionBlocked = true;
     const auto* Character = Cast<ACharacter>(Pawn);

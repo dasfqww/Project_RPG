@@ -121,6 +121,8 @@ protected:
 
 public:
 	FORCEINLINE URPGItemBase* GetRPGItemData() const { return ItemReference; }
+	virtual bool CanApproveRidingTimedInteraction(APlayerController* Controller) const override;
+	virtual FGuid GetRidingTimedInteractionIdentity() const override { return GetPickupDropId(); }
 	FORCEINLINE UWidgetComponent* GetWidgetComponent() const { return ItemTextWidgetComponent; }
 	FORCEINLINE FItemManifest GetItemManifest() const { return ItemManifest; }
 };
