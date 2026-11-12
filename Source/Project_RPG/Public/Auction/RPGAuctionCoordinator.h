@@ -4,6 +4,19 @@
 #include "Trading/RPGTradeAssets.h"
 
 enum class ERPGAuctionAssetsState : uint8 { Idle, Loading, Ready, Failed };
+enum class ERPGAuctionReadState : uint8 { Idle, Loading, Ready, Failed };
+struct PROJECT_RPG_API FRPGAuctionScreenRow { FGuid ListingId; FText Label; };
+struct PROJECT_RPG_API FRPGAuctionScreenView
+{
+    // Native identity guard only; never rendered or persisted by the view.
+    FRPGTradeIntentScope Context;
+    FText Status, Detail, Assets;
+    TArray<FRPGAuctionScreenRow> Rows;
+    FGuid PageToken;
+    bool bAvailable=false, bCanPublic=false, bCanMine=false, bCanNext=false, bCanDetail=false;
+    bool bCanRecover=false, bCanRetry=false, bCanStorage=false, bCanAssets=false;
+    bool bPublicVisible=false,bHasPending=false,bStorageBlocked=false,bHasReceipt=false;
+};
 
 struct PROJECT_RPG_API FRPGAuctionLobbyContext
 {
@@ -30,6 +43,13 @@ public:
     bool Claim(const FRPGAuctionPayable& Payable, int64 Amount);
     bool Retry();
     bool Recover();
+    bool RecheckStorage();
+    bool ReadPage(bool bMine);
+    bool NextPage(FGuid DisplayedPage);
+    bool ReadDetail(FGuid DisplayedPage,FGuid Listing);
+    FRPGAuctionScreenView GetScreenView();
+    void SetItemPresenter(TFunction<bool(const FRPGTradeItemDetails&,FText&,FText&)> Presenter) { ItemPresenter=MoveTemp(Presenter); }
+    FSimpleMulticastDelegate OnViewChanged;
     void SetAssetSink(TFunction<bool()> Begin,TFunction<bool(const FRPGTradeAssets&)> Apply,TFunction<bool()> Current);
     bool ReloadAssets();
     const FRPGTradeAssets* GetAssets() const;
@@ -51,6 +71,11 @@ private:
     void ResetMemory();
     void UpdateTime();
     void Notify();
+    bool ReadAllowed(bool bMine);
+    bool SearchPage(const FRPGAuctionSearch& Query,bool bMine);
+    void ClearBrowse();
+    void ReadDelay(const FRPGAuctionHttpResult& Result);
+    FText ListingText(const FRPGAuctionListing& Listing,bool bDetail) const;
     TSharedRef<IRPGAuctionTransport> Transport;
     FContext Context;
     FString JournalRoot;
@@ -68,4 +93,11 @@ private:
     TFunction<bool(const FRPGTradeAssets&)> AssetApply;
     TOptional<FRPGTradeAssets> Assets;
     ERPGAuctionAssetsState AssetsState = ERPGAuctionAssetsState::Idle;
+    TOptional<FRPGAuctionPage> Page;
+    TOptional<FRPGAuctionListing> Detail;
+    FRPGAuctionSearch PageQuery;
+    FGuid PageToken;
+    bool bPageMine=false;
+    ERPGAuctionReadState PageState=ERPGAuctionReadState::Idle, DetailState=ERPGAuctionReadState::Idle;
+    TFunction<bool(const FRPGTradeItemDetails&,FText&,FText&)> ItemPresenter;
 };

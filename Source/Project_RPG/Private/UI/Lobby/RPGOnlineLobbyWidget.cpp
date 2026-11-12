@@ -3,6 +3,7 @@
 #include "UI/Lobby/RPGEquipmentGrowthWidget.h"
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
 #include "UI/Lobby/RPGTradeWidget.h"
+#include "UI/Lobby/RPGAuctionWidget.h"
 #include "Trading/RPGTradeSubsystem.h"
 #include "Auction/RPGAuctionSubsystem.h"
 #include "Narrative/RPGNarrativeCoordinator.h"
@@ -346,6 +347,7 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 	BIND_ACTION("OpenSkillMenuButton", OpenSkillMenu);
 	BIND_ACTION("OpenEquipmentMenuButton", OpenEquipmentMenu);
 	BIND_ACTION("OpenTradeMenuButton", OpenTradeMenu);
+	BIND_ACTION("OpenAuctionMenuButton", OpenAuctionMenu);
 	BIND_ACTION("OpenStoryMenuButton", OpenStoryMenu);
 	BIND_ACTION("OpenDungeonMenuButton", OpenDungeonMenu);
 	BIND_ACTION("CloseLobbyDetailsButton", CloseLobbyDetails);
@@ -422,6 +424,8 @@ void URPGOnlineLobbyWidget::NativeDestruct()
 	if (NarrativePanel) NarrativePanel->CloseScreen();
 	if (TradePanel) { TradePanel->OnClosed.RemoveAll(this); TradePanel->CloseScreen(); }
 	TradePanel = nullptr;
+	if (AuctionPanel) { AuctionPanel->OnClosed.RemoveAll(this); AuctionPanel->CloseScreen(); }
+	AuctionPanel = nullptr;
 	NarrativePanel = nullptr;
 	bTutorialEntryActive = bTutorialResolvingSession = false;
 	TutorialAccount.Reset(); TutorialCharacter.Reset(); TutorialDungeonId.Reset();

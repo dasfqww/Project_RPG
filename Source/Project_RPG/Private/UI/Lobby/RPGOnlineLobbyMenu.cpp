@@ -12,6 +12,8 @@
 #include "UI/Lobby/RPGEquipmentGrowthWidget.h"
 #include "UI/Lobby/RPGTradeWidget.h"
 #include "Trading/RPGTradeSubsystem.h"
+#include "Auction/RPGAuctionSubsystem.h"
+#include "UI/Lobby/RPGAuctionWidget.h"
 #include "UI/Lobby/RPGOnlineLobbyLayout.h"
 #include "UI/Lobby/RPGTutorialEntryPolicy.h"
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
@@ -52,6 +54,7 @@ void URPGOnlineLobbyWidget::BuildMenuContent(UVerticalBox& Parent, bool bServerP
 	Add(TEXT("OpenEquipmentMenuButton"), NSLOCTEXT("RPGFrontend", "Equipment", "장비 성장 · 제작"));
 	Add(TEXT("OpenStoryMenuButton"), NSLOCTEXT("RPGFrontend", "Story", "인물과 이야기"));
 	Add(TEXT("OpenTradeMenuButton"), NSLOCTEXT("RPGFrontend", "Trade", "거래 내역"));
+	Add(TEXT("OpenAuctionMenuButton"), NSLOCTEXT("RPGFrontend", "Auction", "경매 내역 · 처리 결과"));
 	Add(TEXT("CloseLobbyDetailsButton"), NSLOCTEXT("RPGFrontend", "MenuHome", "로비 메뉴로 돌아가기"));
 	TutorialStatusText = RPGOnlineLobbyLayout::Text(*WidgetTree, *Rows, TEXT("TutorialEntryStatus"), FText::GetEmpty());
 }
@@ -152,6 +155,26 @@ void URPGOnlineLobbyWidget::HandleTradeClosed()
 	if (CanUseTrading())
 		if (auto* Button = Buttons.FindRef(TEXT("OpenTradeMenuButton")).Get(); Button && Button->GetIsEnabled() && Button->IsVisible())
 			Button->SetUserFocus(GetOwningPlayer());
+}
+
+bool URPGOnlineLobbyWidget::CanOpenAuctionMenu() const
+{
+	return bServerSelected && bPreparationOpen && !bTutorialEntryActive && CanUseCharacterConfiguration(false,false);
+}
+void URPGOnlineLobbyWidget::OpenAuctionMenu()
+{
+	if(!CanOpenAuctionMenu())return;
+	auto* Subsystem=GetOwningLocalPlayer()?GetOwningLocalPlayer()->GetSubsystem<URPGAuctionSubsystem>():nullptr;
+	const auto Owner=Subsystem?Subsystem->GetCoordinator():nullptr;
+	if(!Owner || !Owner->GetScreenView().bAvailable)return;
+	if(AuctionPanel && AuctionPanel->IsInViewport()){AuctionPanel->SetKeyboardFocus();return;}
+	AuctionPanel=CreateWidget<URPGAuctionWidget>(GetOwningPlayer(),URPGAuctionWidget::StaticClass());
+	if(AuctionPanel){AuctionPanel->OnClosed.AddUObject(this,&ThisClass::HandleAuctionClosed);AuctionPanel->SetOwner(Owner.ToSharedRef());AuctionPanel->AddToViewport(145);}
+}
+void URPGOnlineLobbyWidget::HandleAuctionClosed()
+{
+	if(CanOpenAuctionMenu())if(auto* Button=Buttons.FindRef(TEXT("OpenAuctionMenuButton")).Get();Button && Button->GetIsEnabled() && Button->IsVisible())
+		Button->SetUserFocus(GetOwningPlayer());
 }
 
 bool URPGOnlineLobbyWidget::CanOpenNarrativeDialogues() const
@@ -285,6 +308,9 @@ void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 	Control(TEXT("OpenStoryMenuButton"), CanOpenNarrativeDialogues(), bHome);
 	auto* Trades = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGTradeSubsystem>() : nullptr;
 	Control(TEXT("OpenTradeMenuButton"), CanUseTrading(), bHome && Trades && Trades->IsAvailable());
+	auto* Auctions=GetOwningLocalPlayer()?GetOwningLocalPlayer()->GetSubsystem<URPGAuctionSubsystem>():nullptr;
+	const auto AuctionOwner=Auctions?Auctions->GetCoordinator():nullptr;
+	Control(TEXT("OpenAuctionMenuButton"),CanOpenAuctionMenu(),bHome && AuctionOwner && AuctionOwner->GetScreenView().bAvailable);
 	if (NarrativePanel && NarrativePanel->IsInViewport()
 		&& (!CanOpenNarrativeDialogues() || NarrativePanel->GetCharacterId().ToString(EGuidFormats::DigitsWithHyphensLower) != Flow->GetSelectedCharacterId()))
 		NarrativePanel->CloseScreen();

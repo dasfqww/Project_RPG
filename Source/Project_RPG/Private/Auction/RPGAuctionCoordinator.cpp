@@ -16,15 +16,17 @@ FRPGAuctionCoordinator::FRPGAuctionCoordinator(TSharedRef<IRPGAuctionTransport> 
 FRPGAuctionCoordinator::~FRPGAuctionCoordinator() { Shutdown(); }
 void FRPGAuctionCoordinator::UpdateTime()
 { const double T = Clock(); if (FMath::IsFinite(T) && T >= 0) Now = FMath::Max(Now, T); }
-void FRPGAuctionCoordinator::Notify() { auto Callback = OnChanged; if (!bEnding && Callback) Callback(); }
+void FRPGAuctionCoordinator::Notify()
+{ auto Callback = OnChanged; if (!bEnding && Callback) Callback(); if(!bEnding)OnViewChanged.Broadcast(); }
 void FRPGAuctionCoordinator::ResetMemory()
 {
     ++Generation; Transport->Cancel(); bBusy = false; Client.Reset(); Scope = {}; ClearIntent.Reset();
     bStorageBlocked = false; NextAttempt = NextStorage = 0; LastResponse = ERPGAuctionResponse::Ignored;
     Assets.Reset(); AssetsState=ERPGAuctionAssetsState::Idle;
+    ClearBrowse();
 }
 void FRPGAuctionCoordinator::Shutdown()
-{ if (bEnding) return; bEnding = true; OnChanged = {}; ResetMemory(); }
+{ if (bEnding) return; bEnding = true; OnChanged = {}; OnViewChanged.Clear(); ResetMemory(); }
 bool FRPGAuctionCoordinator::Sync()
 {
     if (bEnding || !Context) return false;
@@ -89,6 +91,7 @@ void FRPGAuctionCoordinator::Tick()
     const auto KeepAlive = AsShared(); const uint64 Previous = Generation; const bool Blocked = bStorageBlocked;
     if (Sync() && bStorageBlocked && !bBusy && Now >= NextStorage) Reconcile();
     if (Previous != Generation || Blocked != bStorageBlocked) Notify();
+    else if(!bEnding)OnViewChanged.Broadcast(); // Local view deadlines/auth state; never polls HTTP.
 }
 bool FRPGAuctionCoordinator::BlocksTransitions()
 {
@@ -107,6 +110,7 @@ bool FRPGAuctionCoordinator::SaveAndSend()
     // The public result below is true only after a durable write succeeded.
     if (!Reconcile()) { Notify(); return false; }
     Assets.Reset(); AssetsState=ERPGAuctionAssetsState::Idle;
+    ClearBrowse();
     Dispatch(false); Notify(); return true;
 }
 bool FRPGAuctionCoordinator::Register(FGuid L, FGuid I, int64 R, int32 Q, int64 P, FDateTime E)

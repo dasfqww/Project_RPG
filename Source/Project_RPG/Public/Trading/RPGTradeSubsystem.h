@@ -18,6 +18,8 @@ public:
     TSharedPtr<FRPGTradeLobbyOwner> GetTradeOwner();
     bool IsAvailable();
     bool BlocksTransitions();
+    // Shared definition/version and localized option labels for read-only item presentation.
+    bool DescribeItem(const FRPGTradeItemDetails& Item,FText& Name,FText& Description) const { return ResolveItem(Item,Name,Description); }
 private:
     FRPGTradeLobbyContext ReadContext() const;
     bool TickTrade(float);

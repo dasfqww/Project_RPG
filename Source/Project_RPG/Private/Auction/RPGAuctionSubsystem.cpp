@@ -6,6 +6,7 @@
 #include "Online/RPGOnlineLobbySubsystem.h"
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
 #include "Misc/Paths.h"
+#include "Trading/RPGTradeSubsystem.h"
 
 void URPGAuctionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -49,6 +50,12 @@ TSharedPtr<FRPGAuctionCoordinator> URPGAuctionSubsystem::GetCoordinator()
             { const auto* Self = Weak.Get(); return Self ? Self->ReadContext() : FRPGAuctionLobbyContext{}; },
             FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("AuctionIntents/v1")));
         EquipmentReader=GI->GetSubsystem<URPGEquipmentMutationSubsystem>();
+        Coordinator->SetItemPresenter([Weak](const FRPGTradeItemDetails& Item,FText& Name,FText& Description)
+        {
+            const auto* S=Weak.Get();auto* P=S ? S->GetLocalPlayer() : nullptr;
+            auto* Presenter=P ? P->GetSubsystem<URPGTradeSubsystem>() : nullptr;
+            return S && !S->bEnding && Presenter && Presenter->DescribeItem(Item,Name,Description);
+        });
         Coordinator->SetAssetSink([Weak]
         {auto* S=Weak.Get();return S && !S->bEnding && S->EquipmentReader.IsValid()
             && S->EquipmentReader->BeginExternalRead(S->ReadContext().Character,S->AssetTicket);},

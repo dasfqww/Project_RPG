@@ -22,6 +22,7 @@ class URPGCharacterConfigurationWidget;
 class URPGEquipmentGrowthWidget;
 class URPGNarrativeDialogueWidget;
 class URPGTradeWidget;
+class URPGAuctionWidget;
 class URPGServiceStatusSubsystem;
 
 struct PROJECT_RPG_API FRPGOnlineLobbyPresentation
@@ -146,6 +147,10 @@ private:
 	UFUNCTION() void OpenTradeMenu();
 	void HandleTradeClosed();
 	UPROPERTY(Transient) TObjectPtr<URPGTradeWidget> TradePanel;
+	UFUNCTION() void OpenAuctionMenu();
+	bool CanOpenAuctionMenu() const;
+	void HandleAuctionClosed();
+	UPROPERTY(Transient) TObjectPtr<URPGAuctionWidget> AuctionPanel;
 	UFUNCTION() void OpenStoryMenu();
 	bool CanOpenNarrativeDialogues() const;
 	UFUNCTION() void OpenDungeonMenu();
