@@ -38,5 +38,6 @@ public sealed class AuctionApplication(IGameRepository game, IAuctionEscrowRepos
     public Task<AuctionSellerPayable?> PayableAsync(Guid id, TradeParticipant actor, CancellationToken ct) => claims.FindPayableAsync(id, actor, ct);
     public Task<AuctionClaimResult> ClaimAsync(AuctionClaimCommand cmd, CancellationToken ct) => claims.ClaimAsync(cmd, ct);
     public Task<AuctionStoredReceipt?> ReceiptAsync(Guid id, TradeParticipant actor, CancellationToken ct) => queries.FindReceiptAsync(id, actor, ct);
+    public Task<AuctionAssets?> AssetsAsync(Guid id, TradeParticipant actor, CancellationToken ct) => queries.AssetsAsync(id, actor, ct);
     private void Enabled() { if (!options.Value.Enabled) throw new TradeRuleException("auctions_disabled"); }
 }

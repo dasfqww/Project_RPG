@@ -10,6 +10,8 @@ public sealed record AuctionCommandRequest(Guid RequestId, Guid? ItemId = null, 
 
 public static class AuctionApiContracts
 {
+    public static object Assets(AuctionAssets r) => new { r.RequestId, r.CharacterId, r.ObservedAt, isComplete = true,
+        wallet = EconomyApiContractMapper.ToContract(r.Wallet), items = r.Items.Select(ItemApiContractMapper.ToContract).ToArray() };
     internal static TradeRuleException Invalid() => new("invalid_auction_command");
     internal static long Integer(string? s, bool revision = false)
     {

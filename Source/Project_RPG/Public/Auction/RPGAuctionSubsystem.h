@@ -3,6 +3,7 @@
 #include "Subsystems/LocalPlayerSubsystem.h"
 #include "Containers/Ticker.h"
 #include "Auction/RPGAuctionCoordinator.h"
+#include "Progression/RPGEquipmentMutationSubsystem.h"
 #include "RPGAuctionSubsystem.generated.h"
 
 /** Persistent owner independent of widget lifetime. No automatic mutation or recovery dispatch. */
@@ -22,4 +23,6 @@ private:
     TSharedPtr<FRPGAuctionCoordinator> Coordinator;
     FTSTicker::FDelegateHandle TickHandle;
     bool bEnding = false;
+    TWeakObjectPtr<URPGEquipmentMutationSubsystem> EquipmentReader;
+    FRPGEquipmentReadTicket AssetTicket;
 };

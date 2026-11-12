@@ -4,6 +4,15 @@ namespace ProjectRpg.Backend.Data;
 
 public sealed partial class InMemoryAuctionRepository : IAuctionQueryRepository
 {
+    public Task<AuctionAssets?> AssetsAsync(Guid request, TradeParticipant actor, CancellationToken ct) => Read<AuctionAssets?>(() =>
+    {
+        if (!gate.AuctionReceipts.TryGetValue(request, out var r)) return null;
+        if (AuctionQueryRules.ReceiptIdentity(new(r.Kind, r.Result)) != (request, actor)) return null;
+        var context = Context(actor, ct);
+        var records = items.FindByOwnerAsync(Owner(actor), false, AuctionAssets.MaximumItems + 1, ct).GetAwaiter().GetResult();
+        var wallet = economy.LoadWalletAsync(context, ct).GetAwaiter().GetResult();
+        return AuctionAssets.Create(request, actor, wallet, records, gate.UtcNow);
+    }, ct);
     public Task<AuctionPage> SearchAsync(AuctionSearch q, string? sellerAccount, CancellationToken ct)
     {
         AuctionQueryRules.Validate(q);

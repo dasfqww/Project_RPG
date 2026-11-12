@@ -30,6 +30,7 @@ public:
     virtual bool SendListing(FGuid Character, FGuid Listing, FCompletion Completion) = 0;
     virtual bool SendPayable(FGuid Character, FGuid Listing, FCompletion Completion) = 0;
     virtual bool SendReceipt(FGuid Character, FGuid Request, FCompletion Completion) = 0;
+    virtual bool SendAssets(FGuid Character, FGuid Request, FCompletion Completion) { return false; }
     virtual void Cancel() = 0;
 };
 
@@ -48,6 +49,7 @@ public:
     virtual bool SendListing(FGuid Character, FGuid Listing, FCompletion Completion) override;
     virtual bool SendPayable(FGuid Character, FGuid Listing, FCompletion Completion) override;
     virtual bool SendReceipt(FGuid Character, FGuid Request, FCompletion Completion) override;
+    virtual bool SendAssets(FGuid Character, FGuid Request, FCompletion Completion) override;
     virtual void Cancel() override;
 private:
     bool SendRequest(FGuid Character, const FString& Path, const FString& Body, int32 MaximumResponseBytes,

@@ -38,7 +38,7 @@ internal static class AuctionApiCases
             if (mode == "--auction-api-restart") await ProgramRestart(f);
             else
             {
-                await Commands(f); await QueriesAndPrivacy(f); await InputAndAccess(f); await WorkerAndLimits(f); await WideAmounts(f);
+                await Commands(f); await Assets(f); await QueriesAndPrivacy(f); await InputAndAccess(f); await WorkerAndLimits(f); await WideAmounts(f);
                 if (f.Data is null) await ExpiryFairness();
             }
             Console.WriteLine($"PASS {mode}: {checks} assertions; real bearer HTTP/DI and isolated assets. No auction UE/Steam claim."); return 0;
@@ -87,6 +87,33 @@ internal static class AuctionApiCases
             await f.Sql("CREATE TABLE auction_api_restart_fixture(token text,route text,result jsonb); INSERT INTO auction_api_restart_fixture VALUES(@token,@route,@result::jsonb)",
                 ("token", buyer.Token), ("route", Root(buyer) + "/requests/" + body.RequestId), ("result", duplicates[0].ToJsonString()));
         }
+    }
+    private static async Task Assets(Fixture f)
+    {
+        var seller=await f.Person(0);var buyer=await f.Person();var outsider=await f.Person();var alt=await f.Person(0,buyer.Account);
+        var item=await f.Seed(seller);var id=Guid.NewGuid();var reg=Registration(f,item);
+        await f.Post(seller,id,"register",reg);var command=Purchase();var receipt=await f.Post(buyer,id,"purchase",command);
+        string route=Root(buyer)+$"/requests/{command.RequestId}/assets";
+        var first=await f.Get(buyer,route);Check(first["isComplete"]!.GetValue<bool>() && first["wallet"]!["balances"]![0]!["balance"]!.GetValue<long>()==301,"current assets after purchase");
+        await f.Fund(buyer,1);var extra=await f.Seed(buyer,1,161,2);
+        var fresh=await f.Get(buyer,route);Check(fresh["wallet"]!["balances"]![0]!["balance"]!.GetValue<long>()==302 && fresh["items"]!.AsArray().Count==first["items"]!.AsArray().Count+1,$"fresh current assets include later wallet/item changes; balance={fresh["wallet"]!["balances"]![0]!["balance"]}, before={first["items"]!.AsArray().Count}, after={fresh["items"]!.AsArray().Count}");
+        var moved=await f.Items.CommitAsync(new(Guid.NewGuid(),"Test.Move","owned-mail-read",extra.Owner,0,[new(extra.Revision,extra with {Location=new(ItemContainerType.Mail,buyer.Id.ToString("D"),0)})]),f.Clock.Now,default);
+        Check(moved.Status==ItemRepositoryCommitStatus.Committed,"owned mail fixture move");
+        var mail=await f.Get(buyer,route);Check(mail["items"]!.AsArray().Any(x=>x!["location"]!["containerType"]!.GetValue<string>()=="Mail"),"current snapshot includes owned mail alongside inventory");
+        Check(JsonNode.DeepEquals(receipt,await f.Get(buyer,Root(buyer)+$"/requests/{command.RequestId}")),"current read never rewrites historical receipt");
+        Check(fresh["characterId"]!.GetValue<Guid>()==buyer.Id && fresh["requestId"]!.GetValue<Guid>()==command.RequestId,"snapshot pins original actor/request");
+        await f.Get(outsider,Root(outsider)+$"/requests/{command.RequestId}/assets",404);
+        await f.Get(alt,Root(alt)+$"/requests/{command.RequestId}/assets",404);
+        await f.Get(buyer,Root(seller)+$"/requests/{command.RequestId}/assets",403);
+        await f.Get(buyer,Root(buyer)+$"/requests/{Guid.NewGuid()}/assets",404);
+        await f.Raw(null,route,null,401);await f.Raw(f.Admin,route,null,403);await f.Get(buyer,route+"?x=1",400);
+        f.Options.Enabled=false;await f.Get(buyer,route);f.Options.Enabled=true;
+        var registrationAssets=await f.Get(seller,Root(seller)+$"/requests/{reg.RequestId}/assets");
+        Check(registrationAssets["items"]!.AsArray().All(x=>x!["owner"]!["ownerId"]!.GetValue<string>()==seller.Id.ToString("D")),"seller read excludes escrow and buyer assets");
+        var claim=new AuctionCommandRequest(Guid.NewGuid(),ExpectedRevision:"1",ExpectedCurrencyCode:"Gold",RequestedAmount:"1");await f.Post(seller,id,"claim",claim);
+        await f.Get(seller,Root(seller)+$"/requests/{claim.RequestId}/assets");
+        var cancelledId=Guid.NewGuid();var r=Registration(f,(await f.Items.FindAsync(item.ItemId,default))!);r=r with {ExpectedItemRevision="2",Quantity=1};await f.Post(seller,cancelledId,"register",r);
+        var cancel=new AuctionCommandRequest(Guid.NewGuid(),ExpectedRevision:"1");await f.Post(seller,cancelledId,"cancel",cancel);await f.Get(seller,Root(seller)+$"/requests/{cancel.RequestId}/assets");
     }
     private static async Task QueriesAndPrivacy(Fixture f)
     {

@@ -1,5 +1,6 @@
 #include "Auction/RPGAuctionCoordinator.h"
 #include "HAL/PlatformTime.h"
+#include "Trading/RPGTradeJson.h"
 
 namespace
 {
@@ -20,6 +21,7 @@ void FRPGAuctionCoordinator::ResetMemory()
 {
     ++Generation; Transport->Cancel(); bBusy = false; Client.Reset(); Scope = {}; ClearIntent.Reset();
     bStorageBlocked = false; NextAttempt = NextStorage = 0; LastResponse = ERPGAuctionResponse::Ignored;
+    Assets.Reset(); AssetsState=ERPGAuctionAssetsState::Idle;
 }
 void FRPGAuctionCoordinator::Shutdown()
 { if (bEnding) return; bEnding = true; OnChanged = {}; ResetMemory(); }
@@ -96,13 +98,15 @@ bool FRPGAuctionCoordinator::BlocksTransitions()
 bool FRPGAuctionCoordinator::CanPrepare(bool bNewSale)
 {
     return Sync() && Current.bAuthenticated && Current.bEligible && (!bNewSale || Current.bEnabled)
-        && !bBusy && Reconcile() && !Client.GetPending() && !Client.NeedsAssetRefresh();
+        && !bBusy && Reconcile() && !Client.GetPending() && !Client.NeedsAssetRefresh()
+        && (!Client.GetReceipt() || !AssetCurrent || (AssetsState==ERPGAuctionAssetsState::Ready && Assets.IsSet() && AssetCurrent()));
 }
 bool FRPGAuctionCoordinator::SaveAndSend()
 {
     // True means an in-memory intent was prepared; a storage failure blocks all dispatch/replacement.
     // The public result below is true only after a durable write succeeded.
     if (!Reconcile()) { Notify(); return false; }
+    Assets.Reset(); AssetsState=ERPGAuctionAssetsState::Idle;
     Dispatch(false); Notify(); return true;
 }
 bool FRPGAuctionCoordinator::Register(FGuid L, FGuid I, int64 R, int32 Q, int64 P, FDateTime E)
@@ -153,4 +157,51 @@ bool FRPGAuctionCoordinator::AcknowledgeAssets(FGuid Request)
 {
     if (!Sync() || bBusy || bStorageBlocked || Client.GetPending() || !Client.AcknowledgeAssets(Request)) return false;
     Notify(); return true;
+}
+
+void FRPGAuctionCoordinator::SetAssetSink(TFunction<bool()> Begin,TFunction<bool(const FRPGTradeAssets&)> Apply,TFunction<bool()> CurrentRead)
+{
+    if(AssetsState==ERPGAuctionAssetsState::Loading){++Generation;Transport->Cancel();bBusy=false;}
+    AssetBegin=MoveTemp(Begin);AssetApply=MoveTemp(Apply);AssetCurrent=MoveTemp(CurrentRead);Assets.Reset();AssetsState=ERPGAuctionAssetsState::Idle;
+}
+const FRPGTradeAssets* FRPGAuctionCoordinator::GetAssets() const
+{
+    if(bEnding || !Context || !Assets.IsSet() || AssetsState!=ERPGAuctionAssetsState::Ready || !AssetCurrent)return nullptr;
+    const auto Next=Context();FRPGTradeIntentScope Viewed;
+    return Next.bLocalLobby && Next.bAuthenticated && Next.bEligible
+        && FRPGTradeIntentScope::Create(Next.Endpoint,Next.Account,Next.Character,Viewed) && Viewed==Scope
+        && AssetCurrent() ? &Assets.GetValue() : nullptr;
+}
+bool FRPGAuctionCoordinator::ReloadAssets()
+{
+    const auto KeepAlive=AsShared();
+    if(!Sync() || bBusy || bStorageBlocked || !Current.bAuthenticated || !Current.bEligible || Now<NextAttempt
+        || Client.GetPending() || !Client.GetReceipt() || !AssetBegin || !AssetApply || !AssetCurrent || !Transport->CanSend())return false;
+    const auto Receipt=*Client.GetReceipt();const auto Captured=Scope;const uint64 Expected=++Generation;
+    bBusy=true;Assets.Reset();AssetsState=ERPGAuctionAssetsState::Loading;
+    const bool Began=AssetBegin();
+    if(!Sync() || Generation!=Expected)return false;
+    if(!Began){bBusy=false;AssetsState=ERPGAuctionAssetsState::Failed;Notify();return false;}
+    TWeakPtr<FRPGAuctionCoordinator> Weak=AsShared();
+    auto Done=[Weak,Receipt,Captured,Expected](FRPGAuctionHttpResult Result)
+    {
+        auto Self=Weak.Pin();if(!Self || Self->Generation!=Expected || !Self->Sync() || Self->Generation!=Expected)return;
+        const int32 Code=Result.bCurrentPlayerContext && Result.bTransportSuccessful ? Result.StatusCode : 0;
+        RPGTradeClient::FObject Obj;FGuid Request;FDateTime Observed;FRPGTradeAssets Incoming;
+        bool Valid=Code==200 && RPGTradeClient::ReadObject(Result.Body,Obj,4*1024*1024)
+            && RPGTradeClient::Guid(Obj,TEXT("requestId"),Request) && Request==Receipt.RequestId
+            && RPGTradeClient::Date(Obj,TEXT("observedAt"),Observed)
+            && FRPGTradeAssets::DecodeOwned(Result.Body,Captured.Character,Captured.Account,Incoming);
+        Valid=Valid && Self->AssetCurrent && Self->AssetCurrent() && Self->AssetApply && Self->AssetApply(Incoming) && Self->AssetCurrent();
+        if(!Self->Sync() || Self->Generation!=Expected)return;
+        Self->bBusy=false;Self->AssetsState=ERPGAuctionAssetsState::Failed;
+        if(Valid && Self->Client.GetReceipt() && Self->Client.GetReceipt()->RequestId==Receipt.RequestId
+            && Self->Client.AcknowledgeAssets(Receipt.RequestId))
+        {Self->Assets=MoveTemp(Incoming);Self->AssetsState=ERPGAuctionAssetsState::Ready;}
+        if(Code==429 || Code==503)Self->NextAttempt=Self->Now+(FMath::IsFinite(Result.RetryAfterSeconds)&&Result.RetryAfterSeconds>0?FMath::Clamp(Result.RetryAfterSeconds,1.0,3600.0):60.0);
+        Self->Notify();
+    };
+    const bool Sent=Transport->SendAssets(Scope.Character,Receipt.RequestId,Done);
+    if(!Sent && Generation==Expected && bBusy)Done(FRPGAuctionHttpResult{});
+    Notify();return Sent;
 }

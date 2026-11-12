@@ -20,6 +20,10 @@ public static class AuctionApiEndpoints
         app.MapGet(Root + "/requests/{requestId:guid}", (Guid characterId, Guid requestId, HttpContext c, AuctionApplication a, CancellationToken ct) =>
             Run(c, async () => { NoQuery(c); var actor = await a.ActorAsync(c.GetProjectRpgPrincipal(), characterId, false, ct);
                 var r = await a.ReceiptAsync(requestId, actor, ct) ?? throw new TradeRuleException("auction_not_found"); return AuctionApiContracts.Receipt(r); }));
+        app.MapGet(Root + "/requests/{requestId:guid}/assets", (Guid characterId, Guid requestId, HttpContext c, AuctionApplication a, CancellationToken ct) =>
+            Run(c, async () => { NoQuery(c); var actor = await a.ActorAsync(c.GetProjectRpgPrincipal(), characterId, false, ct);
+                var r = await a.AssetsAsync(requestId, actor, ct) ?? throw new TradeRuleException("auction_not_found");
+                return AuctionApiContracts.Assets(r); }));
         app.MapGet(Root + "/{listingId:guid}", (Guid characterId, Guid listingId, HttpContext c, AuctionApplication a, CancellationToken ct) =>
             Run(c, async () => { NoQuery(c); var actor = await a.ActorAsync(c.GetProjectRpgPrincipal(), characterId, false, ct);
                 var l = await a.FindAsync(listingId, actor, ct) ?? throw new TradeRuleException("auction_not_found"); return AuctionApiContracts.Listing(l, l.State.Seller.AccountId == actor.AccountId); }));

@@ -40,6 +40,16 @@ bool FRPGTradeAssets::Decode(const FString& Json,const FRPGTradeSession& Expecte
         || !Boolean(Root,TEXT("isComplete"),Complete) || !Complete || !Date(Root,TEXT("observedAt"),Observed)
         || !Root->HasTypedField<EJson::Object>(TEXT("session"))
         || !ReadSession(Root->GetObjectField(TEXT("session")),Actor,Session) || !(Session==Expected)) return false;
+    return DecodeOwned(Json,Actor,Account,Out);
+}
+
+bool FRPGTradeAssets::DecodeOwned(const FString& Json,FGuid Actor,const FString& Account,FRPGTradeAssets& Out)
+{
+    using namespace RPGTradeClient;
+    FObject Root;FGuid Character;bool Complete=false;FDateTime Observed;
+    if(!Actor.IsValid() || Account.IsEmpty() || !ReadObject(Json,Root,4*1024*1024)
+        || !Guid(Root,TEXT("characterId"),Character) || Character!=Actor
+        || !Boolean(Root,TEXT("isComplete"),Complete) || !Complete || !Date(Root,TEXT("observedAt"),Observed))return false;
     // Reparse with number lexemes preserved before serializing the nested wallet.
     FObject Precise;const FObject* Wallet=nullptr;FString WalletJson;FRPGTradeAssets Result;
     if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json),Precise,FJsonSerializer::EFlags::StoreNumbersAsStrings)

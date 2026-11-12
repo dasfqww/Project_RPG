@@ -16,6 +16,7 @@ void URPGAuctionSubsystem::Deinitialize()
 {
     bEnding = true; FTSTicker::GetCoreTicker().RemoveTicker(TickHandle); TickHandle.Reset();
     if (Coordinator) Coordinator->Shutdown(); Coordinator.Reset(); Super::Deinitialize();
+    EquipmentReader.Reset();
 }
 FRPGAuctionLobbyContext URPGAuctionSubsystem::ReadContext() const
 {
@@ -47,6 +48,16 @@ TSharedPtr<FRPGAuctionCoordinator> URPGAuctionSubsystem::GetCoordinator()
         Coordinator = MakeShared<FRPGAuctionCoordinator>(Web->CreatePlayerAuctionTransport(), [Weak]
             { const auto* Self = Weak.Get(); return Self ? Self->ReadContext() : FRPGAuctionLobbyContext{}; },
             FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("AuctionIntents/v1")));
+        EquipmentReader=GI->GetSubsystem<URPGEquipmentMutationSubsystem>();
+        Coordinator->SetAssetSink([Weak]
+        {auto* S=Weak.Get();return S && !S->bEnding && S->EquipmentReader.IsValid()
+            && S->EquipmentReader->BeginExternalRead(S->ReadContext().Character,S->AssetTicket);},
+        [Weak](const FRPGTradeAssets& Assets)
+        {auto* S=Weak.Get();return S && !S->bEnding && S->EquipmentReader.IsValid()
+            && S->EquipmentReader->ApplyExternalRead(S->AssetTicket,Assets.Items,Assets.Mail,Assets.Wallet);},
+        [Weak]
+        {auto* S=Weak.Get();return S && !S->bEnding && S->EquipmentReader.IsValid()
+            && S->EquipmentReader->IsExternalReadCurrent(S->AssetTicket);});
     }
     return Coordinator;
 }

@@ -55,6 +55,8 @@ bool FRPGHttpAuctionTransport::SendPayable(FGuid Character, FGuid Listing, FComp
 { return Listing.IsValid() && SendRequest(Character, Root(Character) / Listing.ToString(EGuidFormats::DigitsWithHyphensLower) / TEXT("payable"), TEXT(""), 65536, MoveTemp(Completion)); }
 bool FRPGHttpAuctionTransport::SendReceipt(FGuid Character, FGuid Request, FCompletion Completion)
 { return Request.IsValid() && SendRequest(Character, Root(Character) / TEXT("requests") / Request.ToString(EGuidFormats::DigitsWithHyphensLower), TEXT(""), 4*1024*1024, MoveTemp(Completion)); }
+bool FRPGHttpAuctionTransport::SendAssets(FGuid Character, FGuid Request, FCompletion Completion)
+{ return Request.IsValid() && SendRequest(Character, Root(Character) / TEXT("requests") / Request.ToString(EGuidFormats::DigitsWithHyphensLower) / TEXT("assets"), TEXT(""), 4*1024*1024, MoveTemp(Completion)); }
 bool FRPGHttpAuctionTransport::SendRequest(FGuid Character, const FString& Path, const FString& Body, int32 MaximumResponseBytes,
     FCompletion Completion, const FRPGTradeIntentScope* ExpectedScope)
 {

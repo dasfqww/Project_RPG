@@ -8,5 +8,6 @@ public interface IAuctionQueryRepository
     Task<AuctionPage> SearchAsync(AuctionSearch query, string? sellerAccount, CancellationToken ct);
     Task<AuctionEscrowListing?> FindVisibleAsync(Guid id, string account, CancellationToken ct);
     Task<AuctionStoredReceipt?> FindReceiptAsync(Guid id, TradeParticipant actor, CancellationToken ct);
+    Task<AuctionAssets?> AssetsAsync(Guid request, TradeParticipant actor, CancellationToken ct);
     Task<IReadOnlyList<AuctionEscrowListing>> FindExpiredAsync(int limit, AuctionCursor? after, CancellationToken ct);
 }

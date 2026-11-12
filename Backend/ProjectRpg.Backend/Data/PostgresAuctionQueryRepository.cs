@@ -4,7 +4,7 @@ using ProjectRpg.Backend.Domain.Trading;
 
 namespace ProjectRpg.Backend.Data;
 
-public sealed class PostgresAuctionQueryRepository(NpgsqlDataSource dataSource) : IAuctionQueryRepository
+public sealed partial class PostgresAuctionQueryRepository(NpgsqlDataSource dataSource) : IAuctionQueryRepository
 {
     public async Task<AuctionPage> SearchAsync(AuctionSearch q, string? sellerAccount, CancellationToken ct)
     {
@@ -57,7 +57,11 @@ public sealed class PostgresAuctionQueryRepository(NpgsqlDataSource dataSource) 
     public async Task<AuctionStoredReceipt?> FindReceiptAsync(Guid id, TradeParticipant actor, CancellationToken ct)
     {
         await using var c = await dataSource.OpenConnectionAsync(ct);
-        await using var q = new NpgsqlCommand("SELECT 'escrow',result::text FROM auction_escrow_receipts WHERE request_id=@id AND actor_account=@account AND actor_character=@character UNION ALL SELECT 'purchase',result::text FROM auction_sales WHERE request_id=@id AND buyer_account=@account AND buyer_character=@character UNION ALL SELECT 'claim',result::text FROM auction_claim_receipts WHERE request_id=@id AND actor_account=@account AND actor_character=@character", c);
+        return await ReadReceipt(c, null, id, actor, ct);
+    }
+    private static async Task<AuctionStoredReceipt?> ReadReceipt(NpgsqlConnection c, NpgsqlTransaction? tx, Guid id, TradeParticipant actor, CancellationToken ct)
+    {
+        await using var q = new NpgsqlCommand("SELECT 'escrow',result::text FROM auction_escrow_receipts WHERE request_id=@id AND actor_account=@account AND actor_character=@character UNION ALL SELECT 'purchase',result::text FROM auction_sales WHERE request_id=@id AND buyer_account=@account AND buyer_character=@character UNION ALL SELECT 'claim',result::text FROM auction_claim_receipts WHERE request_id=@id AND actor_account=@account AND actor_character=@character", c, tx);
         q.Parameters.AddWithValue("id", id); q.Parameters.AddWithValue("account", actor.AccountId); q.Parameters.AddWithValue("character", actor.CharacterId);
         await using var r = await q.ExecuteReaderAsync(ct); if (!await r.ReadAsync(ct)) return null;
         var receipt = new AuctionStoredReceipt(r.GetString(0), r.GetString(1));

@@ -1270,3 +1270,19 @@ Retry-After가 있는429/503은 1~3600초(잘못된 값/누락60초), 그 외 �
 검증은 `Run-AuctionRecoveryTests.ps1`의 게시 Backend 저장/조회/실제 API 매퍼 JSON13과 사설 UE5.8 최소 모듈을 사용했다. 전송은 모의 어댑터이며 원래 JSON의 요청 ID만 각 명령에 맞춘 계약 검사다. 최종 같은 DLL의 첫 UE12개·별도 두 번째 UE 재시작1개, 총13 Success/검사 오류·경고0·각 종료0이다. 원본문/범위 복원·저장 선행·기존/손상/중복/큰 파일·잠금/연결 경로·정확한 compare-clear·삭제 실패/수리·명시 복구/404·Retry-After/시계 역행·인증 만료·캐릭터/계정/여행·늦은 응답·재진입 종료·상태 알림을 확인했다. 기동 자동화 Error15와 ACL 경고4는 각 프로세스의 검사 시작 전 기록으로 구분한다. 초기 출력 경로 제한/최소 러너의 HTTP CPP 링크 누락을 고쳤고 최종 저장 해소/시작 알림까지 보강한 입력으로 재검사했다.
 
 Backend Release 경고0/오류0, 최소 native14단계 링크0·`Run-AuctionRecoveryIntegrationCompile.ps1`의 전체 게시 UHT 및 실제 저널/조율자/Subsystem/로비 Widget/로그아웃 Subsystem CPP5 컴파일0이다. native17입력·통합8입력/러너 SHA가 유지됐다. 전체 게임 모듈 링크·설치 DLL 반영·실제 로비 UI 실행·프로세스 재시작 HTTP 왕복·PG/Steam은 이번 증거에 포함하지 않는다. 자기6회 사본/저널fixture/PID/OBJ/DLL/cache **447,427,873 bytes**를 finally 폐기해 `Saved/AR` 잔여/새 예외0이며, 원본 DLL/공유 빌드/DB/다른 담당 변경을 보존했다. 작은 로컬 근거는 `Saved/BuildChecks/AuctionRecovery-20261113/Completion.json`이다. 폐기한 모듈 해시는 당시 증거만 유지한다.
+
+## 37. T5e4 영수증 이후 최신 자산 일관 조회 (2026-11-13)
+
+`GET /api/characters/{characterId}/auctions/requests/{requestId}/assets`는 해당 Player 계정·캐릭터의 확정 경매 요청을 확인한 뒤 **현재** Character 소유 물품과 Account/Roster/Character 지갑을 함께 읽는다. 응답은 `requestId,characterId,observedAt,isComplete,wallet,items`이며 기존 아이템/지갑 계약을 사용한다. 불변 등록/구매/취소/수령 영수증의 과거 자산을 다시 내보내는 경로가 아니다. 이후 다른 지급/소비가 발생하면 같은 요청 ID의 자산 조회도 최신 값으로 바뀌며 영수증은 유지된다.
+
+- Memory는 기존 dungeon→자산 공통 read gate 안에서 영수증·현재 소유·아이템·지갑을 읽고 컬렉션을 복사한다. PG는 읽기 전용 Repeatable Read 트랜잭션 하나에서 같은 조회를 수행한다. schema 변경/자산 쓰기는 없다.
+- ActorAsync의 Player 역할/현재 캐릭터 소유·계정당 기타 조회 예산120/분을 적용한다. 동일 계정 부캐도 원래 요청 캐릭터가 다르면404이며, 외부 요청/없는 요청도404로 숨긴다. 관리자/서버 자격으로 대체하지 않는다. 기능 비활성 중에도 복구용 조회를 유지하고 no-store를 사용한다.
+- 활성 Character 소유 레코드만 최대501개를 조사한다. 500개를 넘으면 완전한 응답으로 표시하지 않고 오류를 반환한다. 시스템 보관·다른 캐릭터/계정 소유 기록은 제외하며 인벤토리와 우편을 기존 projection mapper로 분리한다. 금액/Revision은 이 조회에서 기존 자산 API의 숫자 토큰 계약을 따르며 경매 명령의 문자열 int64 계약과 구분한다.
+
+UE의 `SendAssets`는 기존 비공개 Player HTTP 문맥/단일 요청/4MiB 한도를 재사용한다. 조율자의 명시적인 `ReloadAssets()`는 확정 영수증의 요청 ID를 고정하고 pending/저장 차단/다른 전송이 있으면 시작하지 않는다. 기능 플래그가 꺼져도 적격 로비·인증 문맥의 갱신은 허용한다. 공통 `FRPGTradeAssets::DecodeOwned`가 계정/캐릭터·완전성·정수 토큰/int64·중복/외부 소유·수량·지갑 범위/상한·최대 레코드를 검사하고 기존 직거래의 Decode는 먼저 원래 세션 검사를 유지한다.
+
+`URPGAuctionSubsystem`은 기존 `URPGEquipmentMutationSubsystem`의 BeginExternalRead/ApplyExternalRead/IsExternalReadCurrent에 연결한다. 같은 읽기 ticket의 최신 projection이 성공한 경우에만 해당 경매 요청의 NeedsAssetRefresh를 해제하고 다음 명령 준비를 허용한다. 더 새로운 읽기/변경·신원/캐릭터/여행·종료·잘못된 요청 ID·형식 오류·실패한 반영은 현재 자산으로 승인하지 않는다. 델타/영수증 아이템 재적용 없이 스냅샷으로 교체하고 재조회도 중복 지급하지 않는다. 이 단계는 조회와 native projection 연결이며 경매 화면·버튼·목록·가격 동의 UI는 후속이다.
+
+최종 검증은 실제 bearer HTTP 경매 Memory456/PG357·기존 직거래 Memory541/PG553, Backend Release 경고0/오류0이다. 사설 프로젝트에만 fixture의 Item.Ore/Stat.Value 태그를 등록하고 원본 태그 사전/허용 정책은 보존했다. 실제 저장/조회+생산 매퍼 JSON14를 최소 UE5.8+게시 inventory plugin에 읽혀 full int64·정수 토큰·완전성/소유/중복/미지 태그·기본 장비 보존·우편 분리·잘못된 요청·projection 세대/반영 실패·즉시 선택 변경·재진입/늦은 응답을 검사했다. 전송/반영 sink는 모의이며 실제 경매 HTTP↔UE 자산 왕복이나 실제 로비 화면 검증은 아니다. 최종 native15+별도 재시작1, 총16 Success/검사 오류·경고0/각 UE0·독립51단계 링크0·전체 게시 UHT/실제 조율자·Subsystem·HTTP·공통 codec CPP4 컴파일0이다. native32·통합10·API18입력/러너 SHA를 확인했다. 기존 재시작 검사 진입점은 같은 기존13검사를 포함하는 유지 러너로 위임해 새 codec/plugin 의존성을 반영했다.
+
+초기 시작 아이템 수 가정·매퍼 접근/테스트 문자열 오버로드·사설 태그 사전 누락에 따른 실패와 최종 성공을 구분한다. 각 native 기동 Error15/ACL 경고4는 검사 이전 기록이다. 자기11회 사본/PCH/OBJ/DLL/fixture/PID와 사설 PG를 정리하고 **11,706,684,339 bytes**를 폐기해 Saved/AA 잔여/새 예외0이다. 원본 DLL/공유 빌드·DB/에셋/다른 담당 변경을 보존했다. 작은 로컬 근거 Saved/BuildChecks/AuctionAssets-20261113/Completion.json·당시 모듈/소스 해시만 유지하며 폐기된 바이너리의 재실행 가능성을 뜻하지 않는다. 경매 조회·복구 화면은 후속이다.

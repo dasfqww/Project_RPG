@@ -15,7 +15,8 @@ internal static class AuctionWireFixtures
         if (!Guid.TryParseExact(Environment.GetEnvironmentVariable("PROJECT_RPG_AUCTION_CLIENT_RUN"),"N",out _)) throw new Exception("Owned client fixture run required.");
         string path=Path.GetFullPath(directory);
         if (!path.Contains(Path.DirectorySeparatorChar+"Saved"+Path.DirectorySeparatorChar+"AU"+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)
-            && !path.Contains(Path.DirectorySeparatorChar+"Saved"+Path.DirectorySeparatorChar+"AR"+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)) throw new Exception("Owned fixture output required.");
+            && !path.Contains(Path.DirectorySeparatorChar+"Saved"+Path.DirectorySeparatorChar+"AR"+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)
+            && !path.Contains(Path.DirectorySeparatorChar+"Saved"+Path.DirectorySeparatorChar+"AA"+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)) throw new Exception("Owned fixture output required.");
         Directory.CreateDirectory(path);
         var clock=new Clock();var gate=new InMemoryTransactionGate(clock);var items=new InMemoryItemRepository(gate);var money=new InMemoryEconomyRepository(gate);var game=new InMemoryGameRepository(gate,items,clock);
         var store=new InMemoryAuctionRepository(gate,game,items,money,new([new("Material","Ore",1,true,true,100)]),new(10,500));
@@ -48,6 +49,11 @@ internal static class AuctionWireFixtures
         await Write("claimZero",AuctionApiContracts.Result(await store.ClaimAsync(new(Guid.NewGuid(),registration.ListingId,seller,2,"Gold",1),default)));
         var cancelled=await store.ExecuteAsync(new(Guid.NewGuid(),second.ListingId,seller,AuctionEscrowKind.Cancel,1),default);await Write("cancel",AuctionApiContracts.Result(cancelled));
         await Write("identity",new{sellerCharacterId=seller.CharacterId,buyerCharacterId=buyer.CharacterId,itemId=raw.ItemId,initialItemRevision="1"});
-        Console.WriteLine("PASS Auction wire fixtures: 13 JSON documents from actual Memory commits/query and production API mapper; no HTTP/UE claim.");return 0;
+        if (Guid.TryParseExact(Environment.GetEnvironmentVariable("PROJECT_RPG_AUCTION_ASSETS_RUN"),"N",out _))
+        {
+            var a=(await store.AssetsAsync(purchase.RequestId,buyer,default))!;
+            await Write("assets",AuctionApiContracts.Assets(a));
+        }
+        Console.WriteLine("PASS Auction wire fixtures: JSON documents from actual Memory commits/query and production API mapper; no HTTP/UE claim.");return 0;
     }
 }

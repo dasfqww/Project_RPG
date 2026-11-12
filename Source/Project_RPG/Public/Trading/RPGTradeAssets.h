@@ -8,6 +8,8 @@ struct PROJECT_RPG_API FRPGTradeAssets
 {
     FRPGEconomyWalletResult Wallet;
     TArray<FRPGInventoryProjectionEntry> Items, Mail;
+    // Shared owned snapshot validation; callers validate their own receipt/session envelope first.
+    static bool DecodeOwned(const FString& Json, FGuid Actor, const FString& Account, FRPGTradeAssets& Out);
     static bool Decode(const FString& Json, const FRPGTradeSession& Completed, FGuid Actor,
         const FString& Account, FRPGTradeAssets& Out);
 };

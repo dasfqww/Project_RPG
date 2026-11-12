@@ -1,6 +1,9 @@
 #pragma once
 #include "Auction/RPGAuctionTransport.h"
 #include "Auction/RPGAuctionIntentJournal.h"
+#include "Trading/RPGTradeAssets.h"
+
+enum class ERPGAuctionAssetsState : uint8 { Idle, Loading, Ready, Failed };
 
 struct PROJECT_RPG_API FRPGAuctionLobbyContext
 {
@@ -27,6 +30,10 @@ public:
     bool Claim(const FRPGAuctionPayable& Payable, int64 Amount);
     bool Retry();
     bool Recover();
+    void SetAssetSink(TFunction<bool()> Begin,TFunction<bool(const FRPGTradeAssets&)> Apply,TFunction<bool()> Current);
+    bool ReloadAssets();
+    const FRPGTradeAssets* GetAssets() const;
+    ERPGAuctionAssetsState GetAssetsState() const { return AssetsState; }
     // Native projection owner only; do not call for receipt snapshots or a failed/stale read.
     bool AcknowledgeAssets(FGuid Request);
     const FRPGAuctionClient& GetClient() const { return Client; }
@@ -57,4 +64,8 @@ private:
     uint64 Generation = 0;
     bool bBusy = false, bStorageBlocked = false, bEnding = false;
     double Now = 0, NextAttempt = 0, NextStorage = 0;
+    TFunction<bool()> AssetBegin, AssetCurrent;
+    TFunction<bool(const FRPGTradeAssets&)> AssetApply;
+    TOptional<FRPGTradeAssets> Assets;
+    ERPGAuctionAssetsState AssetsState = ERPGAuctionAssetsState::Idle;
 };
