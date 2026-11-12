@@ -10,12 +10,13 @@ struct PROJECT_RPG_API FRPGAuctionScreenView
 {
     // Native identity guard only; never rendered or persisted by the view.
     FRPGTradeIntentScope Context;
-    FText Status, Detail, Assets;
+    FText Status, Detail, Assets, ReviewText;
     TArray<FRPGAuctionScreenRow> Rows;
-    FGuid PageToken;
+    FGuid PageToken, DetailListing, ReviewToken;
     bool bAvailable=false, bCanPublic=false, bCanMine=false, bCanNext=false, bCanDetail=false;
     bool bCanRecover=false, bCanRetry=false, bCanStorage=false, bCanAssets=false;
     bool bPublicVisible=false,bHasPending=false,bStorageBlocked=false,bHasReceipt=false;
+    bool bCanPurchase=false,bCanCancel=false,bHasReview=false,bCanConfirm=false;
 };
 
 struct PROJECT_RPG_API FRPGAuctionLobbyContext
@@ -47,6 +48,9 @@ public:
     bool ReadPage(bool bMine);
     bool NextPage(FGuid DisplayedPage);
     bool ReadDetail(FGuid DisplayedPage,FGuid Listing);
+    bool ReviewListing(FGuid DisplayedPage,FGuid Listing,ERPGAuctionAction Action);
+    bool ConfirmListing(FGuid DisplayedReview);
+    void DismissReview(FGuid DisplayedReview);
     FRPGAuctionScreenView GetScreenView();
     void SetItemPresenter(TFunction<bool(const FRPGTradeItemDetails&,FText&,FText&)> Presenter) { ItemPresenter=MoveTemp(Presenter); }
     FSimpleMulticastDelegate OnViewChanged;
@@ -76,6 +80,7 @@ private:
     void ClearBrowse();
     void ReadDelay(const FRPGAuctionHttpResult& Result);
     FText ListingText(const FRPGAuctionListing& Listing,bool bDetail) const;
+    bool CanReviewAction(ERPGAuctionAction Action) const;
     TSharedRef<IRPGAuctionTransport> Transport;
     FContext Context;
     FString JournalRoot;
@@ -96,8 +101,10 @@ private:
     TOptional<FRPGAuctionPage> Page;
     TOptional<FRPGAuctionListing> Detail;
     FRPGAuctionSearch PageQuery;
-    FGuid PageToken;
+    FGuid PageToken, DetailSelection;
     bool bPageMine=false;
     ERPGAuctionReadState PageState=ERPGAuctionReadState::Idle, DetailState=ERPGAuctionReadState::Idle;
     TFunction<bool(const FRPGTradeItemDetails&,FText&,FText&)> ItemPresenter;
+    struct FListingReview { FRPGAuctionListing Listing; ERPGAuctionAction Action; FGuid Token; FText Text; };
+    TOptional<FListingReview> Review;
 };

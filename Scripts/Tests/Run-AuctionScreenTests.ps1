@@ -1,13 +1,15 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8')
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$Confirmation)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
-$proofRoot = Join-Path $workspace ('Saved/BuildChecks/AuctionScreen-20261113/' + $id)
+$proofFolder=if($Confirmation){'AuctionConfirm-20261113'}else{'AuctionScreen-20261113'}
+$reservation=if($Confirmation){'auction-confirm-20261113'}else{'auction-screen-20261113'}
+$proofRoot = Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/' + $id)
 $tempRoot = Join-Path $workspace 'Saved/AS'
 $temp = Join-Path $tempRoot $id.Substring(0,8)
 $project = Join-Path $temp 'Project'
-$proof = [ordered]@{Passed=$false; Scope='Actual native UMG auction read/recovery widget plus coordinator pagination/lifetime/storage and original asset/client/recovery regressions; real mapper fixtures, fake HTTP, separate UE processes. No full lobby viewport, Steam, actual auction HTTP roundtrip or full game module link'; Inputs=@(); Tests=@(); Cleanup=$null; Failure=$null}
+$proof = [ordered]@{Passed=$false; Scope='Actual native UMG purchase/cancel confirmation and read/recovery widget plus coordinator consent/pagination/lifetime/storage and original asset/client/recovery regressions; real mapper fixtures, fake HTTP, separate UE processes. No full lobby viewport, Steam, actual auction HTTP roundtrip or full game module link'; Inputs=@(); Tests=@(); Cleanup=$null; Failure=$null}
 $process = $null
 $ownsTemp = $false
 $savedAssetsRun=[Environment]::GetEnvironmentVariable('PROJECT_RPG_AUCTION_ASSETS_RUN','Process')
@@ -20,8 +22,8 @@ function Write-Utf8([string]$Path, [string]$Text) {
 }
 function Save-Proof { Write-Utf8 (Join-Path $proofRoot 'Result.json') ($proof | ConvertTo-Json -Depth 10) }
 function Assert-Reservation {
-    $rows = @(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') | Where-Object {$_ -match '^\|[^|]* / auction-screen-20261113 \|'})
-    if ($rows.Count -ne 1) { throw 'Trading client validation reservation missing' }
+    $rows = @(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') | Where-Object {$_ -match ('^\|[^|]* / '+[regex]::Escape($reservation)+' \|')})
+    if ($rows.Count -ne 1) { throw 'Auction screen validation reservation missing' }
 }
 try {
     Assert-Reservation
@@ -123,7 +125,7 @@ ImportTagsFromConfig=True
     $buildArgs = @($ubt,'AuctionRecoveryEditor','Win64','Development',$uproject,'-NoMutex','-NoEngineChanges','-NoUBA','-UBADisableRemote',('-UBARootDir='+(Join-Path $temp 'Uba')),('-UBATraceOutputFile='+(Join-Path $temp 'Build.uba')),'-NoHotReloadFromIDE','-MaxParallelActions=1',('-log='+(Join-Path $proofRoot 'Build.log')))
     $proof.BuildCommand = @($build) + $buildArgs
     Save-Proof
-    Write-Output ('Building isolated trading client; proof: '+$proofRoot)
+    Write-Output ('Building isolated auction screen; proof: '+$proofRoot)
     & $build @buildArgs *> (Join-Path $proofRoot 'BuildConsole.log')
     $proof.BuildExit = $LASTEXITCODE
     if ($LASTEXITCODE -ne 0) { throw 'Isolated C++ build failed' }
@@ -160,7 +162,7 @@ ImportTagsFromConfig=True
             $expected=@('Wire','Commands','Receipts','UncertainRecovery','Lifetime','Intent')|ForEach-Object {'ProjectRPG.Auction.Client.'+$_}
             $expected+=@('Storage','Locking','Coordinator','Context','StorageFailure','Restart')|ForEach-Object {'ProjectRPG.Auction.Recovery.'+$_}
             $expected+=@('Codec','Projection','Lifetime')|ForEach-Object {'ProjectRPG.Auction.Assets.'+$_}
-            $expected+=@('Browse','ContextAndThrottle','WidgetAndRecovery','StorageRecheck')|ForEach-Object {'ProjectRPG.Auction.Screen.'+$_}
+            $expected+=@('Browse','ContextAndThrottle','WidgetAndRecovery','StorageRecheck','PurchaseConfirmation','CancelConfirmation','ConfirmationLifetime')|ForEach-Object {'ProjectRPG.Auction.Screen.'+$_}
         }
         if((Compare-Object $expected @($tests.fullTestPath)) -or @($tests|Where-Object {$_.state -ne 'Success' -or $_.errors -ne 0 -or $_.warnings -ne 0}).Count){throw ('Missing or failing native cases: '+$phase)}
     }

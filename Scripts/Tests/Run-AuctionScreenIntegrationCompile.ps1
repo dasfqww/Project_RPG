@@ -1,10 +1,10 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8')
+param([string]$EngineRoot='D:/UE_5.8', [switch]$Confirmation)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $run=[Guid]::NewGuid().ToString('N')
-$proofFolder = 'AuctionScreen-20261113'
-$reservation = 'auction-screen-20261113'
+$proofFolder=if($Confirmation){'AuctionConfirm-20261113'}else{'AuctionScreen-20261113'}
+$reservation=if($Confirmation){'auction-confirm-20261113'}else{'auction-screen-20261113'}
 $proofRoot=Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/Integration-'+$run)
 $tempRoot=Join-Path $workspace 'Saved/AS'
 $temp=Join-Path $tempRoot $run.Substring(0,8)
@@ -62,7 +62,7 @@ try {
     $proof.RunnerSHA256=(Get-FileHash -LiteralPath $PSCommandPath).Hash
     $proof.Command=@($dotnet)+$args
     Save-Proof
-    Write-Output ('Compiling actual auction authentication factory; proof: '+$proofRoot)
+    Write-Output ('Compiling auction and lobby integration sources; proof: '+$proofRoot)
     & $dotnet @args *> (Join-Path $proofRoot 'BuildConsole.log')
     $proof.BuildExit=$LASTEXITCODE
     if($LASTEXITCODE -ne 0){throw 'Integration compile failed'}

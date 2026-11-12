@@ -33,6 +33,11 @@ TSharedRef<SWidget> URPGAuctionWidget::RebuildWidget()
         Rows=WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(),TEXT("AuctionRows"));List->AddChild(Rows);
         DetailButton=Button(TEXT("AuctionDetail"),NSLOCTEXT("RPGAuction","ReadDetail","선택한 내역 상세 보기"));
         DetailText=Text(FText::GetEmpty());
+        PurchaseButton=Button(TEXT("AuctionPurchaseReview"),NSLOCTEXT("RPGAuction","ReviewPurchase","구매 내용 확인"));
+        CancelSaleButton=Button(TEXT("AuctionCancelReview"),NSLOCTEXT("RPGAuction","ReviewCancel","판매 취소 내용 확인"));
+        ReviewText=Text(FText::GetEmpty());
+        ConfirmButton=Button(TEXT("AuctionConfirm"),NSLOCTEXT("RPGAuction","Confirm","위 내용으로 실행"));
+        DismissButton=Button(TEXT("AuctionDismiss"),NSLOCTEXT("RPGAuction","Dismiss","실행하지 않고 돌아가기"));
         NextButton=Button(TEXT("AuctionNext"),NSLOCTEXT("RPGAuction","Next","다음 내역 보기"));
         RecoverButton=Button(TEXT("AuctionRecover"),NSLOCTEXT("RPGAuction","Recover","이전 요청의 처리 결과 확인"));
         RetryButton=Button(TEXT("AuctionRetry"),NSLOCTEXT("RPGAuction","Retry","이전 요청 그대로 재시도"));
@@ -42,6 +47,8 @@ TSharedRef<SWidget> URPGAuctionWidget::RebuildWidget()
         CloseButton=Button(TEXT("AuctionClose"),NSLOCTEXT("RPGAuction","Close","닫기"));
         PublicButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReadPublic);MineButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReadMine);
         NextButton->OnClicked.AddUniqueDynamic(this,&ThisClass::NextPage);DetailButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReadDetail);
+        PurchaseButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReviewPurchase);CancelSaleButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReviewCancel);
+        ConfirmButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Confirm);DismissButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Dismiss);
         RecoverButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Recover);RetryButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Retry);
         StorageButton->OnClicked.AddUniqueDynamic(this,&ThisClass::CheckStorage);AssetsButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReloadAssets);
         CloseButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Close);Rows->OnSelectionChanged.AddUniqueDynamic(this,&ThisClass::SelectRow);
@@ -52,7 +59,8 @@ void URPGAuctionWidget::Subscribe()
 {if(const auto C=Owner.Pin()){C->OnViewChanged.Remove(ChangeHandle);ChangeHandle=C->OnViewChanged.AddUObject(this,&ThisClass::RefreshView);}}
 void URPGAuctionWidget::SetOwner(TSharedRef<FRPGAuctionCoordinator> InOwner)
 {
-    if(const auto Old=Owner.Pin())Old->OnViewChanged.Remove(ChangeHandle);
+    if(const auto Old=Owner.Pin()){Old->OnViewChanged.Remove(ChangeHandle);Old->DismissReview(DisplayedReview);}
+    DisplayedReview.Invalidate();
     Owner=InOwner;BoundContext={};DisplayedPage.Invalidate();Selected.Invalidate();RowIds.Reset();bClosing=false;bUpdating=true;
     if(Rows){Rows->ClearSelection();Rows->ClearOptions();}bUpdating=false;
     Subscribe();RefreshView();
@@ -60,7 +68,7 @@ void URPGAuctionWidget::SetOwner(TSharedRef<FRPGAuctionCoordinator> InOwner)
 void URPGAuctionWidget::NativeConstruct()
 {Super::NativeConstruct();bClosing=false;Subscribe();RefreshView();if(CloseButton && GetOwningPlayer())CloseButton->SetKeyboardFocus();}
 void URPGAuctionWidget::NativeDestruct()
-{if(const auto C=Owner.Pin())C->OnViewChanged.Remove(ChangeHandle);ChangeHandle.Reset();Super::NativeDestruct();}
+{if(const auto C=Owner.Pin()){C->OnViewChanged.Remove(ChangeHandle);C->DismissReview(DisplayedReview);}DisplayedReview.Invalidate();ChangeHandle.Reset();Super::NativeDestruct();}
 void URPGAuctionWidget::RefreshView()
 {
     if(bClosing)return;
@@ -68,7 +76,13 @@ void URPGAuctionWidget::RefreshView()
     if(BoundContext.IsValid() && !(BoundContext==V.Context)){Close();return;}
     if(V.Context.IsValid())BoundContext=V.Context;
     if(StatusText)StatusText->SetText(C?V.Status:NSLOCTEXT("RPGAuction","NoOwner","경매 내역을 확인할 수 없습니다."));
-    if(DetailText)DetailText->SetText(V.Detail);if(AssetText)AssetText->SetText(V.Assets);
+    if(DetailText)DetailText->SetText(Selected.IsValid() && Selected==V.DetailListing?V.Detail:FText::GetEmpty());if(AssetText)AssetText->SetText(V.Assets);
+    DisplayedReview=V.ReviewToken;
+    if(ReviewText){ReviewText->SetText(V.ReviewText);ReviewText->SetVisibility(V.bHasReview?ESlateVisibility::Visible:ESlateVisibility::Collapsed);}
+    if(ConfirmButton){ConfirmButton->SetVisibility(V.bHasReview?ESlateVisibility::Visible:ESlateVisibility::Collapsed);ConfirmButton->SetIsEnabled(V.bCanConfirm);}
+    if(DismissButton)DismissButton->SetVisibility(V.bHasReview?ESlateVisibility::Visible:ESlateVisibility::Collapsed);
+    if(PurchaseButton){PurchaseButton->SetVisibility(V.bPublicVisible?ESlateVisibility::Visible:ESlateVisibility::Collapsed);PurchaseButton->SetIsEnabled(V.bCanPurchase && Selected==V.DetailListing);}
+    if(CancelSaleButton)CancelSaleButton->SetIsEnabled(V.bCanCancel && Selected==V.DetailListing);
     if(PublicButton)PublicButton->SetIsEnabled(V.bCanPublic);if(MineButton)MineButton->SetIsEnabled(V.bCanMine);
     if(NextButton)NextButton->SetIsEnabled(V.bCanNext);
     if(RecoverButton)RecoverButton->SetIsEnabled(V.bCanRecover);if(RetryButton)RetryButton->SetIsEnabled(V.bCanRetry);
@@ -99,17 +113,21 @@ TSharedPtr<FRPGAuctionCoordinator> URPGAuctionWidget::ActiveOwner()
     return C;
 }
 void URPGAuctionWidget::SelectRow(FString,ESelectInfo::Type)
-{if(bUpdating || bClosing)return;Selected.Invalidate();if(Rows && RowIds.IsValidIndex(Rows->GetSelectedIndex()))Selected=RowIds[Rows->GetSelectedIndex()];RefreshView();}
+{if(bUpdating || bClosing)return;if(const auto C=Owner.Pin())C->DismissReview(DisplayedReview);Selected.Invalidate();if(Rows && RowIds.IsValidIndex(Rows->GetSelectedIndex()))Selected=RowIds[Rows->GetSelectedIndex()];RefreshView();}
 void URPGAuctionWidget::ReadPublic(){if(const auto C=ActiveOwner())C->ReadPage(false);RefreshView();}
 void URPGAuctionWidget::ReadMine(){if(const auto C=ActiveOwner())C->ReadPage(true);RefreshView();}
 void URPGAuctionWidget::NextPage(){if(const auto C=ActiveOwner())C->NextPage(DisplayedPage);RefreshView();}
 void URPGAuctionWidget::ReadDetail(){if(const auto C=ActiveOwner())C->ReadDetail(DisplayedPage,Selected);RefreshView();}
+void URPGAuctionWidget::ReviewPurchase(){if(const auto C=ActiveOwner())C->ReviewListing(DisplayedPage,Selected,ERPGAuctionAction::Purchase);RefreshView();}
+void URPGAuctionWidget::ReviewCancel(){if(const auto C=ActiveOwner())C->ReviewListing(DisplayedPage,Selected,ERPGAuctionAction::Cancel);RefreshView();}
+void URPGAuctionWidget::Confirm(){if(const auto C=ActiveOwner())C->ConfirmListing(DisplayedReview);RefreshView();}
+void URPGAuctionWidget::Dismiss(){if(const auto C=ActiveOwner())C->DismissReview(DisplayedReview);RefreshView();}
 void URPGAuctionWidget::Recover(){if(const auto C=ActiveOwner())C->Recover();RefreshView();}
 void URPGAuctionWidget::Retry(){if(const auto C=ActiveOwner())C->Retry();RefreshView();}
 void URPGAuctionWidget::CheckStorage(){if(const auto C=ActiveOwner())C->RecheckStorage();RefreshView();}
 void URPGAuctionWidget::ReloadAssets(){if(const auto C=ActiveOwner())C->ReloadAssets();RefreshView();}
 void URPGAuctionWidget::CloseScreen(){Close();}
 void URPGAuctionWidget::Close()
-{if(bClosing)return;bClosing=true;if(const auto C=Owner.Pin())C->OnViewChanged.Remove(ChangeHandle);ChangeHandle.Reset();if(IsInViewport() || GetParent())RemoveFromParent();OnClosed.Broadcast();}
+{if(bClosing)return;bClosing=true;if(const auto C=Owner.Pin()){C->OnViewChanged.Remove(ChangeHandle);C->DismissReview(DisplayedReview);}DisplayedReview.Invalidate();ChangeHandle.Reset();if(IsInViewport() || GetParent())RemoveFromParent();OnClosed.Broadcast();}
 FReply URPGAuctionWidget::NativeOnKeyDown(const FGeometry& G,const FKeyEvent& E)
 {if(E.GetKey()==EKeys::Escape){if(!E.IsRepeat())Close();return FReply::Handled();}return Super::NativeOnKeyDown(G,E);}
