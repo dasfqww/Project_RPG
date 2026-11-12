@@ -37,7 +37,8 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
     {
         ValidateState(state, catalog);
         return new(catalog.Version, state, dialogues.GetAvailable(state, catalog),
-            [.. state.Quests.Select(q => QuestJournalEntry.From(q, catalog.Quests[q.QuestId]))]);
+            [.. state.Quests.Where(q => !state.WasStorySkipped(q.QuestId))
+                .Select(q => QuestJournalEntry.From(q, catalog.Quests[q.QuestId]))]);
     }
 
     internal static void ValidateState(NarrativeState state, NarrativeCatalog catalog)
@@ -47,6 +48,7 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
             || state.Quests.Any(q => q is null)
             || state.Quests.Length != state.Quests.Select(q => q.QuestId).Distinct().Count())
             throw new NarrativeConflictException("invalid_narrative_state");
+        NarrativeStorySkip.ValidateRecords(state, catalog);
         foreach (QuestProgress progress in state.Quests)
         {
             if (!catalog.Quests.TryGetValue(progress.QuestId, out QuestDefinition? definition)
@@ -56,7 +58,7 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
                 || !progress.CompletedObjectives.All(definition.Objectives.Contains)
                 || !progress.CompletedObjectives.All(id => definition.RequiredObjectives(id).All(progress.CompletedObjectives.Contains))
                 || (progress.Status == QuestStatus.Active) == (progress.CompletedObjectives.Length == definition.Objectives.Length)
-                || !definition.Prerequisites.All(id => state.Quests.Any(q => q.QuestId == id && q.Status == QuestStatus.Completed)))
+                || !definition.Prerequisites.All(state.SatisfiesStoryQuest))
                 throw new NarrativeConflictException("incompatible_narrative_state");
             var dungeonProgress = progress.DungeonObjectives;
             var dungeonDefinitions = definition.DungeonObjectives;

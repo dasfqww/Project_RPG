@@ -6,7 +6,8 @@ public sealed class ScenarioManager
     public NarrativeState Project(NarrativeState state, NarrativeCatalog catalog)
     {
         ChapterDefinition[] completed = catalog.Chapters.Values
-            .Where(c => c.RequiredQuests.All(id => state.Quests.Any(q => q.QuestId == id && q.Status == QuestStatus.Completed)))
+            .Where(c => c.RequiredQuests.All(id => state.Quests.Any(q => q.QuestId == id && q.Status == QuestStatus.Completed))
+                || !state.StorySkips.IsDefault && state.StorySkips.Any(s => s.ChapterId == c.Id))
             .OrderBy(c => c.Id, StringComparer.Ordinal).ToArray();
         return state with
         {

@@ -7,8 +7,8 @@ namespace ProjectRpg.Backend.Narrative;
 public sealed class QuestManager
 {
     public bool CanAccept(NarrativeState state, QuestDefinition definition) =>
-        !state.Quests.Any(q => q.QuestId == definition.Id)
-        && definition.Prerequisites.All(id => state.Quests.Any(q => q.QuestId == id && q.Status == QuestStatus.Completed));
+        !state.WasStorySkipped(definition.Id) && !state.Quests.Any(q => q.QuestId == definition.Id)
+        && definition.Prerequisites.All(state.SatisfiesStoryQuest);
 
     public bool CanRecordObjective(QuestProgress? progress, QuestDefinition definition, string objectiveId) =>
         progress is { Status: QuestStatus.Active } && progress.QuestId == definition.Id
@@ -19,6 +19,7 @@ public sealed class QuestManager
     public NarrativeState Apply(NarrativeState state, QuestDefinition definition, DialogueChoice choice,
         DateTimeOffset? now = null)
     {
+        if (state.WasStorySkipped(definition.Id)) throw new NarrativeConflictException("quest_was_story_skipped");
         QuestProgress? current = state.Quests.SingleOrDefault(q => q.QuestId == definition.Id);
         QuestProgress updated;
         switch (choice.Effect)
@@ -59,6 +60,7 @@ public sealed class QuestManager
     internal NarrativeState RecordDungeonObjective(NarrativeState state, QuestDefinition definition,
         string objectiveId, NarrativeDungeonClearEvidence evidence, DateTimeOffset now)
     {
+        if (state.WasStorySkipped(definition.Id)) throw new NarrativeConflictException("quest_was_story_skipped");
         QuestProgress? current = state.Quests.SingleOrDefault(q => q.QuestId == definition.Id);
         if (definition.DungeonObjectives?.GetValueOrDefault(objectiveId) is not { } requirement
             || !CanRecordObjective(current, definition, objectiveId)
@@ -116,7 +118,7 @@ public sealed class QuestManager
     {
         var updated = state;
         // Evaluate against the pre-event snapshot: one event cannot unlock and satisfy its next stage.
-        foreach (var current in state.Quests.Where(q => q.Status == QuestStatus.Active))
+        foreach (var current in state.Quests.Where(q => q.Status == QuestStatus.Active && !state.WasStorySkipped(q.QuestId)))
         {
             var definition = catalog.Quests[current.QuestId];
             if (definition.InteractionObjectives is null || current.InteractionObjectives is null) continue;
@@ -141,7 +143,7 @@ public sealed class QuestManager
     {
         var updated = state;
         // One death counts once for each eligible parallel goal in the PRE-event snapshot.
-        foreach (var current in state.Quests.Where(q => q.Status == QuestStatus.Active))
+        foreach (var current in state.Quests.Where(q => q.Status == QuestStatus.Active && !state.WasStorySkipped(q.QuestId)))
         {
             var definition = catalog.Quests[current.QuestId];
             if (definition.KillObjectives is null || current.KillObjectives is null) continue;

@@ -118,6 +118,7 @@ public static class NarrativeCatalogLoader
             quests = catalog.Quests.Values.Select(q => QuestJournalEntry.From(
                 new(q.Id, q.Version, QuestStatus.ReadyToReport, q.Objectives), q)),
             completedChapters = catalog.Chapters.Keys,
+            storySkippedChapters = catalog.Chapters.Values.Where(c => c.AllowStorySkip).Select(c => c.Id),
             storyUnlocks = catalog.Chapters.Values.SelectMany(c => c.StoryUnlocks).Distinct(),
             dungeonObjectiveCandidates = catalog.Quests.Values.SelectMany(q => q.DungeonObjectives?.Keys.Select(id =>
                 new DungeonObjectiveCandidate(q.Id, id, Guid.Empty)) ?? [])

@@ -186,6 +186,9 @@ builder.Services.AddSingleton<INarrativeRepository>(provider =>
 builder.Services.AddSingleton<INarrativeHistoryRepository>(provider =>
     (INarrativeHistoryRepository)provider.GetRequiredService<IGameRepository>());
 builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.NarrativeAccountHistory>();
+builder.Services.AddSingleton<INarrativeStorySkipRepository>(provider =>
+    (INarrativeStorySkipRepository)provider.GetRequiredService<IGameRepository>());
+builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.NarrativeStorySkip>();
 builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.QuestManager>();
 builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.ScenarioManager>();
 builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.DialogueManager>();

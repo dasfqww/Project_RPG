@@ -16,6 +16,7 @@ public static class NarrativeApiEndpoints
 {
     public static void MapNarrativeApi(this WebApplication app)
     {
+        app.MapNarrativeStorySkipApi();
         app.MapGet("/api/characters/{characterId:guid}/narrative/account-history", async (
             Guid characterId, HttpContext context,
             [Microsoft.AspNetCore.Mvc.FromServices] NarrativeAccountHistory history, CancellationToken ct) =>
@@ -113,7 +114,7 @@ public static class NarrativeApiEndpoints
         });
     }
 
-    private static IResult Failure(NarrativeConflictException error) => error.Message switch
+    internal static IResult Failure(NarrativeConflictException error) => error.Message switch
     {
         "character_not_owned" => Results.StatusCode(StatusCodes.Status403Forbidden),
         "interaction_not_authorized" => Results.StatusCode(StatusCodes.Status403Forbidden),
@@ -122,16 +123,18 @@ public static class NarrativeApiEndpoints
         "invalid_interaction_event" => Results.BadRequest(new { error = error.Message }),
         "dungeon_clear_evidence_not_authorized" => Results.StatusCode(StatusCodes.Status403Forbidden),
         "invalid_narrative_command" => Results.BadRequest(new { error = error.Message }),
+        "invalid_story_skip_command" => Results.BadRequest(new { error = error.Message }),
         _ => Results.Conflict(new { error = error.Message })
     };
 
     // Revisions are decimal strings across the UE/JSON boundary; never float-rounded.
-    private static object ToResponse(NarrativeView view) => new
+    internal static object ToResponse(NarrativeView view) => new
     {
         view.CatalogVersion, view.State.CharacterId, view.State.SchemaVersion,
         Revision = view.State.Revision.ToString(CultureInfo.InvariantCulture),
         Quests = view.Journal,
         view.State.CompletedChapters, view.State.StoryUnlocks, view.AvailableDialogues,
-        DungeonObjectiveCandidates = view.DungeonObjectiveCandidates.IsDefault ? [] : view.DungeonObjectiveCandidates
+        DungeonObjectiveCandidates = view.DungeonObjectiveCandidates.IsDefault ? [] : view.DungeonObjectiveCandidates,
+        StorySkippedChapters = view.State.StorySkips.Select(s => s.ChapterId).Order(StringComparer.Ordinal)
     };
 }

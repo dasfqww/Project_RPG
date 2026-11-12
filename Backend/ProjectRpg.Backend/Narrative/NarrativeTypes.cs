@@ -25,7 +25,7 @@ public sealed record InteractionObjectiveProgress(DateTimeOffset ActivatedAt, Gu
 public sealed record KillObjective(string DungeonId, string Difficulty, string EnemyId, int RequiredCount);
 public sealed record KillObjectiveProgress(DateTimeOffset ActivatedAt, int RequiredCount, int Count = 0, Guid? LastEventId = null);
 public sealed record ChapterDefinition(string Id, ImmutableArray<string> RequiredQuests,
-    ImmutableArray<string> StoryUnlocks, string? Title = null);
+    ImmutableArray<string> StoryUnlocks, string? Title = null, bool AllowStorySkip = false);
 public sealed record DialogueChoice(string Id, string Text, DialogueEffect Effect, string? ObjectiveId = null,
     string? NextDialogueId = null);
 public sealed record DialogueDefinition(string Id, string Speaker, string Text, string? QuestId,
@@ -43,7 +43,12 @@ public sealed record NarrativeState(Guid CharacterId, int SchemaVersion, long Re
     ImmutableArray<QuestProgress> Quests, ImmutableArray<string> CompletedChapters,
     ImmutableArray<string> StoryUnlocks)
 {
+    public ImmutableArray<StorySkipRecord> StorySkips { get; init; } = [];
     public static NarrativeState Create(Guid characterId) => new(characterId, 1, 0, [], [], []);
+    public bool WasStorySkipped(string questId) => !StorySkips.IsDefault
+        && StorySkips.Any(s => s.QuestIds.Contains(questId));
+    public bool SatisfiesStoryQuest(string questId) => WasStorySkipped(questId)
+        || Quests.Any(q => q.QuestId == questId && q.Status == QuestStatus.Completed);
 }
 
 // Player commands name authored choices. Server evidence uses a separate fingerprint domain.

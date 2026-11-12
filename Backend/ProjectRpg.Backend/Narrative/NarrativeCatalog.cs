@@ -85,6 +85,10 @@ public sealed class NarrativeCatalog
                 && c.StoryUnlocks.Length == c.StoryUnlocks.Distinct().Count(), "invalid_chapter_definition");
         Require(Chapters.Values.SelectMany(c => c.StoryUnlocks).Distinct().Count() <= 256,
             "narrative_catalog_limit_exceeded");
+        // Opt-in chapters contain only reviewed story quests. Shared quest membership would
+        // otherwise make a one-chapter skip silently terminate another chapter's quest.
+        Require(Chapters.Values.Where(c => c.AllowStorySkip).SelectMany(c => c.RequiredQuests)
+            .All(id => Chapters.Values.Count(c => c.RequiredQuests.Contains(id)) == 1), "ambiguous_story_skip_quests");
         foreach (DialogueDefinition d in Dialogues.Values)
         {
             var requirements = d.CompletionRequirements;

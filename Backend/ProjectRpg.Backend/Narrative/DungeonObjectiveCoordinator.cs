@@ -14,7 +14,8 @@ public sealed class DungeonObjectiveCoordinator(INarrativeRepository repository,
     internal static IReadOnlyList<NarrativeDungeonObjectiveQuery> BuildQueries(NarrativeState state, NarrativeCatalog catalog)
     {
         List<NarrativeDungeonObjectiveQuery> result = [];
-        foreach (var progress in state.Quests.Where(q => q.Status == QuestStatus.Active).OrderBy(q => q.QuestId, StringComparer.Ordinal))
+        foreach (var progress in state.Quests.Where(q => q.Status == QuestStatus.Active && !state.WasStorySkipped(q.QuestId))
+            .OrderBy(q => q.QuestId, StringComparer.Ordinal))
         {
             var definition = catalog.Quests[progress.QuestId];
             if (definition.DungeonObjectives is null || progress.DungeonObjectives is null) continue;
