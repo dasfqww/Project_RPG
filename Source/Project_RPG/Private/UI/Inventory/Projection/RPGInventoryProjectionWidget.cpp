@@ -1,4 +1,5 @@
 #include "UI/Inventory/Projection/RPGInventoryProjectionWidget.h"
+#include "RPGInventoryArt.h"
 
 #include "Blueprint/WidgetTree.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
@@ -101,6 +102,7 @@ void FillInventoryGrid(
 		if (ItemCell)
 		{
 			ItemCell->SetItem(Entry ? Entry->GetItemId() : FGuid(), Label, ViewModel, false, StorageSlot);
+			RPGInventoryArt::ApplyBagSlotArt(Tree, ItemCell);
 			Cell = ItemCell;
 		}
 		if (!Cell)
@@ -327,6 +329,13 @@ void URPGInventoryProjectionWidget::NativeConstruct()
 	EnsureBagTabControls();
 	EnsureSplitQuantityControls();
 	CancelSplitQuantitySelection();
+	if (InventoryGrid)
+	{
+		RPGInventoryArt::ApplyBagButtonArt(WidgetTree, RetryLoadButton);
+		RPGInventoryArt::ApplyBagButtonArt(WidgetTree, InventoryRecoveryButton);
+		RPGInventoryArt::ApplyBagButtonArt(WidgetTree, ConfirmSplitQuantityButton);
+		RPGInventoryArt::ApplyBagButtonArt(WidgetTree, CancelSplitQuantityButton);
+	}
 
 	BindViewModel();
 	RefreshFromViewModel();
@@ -815,7 +824,9 @@ void URPGInventoryProjectionWidget::EnsureBagTabControls()
 	{
 		auto* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), Name);
 		auto* Text = WidgetTree->ConstructWidget<UTextBlock>();
-		Text->SetText(Label); Button->SetContent(Text); Row->AddChildToHorizontalBox(Button);
+		Text->SetText(Label); Button->SetContent(Text);
+		Row->AddChildToHorizontalBox(Button);
+		RPGInventoryArt::ApplyBagButtonArt(WidgetTree, Button);
 		return Button;
 	};
 	BagEquipmentButton = Add(TEXT("BagEquipmentButton"), NSLOCTEXT("RPGItemUI", "BagEquipment80", "장비 (80)"));

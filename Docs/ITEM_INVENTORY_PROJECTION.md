@@ -3352,3 +3352,44 @@ defense 담당의 명시적 전체 해제 뒤 정상 Editor 증분 CPP1/라이�
   - `2^53`보다 큰 Revision의 정확한 유지 검증
   - 안정 Item ID 기반 추가·무변경·수정·제거 델타 검증
   - 부분 Commit 병합 시 미변경 아이템 유지, 장착·소모 제거, 낮은 Revision 거부 검증
+
+### GUIParts 가방 아트 적용 (2026-11-13)
+
+사용자가 선택한 두 번째 세트 `Content/Assets/GUIParts/Gui_parts`의 어두운 질감 배경·청동색
+프레임·붉은 버튼과 세 번째 폴더의 투명 `T_UI_Item_Border` 슬롯 테두리를 실제
+`WBP_InventoryProjection`에 적용했다. 가방 크기는
+720×640이며 10열/탭당 80칸, 제목줄 드래그·닫기와 기존 바인딩을 유지한다.
+
+- `InventoryArtBackground`와 프레임을 분리해 배경이 컨트롤을 가로채지 않도록 했다.
+  프레임 장식과 제목이 겹치지 않도록 제목줄 여백을 조정했다.
+- 접힌 `InventorySlotFrameStyle` 이미지와 `InventoryActionButtonStyle` 버튼을
+  WBP에 저장한다. 아트는 이 템플릿의 실제 텍스처 참조를 사용하므로 새 파일 경로나
+  패키징용 하드코딩 로더가 필요하지 않다.
+- 런타임에서 생성하는 가방 셀과 카테고리/정렬·재조회/복구·분할 버튼도 템플릿을
+  사용한다. 슬롯 테두리는 별도 HitTestInvisible 이미지이며 기존 상태 색상·아이콘·
+  수량·툴팁·드롭 판정과 아이템 명령을 유지한다. 중복 장식 추가를 막는다.
+- 템플릿이 없는 장비/우편·기존 native 대체 화면에는 새 스킨을 강제하지 않는다.
+  장비/우편/HUD 에셋과 서버·ViewModel·RPC/API/DB는 이 변경의 편집 대상이 아니다.
+- `Scripts/Editor/ConfigureInventoryArt.py`는 기본 읽기 전용인 엔진 에셋 작성 스크립트다.
+  명시적인 APPLY=True에서만 가방 에셋 하나를 컴파일/저장하고 크기·필수 위젯·기존
+  변수 바인딩·허용한 프레임 래핑 외 부모 계층을 확인한다.
+
+검증과 작은 근거는 `Saved/BuildChecks/InventoryArt-20261113/`에 기록한다.
+위젯 컴파일/저장과 실제 UI CPP의 고정 입력/UHT·개별 컴파일을 확인했다.
+아트 헤더의 별도 native 실행은 기존 게임 DLL에 저장 WBP를 올리는 UI 전용 환경이며,
+새 전체 게임 DLL 링크나 최신 전체 소스의 인증된 게임 실행 성공과 구분한다.
+무거운 전체 사본 빌드의 중단과 이전 입력 재사용 실패를 후속 성공으로 바꾸지 않는다.
+최종 확인: WBP 컴파일/저장·dirty=false와 필수 변수 유지, 전체 프로젝트 UHT 및 실제
+가방 CPP 1개의 `-NoPCH` 개별 컴파일 exit 0이다. 새 아트 헤더는 독립 native 6단계
+컴파일/링크 exit 0 뒤 기존 게임 DLL과 저장 WBP의 GPU/UI 전용 PIE에서 실행했다.
+10열/80칸 각각의 아트·HitTestInvisible, 소비/기타 탭 클릭 후 80칸 재생성, 제목줄
+좌클릭 드래그와 X 닫기, 숨긴 스타일 템플릿·pending 명령 0을 확인했다.
+`Uninitialized` 상태이며 인증된 빈 가방/실아이템 조작의 증명이 아니다. 작은 근거는
+`Completion.json`, `VisualChecks.json`, `Inventory-Bag.png`다. 전체 새 게임 DLL에서의
+NativeConstruct/FillInventoryGrid 연결은 별도 컴파일 범위이며 이번 화면에서 직접
+실행한 아트 헤더와 구분한다. 원본 DLL을 교체하지 않았다.
+
+검증 후 자기 사본·OBJ/PCH·native DLL/PDB·캐시와 에셋 백업을 finally 정리했다.
+계측된 최소 8,250,236,824 bytes(7.684GiB) 폐기·자기 임시 프로젝트/PID·정리 예외 0이다.
+초기 짧은 probe 재시도의 미집계 폐기량은 이 수치에 더하지 않았다. 폐기한 모듈/입력의
+기록은 당시 증거이며 같은 검증 바이너리를 다시 실행할 수 있다는 뜻이 아니다.
