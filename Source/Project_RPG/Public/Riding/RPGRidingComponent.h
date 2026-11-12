@@ -74,6 +74,7 @@ public:
     void StopServerDashForControl();
 
 private:
+    friend class FRPGRidingInteractionScope;
     friend class URPGRidingSessionComponent;
     friend class URPGPlayerMovementComponent;
     friend class URPGGameplayAbility_RidingDash;

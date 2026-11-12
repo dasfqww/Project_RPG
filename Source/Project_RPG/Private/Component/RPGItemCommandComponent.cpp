@@ -9,6 +9,7 @@
 #include "Component/RPGSecurityValidationComponent.h"
 #include "Component/RPGPickupGrantComponent.h"
 #include "Riding/RPGRidingConsumeLease.h"
+#include "Riding/RPGRidingInteractionScope.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -562,10 +563,49 @@ void URPGItemCommandComponent::ServerPickupItem_Implementation(ARPGPickUpBase* P
 		Reject(ERPGItemCommandResultCode::InvalidRequest);
 		return;
 	}
-	if (!Grant->BeginGrant(Commit, *this,
-		MakeShared<RPGItemCommandComponent::FPickupBackendCommitter>(*Backend, *this, Pickup->GetPickupDropId()), true))
+	const auto* State = Controller->GetPlayerState<ARPGPlayerState>();
+	if (!IsValid(State)) { Reject(ERPGItemCommandResultCode::ServerStateError); return; }
+	const int64 Generation = State->GetBackendConnectionGeneration();
+	const FString Steam = State->GetAuthenticatedSteamId(), Session = State->GetBackendDungeonSessionId();
+	const FGuid DropId = Pickup->GetPickupDropId();
+	const int32 DefinitionVersion = Definition->GetDefinitionVersion();
+	const auto Validate = [&]()
 	{
-		Reject(ERPGItemCommandResultCode::Busy);
+		FRPGItemOwnerRef CurrentOwner;
+		if (!IsValid(this) || !IsValid(Controller) || Controller->GetPawn() != Pawn
+			|| Controller->GetPlayerState<ARPGPlayerState>() != State || !IsValid(State)
+			|| State->GetBackendConnectionGeneration() != Generation || State->GetAuthenticatedSteamId() != Steam
+			|| State->GetBackendDungeonSessionId() != Session || !TryGetAuthenticatedOwner(CurrentOwner)
+			|| !(CurrentOwner == Owner) || !IsAuthenticatedItemOwner(Owner)
+			|| !IsValid(Pickup) || !Pickup->HasAuthority() || Pickup->GetWorld() != GetWorld()
+			|| Pickup->GetPickupDropId() != DropId || !Pickup->IsAvailableForPickup() || Pickup->IsHidden()
+			|| !IsValid(Grant) || Pickup->FindComponentByClass<URPGPickupGrantComponent>() != Grant || Grant->IsPending()
+			|| !IsValid(Pawn) || !RPGItemCommandComponent::IsLivingConsumeAvatar(Pawn, Pawn->FindComponentByClass<URPGAbilitySystemComponent>())
+			|| !FMath::IsFinite(MaximumPickupDistance) || MaximumPickupDistance <= 0.f
+			|| !(FVector::DistSquared(Pawn->GetActorLocation(), Pickup->GetActorLocation()) <= FMath::Square(MaximumPickupDistance))
+			|| !IsValid(Projection) || Projection->GetLoadState() != ERPGInventoryProjectionLoadState::Ready
+			|| !Projection->GetAuthoritativeRecordSource() || !IsValid(DataManager) || !IsValid(Backend) || !Backend->IsAvailable()
+			|| !IsValid(Definition) || Definition->GetDefinitionVersion() != DefinitionVersion
+			|| DataManager->FindNativeItemDefinition(Definition->GetPrimaryAssetId()) != Definition) return false;
+		const auto& CurrentManifest = Pickup->GetItemManifest();
+		const auto* CurrentStack = CurrentManifest.GetFragmentOfType<FStackableFragment>();
+		return CurrentManifest.GetItemTag() == Manifest.GetItemTag() && CurrentManifest.GetItemCategory() == Manifest.GetItemCategory()
+			&& (CurrentStack ? CurrentStack->GetQuantity() : 1) == Request.Quantity;
+	};
+	ERPGItemCommandResultCode Failure = ERPGItemCommandResultCode::InvalidRequest;
+	if (!FRPGRidingInteractionScope::TryExecute(*Pawn, *Pickup, Validate, [&]()
+		{
+			// Dismount listeners can change the inventory. Re-plan against the current
+			// records, retaining this exact pickup generation and request identity.
+			FRPGItemRepositoryCommitRequest CurrentCommit;
+			if (!TryPlanPickupGrant(Request, *Definition, *Projection->GetAuthoritativeRecordSource(),
+				DataManager->GetItemDefinitionCatalog(), CurrentCommit)) return false;
+			Failure = ERPGItemCommandResultCode::Busy;
+			return Grant->BeginGrant(CurrentCommit, *this,
+				MakeShared<RPGItemCommandComponent::FPickupBackendCommitter>(*Backend, *this, DropId), true);
+		}))
+	{
+		Reject(Failure);
 	}
 }
 

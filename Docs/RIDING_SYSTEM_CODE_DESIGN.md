@@ -652,3 +652,21 @@ ServerOnly 능력/이동과22절의 서버 승인 경계는 유지한다. 클라
 최종 근거는 `Saved/BuildChecks/RidingEmote-20261112/Completion.json`이다. 게시 `965e47ab`+고정 입력의 분리 UHT/48단계 빌드·링크0과 실제 로드한 **`43C60B3D…62052C69`** DLL에서 **native85 Success·검사 오류/경고0·종료0**을 확인했다. Emote7/owner Dash 선점1/시각3 새 검사와 기존 회귀를 포함한다. 게시 전체 UHT/관련 **CPP20** 컴파일 성공 뒤 마지막 시각 구현/fixture 보완은 **CPP2**로 재검사했다. 고유 소스79/러너2/읽기 전용 에셋5 SHA 일치를 확인했으며 기동 자동화 등록 Error15는 검사 구간 오류0과 구분한다. HUD 경로와 유지할 HUD 검사 CPP는 컴파일 근거이며 실제 HUD/물리 키 실행으로 표시하지 않는다.
 
 초기 분리 실행기의 IrisCore 링크 누락, 몽타주 fixture/인스턴스 추적 및 시각 컴파일 보완 과정의 실패는 위 최종과 구분한다. 원본 에셋은 저장하지 않았으며 root-motion 거절 fixture의 메모리 플래그도 검사 범위에서 복구한다. 자기9회 사본/PCH/OBJ/DLL/PDB/runtime/cache **14,911,903,638 bytes(약13.888GiB)**와 Content 읽기 링크4개를 finally 폐기했고 Temp/소유 실행/새 정리 예외0이다. 원본 게임 DLL/Intermediate/에셋·다른 담당 변경과 엔진 공유 진단 trace는 보존했다. 폐기한 DLL 해시는 당시 증거다.
+
+## 29. M2 서버 상호작용의 하차와 재검사 — 2026-11-12
+
+담당 `riding-interaction-20261112`. [FRPGRidingInteractionScope](../Source/Project_RPG/Public/Riding/RPGRidingInteractionScope.h)는 서버 게임 스레드에서 **원래 대상 검사 → 하차 완료 → 재검사 → 한 번 실행**을 묶는 동기 경계다. 기존 획득·조사 RPC의 도메인 검사를 보존하며 새로운 신원/속도/권한 RPC를 만들지 않는다. Player Character의 possession도 유지한다.
+
+- 원래 Pawn·Controller·PlayerState·대상·Riding 컴포넌트와 epoch/revision/action sequence를 고정한다. 대상 검사를 호출하기 전 Pawn별 배타 예약을 두어 검사/하차/실행 callback이 새 탑승이나 중첩 실행으로 추월하지 못하게 한다. `BuildGuards`가 이 예약을 검사한다. 다른 Pawn은 독립적이다.
+- 먼저 기존 거리·권한·유효성 검사를 통과해야 `ForceDismount(Manual)`로 이동/Dash·Emote를 정리한다. 상태 전환 중의 재진입은 대기 작업을 만들지 않고 거절한다. 하차 뒤 같은 Pawn/possession/epoch와 정확히 예상한 on-foot 상태를 확인하고 도메인 검사를 다시 호출한다. 파괴/교체·접속 세대·거리/권한 변경은 실행0회로 끝난다. 거절 뒤 자동 재탑승이나 원래 입력의 자동 재생은 없다.
+- `ServerPickupItem`은 기존 인증·거리·가용성·획득 계획 검사를 먼저 수행한다. 하차 전후에 같은 소유자/접속 세대·Steam/session·드롭 ID·아이템 tag/category/수량·정의 버전·살아 있는 Avatar·투영/백엔드 준비 상태를 확인한다. 하차 callback이 인벤토리를 바꿀 수 있으므로 최신 authoritative records로 같은 요청을 다시 계획한 뒤 기존 `BeginGrant`를 한 번 호출한다. 드롭의 풀 재사용은 같은 포인터여도 새 요청으로 이어받지 않는다.
+- `ServerInvestigate`는 확정 입장·현재 체력·대상 거리/가시선을 먼저 확인한다. 하차 전후의 캐릭터/session/접속 세대·Steam·조사 TargetId·서버/endpoint 설정을 고정하고 재검사한 뒤 관측 시각과 EventId를 생성한다. 이후에는 기존 서버 관측/HTTP 재시도 계약을 사용한다.
+- 예약은 동기 승인/관측 수명에서 해제된다. 이미 승인한 비동기 획득·조사의 결과 미확정/재시도는 기존 불변 명령을 유지하고 다른 대상으로 이월하지 않는다. 완료 후의 새 탑승을 HTTP 응답까지 불필요하게 붙잡지 않는다. 이 범위는 시간형 상호작용의 전체 hold 수명 예약을 대신하지 않는다.
+
+`Run-RidingFoundationTests.ps1 -IncludeInteraction -IncludeEmote -IncludeControl -IncludeConsume`는 실제 Riding/Engine GAS 상태에 대해 하차 전 거절·두 번의 도메인 검사/단일 실행·callback 재탑승/중첩 거절·하차 후 거리/세대 변경·같은 Pawn의 possession epoch 교체·상태 발행 중 재진입·실행 실패/대상 파괴/예약 해제와 실제 Dash·Emote 실행 중 하차를 검사한다. BeginPlay를 거친 Pawn·물리 지면/CMC·실제 GAS와 모의 보안 host를 사용하며 기존 Riding 회귀도 함께 실행한다. `Run-RidingIntegrationCompile.ps1 -IncludeInteraction`은 게시 전체 UHT와 실제 두 호출자/공통 경계·컴포넌트·유지 검사 CPP5를 독립 사본에서 컴파일한다.
+
+NPC 대화/콘텐츠 화면은 로컬 실행 경로이므로 이 서버 경계를 우회해 수정하지 않는다. 해당 입력의 서버 하차 승인과 취소/시간형 상호작용 수명 연결은 후속이다. 실제 게임 DLL의 획득/조사·HTTP/PG·Iris 런타임과 HUD/물리 키 검증을 분리 모듈 검사/선택 컴파일 성공으로 표시하지 않는다. 제품 보유 snapshot의 NotReady/비공개 경계는 유지한다.
+
+최종 근거는 `Saved/BuildChecks/RidingInteraction-20261112/Completion.json`이다. 게시 `d77c9f2e`+고정 입력의 분리 UHT/46단계 빌드·링크0과 실제 로드한 **`3E696AB1…3125C6BC`** DLL에서 **native76 Success(신규7/기존69)·검사 오류/경고0·종료0**을 확인했다. 게시 전체 UHT/실제 두 호출자·경계/컴포넌트·유지 검사 **CPP5 컴파일0**, 고유 입력80/러너2 SHA 일치를 확인했다. 첫 검사 환경의 BeginPlay 누락과 후속 액션 검사의 초기2초 보호시간 미충족은 보완본 성공과 구분한다. 엔진 기동 자동화 등록 Error15도 검사 구간 오류0과 구분한다.
+
+자기6회 사본/PCH/OBJ/DLL/PDB/runtime/cache **8,842,054,000 bytes(약8.235GiB)**를 finally 폐기했고 원본 Content 링크 생성0·Temp/소유 실행/새 정리 예외0이다. 원본 게임 DLL/Intermediate/DDC/에셋과 타 담당 변경·공유 진단 trace는 보존했다. 폐기한 DLL 해시는 당시 증거이며 실제 획득·조사 HTTP/PG/Iris 실행을 대신하지 않는다. 완료 기록은 2026-11-13이다.

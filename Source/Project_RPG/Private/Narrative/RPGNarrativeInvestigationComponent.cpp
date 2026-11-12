@@ -13,6 +13,7 @@
 #include "Narrative/RPGNarrativeCoordinator.h"
 #include "Online/RPGDungeonSessionSubsystem.h"
 #include "Player/RPGPlayerState.h"
+#include "Riding/RPGRidingInteractionScope.h"
 
 URPGNarrativeInvestigationComponent::URPGNarrativeInvestigationComponent()
 {
@@ -107,7 +108,7 @@ void URPGNarrativeInvestigationComponent::ServerInvestigate_Implementation(ARPGN
         return;
     }
     auto* Mode = GetWorld() ? GetWorld()->GetAuthGameMode<ARPGGameModeBase>() : nullptr;
-    const auto* Pawn = Cast<ARPGBaseCharacter>(Controller->GetPawn());
+    auto* Pawn = Cast<ARPGBaseCharacter>(Controller->GetPawn());
     const auto* Attributes = Pawn ? Pawn->GetRPGAttributeSet() : nullptr;
     auto* Game = Controller->GetGameInstance(); auto* Web = Game ? Game->GetSubsystem<UHttpWebManager>() : nullptr;
     const double Now = FPlatformTime::Seconds();
@@ -118,15 +119,39 @@ void URPGNarrativeInvestigationComponent::ServerInvestigate_Implementation(ARPGN
         || !FMath::IsFinite(Attributes->GetCurrentHealth()) || Attributes->GetCurrentHealth() <= 0
         || !IsValid(Target) || !Target->HasAuthority() || !Target->CanObserve(Controller) || !Web)
     { ClientInvestigationResult(ActionId, Character, Session, false, false); return; }
-    FRPGNarrativeInteractionCommand Command;
-    Command.EventId = FGuid::NewGuid(); Command.CharacterId = Character; Command.SessionId = Session;
-    Command.ConnectionGeneration = State->GetBackendConnectionGeneration(); Command.TargetId = Target->GetTargetId();
-    Command.ObservedAt = FDateTime::UtcNow();
-    if (!Attempt.Begin(Command)) { ClientInvestigationResult(ActionId, Character, Session, false, false); return; }
-    ApprovedState = State; ApprovedSteam = State->GetAuthenticatedSteamId(); ApprovedServer = Web->GetGameServerId(); ApprovedEndpoint = Web->GetApiUrl();
-    ServerAction = ActionId; ServerTarget = Target;
-    if (!ServerContextMatches()) { Attempt.Reset(); ClientInvestigationResult(ActionId, Character, Session, false, false); return; }
-    SetComponentTickEnabled(true); Dispatch();
+    const int64 Generation = State->GetBackendConnectionGeneration();
+    const FString TargetId = Target->GetTargetId(), Steam = State->GetAuthenticatedSteamId();
+    const FString Server = Web->GetGameServerId(), Endpoint = Web->GetApiUrl();
+    const auto Validate = [&]()
+    {
+        FGuid CurrentCharacter, CurrentSession, ServerSession;
+        return IsValid(this) && !Attempt.IsPending() && IsValid(Controller) && Controller->HasAuthority()
+            && Controller->GetPawn() == Pawn && Controller->GetPlayerState<ARPGPlayerState>() == State
+            && IsValid(State) && State->HasAuthenticatedCharacter() && State->GetBackendConnectionGeneration() == Generation
+            && State->GetAuthenticatedSteamId() == Steam
+            && FGuid::Parse(State->GetBackendCharacterId(), CurrentCharacter) && CurrentCharacter == Character
+            && FGuid::Parse(State->GetBackendDungeonSessionId(), CurrentSession) && CurrentSession == Session
+            && IsValid(Mode) && Mode->HasConfirmedDungeonAdmission(State)
+            && IsValid(Pawn) && !Pawn->IsActorBeingDestroyed() && Pawn->GetPlayerState() == State
+            && Pawn->GetRPGAttributeSet() == Attributes && IsValid(Attributes)
+            && FMath::IsFinite(Attributes->GetCurrentHealth()) && Attributes->GetCurrentHealth() > 0
+            && IsValid(Target) && Target->HasAuthority() && Target->GetTargetId() == TargetId && Target->CanObserve(Controller)
+            && IsValid(Web) && Web->IsConfiguredForDungeonServer() && Web->GetGameServerId() == Server && Web->GetApiUrl() == Endpoint
+            && FGuid::Parse(Web->GetConfiguredDungeonSessionId(), ServerSession) && ServerSession == Session;
+    };
+    if (!FRPGRidingInteractionScope::TryExecute(*Pawn, *Target, Validate, [&]()
+        {
+            FRPGNarrativeInteractionCommand Command;
+            Command.EventId = FGuid::NewGuid(); Command.CharacterId = Character; Command.SessionId = Session;
+            Command.ConnectionGeneration = Generation; Command.TargetId = TargetId;
+            Command.ObservedAt = FDateTime::UtcNow();
+            if (!Attempt.Begin(Command)) return false;
+            ApprovedState = State; ApprovedSteam = Steam; ApprovedServer = Server; ApprovedEndpoint = Endpoint;
+            ServerAction = ActionId; ServerTarget = Target;
+            if (!ServerContextMatches())
+            { Attempt.Reset(); ApprovedState.Reset(); ServerTarget.Reset(); ServerAction.Invalidate(); return false; }
+            SetComponentTickEnabled(true); Dispatch(); return true;
+        })) ClientInvestigationResult(ActionId, Character, Session, false, false);
 }
 void URPGNarrativeInvestigationComponent::Dispatch()
 {
