@@ -55,6 +55,8 @@ static partial class Program
             var now = DateTimeOffset.UtcNow; await f.Game.StartDungeonSessionAsync(a.Session, a.Server, now, now.AddHours(1), default);
             await Snapshot(f, a);
             if (pg) await File.WriteAllTextAsync(Environment.GetEnvironmentVariable("PROJECT_RPG_RIDING_HTTP_PROOF")!, JsonSerializer.Serialize(new Probe(a.Token, a.Route(), "", result)));
+            if (pg && Environment.GetEnvironmentVariable("PROJECT_RPG_RIDING_NATIVE_WIRE") is { Length: > 0 } wirePath)
+                await File.WriteAllTextAsync(wirePath, result.ToJsonString()); // Public response only; never export a token or bootstrap credentials.
         });
         await Case("snapshot_unowned_has_no_fallback", async () =>
         {

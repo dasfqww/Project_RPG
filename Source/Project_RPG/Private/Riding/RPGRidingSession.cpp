@@ -104,7 +104,7 @@ bool FRPGRidingSession::ApplySnapshot(const FRPGRidingSnapshotTicket& Ticket, co
 {
     if (!MatchesPending(Ticket) || !ObserveTime(Now)) return false;
     const auto Invalid = [this, &Ticket, Now]() { FailSnapshot(Ticket, Now); return false; };
-    if (!(Incoming.Identity == Identity) || !Incoming.RosterId.IsValid() || Incoming.OwnershipRevision < 0
+    if (!(Incoming.Identity == Identity) || !Incoming.RosterId.IsValid() || Incoming.OwnershipRevision < 0 || Incoming.PreferencesRevision < 0
         || Incoming.ProtocolVersion != Policy.ProtocolVersion || Incoming.CatalogVersion != Policy.CatalogVersion
         || Incoming.GameplayHash != Policy.GameplayHash || Incoming.OwnedMountIds.Num() > RPGRiding::MaxMountDefinitions
         || Incoming.Favorites.Num() > RPGRiding::MaxFavorites) return Invalid();
@@ -122,6 +122,10 @@ bool FRPGRidingSession::ApplySnapshot(const FRPGRidingSnapshotTicket& Ticket, co
         if (!RPGRiding::IsValidMountId(Id) || !Owned.Contains(Id) || Favorites.Contains(Id)) return Invalid();
         Favorites.Add(Id);
     }
+    if (Incoming.Shortcut.Kind == ERPGRidingSelectorKind::Specific)
+    { if (!Owned.Contains(Incoming.Shortcut.MountId)) return Invalid(); }
+    else if ((Incoming.Shortcut.Kind != ERPGRidingSelectorKind::Selected && Incoming.Shortcut.Kind != ERPGRidingSelectorKind::RandomFavorites)
+        || !Incoming.Shortcut.MountId.IsEmpty()) return Invalid();
     Snapshot = Incoming;
     SnapshotRequest.Invalidate();
     Status = ERPGRidingSessionStatus::Ready;
@@ -134,6 +138,20 @@ bool FRPGRidingSession::CopySnapshot(FRPGRidingAdmissionSnapshot& Out) const
     if (Status != ERPGRidingSessionStatus::Ready) return false;
     Out = Snapshot;
     return true;
+}
+
+bool FRPGRidingSession::CopyAdmissionPolicy(FRPGRidingPolicyValues& Out) const
+{
+    Out = {}; if (!bAdmissionConfirmed || Status == ERPGRidingSessionStatus::Revoked) return false;
+    Out = Policy; return true;
+}
+
+bool FRPGRidingSession::ExpireSnapshot(double Now)
+{
+    if (Status != ERPGRidingSessionStatus::Ready || !ObserveTime(Now)) return false;
+    Snapshot = {}; SnapshotRequest.Invalidate(); Status = ERPGRidingSessionStatus::RetryableFailure;
+    SnapshotAttempts = 4; SnapshotRetryAt = Now;
+    return true; // Admission, identity, Pawn epoch and cooldowns survive this Riding-only expiry.
 }
 
 bool FRPGRidingSession::CopyMovementProfile(FRPGRidingMovementProfile& Out) const

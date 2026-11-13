@@ -298,6 +298,8 @@ M3a5에서는 캐릭터별 선택 탈것·즐겨찾기·논리 퀵슬롯 설정�
 
 M3a6에서는 할당 GameServer의 확정된 현재 접속에만 보유·설정 snapshot GET을 제공한다. 서버/세션/캐릭터·현재/확정 generation·연결/리스/제재를 검사하고 요청한 catalog version/hash를 일치시킨다. Memory의 같은 잠금 또는 PG 읽기 전용 RepeatableRead로 한 시점의 멤버십과 상태를 읽으며, 응답의 유효 기한과 세대를 UE 소비자가 다시 확인해야 한다. Player/Admin/telemetry-only 자격·미확정/끊긴/오래된 접속은 사용할 수 없다. UE 전송/입장 callback·Ready 소비는 후속이다. [입장 snapshot 계약](RIDING_SYSTEM_CODE_DESIGN.md#37-m3a6-게임-서버-입장-snapshot--2026-11-13).
 
+M3a7에서는 기존 PlayerState의 확정 입장 알림이 서버 전용 GET을 시작하고, 같은 서버/세션/캐릭터·접속 generation·고정 정책과 유효 기한을 통과한 응답만 Riding Ready로 설치한다. HTTP 매니저의 기존 공개 서버 자격 인터페이스를 소비하며, 클라이언트/RPC의 보유 주입이나 개발용 해금을 제공하지 않는다. 접속 변경·폐기 때 자기 요청/타이머를 취소하고 늦은 완료를 차단한다. 같은 접속의 Pawn 교체는 보유 캐시와 쿨타임을 재사용한다. 유효 기한이 지나면 Riding만 준비 해제/하차하고, 새 탑승 요청으로 제한 재조회를 허용한다. 기본 제품 정책/manifest 미구성 상태와 실제 UE HTTP·입장 맵/NetDriver 검증은 별도로 남는다. [UE 소비와 검증 경계](RIDING_SYSTEM_CODE_DESIGN.md#38-m3a7-ue-입장-snapshot-소비--2026-11-14).
+
 ## 7. 코드와 에셋 배치
 
 이 목록은 향후 파일 지도다. 이번 문서 예약으로 아래 공통 파일을 선점하지 않는다.

@@ -2,6 +2,8 @@
 
 #include "Components/ActorComponent.h"
 #include "Riding/RPGRidingTypes.h"
+#include "HttpFwd.h"
+#include "Containers/Ticker.h"
 #include "RPGRidingSessionComponent.generated.h"
 
 class ARPGPlayerState;
@@ -9,6 +11,8 @@ class AController;
 class URPGRidingComponent;
 class URPGRidingPolicy;
 class FRPGRidingSession;
+struct FRPGRidingSnapshotContext;
+struct FRPGRidingSnapshotResponse;
 struct FRPGRidingSessionDeleter
 {
     void operator()(FRPGRidingSession* Session) const;
@@ -34,6 +38,7 @@ private:
     friend struct FRPGRidingActorTestAccess;
     friend struct FRPGRidingDashTestAccess;
     friend struct FRPGRidingEmoteTestAccess;
+    friend struct FRPGRidingSnapshotTestAccess;
 #endif
     void UpdateAuthenticatedContext(const FString& CharacterId, const FString& SteamId,
         const FString& SessionId, int64 Generation, bool bRevoked, bool bAdmissionConfirmed);
@@ -42,6 +47,19 @@ private:
     void Unbind(URPGRidingComponent& PawnComponent, const FGuid& Epoch);
     void PublishOwnerState();
     void Invalidate(bool bRevoke);
+    void RequestAdmissionSnapshot(bool bUserRequested = false);
+    void CompleteAdmissionSnapshot(const FRPGRidingSnapshotContext& Context, const FGuid& Nonce, const FRPGRidingSnapshotResponse& Response);
+    void ExpireAdmissionSnapshot(FGuid ExpectedContext);
+    void CancelSnapshotWork();
+    FHttpRequestPtr SnapshotHttp;
+    FGuid SnapshotNonce;
+    FTSTicker::FDelegateHandle SnapshotRetryTicker, SnapshotExpiryTicker;
+    int32 SnapshotDispatches = 0;
+    double SnapshotExpiresAt = 0;
+#if WITH_DEV_AUTOMATION_TESTS
+    TFunction<FHttpRequestPtr(const FRPGRidingSnapshotContext&, TFunction<void(const FRPGRidingSnapshotResponse&)>)> SnapshotFactoryForTests;
+    FString SnapshotServerForTests;
+#endif
     TUniquePtr<FRPGRidingSession, FRPGRidingSessionDeleter> Runtime;
     TWeakObjectPtr<AController> BoundController;
     TWeakObjectPtr<URPGRidingComponent> BoundPawn;

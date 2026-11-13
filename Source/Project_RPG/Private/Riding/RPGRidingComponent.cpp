@@ -285,7 +285,11 @@ void URPGRidingComponent::ServerSetRiding_Implementation(FRPGRidingSetCommand Co
     RefreshBinding();
     if (!IsBindingCurrent()) return;
     auto* S = Session.Get();
+    if (S->SnapshotExpiresAt > 0 && FPlatformTime::Seconds() >= S->SnapshotExpiresAt)
+    { S->ExpireAdmissionSnapshot(S->AuthorityContext); if (!IsBindingCurrent() || Session != S) return; }
     auto Start = S->Runtime->BeginCommand(Command, State, FPlatformTime::Seconds());
+    if (Command.bDesiredMounted && Start.Disposition == ERPGRidingRequestDisposition::Rejected && Start.Receipt.Result == ERPGRidingResultCode::NotReady)
+        S->RequestAdmissionSnapshot(true); // Only a fresh validated/budgeted mount command may request manual recovery.
     if (Start.Disposition == ERPGRidingRequestDisposition::Pending) return;
     if (Start.Disposition == ERPGRidingRequestDisposition::Reserved)
     {

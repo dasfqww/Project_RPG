@@ -27,12 +27,14 @@ struct FRPGRidingAdmissionSnapshot
     FRPGRidingSessionIdentity Identity;
     FGuid RosterId;
     int64 OwnershipRevision = 0;
+    int64 PreferencesRevision = 0;
     int32 ProtocolVersion = 0;
     int32 CatalogVersion = 0;
     FString GameplayHash;
     TArray<FString> OwnedMountIds;
     FString SelectedMountId;
     TArray<FString> Favorites;
+    FRPGRidingSelector Shortcut;
 };
 
 struct FRPGRidingSnapshotTicket
@@ -66,6 +68,8 @@ public:
     FRPGRidingSnapshotTicket BeginSnapshot(double Now, bool bUserRequested = false);
     bool ApplySnapshot(const FRPGRidingSnapshotTicket& Ticket, const FRPGRidingAdmissionSnapshot& Snapshot, double Now);
     bool FailSnapshot(const FRPGRidingSnapshotTicket& Ticket, double Now);
+    bool ExpireSnapshot(double Now);
+    bool CopyAdmissionPolicy(FRPGRidingPolicyValues& Out) const;
     ERPGRidingSessionStatus GetStatus() const { return Status; }
     bool CopySnapshot(FRPGRidingAdmissionSnapshot& Out) const;
     bool CopyMovementProfile(FRPGRidingMovementProfile& Out) const;

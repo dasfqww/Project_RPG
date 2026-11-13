@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [ValidateRange(1,4)][int]$MaxParallelActions=1)
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [string]$SnapshotWireFixture="", [ValidateRange(1,4)][int]$MaxParallelActions=1)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
@@ -17,6 +17,7 @@ if ($IncludeWorld -or $IncludeAbilities -or $IncludeConsume -or $IncludeDamage) 
 if ($IncludeInteraction) { $IncludeActors = $true }
 if ($IncludeLocalInteraction) { $IncludeActors = $true }
 if ($IncludeTimedInteraction) { $IncludeActors = $true }
+if ($IncludeSnapshot) { $IncludeActors = $true }
 if ($IncludeActors) { $IncludeSession = $true }
 $suite = if ($IncludeDashMotion) { 'RidingDashMotion' } elseif ($IncludeDashAdmission) { 'RidingDashAdmission' } elseif ($IncludeControl) { 'RidingControl' } elseif ($IncludeDamage) { 'RidingDamage' } elseif ($IncludeConsume) { 'RidingConsume' } elseif ($IncludeAbilities) { 'RidingAbilityGate' } elseif ($IncludeWorld) { 'RidingRegions' } elseif ($IncludePresentation) { 'RidingPresentation' } elseif ($IncludeActors) { 'RidingActors' } elseif ($IncludeSession) { 'RidingSession' } else { 'RidingFoundation' }
 $reservation = if ($IncludeDashMotion) { 'riding-dash-motion-20261109' } elseif ($IncludeDashAdmission) { 'riding-dash-admission-20261109' } elseif ($IncludeControl) { 'riding-control-20261109' } elseif ($IncludeDamage) { 'riding-damage-20261109' } elseif ($IncludeConsume) { 'riding-consume-20261108' } elseif ($IncludeAbilities) { 'riding-ability-gate-20261108' } elseif ($IncludeWorld) { 'riding-regions-20261108' } elseif ($IncludePresentation) { 'riding-presentation-20261108' } elseif ($IncludeActors) { 'riding-actors-20261106' } elseif ($IncludeSession) { 'riding-session-20261106' } else { 'riding-foundation-20261106' }
@@ -30,6 +31,7 @@ if ($IncludeEmote) { $suite='RidingEmote'; $reservation='riding-emote-20261112';
 if ($IncludeInteraction) { $suite='RidingInteraction'; $reservation='riding-interaction-20261112'; $proofDate='20261112' }
 if ($IncludeLocalInteraction) { $suite='RidingLocalInteraction'; $reservation='riding-local-interaction-20261113'; $proofDate='20261113' }
 if ($IncludeTimedInteraction) { $suite='RidingTimedInteraction'; $reservation='riding-timed-interaction-20261113'; $proofDate='20261113' }
+if ($IncludeSnapshot) { $suite='RidingUEAdmission'; $reservation='riding-ue-admission-20261113'; $proofDate='20261113' }
 $proofRoot = Join-Path $workspace ('Saved/BuildChecks/' + $suite + '-' + $proofDate + '/' + $id)
 $tempRoot = Join-Path $workspace 'Saved/RF'
 $temp = Join-Path $tempRoot $id.Substring(0,8)
@@ -103,6 +105,13 @@ try {
     }
     if ($IncludeTimedInteraction) { $files+=@('Source/Project_RPG/Public/Riding/RPGRidingTimedInteractionComponent.h','Source/Project_RPG/Private/Riding/RPGRidingTimedInteractionComponent.cpp','Source/Project_RPG/Public/Interface/InteractionInterface.h','Source/Project_RPG/Private/Interface/InteractionInterface.cpp','Source/Project_RPG/Private/Tests/RPGRidingTimedInteractionTests.h','Source/Project_RPG/Private/Tests/RPGRidingTimedInteractionTests.cpp','Source/Project_RPG/Private/Tests/RPGTestWorldCleanup.h') }
     $files=@($files|Select-Object -Unique)
+    if ($IncludeActors) { $files += @('Source/Project_RPG/Private/Riding/RPGRidingSnapshot.h','Source/Project_RPG/Private/Riding/RPGRidingSnapshot.cpp','Source/Project_RPG/Public/Online/RPGDungeonConnectionRecovery.h') }
+    if ($IncludeSnapshot) {
+        $files += 'Source/Project_RPG/Private/Tests/RPGRidingSnapshotTests.cpp'
+        if (!(Test-Path -LiteralPath $SnapshotWireFixture)) { throw 'IncludeSnapshot requires a real backend public response fixture' }
+        $proof.BackendWire = @{Path=[IO.Path]::GetFullPath($SnapshotWireFixture);SHA256=(Get-FileHash -LiteralPath $SnapshotWireFixture).Hash}
+        Copy-Item -LiteralPath $SnapshotWireFixture -Destination (Join-Path $project 'BackendWire.json')
+    }
     foreach ($relative in $files) {
         $source = Join-Path $workspace $relative
         $destination = Join-Path $project $relative
@@ -152,7 +161,7 @@ public class Project_RPG : ModuleRules {
     public Project_RPG(ReadOnlyTargetRules Target) : base(Target) {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         bUseUnity = false;
-        PublicDependencyModuleNames.AddRange(new string[] {"Core", "CoreUObject", "Engine", "NetCore", "IrisCore", "GameplayTags", "GameplayAbilities", "GameplayTasks", "AIModule", "PhysicsCore"});
+        PublicDependencyModuleNames.AddRange(new string[] {"Core", "CoreUObject", "Engine", "NetCore", "IrisCore", "GameplayTags", "GameplayAbilities", "GameplayTasks", "AIModule", "PhysicsCore", "HTTP", "Json"});
     }
 }
 '@
@@ -160,6 +169,11 @@ public class Project_RPG : ModuleRules {
 #include "Modules/ModuleManager.h"
 IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingFoundation");
 '@
+    if ($IncludeActors) { Write-Utf8 (Join-Path $project 'Source/Project_RPG/Private/Riding/RidingSnapshotResolverFixture.cpp') @'
+#include "Riding/RPGRidingSnapshot.h"
+IRPGDungeonRecoveryHost* RPGRidingSnapshot::ResolveHost(UWorld*) { return nullptr; }
+'@
+    }
     $uproject = Join-Path $project 'RidingFoundation.uproject'
     if (!(Test-Path -LiteralPath (Join-Path $EngineRoot 'Engine/Build/InstalledBuild.txt'))) { throw 'This isolated runner requires an installed engine' }
     $build = Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
@@ -183,6 +197,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingFounda
     $report = Join-Path $temp 'Report'
     $editor = Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe'
     $editorArgs = @(('"'+$uproject+'"'),'/Engine/Maps/Entry',('-ExecCmds="Automation RunTests '+$testFilter+'"'),'-TestExit="Automation Test Queue Empty"','-unattended','-nullrhi','-nosound','-nosteam','-nop4','-nosplash','-NoLiveCoding','-DisablePython','-NoLoadingScreen','-Multiprocess','-DDC=(InstalledEnginePak,Local)',('-LocalDataCachePath="'+(Join-Path $temp 'Cache')+'"'),('-ShaderWorkingDir="'+(Join-Path $temp 'Shaders')+'"'),('-UserDir="'+(Join-Path $temp 'User')+'"'),('-abslog="'+(Join-Path $proofRoot 'Native.log')+'"'),('-ReportExportPath="'+$report+'"'))
+    if ($IncludeSnapshot) { $editorArgs += ('-RidingSnapshotWire="'+(Join-Path $project 'BackendWire.json')+'"') }
     $proof.NativeCommand = @($editor) + $editorArgs
     Save-Proof
     $process = Start-Process $editor -ArgumentList $editorArgs -WindowStyle Hidden -PassThru
@@ -224,6 +239,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingFounda
     if ($IncludeDashAdmission) { $expected += @('Approval','Reentry','Endings','Lifetime') | ForEach-Object {'ProjectRPG.Riding.DashAdmission.'+$_} }
     if ($IncludeDamage) { $expected += @('HealthAndShield','RejectedAndNested','AuthorityAndTeams','PawnAndIdentity') | ForEach-Object {'ProjectRPG.Riding.Damage.'+$_} }
     if ($IncludeDamage) { $expected += @('ActiveEffect','RejectedEffects','CallbackAndNesting') | ForEach-Object {'ProjectRPG.Riding.Control.'+$_} }
+    if ($IncludeSnapshot) { $expected += @('Wire','Malformed','Actor','Stale','Failure','Expiry','Transport') | ForEach-Object {'ProjectRPG.Riding.Snapshot.'+$_} }
     if ((Compare-Object $expected @($proof.Tests.fullTestPath)) -or @($proof.Tests | Where-Object {$_.state -ne 'Success' -or $_.errors -ne 0 -or $_.warnings -ne 0}).Count) { throw 'Missing or failing native cases' }
     foreach ($inputFile in $proof.Inputs) {
         if ((Get-FileHash -LiteralPath (Join-Path $workspace $inputFile.Path)).Hash -ne $inputFile.SHA256) { throw 'Original source changed during validation' }
