@@ -29,6 +29,7 @@ struct FRPGNarrativeInteractionHttpResult;
 struct FRPGNarrativeKillCommand;
 class IRPGTradeTransport;
 class IRPGAuctionTransport;
+class IRPGRidingOwnerTransport;
 class FRPGDungeonDisconnectionJournal;
 class FRPGDungeonConsumeJournal;
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnBackendServiceDraining, const FString&);
@@ -317,6 +318,8 @@ public:
 	/** Player-only trade HTTP. Credential refresh retains trade identity; no service-token fallback. */
 	TSharedRef<IRPGTradeTransport> CreatePlayerTradeTransport();
 	TSharedRef<IRPGAuctionTransport> CreatePlayerAuctionTransport();
+	/** Read-only Riding owner API, exclusively using the current player credential. */
+	TSharedRef<IRPGRidingOwnerTransport> CreatePlayerRidingOwnerTransport();
 	/** Build-only owner-scoped narrative GET/choice POST; player credentials remain private. */
 	FHttpRequestPtr CreatePlayerNarrativeRequest(FGuid CharacterId, const FString& ChoiceBody,
 		TFunction<void(FRPGNarrativeHttpResult)> Completion);

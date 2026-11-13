@@ -255,6 +255,7 @@ static partial class Program
     }
     static async Task<int> Main(string[] args)
     {
+        if (args.Length == 2 && args[0] == "--owner-read-host") return await OwnerReadHost(args[1]);
         try { bool prefs = args.Length == 1 && args[0].StartsWith("--preferences", StringComparison.Ordinal);
             bool snapshot = args.Length == 1 && args[0].StartsWith("--snapshot", StringComparison.Ordinal);
             bool pg = args.SequenceEqual(new[] { "--postgres" }) || args.SequenceEqual(new[] { "--preferences-postgres" }) || args.SequenceEqual(new[] { "--snapshot-postgres" });
