@@ -205,24 +205,26 @@ static class Program
         await Case("pg_schema_packaging_and_constraints", async () =>
         {
             var catalog = await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory, default);
-            Check(catalog.Count == 15 && catalog[^1].Name == "riding_registration", "Packaged migration catalog includes v15");
+            Check(catalog.Count == 16 && catalog[^1].Name == "riding_preferences", "Packaged migration catalog includes v16");
             Check(await Count("SELECT count(*) FROM pg_constraint WHERE conrelid IN ('riding_roster_state'::regclass,'riding_command_receipts'::regclass,'riding_mount_unlocks'::regclass) AND contype='p'") == 3, "Persistent uniqueness enforced");
             await Game().EnsureCreatedAsync(default); Check(await Count("SELECT count(*) FROM riding_command_receipts") > 0, "Idempotent initialization preserves receipts");
         });
-        await Case("pg_upgrade_v14_to_v15", async () =>
+        await Case("pg_upgrade_v15_to_v16", async () =>
         {
             var catalog = await PostgresSchemaMigrations.LoadCatalogAsync(AppContext.BaseDirectory, default);
             await Sql("CREATE DATABASE riding_upgrade");
             var builder = new NpgsqlConnectionStringBuilder(Environment.GetEnvironmentVariable("PROJECT_RPG_RIDING_TEST_POSTGRES")!) { Database = "riding_upgrade" };
             await using var upgrade = NpgsqlDataSource.Create(builder.ConnectionString);
-            Check(await PostgresSchemaMigrations.ApplyAsync(upgrade, catalog.Take(14).ToArray(), default) == 14, "Real deployed v14 history created");
+            Check(await PostgresSchemaMigrations.ApplyAsync(upgrade, catalog.Take(15).ToArray(), default) == 15, "Real deployed v15 history created");
             var originalSource = Source;
             try
             {
-                Source = upgrade; var f = await New();
-                Check(await PostgresSchemaMigrations.ApplyAsync(upgrade, catalog, default) == 1, "Only migration15 applied over existing v14 character/item");
-                Check((await Current(f)).Revision == 1 && (await Current(f)).State.Quantity == 2, "Upgrade preserves existing item state");
-                Check((await f.Register()).Receipt.Outcome == RidingRegistrationOutcome.Registered, "Upgraded store supports atomic registration");
+                Source = upgrade; var f = await New(); var original = await f.Register();
+                Check(await PostgresSchemaMigrations.ApplyAsync(upgrade, catalog, default) == 1, "Only migration16 applied over existing v15 registration");
+                Check((await Current(f)).Revision == 2 && (await Current(f)).State.Quantity == 1, "Upgrade preserves existing item state");
+                Check(JsonSerializer.Serialize((await f.Register()).Receipt) == JsonSerializer.Serialize(original.Receipt), "Upgraded store retains linked original registration receipt");
+                var prefs = await Game().SaveRidingPreferencesAsync(f.Account, f.Character.CharacterId, new(Guid.NewGuid(), 0, "horse", ["horse"], new(RidingShortcutMode.Specific, "horse")), Catalog(), default);
+                Check(prefs.Receipt.Preferences.Revision == 1, "New settings work after upgrade");
                 Check(await PostgresSchemaMigrations.ApplyAsync(upgrade, catalog, default) == 0, "Deployment retry makes no changes");
                 await PostgresSchemaMigrations.ValidateAsync(upgrade, catalog, default);
             }

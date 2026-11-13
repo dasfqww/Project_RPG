@@ -11,6 +11,7 @@ public static class RidingRegistrationServices
         services.AddSingleton(new RidingRuntime(options.BuildCatalog()));
         // Reuse the ONE game/item composition. Never create a second Memory game or independent asset gate.
         services.AddSingleton<IRidingRegistrationStore>(p => (IRidingRegistrationStore)p.GetRequiredService<IGameRepository>());
+        services.AddSingleton<IRidingPreferencesStore>(p => (IRidingPreferencesStore)p.GetRequiredService<IGameRepository>());
         services.AddSingleton<RidingRequestLimiter>();
         return services;
     }

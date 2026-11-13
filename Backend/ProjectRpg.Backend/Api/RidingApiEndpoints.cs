@@ -7,25 +7,27 @@ using ProjectRpg.Backend.Riding;
 
 namespace ProjectRpg.Backend.Api;
 
-public static class RidingApiEndpoints
+public static partial class RidingApiEndpoints
 {
     public const int MaximumBodyBytes = 16 * 1024;
     private const string Root = "/api/characters/{characterId:guid}/riding";
     public static void MapRidingApi(this WebApplication app)
     {
-        app.MapGet(Root, (Guid characterId, HttpContext c, IRidingRegistrationStore store, RidingRuntime runtime, RidingRequestLimiter limiter, CancellationToken ct) =>
+        MapRidingPreferencesApi(app);
+        app.MapGet(Root, (Guid characterId, HttpContext c, IRidingPreferencesStore store, RidingRuntime runtime, RidingRequestLimiter limiter, CancellationToken ct) =>
             Run(c, limiter, false, async account =>
             {
-                var collection = await store.GetRidingCollectionAsync(account, characterId, ct);
+                var view = await store.GetRidingOwnerViewAsync(account, characterId, ct); var collection = view.Collection;
                 return new { characterId, collection.RosterId, rosterRevision = RidingApiContracts.Number(collection.Revision),
                     catalogReady = runtime.Catalog is not null, catalogVersion = runtime.Catalog?.CatalogVersion, gameplayHash = runtime.Catalog?.GameplayHash,
-                    registrationEnabled = runtime.Catalog is not null, preferencesReady = false, mounts = collection.Mounts };
+                    registrationEnabled = runtime.Catalog is not null, preferencesReady = true, preferencesEnabled = runtime.Catalog is not null,
+                    preferencesRevision = RidingApiContracts.Number(view.Preferences.Revision), preferences = PreferencesContract(view.Preferences), mounts = collection.Mounts };
             }));
-        app.MapGet(Root + "/requests/{requestId:guid}", (Guid characterId, Guid requestId, HttpContext c, IRidingRegistrationStore store, RidingRequestLimiter limiter, CancellationToken ct) =>
+        app.MapGet(Root + "/requests/{requestId:guid}", (Guid characterId, Guid requestId, HttpContext c, IRidingPreferencesStore store, RidingRequestLimiter limiter, CancellationToken ct) =>
             Run(c, limiter, false, async account =>
             {
-                try { return await store.GetRidingRegistrationReceiptAsync(account, characterId, requestId, ct) is { } receipt
-                    ? RidingApiContracts.Receipt(receipt) : Results.NotFound(new { error = "NotFound" }); }
+                try { return await store.GetRidingCommandReceiptAsync(account, characterId, requestId, ct) is { } receipt
+                    ? CommandReceiptContract(receipt) : Results.NotFound(new { error = "NotFound" }); }
                 catch (RidingStoreException e) when (e.Code == RidingStoreFailure.IdempotencyConflict)
                 { return Results.NotFound(new { error = "NotFound" }); }
             }));

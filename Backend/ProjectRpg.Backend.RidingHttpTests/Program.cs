@@ -17,7 +17,7 @@ using ProjectRpg.Backend.Data;
 using ProjectRpg.Backend.Domain;
 using ProjectRpg.Backend.Riding;
 
-static class Program
+static partial class Program
 {
     static int assertions, sequence;
     static readonly List<object> cases = [];
@@ -82,9 +82,9 @@ static class Program
         }
         public Task<JsonNode> Get(Person p, string? route = null, int status = 200) => Raw(p.Token, route ?? p.Root, null, status);
         public Task<JsonNode> Post(Person p, object command, int status = 200) => Raw(p.Token, p.Root + "/register", JsonSerializer.Serialize(command, Json), status);
-        public async Task<JsonNode> Raw(string? token, string route, string? body, int status, bool chunked = false, string type = "application/json")
+        public async Task<JsonNode> Raw(string? token, string route, string? body, int status, bool chunked = false, string type = "application/json", HttpMethod? method = null)
         {
-            using var request = new HttpRequestMessage(body is null ? HttpMethod.Get : HttpMethod.Post, route);
+            using var request = new HttpRequestMessage(method ?? (body is null ? HttpMethod.Get : HttpMethod.Post), route);
             if (token is not null) request.Headers.Authorization = new("Bearer", token);
             if (body is not null) { request.Content = chunked ? new Chunked(body) : new StringContent(body, Encoding.UTF8); request.Content.Headers.ContentType = new(type); }
             using var response = await Client.SendAsync(request); string content = await response.Content.ReadAsStringAsync();
@@ -111,7 +111,7 @@ static class Program
             var replay = await f.Post(p, p.Command(id)); Check(replay["outcome"]!.GetValue<string>() == "AlreadyApplied" && JsonNode.DeepEquals(result["receipt"], replay["receipt"]), "Exact receipt under replay envelope");
             var receipt = await f.Get(p, p.Root + "/requests/" + id); Check(JsonNode.DeepEquals(receipt, result["receipt"]), "Original receipt HTTP query");
             if (pg) await File.WriteAllTextAsync(Environment.GetEnvironmentVariable("PROJECT_RPG_RIDING_HTTP_PROOF")!, JsonSerializer.Serialize(new Probe(p.Token, p.Root, JsonSerializer.Serialize(p.Command(id), Json), receipt)));
-            var collection = await f.Get(p); Check(collection["mounts"]!.AsArray().Count == 1 && collection["rosterRevision"]!.GetValue<string>() == "1" && !collection["preferencesReady"]!.GetValue<bool>(), "Actual collection, no fake settings readiness");
+            var collection = await f.Get(p); Check(collection["mounts"]!.AsArray().Count == 1 && collection["rosterRevision"]!.GetValue<string>() == "1" && collection["preferencesReady"]!.GetValue<bool>() && collection["preferencesRevision"]!.GetValue<string>() == "0", "Actual collection and initial preferences revision");
             var noop = await f.Post(p, new { requestId = Guid.NewGuid(), itemId = p.Item.ItemId, expectedItemRevision = "2", catalogVersion = 7 });
             Check(noop["outcome"]!.GetValue<string>() == "AlreadyOwned" && noop["receipt"]!["itemReceipt"] is null, "AlreadyOwned does not consume");
         });
@@ -199,7 +199,7 @@ static class Program
         });
     }
     sealed record Probe(string Token, string Root, string Command, JsonNode Receipt);
-    static async Task ProgramHost(bool enabled)
+    static async Task ProgramHost(bool enabled, bool preferences = false)
     {
         var probe = JsonSerializer.Deserialize<Probe>(await File.ReadAllTextAsync(Environment.GetEnvironmentVariable("PROJECT_RPG_RIDING_HTTP_PROOF")!))!;
         var start = new ProcessStartInfo("dotnet") { WorkingDirectory = AppContext.BaseDirectory, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
@@ -235,7 +235,8 @@ static class Program
             Check(collection["catalogReady"]!.GetValue<bool>() == enabled, "Actual startup binds/validates configured catalog and disabled mode");
             using var receipt = await client.GetAsync(probe.Root + "/requests/" + JsonNode.Parse(probe.Command)!["requestId"]!.GetValue<string>());
             Check(receipt.IsSuccessStatusCode && JsonNode.DeepEquals(JsonNode.Parse(await receipt.Content.ReadAsStringAsync()), probe.Receipt), "Fresh Program recovers persisted original HTTP receipt");
-            using var replay = await client.PostAsync(probe.Root + "/register", new StringContent(probe.Command, Encoding.UTF8, "application/json"));
+            using var replay = preferences ? await client.PutAsync(probe.Root + "/preferences", new StringContent(probe.Command, Encoding.UTF8, "application/json"))
+                : await client.PostAsync(probe.Root + "/register", new StringContent(probe.Command, Encoding.UTF8, "application/json"));
             var result = JsonNode.Parse(await replay.Content.ReadAsStringAsync())!;
             Check(replay.IsSuccessStatusCode && result["outcome"]!.GetValue<string>() == "AlreadyApplied" && JsonNode.DeepEquals(result["receipt"], probe.Receipt), "Actual Program replay uses original shared PG store");
         }
@@ -243,8 +244,12 @@ static class Program
     }
     static async Task<int> Main(string[] args)
     {
-        try { bool pg = args.SequenceEqual(new[] { "--postgres" }); bool program = args.SequenceEqual(new[] { "--program" }); if (args.Length > 0 && !pg && !program) throw new ArgumentException("Unknown mode");
-            if (program) { await Case("http_actual_program_enabled", () => ProgramHost(true)); await Case("http_actual_program_disabled", () => ProgramHost(false)); } else await MainCases(pg);
+        try { bool prefs = args.Length == 1 && args[0].StartsWith("--preferences", StringComparison.Ordinal);
+            bool pg = args.SequenceEqual(new[] { "--postgres" }) || args.SequenceEqual(new[] { "--preferences-postgres" });
+            bool program = args.SequenceEqual(new[] { "--program" }) || args.SequenceEqual(new[] { "--preferences-program" });
+            if (args.Length > 0 && !pg && !program && !args.SequenceEqual(new[] { "--preferences" })) throw new ArgumentException("Unknown mode");
+            if (program) { await Case("http_actual_program_enabled", () => ProgramHost(true, prefs)); await Case("http_actual_program_disabled", () => ProgramHost(false, prefs)); }
+            else if (prefs) await PreferencesCases(pg); else await MainCases(pg);
             Console.WriteLine(JsonSerializer.Serialize(new { Passed = true, Mode = program ? "Program" : pg ? "Postgres" : "Memory", CaseCount = cases.Count, Assertions = assertions, Cases = cases })); return 0; }
         catch (Exception e) { Console.Error.WriteLine(e); Console.WriteLine(JsonSerializer.Serialize(new { Passed = false, Assertions = assertions, Cases = cases })); return 1; }
     }

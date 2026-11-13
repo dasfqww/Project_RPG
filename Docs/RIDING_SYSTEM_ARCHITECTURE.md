@@ -294,6 +294,8 @@ M3a3에서는 `PostgresGameRepository`도 같은 등록/보관함/영수증 포�
 
 M3a4에서는 Program이 같은 `IGameRepository`를 Riding 저장소 포트에 연결하고 소유 Player의 등록·보관함·원래 영수증 HTTP를 제공한다. 새 등록은 기본 비활성이며 서버 설정의 catalog version/hash/정의를 검증해야 활성화된다. 비활성 상태에서도 현재 인증/소유를 통과한 기존 결과 복구·보관함 조회를 제공하며 이를 게임 서버 탑승 Ready로 사용하지 않는다. 설정 쓰기·입장용 서버 snapshot·UE 전송/저널/UI 연결은 후속이다. [인증 HTTP 계약](RIDING_SYSTEM_CODE_DESIGN.md#35-m3a4-인증-http와-저장소-연결--2026-11-13).
 
+M3a5에서는 캐릭터별 선택 탈것·즐겨찾기·논리 퀵슬롯 설정의 전체교체 CAS/영수증을 Memory·PG·인증 PUT에 연결했다. 보유는 원정대 공유, 설정은 캐릭터별이며 등록/설정 요청 ID는 같은 namespace에서 충돌을 검사한다. 공개 GET은 같은 잠금 안의 보유/설정을 읽고 공용 requests 경로는 operation으로 원래 결과를 구분한다. 설정 저장 구현 여부와 게임 서버/UE Ready를 구분하며 후자는 아직 연결하지 않았다. [개인 설정 저장](RIDING_SYSTEM_CODE_DESIGN.md#36-m3a5-개인-탈것-설정-저장--2026-11-13).
+
 ## 7. 코드와 에셋 배치
 
 이 목록은 향후 파일 지도다. 이번 문서 예약으로 아래 공통 파일을 선점하지 않는다.

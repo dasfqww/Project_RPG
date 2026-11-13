@@ -124,6 +124,9 @@ public sealed partial class InMemoryGameRepository : IRidingRegistrationStore
         InMemoryItemRepository items, CancellationToken cancellationToken)
     {
         if (!_ridingReceipts.TryGetValue(requestId, out string? payload)) return null;
+        using var document = JsonDocument.Parse(payload);
+        if (document.RootElement.GetProperty("Operation").GetString() != RidingRegistrationRules.Operation)
+            throw new RidingStoreException(RidingStoreFailure.IdempotencyConflict);
         var receipt = CopyRidingReceipt(payload);
         if (receipt.Operation != RidingRegistrationRules.Operation || receipt.CharacterId != character.CharacterId
             || receipt.RosterId != character.RosterId)

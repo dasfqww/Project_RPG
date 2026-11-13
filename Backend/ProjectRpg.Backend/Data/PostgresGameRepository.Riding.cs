@@ -162,6 +162,7 @@ public sealed partial class PostgresGameRepository : IRidingRegistrationStore
         {
             query.Parameters.AddWithValue("id", request); await using var reader = await query.ExecuteReaderAsync(ct);
             if (!await reader.ReadAsync(ct)) return null;
+            if (reader.GetString(1) != RidingRegistrationRules.Operation) throw new RidingStoreException(RidingStoreFailure.IdempotencyConflict);
             if (reader.GetGuid(2) != actor.CharacterId || reader.GetGuid(3) != actor.RosterId) throw new RidingStoreException(RidingStoreFailure.IdempotencyConflict);
             receipt = JsonSerializer.Deserialize<RidingRegistrationReceipt>(reader.GetString(0)) ?? throw new RidingStoreException(RidingStoreFailure.InconsistentReceipt);
             if (receipt.RequestId != request || receipt.Operation != reader.GetString(1) || receipt.Operation != RidingRegistrationRules.Operation
