@@ -8,6 +8,7 @@
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
+#include "Components/EditableTextBox.h"
 #include "InputCoreTypes.h"
 
 TSharedRef<SWidget> URPGAuctionWidget::RebuildWidget()
@@ -39,6 +40,16 @@ TSharedRef<SWidget> URPGAuctionWidget::RebuildWidget()
         PayableText=Text(FText::GetEmpty());
         ClaimButton=Button(TEXT("AuctionClaimReview"),NSLOCTEXT("RPGAuction","ReviewClaim","대금 수령 내용 확인"));
         ClaimResultText=Text(FText::GetEmpty());
+        auto* MainList=List;RegistrationPanel=WidgetTree->ConstructWidget<UVerticalBox>();List->AddChild(RegistrationPanel);List=RegistrationPanel;
+        Text(NSLOCTEXT("RPGAuction","RegisterTitle","가방 물품 경매 등록"));
+        PolicyButton=Button(TEXT("AuctionPolicy"),NSLOCTEXT("RPGAuction","ReadPolicy","서버 등록 조건 불러오기"));PolicyText=Text(FText::GetEmpty());
+        BagButton=Button(TEXT("AuctionBag"),NSLOCTEXT("RPGAuction","ReadBag","등록할 최신 가방 불러오기"));RegistrationStatus=Text(FText::GetEmpty());
+        BagRows=WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(),TEXT("AuctionBagRows"));List->AddChild(BagRows);
+        auto Input=[&](const FText& Label,const TCHAR* Value){Text(Label);auto* E=WidgetTree->ConstructWidget<UEditableTextBox>();E->SetText(FText::FromString(Value));List->AddChild(E);return E;};
+        QuantityInput=Input(NSLOCTEXT("RPGAuction","Quantity","등록 수량 (정수)"),TEXT("1"));
+        PriceInput=Input(NSLOCTEXT("RPGAuction","TotalPrice","전체 수량의 총 판매 가격 (골드, 정수)"),TEXT(""));
+        DurationInput=Input(NSLOCTEXT("RPGAuction","DurationSeconds","판매 기간 (초, 정수 · 1시간=3600초, 하루=86400초)"),TEXT("86400"));
+        RegisterButton=Button(TEXT("AuctionRegisterReview"),NSLOCTEXT("RPGAuction","ReviewRegistration","등록 내용 확인"));List=MainList;
         ReviewText=Text(FText::GetEmpty());
         ConfirmButton=Button(TEXT("AuctionConfirm"),NSLOCTEXT("RPGAuction","Confirm","위 내용으로 실행"));
         DismissButton=Button(TEXT("AuctionDismiss"),NSLOCTEXT("RPGAuction","Dismiss","실행하지 않고 돌아가기"));
@@ -53,12 +64,15 @@ TSharedRef<SWidget> URPGAuctionWidget::RebuildWidget()
         NextButton->OnClicked.AddUniqueDynamic(this,&ThisClass::NextPage);DetailButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReadDetail);
         PurchaseButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReviewPurchase);CancelSaleButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReviewCancel);
         PayableButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReadPayable);ClaimButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReviewClaim);
+        PolicyButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReadPolicy);BagButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReloadBag);RegisterButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReviewRegistration);
+        BagRows->OnSelectionChanged.AddUniqueDynamic(this,&ThisClass::SelectBag);
+        QuantityInput->OnTextChanged.AddUniqueDynamic(this,&ThisClass::RegistrationInputChanged);PriceInput->OnTextChanged.AddUniqueDynamic(this,&ThisClass::RegistrationInputChanged);DurationInput->OnTextChanged.AddUniqueDynamic(this,&ThisClass::RegistrationInputChanged);
         ConfirmButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Confirm);DismissButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Dismiss);
         RecoverButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Recover);RetryButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Retry);
         StorageButton->OnClicked.AddUniqueDynamic(this,&ThisClass::CheckStorage);AssetsButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReloadAssets);
         CloseButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Close);Rows->OnSelectionChanged.AddUniqueDynamic(this,&ThisClass::SelectRow);
     }
-    DisplayedPage.Invalidate();SetIsFocusable(true);RefreshView();return Super::RebuildWidget();
+    DisplayedPage.Invalidate();DisplayedBag.Invalidate();SetIsFocusable(true);RefreshView();return Super::RebuildWidget();
 }
 void URPGAuctionWidget::Subscribe()
 {if(const auto C=Owner.Pin()){C->OnViewChanged.Remove(ChangeHandle);ChangeHandle=C->OnViewChanged.AddUObject(this,&ThisClass::RefreshView);}}
@@ -66,6 +80,8 @@ void URPGAuctionWidget::SetOwner(TSharedRef<FRPGAuctionCoordinator> InOwner)
 {
     if(const auto Old=Owner.Pin()){Old->OnViewChanged.Remove(ChangeHandle);Old->DismissReview(DisplayedReview);}
     DisplayedReview.Invalidate();
+    DisplayedBag.Invalidate();SelectedBag.Invalidate();BagIds.Reset();
+    if(BagRows){bUpdating=true;BagRows->ClearSelection();BagRows->ClearOptions();bUpdating=false;}
     Owner=InOwner;BoundContext={};DisplayedPage.Invalidate();Selected.Invalidate();RowIds.Reset();bClosing=false;bUpdating=true;
     if(Rows){Rows->ClearSelection();Rows->ClearOptions();}bUpdating=false;
     Subscribe();RefreshView();
@@ -81,6 +97,16 @@ void URPGAuctionWidget::RefreshView()
     if(BoundContext.IsValid() && !(BoundContext==V.Context)){Close();return;}
     if(V.Context.IsValid())BoundContext=V.Context;
     if(StatusText)StatusText->SetText(C?V.Status:NSLOCTEXT("RPGAuction","NoOwner","경매 내역을 확인할 수 없습니다."));
+    if(RegistrationPanel)RegistrationPanel->SetVisibility(V.bRegistrationVisible?ESlateVisibility::Visible:ESlateVisibility::Collapsed);
+    if(PolicyText)PolicyText->SetText(V.PolicyText);if(RegistrationStatus)RegistrationStatus->SetText(V.RegistrationStatus);
+    if(PolicyButton)PolicyButton->SetIsEnabled(V.bCanReadPolicy);if(BagButton)BagButton->SetIsEnabled(V.bCanReloadBag);
+    if(DisplayedBag!=V.BagToken)
+    {
+        DisplayedBag=V.BagToken;SelectedBag.Invalidate();BagIds.Reset();bUpdating=true;
+        if(BagRows){BagRows->ClearSelection();BagRows->ClearOptions();for(int32 I=0;I<V.BagItems.Num();++I){const auto& Item=V.BagItems[I];BagIds.Add(Item.ItemId);BagRows->AddOption(FString::Printf(TEXT("%d. %s · %d개"),I+1,*Item.Label.ToString(),Item.Quantity));}}
+        bUpdating=false;
+    }
+    if(RegisterButton)RegisterButton->SetIsEnabled(V.bCanReviewRegistration && SelectedBag.IsValid());
     if(DetailText)DetailText->SetText(Selected.IsValid() && Selected==V.DetailListing?V.Detail:FText::GetEmpty());if(AssetText)AssetText->SetText(V.Assets);
     DisplayedReview=V.ReviewToken;
     if(ReviewText){ReviewText->SetText(V.ReviewText);ReviewText->SetVisibility(V.bHasReview?ESlateVisibility::Visible:ESlateVisibility::Collapsed);}
@@ -132,6 +158,14 @@ void URPGAuctionWidget::ReviewPurchase(){if(const auto C=ActiveOwner())C->Review
 void URPGAuctionWidget::ReviewCancel(){if(const auto C=ActiveOwner())C->ReviewListing(DisplayedPage,Selected,ERPGAuctionAction::Cancel);RefreshView();}
 void URPGAuctionWidget::ReadPayable(){if(const auto C=ActiveOwner())C->ReadPayable(DisplayedPage,Selected);RefreshView();}
 void URPGAuctionWidget::ReviewClaim(){if(const auto C=ActiveOwner())C->ReviewListing(DisplayedPage,Selected,ERPGAuctionAction::Claim);RefreshView();}
+void URPGAuctionWidget::ReadPolicy(){if(const auto C=ActiveOwner())C->ReadRegistrationPolicy();RefreshView();}
+void URPGAuctionWidget::ReloadBag(){if(const auto C=ActiveOwner())C->ReloadRegistrationBag();RefreshView();}
+void URPGAuctionWidget::SelectBag(FString,ESelectInfo::Type)
+{if(bUpdating || bClosing)return;if(const auto C=Owner.Pin())C->DismissReview(DisplayedReview);SelectedBag.Invalidate();if(BagRows && BagIds.IsValidIndex(BagRows->GetSelectedIndex()))SelectedBag=BagIds[BagRows->GetSelectedIndex()];RefreshView();}
+void URPGAuctionWidget::RegistrationInputChanged(const FText&)
+{if(bUpdating || bClosing)return;if(const auto C=Owner.Pin())C->DismissReview(DisplayedReview);RefreshView();}
+void URPGAuctionWidget::ReviewRegistration()
+{if(const auto C=ActiveOwner())C->ReviewRegistration(DisplayedBag,SelectedBag,QuantityInput->GetText().ToString(),PriceInput->GetText().ToString(),DurationInput->GetText().ToString());RefreshView();}
 void URPGAuctionWidget::Confirm(){if(const auto C=ActiveOwner())C->ConfirmListing(DisplayedReview);RefreshView();}
 void URPGAuctionWidget::Dismiss(){if(const auto C=ActiveOwner())C->DismissReview(DisplayedReview);RefreshView();}
 void URPGAuctionWidget::Recover(){if(const auto C=ActiveOwner())C->Recover();RefreshView();}

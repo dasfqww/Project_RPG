@@ -6,6 +6,8 @@
 
 class UButton;
 class UTextBlock;
+class UVerticalBox;
+class UEditableTextBox;
 
 /** Explicit listing consent and durable recovery. Closing never cancels a submitted request. */
 UCLASS()
@@ -23,6 +25,7 @@ protected:
     virtual FReply NativeOnKeyDown(const FGeometry&,const FKeyEvent&) override;
 private:
     friend struct FRPGAuctionWidgetTestAccess;
+    friend struct FRPGAuctionRegistrationWidgetTestAccess;
     void Subscribe();
     void RefreshView();
     TSharedPtr<FRPGAuctionCoordinator> ActiveOwner();
@@ -35,6 +38,11 @@ private:
     UFUNCTION() void ReviewCancel();
     UFUNCTION() void ReadPayable();
     UFUNCTION() void ReviewClaim();
+    UFUNCTION() void ReadPolicy();
+    UFUNCTION() void ReloadBag();
+    UFUNCTION() void SelectBag(FString Option,ESelectInfo::Type Type);
+    UFUNCTION() void RegistrationInputChanged(const FText& Value);
+    UFUNCTION() void ReviewRegistration();
     UFUNCTION() void Confirm();
     UFUNCTION() void Dismiss();
     UFUNCTION() void Recover();
@@ -47,6 +55,18 @@ private:
     FDelegateHandle ChangeHandle;
     FGuid DisplayedPage, Selected, DisplayedReview;
     TArray<FGuid> RowIds;
+    FGuid DisplayedBag,SelectedBag;
+    TArray<FGuid> BagIds;
+    UPROPERTY(Transient) TObjectPtr<UVerticalBox> RegistrationPanel;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> PolicyText;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> RegistrationStatus;
+    UPROPERTY(Transient) TObjectPtr<UComboBoxString> BagRows;
+    UPROPERTY(Transient) TObjectPtr<UEditableTextBox> QuantityInput;
+    UPROPERTY(Transient) TObjectPtr<UEditableTextBox> PriceInput;
+    UPROPERTY(Transient) TObjectPtr<UEditableTextBox> DurationInput;
+    UPROPERTY(Transient) TObjectPtr<UButton> PolicyButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> BagButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> RegisterButton;
     bool bUpdating=false,bClosing=false;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> StatusText;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> DetailText;

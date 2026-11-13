@@ -1,19 +1,20 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8', [switch]$Confirmation, [switch]$Proceeds)
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$Confirmation, [switch]$Proceeds, [switch]$Registration)
 $ErrorActionPreference = 'Stop'
-if($Confirmation -and $Proceeds){throw 'Select one validation mode'}
+if(($Confirmation -and $Proceeds) -or ($Registration -and ($Confirmation -or $Proceeds))){throw 'Select one validation mode'}
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
-$proofFolder=if($Proceeds){'AuctionProceeds-20261113'}elseif($Confirmation){'AuctionConfirm-20261113'}else{'AuctionScreen-20261113'}
-$reservation=if($Proceeds){'auction-proceeds-20261113'}elseif($Confirmation){'auction-confirm-20261113'}else{'auction-screen-20261113'}
+$proofFolder=if($Registration){'AuctionRegistrationUI-20261113'}elseif($Proceeds){'AuctionProceeds-20261113'}elseif($Confirmation){'AuctionConfirm-20261113'}else{'AuctionScreen-20261113'}
+$reservation=if($Registration){'auction-registration-ui-20261113'}elseif($Proceeds){'auction-proceeds-20261113'}elseif($Confirmation){'auction-confirm-20261113'}else{'auction-screen-20261113'}
 $proofRoot = Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/' + $id)
 $tempRoot = Join-Path $workspace 'Saved/AS'
 $temp = Join-Path $tempRoot $id.Substring(0,8)
 $project = Join-Path $temp 'Project'
-$proof = [ordered]@{Passed=$false; Scope='Actual native UMG proceeds query/claim including partial/zero results, purchase/cancel confirmation and read/recovery widget plus coordinator consent/pagination/lifetime/storage and original asset/client/recovery regressions; real mapper fixtures, fake HTTP, separate UE processes. No full lobby viewport, Steam, actual auction HTTP roundtrip or full game module link'; Inputs=@(); Tests=@(); Cleanup=$null; Failure=$null}
+$proof = [ordered]@{Passed=$false; Scope='Actual native UMG policy-bound bag registration, proceeds query/claim including partial/zero results, purchase/cancel confirmation and read/recovery widget plus coordinator consent/pagination/lifetime/storage and original asset/client/recovery regressions; real mapper fixtures, fake HTTP, separate UE processes. No full lobby viewport, Steam, actual auction HTTP roundtrip or full game module link'; Inputs=@(); Tests=@(); Cleanup=$null; Failure=$null}
 $process = $null
 $ownsTemp = $false
 $savedAssetsRun=[Environment]::GetEnvironmentVariable('PROJECT_RPG_AUCTION_ASSETS_RUN','Process')
+$savedRegistrationRun=[Environment]::GetEnvironmentVariable('PROJECT_RPG_AUCTION_REGISTRATION_RUN','Process')
 $savedRun=[Environment]::GetEnvironmentVariable('PROJECT_RPG_AUCTION_CLIENT_RUN','Process')
 $savedFixtures=[Environment]::GetEnvironmentVariable('PROJECT_RPG_AUCTION_WIRE_FIXTURE','Process')
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
@@ -35,6 +36,7 @@ try {
     $ownsTemp = $true
     $proof.Head = (git -C $workspace rev-parse HEAD).Trim()
     $files = @('Source/Project_RPG/Public/Trading/RPGTradeClient.h','Source/Project_RPG/Private/Trading/RPGTradeClient.cpp','Source/Project_RPG/Private/Trading/RPGTradeJson.h')
+    $files+=@('Source/Project_RPG/Public/Trading/RPGTradeOfferDraft.h','Source/Project_RPG/Private/Trading/RPGTradeOfferDraft.cpp','Source/Project_RPG/Private/Auction/RPGAuctionCoordinator.Registration.cpp','Source/Project_RPG/Private/Tests/RPGAuctionRegistrationTests.cpp')
     $files += @('Source/Project_RPG/Public/Trading/RPGTradePreview.h','Source/Project_RPG/Private/Trading/RPGTradePreview.cpp','Source/Project_RPG/Public/Auction/RPGAuctionClient.h','Source/Project_RPG/Private/Auction/RPGAuctionClient.cpp','Source/Project_RPG/Private/Tests/RPGAuctionClientTests.cpp')
     $files += @('Source/Project_RPG/Public/Auction/RPGAuctionIntentJournal.h','Source/Project_RPG/Private/Auction/RPGAuctionIntentJournal.cpp','Source/Project_RPG/Public/Auction/RPGAuctionCoordinator.h','Source/Project_RPG/Private/Auction/RPGAuctionCoordinator.cpp','Source/Project_RPG/Private/Auction/RPGAuctionCoordinator.View.cpp','Source/Project_RPG/Public/Auction/RPGAuctionTransport.h','Source/Project_RPG/Private/Auction/RPGAuctionTransport.cpp','Source/Project_RPG/Private/Tests/RPGAuctionRecoveryTests.cpp')
     $files+=@('Source/Project_RPG/Public/Trading/RPGTradeAssets.h','Source/Project_RPG/Private/Trading/RPGTradeAssets.cpp','Source/Project_RPG/Public/Economy/RPGCurrencyTypes.h','Source/Project_RPG/Public/Economy/Backend/RPGEconomyBackendTypes.h','Source/Project_RPG/Public/Economy/Backend/RPGEconomyBackendJsonCodec.h','Source/Project_RPG/Private/Economy/Backend/RPGEconomyBackendJsonCodec.cpp','Source/Project_RPG/Private/Tests/RPGAuctionAssetsTests.cpp','Source/Project_RPG/Public/UI/Lobby/RPGAuctionWidget.h','Source/Project_RPG/Private/UI/Lobby/RPGAuctionWidget.cpp','Source/Project_RPG/Private/Tests/RPGAuctionScreenTests.cpp')
@@ -69,6 +71,7 @@ try {
         $proof.Inputs+=@{Path=$relative;SHA256=$hash}
     }
     $env:PROJECT_RPG_AUCTION_ASSETS_RUN=$id
+    $env:PROJECT_RPG_AUCTION_REGISTRATION_RUN=$id
     $env:PROJECT_RPG_AUCTION_CLIENT_RUN=$id
     $env:PROJECT_RPG_AUCTION_WIRE_FIXTURE=$fixtureDirectory
     $backendProject=Join-Path $backend 'Backend/ProjectRpg.Backend.TradingTests/ProjectRpg.Backend.TradingTests.csproj'
@@ -81,7 +84,7 @@ try {
     & dotnet $backendModule --auction-wire-fixtures $fixtureDirectory *> (Join-Path $proofRoot 'BackendFixtures.log')
     if($LASTEXITCODE -ne 0){Get-Content (Join-Path $proofRoot 'BackendFixtures.log') -Tail 18;throw 'Wire producer failed'}
     $proof.Fixtures=@(Get-ChildItem -LiteralPath $fixtureDirectory -Filter '*.json' -File | ForEach-Object {@{Name=$_.Name;SHA256=(Get-FileHash -LiteralPath $_.FullName).Hash;Bytes=$_.Length}})
-    if($proof.Fixtures.Count -ne 14){throw 'Missing contract fixture documents'}
+    if($proof.Fixtures.Count -ne 16){throw 'Missing contract fixture documents'}
     $proof.RunnerSHA256 = (Get-FileHash -LiteralPath $PSCommandPath).Hash
     Write-Utf8 (Join-Path $project 'AuctionRecovery.uproject') @'
 {"FileVersion":3,"EngineAssociation":"5.8","DisableEnginePluginsByDefault":true,"Plugins":[{"Name":"RPGInventory","Enabled":true}],"Modules":[{"Name":"Project_RPG","Type":"Runtime","LoadingPhase":"Default"}]}
@@ -164,6 +167,7 @@ ImportTagsFromConfig=True
             $expected+=@('Storage','Locking','Coordinator','Context','StorageFailure','Restart')|ForEach-Object {'ProjectRPG.Auction.Recovery.'+$_}
             $expected+=@('Codec','Projection','Lifetime')|ForEach-Object {'ProjectRPG.Auction.Assets.'+$_}
             $expected+=@('Browse','ContextAndThrottle','WidgetAndRecovery','StorageRecheck','PurchaseConfirmation','CancelConfirmation','ConfirmationLifetime','ProceedsConfirmation','ProceedsReadSafety','ProceedsZeroRecovery')|ForEach-Object {'ProjectRPG.Auction.Screen.'+$_}
+            $expected+=@('Policy','Draft','Lifetime','Widget')|ForEach-Object {'ProjectRPG.Auction.Registration.'+$_}
         }
         if((Compare-Object $expected @($tests.fullTestPath)) -or @($tests|Where-Object {$_.state -ne 'Success' -or $_.errors -ne 0 -or $_.warnings -ne 0}).Count){throw ('Missing or failing native cases: '+$phase)}
     }
@@ -177,6 +181,7 @@ finally {
     [Environment]::SetEnvironmentVariable('PROJECT_RPG_AUCTION_CLIENT_RUN',$savedRun,'Process')
     [Environment]::SetEnvironmentVariable('PROJECT_RPG_AUCTION_WIRE_FIXTURE',$savedFixtures,'Process')
     [Environment]::SetEnvironmentVariable('PROJECT_RPG_AUCTION_ASSETS_RUN',$savedAssetsRun,'Process')
+    [Environment]::SetEnvironmentVariable('PROJECT_RPG_AUCTION_REGISTRATION_RUN',$savedRegistrationRun,'Process')
     $released = $true
     if ($process) {
         try {

@@ -1,11 +1,11 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$Confirmation, [switch]$Proceeds)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$Confirmation, [switch]$Proceeds, [switch]$Registration)
 $ErrorActionPreference='Stop'
-if($Confirmation -and $Proceeds){throw 'Select one validation mode'}
+if(($Confirmation -and $Proceeds) -or ($Registration -and ($Confirmation -or $Proceeds))){throw 'Select one validation mode'}
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $run=[Guid]::NewGuid().ToString('N')
-$proofFolder=if($Proceeds){'AuctionProceeds-20261113'}elseif($Confirmation){'AuctionConfirm-20261113'}else{'AuctionScreen-20261113'}
-$reservation=if($Proceeds){'auction-proceeds-20261113'}elseif($Confirmation){'auction-confirm-20261113'}else{'auction-screen-20261113'}
+$proofFolder=if($Registration){'AuctionRegistrationUI-20261113'}elseif($Proceeds){'AuctionProceeds-20261113'}elseif($Confirmation){'AuctionConfirm-20261113'}else{'AuctionScreen-20261113'}
+$reservation=if($Registration){'auction-registration-ui-20261113'}elseif($Proceeds){'auction-proceeds-20261113'}elseif($Confirmation){'auction-confirm-20261113'}else{'auction-screen-20261113'}
 $proofRoot=Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/Integration-'+$run)
 $tempRoot=Join-Path $workspace 'Saved/AS'
 $temp=Join-Path $tempRoot $run.Substring(0,8)
@@ -42,6 +42,8 @@ try {
     & tar -xf $archive -C $project
     if($LASTEXITCODE -ne 0){throw 'Source extraction failed'}
     $files=@('Source/Project_RPG/Public/Auction/RPGAuctionIntentJournal.h','Source/Project_RPG/Private/Auction/RPGAuctionIntentJournal.cpp','Source/Project_RPG/Public/Auction/RPGAuctionCoordinator.h','Source/Project_RPG/Private/Auction/RPGAuctionCoordinator.cpp','Source/Project_RPG/Private/Auction/RPGAuctionCoordinator.View.cpp','Source/Project_RPG/Public/Auction/RPGAuctionSubsystem.h','Source/Project_RPG/Private/Auction/RPGAuctionSubsystem.cpp','Source/Project_RPG/Public/Auction/RPGAuctionTransport.h','Source/Project_RPG/Private/Auction/RPGAuctionTransport.cpp','Source/Project_RPG/Public/UI/Lobby/RPGAuctionWidget.h','Source/Project_RPG/Private/UI/Lobby/RPGAuctionWidget.cpp','Source/Project_RPG/Public/Trading/RPGTradeSubsystem.h','Source/Project_RPG/Public/UI/Lobby/RPGOnlineLobbyWidget.h','Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyWidget.cpp','Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyMenu.cpp')
+    $files+=@('Source/Project_RPG/Private/Auction/RPGAuctionCoordinator.Registration.cpp','Source/Project_RPG/Private/Trading/RPGTradeSubsystem.cpp')
+    $files+=@('Source/Project_RPG/Public/Auction/RPGAuctionClient.h','Source/Project_RPG/Private/Auction/RPGAuctionClient.cpp')
     foreach($relative in $files) {
         $source=Join-Path $workspace $relative
         $destination=Join-Path $project $relative
@@ -54,6 +56,8 @@ try {
     }
     $fileList=Join-Path $temp 'CompileFiles.txt'
     $compile=@('Source/Project_RPG/Private/Auction/RPGAuctionCoordinator.cpp','Source/Project_RPG/Private/Auction/RPGAuctionCoordinator.View.cpp','Source/Project_RPG/Private/Auction/RPGAuctionSubsystem.cpp','Source/Project_RPG/Private/Auction/RPGAuctionTransport.cpp','Source/Project_RPG/Private/UI/Lobby/RPGAuctionWidget.cpp','Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyWidget.cpp','Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyMenu.cpp')
+    $compile+=@('Source/Project_RPG/Private/Auction/RPGAuctionCoordinator.Registration.cpp','Source/Project_RPG/Private/Trading/RPGTradeSubsystem.cpp')
+    $compile+='Source/Project_RPG/Private/Auction/RPGAuctionClient.cpp'
     [IO.File]::WriteAllLines($fileList,@($compile|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
     $dotnet=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
     $ubt=Join-Path $EngineRoot 'Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll'

@@ -8,6 +8,8 @@
 namespace RPGAuctionInternal
 {
 using namespace RPGTradeClient;
+bool PolicyTag(const FString& Tag)
+{if(Tag.Len()!=64)return false;for(TCHAR C:Tag)if(!((C>='0'&&C<='9')||(C>='a'&&C<='f')))return false;return true;}
 FString Id(FGuid V) { return V.ToString(EGuidFormats::DigitsWithHyphensLower); }
 FString Action(ERPGAuctionAction A)
 {
@@ -98,6 +100,7 @@ bool Command(const FRPGAuctionIntent& Intent,FCommand& C)
     if(R.Action==ERPGAuctionAction::Register)
     {
         Allowed.Append({TEXT("itemId"),TEXT("expectedItemRevision"),TEXT("quantity"),TEXT("totalPrice"),TEXT("expiresAt")});
+        if(O->HasField(TEXT("expectedPolicyTag"))){FString Tag;Allowed.Add(TEXT("expectedPolicyTag"));if(!String(O,TEXT("expectedPolicyTag"),Tag)||!PolicyTag(Tag))return false;}
         if(!Guid(O,TEXT("itemId"),C.Item)||!Integer(O,TEXT("expectedItemRevision"),C.ItemRevision,true)||C.ItemRevision==MAX_int64
             ||!Number(O,TEXT("quantity"),C.Quantity,1)||!Integer(O,TEXT("totalPrice"),C.Price,true)||!Date(O,TEXT("expiresAt"),C.Expires))return false;
         FObject Lexical;int64 Quantity;FString Token;
@@ -157,7 +160,7 @@ bool Definitive(const FString& Code)
         TEXT("auction_not_active"),TEXT("auction_expired"),TEXT("auction_item_reserved"),TEXT("auction_listing_limit"),TEXT("auction_escrow_changed"),TEXT("auction_identity_conflict"),
         TEXT("auction_delivery_capacity"),TEXT("auction_return_capacity"),TEXT("auction_wallet_limit"),TEXT("auction_wallet_revision_exhausted"),TEXT("item_trade_not_allowed"),
         TEXT("item_unavailable"),TEXT("item_bound"),TEXT("invalid_trade_quantity"),TEXT("item_revision_conflict"),TEXT("item_not_in_owned_inventory")};
-    return Codes.Contains(Code);
+    return Code==TEXT("auction_policy_conflict") || Codes.Contains(Code);
 }
 }
 bool FRPGAuctionIntent::IsValid() const { RPGAuctionInternal::FCommand C;return RPGAuctionInternal::Command(*this,C); }
@@ -180,6 +183,16 @@ bool RPGAuction::DecodePayable(const FString& Body,FRPGAuctionPayable& Out)
     if(!ReadObject(Body,O,8192)||!Guid(O,TEXT("listingId"),P.ListingId)||!RPGAuctionInternal::Code(O,TEXT("currencyCode"),P.CurrencyCode)||!Integer(O,TEXT("revision"),P.Revision,true)
         ||!Integer(O,TEXT("initialAmount"),P.Initial,false)||!Integer(O,TEXT("remainingAmount"),P.Remaining,false)||P.Remaining>P.Initial)return false;Out=MoveTemp(P);return true;
 }
+bool RPGAuction::DecodeRegistrationPolicy(const FString& Body,FRPGAuctionRegistrationPolicy& Out)
+{
+    using namespace RPGAuctionInternal;FObject O;FRPGAuctionRegistrationPolicy P;
+    if(!ReadObject(Body,O,8192)||O->Values.Num()!=8||!String(O,TEXT("policyTag"),P.Tag)||!PolicyTag(P.Tag)||!Code(O,TEXT("currencyCode"),P.CurrencyCode)
+        ||!Integer(O,TEXT("minimumTotalPrice"),P.MinimumPrice,true)||!Integer(O,TEXT("maximumTotalPrice"),P.MaximumPrice,true)||P.MinimumPrice>P.MaximumPrice
+        ||!Number(O,TEXT("minimumDurationSeconds"),P.MinimumSeconds,1)||!Number(O,TEXT("maximumDurationSeconds"),P.MaximumSeconds,1)
+        ||P.MinimumSeconds>P.MaximumSeconds||P.MaximumSeconds>30*24*3600||!Number(O,TEXT("feeBasisPoints"),P.FeeBasisPoints,0)||P.FeeBasisPoints>10000
+        ||!RPGAuctionInternal::Date(O,TEXT("observedAt"),P.ObservedAt))return false;
+    Out=MoveTemp(P);return true;
+}
 void FRPGAuctionClient::Reset(){Scope={};Generation=FGuid::NewGuid();Sequence=0;Attempt={};Recovery={};Pending.Reset();Receipt.Reset();LastError.Reset();bUncertain=false;bNeedsAssetRefresh=false;}
 bool FRPGAuctionClient::Bind(FString Endpoint,const FString& Account,FGuid Character)
 { FRPGTradeIntentScope S;if(!FRPGTradeIntentScope::Create(MoveTemp(Endpoint),Account,Character,S)){Reset();return false;}if(!(Scope==S)){Reset();Scope=MoveTemp(S);}return true; }
@@ -190,8 +203,8 @@ bool FRPGAuctionClient::Prepare(ERPGAuctionAction A,FGuid Listing,const TSharedP
     auto Writer=TJsonWriterFactory<TCHAR,TCondensedJsonPrintPolicy<TCHAR>>::Create(&R.Body);if(!FJsonSerializer::Serialize(O.ToSharedRef(),Writer)||!FRPGAuctionIntent{Scope,R}.IsValid())return false;
     Pending=MoveTemp(R);Attempt={};Recovery={};LastError.Reset();bUncertain=false;return true;
 }
-bool FRPGAuctionClient::PrepareRegister(FGuid L,FGuid Item,int64 Rev,int32 Q,int64 Price,FDateTime Expiry)
-{ auto O=MakeShared<FJsonObject>();O->SetStringField(TEXT("itemId"),RPGAuctionInternal::Id(Item));O->SetStringField(TEXT("expectedItemRevision"),LexToString(Rev));O->SetNumberField(TEXT("quantity"),Q);O->SetStringField(TEXT("totalPrice"),LexToString(Price));O->SetStringField(TEXT("expiresAt"),RPGAuctionInternal::Iso(Expiry));return Prepare(ERPGAuctionAction::Register,L,O); }
+bool FRPGAuctionClient::PrepareRegister(FGuid L,FGuid Item,int64 Rev,int32 Q,int64 Price,FDateTime Expiry,const FString& PolicyTag)
+{ auto O=MakeShared<FJsonObject>();O->SetStringField(TEXT("itemId"),RPGAuctionInternal::Id(Item));O->SetStringField(TEXT("expectedItemRevision"),LexToString(Rev));O->SetNumberField(TEXT("quantity"),Q);O->SetStringField(TEXT("totalPrice"),LexToString(Price));O->SetStringField(TEXT("expiresAt"),RPGAuctionInternal::Iso(Expiry));if(!PolicyTag.IsEmpty())O->SetStringField(TEXT("expectedPolicyTag"),PolicyTag);return Prepare(ERPGAuctionAction::Register,L,O); }
 bool FRPGAuctionClient::PreparePurchase(const FRPGAuctionListing& L)
 { if(L.Status!=ERPGAuctionStatus::Active||L.bOwn)return false;auto O=MakeShared<FJsonObject>();O->SetStringField(TEXT("expectedRevision"),LexToString(L.Revision));O->SetStringField(TEXT("expectedCurrencyCode"),L.CurrencyCode);O->SetStringField(TEXT("totalPrice"),LexToString(L.TotalPrice));return Prepare(ERPGAuctionAction::Purchase,L.ListingId,O); }
 bool FRPGAuctionClient::PrepareCancel(const FRPGAuctionListing& L)

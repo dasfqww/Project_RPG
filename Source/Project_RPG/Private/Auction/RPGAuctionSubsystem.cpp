@@ -50,6 +50,15 @@ TSharedPtr<FRPGAuctionCoordinator> URPGAuctionSubsystem::GetCoordinator()
             { const auto* Self = Weak.Get(); return Self ? Self->ReadContext() : FRPGAuctionLobbyContext{}; },
             FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("AuctionIntents/v1")));
         EquipmentReader=GI->GetSubsystem<URPGEquipmentMutationSubsystem>();
+        Coordinator->SetRegistrationBagSource([Weak]
+        {
+            const auto* S=Weak.Get();auto* P=S?S->GetLocalPlayer():nullptr;auto* Bags=P?P->GetSubsystem<URPGTradeSubsystem>():nullptr;
+            return S && !S->bEnding && Bags?Bags->ReadRegistrationBag():FRPGTradeBagSnapshot{};
+        },[Weak]
+        {
+            const auto* S=Weak.Get();auto* P=S?S->GetLocalPlayer():nullptr;auto* Bags=P?P->GetSubsystem<URPGTradeSubsystem>():nullptr;
+            return S && !S->bEnding && Bags && Bags->ReloadRegistrationBag();
+        });
         Coordinator->SetItemPresenter([Weak](const FRPGTradeItemDetails& Item,FText& Name,FText& Description)
         {
             const auto* S=Weak.Get();auto* P=S ? S->GetLocalPlayer() : nullptr;

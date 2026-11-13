@@ -20,6 +20,8 @@ public:
     bool BlocksTransitions();
     // Shared definition/version and localized option labels for read-only item presentation.
     bool DescribeItem(const FRPGTradeItemDetails& Item,FText& Name,FText& Description) const { return ResolveItem(Item,Name,Description); }
+    FRPGTradeBagSnapshot ReadRegistrationBag();
+    bool ReloadRegistrationBag();
 private:
     FRPGTradeLobbyContext ReadContext() const;
     bool TickTrade(float);
@@ -29,6 +31,7 @@ private:
     UPROPERTY(Config) TMap<FString, FText> TradeTagLabels;
     UPROPERTY(Config) TMap<FString, FText> TradeGrowthLabels;
     bool ResolveItem(const FRPGTradeItemDetails& Item, FText& Name, FText& Description) const;
+    void EnsureBagReader();
     TSharedPtr<FRPGTradeLobbyOwner> Owner;
     FTSTicker::FDelegateHandle TickHandle;
     bool bEnding = false;

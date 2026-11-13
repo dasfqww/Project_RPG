@@ -28,6 +28,13 @@ struct PROJECT_RPG_API FRPGAuctionPayable
     FString CurrencyCode;
     int64 Revision = 0, Initial = 0, Remaining = 0;
 };
+struct PROJECT_RPG_API FRPGAuctionRegistrationPolicy
+{
+    FString Tag, CurrencyCode;
+    int64 MinimumPrice=0,MaximumPrice=0;
+    int32 MinimumSeconds=0,MaximumSeconds=0,FeeBasisPoints=0;
+    FDateTime ObservedAt;
+};
 struct PROJECT_RPG_API FRPGAuctionReceipt
 {
     FGuid RequestId, ListingId;
@@ -55,6 +62,7 @@ namespace RPGAuction
     PROJECT_RPG_API bool DecodeListing(const FString& Body, bool bOwn, FRPGAuctionListing& Out);
     PROJECT_RPG_API bool DecodePage(const FString& Body, bool bOwn, FRPGAuctionPage& Out);
     PROJECT_RPG_API bool DecodePayable(const FString& Body, FRPGAuctionPayable& Out);
+    PROJECT_RPG_API bool DecodeRegistrationPolicy(const FString& Body,FRPGAuctionRegistrationPolicy& Out);
 }
 
 /** Game-thread model only. No UObject, HTTP, persistence, credentials or inventory delta application.
@@ -65,7 +73,7 @@ class PROJECT_RPG_API FRPGAuctionClient
 public:
     bool Bind(FString Endpoint, const FString& Account, FGuid Character);
     void Reset();
-    bool PrepareRegister(FGuid Listing, FGuid Item, int64 ItemRevision, int32 Quantity, int64 Price, FDateTime Expires);
+    bool PrepareRegister(FGuid Listing, FGuid Item, int64 ItemRevision, int32 Quantity, int64 Price, FDateTime Expires,const FString& PolicyTag=FString());
     bool PreparePurchase(const FRPGAuctionListing& Listing);
     bool PrepareCancel(const FRPGAuctionListing& Listing);
     bool PrepareClaim(const FRPGAuctionPayable& Payable, int64 RequestedAmount);

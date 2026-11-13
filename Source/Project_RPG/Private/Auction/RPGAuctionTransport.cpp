@@ -104,6 +104,8 @@ bool FRPGHttpAuctionTransport::SendRequest(FGuid Character, const FString& Path,
     if (!Request->ProcessRequest() && Active == Request) Request->OnProcessRequestComplete().ExecuteIfBound(Request, nullptr, false);
     return true;
 }
+bool FRPGHttpAuctionTransport::SendRegistrationPolicy(FGuid Character,FCompletion Completion)
+{return Character.IsValid() && SendRequest(Character,Root(Character)+TEXT("/registration-policy"),FString(),8192,MoveTemp(Completion));}
 void FRPGHttpAuctionTransport::Cancel()
 {
     ++Generation;

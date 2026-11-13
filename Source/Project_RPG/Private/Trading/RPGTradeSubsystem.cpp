@@ -58,8 +58,7 @@ TSharedPtr<FRPGTradeLobbyOwner> URPGTradeSubsystem::GetTradeOwner()
             FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir()/TEXT("TradingIntents/v1")));
         Owner->SetDefinitionResolver([WeakThis](const FRPGTradeItemDetails& Item, FText& Name, FText& Description)
             { const auto* Self = WeakThis.Get(); return Self && Self->ResolveItem(Item,Name,Description); });
-        EquipmentReader = GI->GetSubsystem<URPGEquipmentMutationSubsystem>();
-        if (EquipmentReader.IsValid()) EquipmentReader->OnEquipmentMutationsChanged.AddUniqueDynamic(this,&ThisClass::HandleTradeBagChanged);
+        EnsureBagReader();
         Owner->SetBagSource([WeakThis] { auto* Self=WeakThis.Get(); return Self ? Self->ReadTradeBag() : FRPGTradeBagSnapshot{}; },
             [WeakThis] { auto* Self=WeakThis.Get(); return Self && Self->ReloadTradeBag(); });
         Owner->SetAssetSink([WeakThis]
@@ -101,6 +100,15 @@ bool URPGTradeSubsystem::ReloadTradeBag()
     if (!Started) { bBagWaiting=false; CachedBag.bLoading=false; }
     return Started;
 }
+void URPGTradeSubsystem::EnsureBagReader()
+{
+    if(bEnding)return;
+    auto* P=GetLocalPlayer();auto* GI=P?P->GetGameInstance():nullptr;
+    if(!EquipmentReader.IsValid() && GI)EquipmentReader=GI->GetSubsystem<URPGEquipmentMutationSubsystem>();
+    if(EquipmentReader.IsValid())EquipmentReader->OnEquipmentMutationsChanged.AddUniqueDynamic(this,&ThisClass::HandleTradeBagChanged);
+}
+FRPGTradeBagSnapshot URPGTradeSubsystem::ReadRegistrationBag(){EnsureBagReader();return ReadTradeBag();}
+bool URPGTradeSubsystem::ReloadRegistrationBag(){EnsureBagReader();return ReloadTradeBag();}
 FRPGTradeBagSnapshot URPGTradeSubsystem::ReadTradeBag() { UpdateTradeBag(); return CachedBag; }
 void URPGTradeSubsystem::HandleTradeBagChanged()
 {

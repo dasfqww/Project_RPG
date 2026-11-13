@@ -23,6 +23,7 @@ void FRPGAuctionCoordinator::ResetMemory()
     ++Generation; Transport->Cancel(); bBusy = false; Client.Reset(); Scope = {}; ClearIntent.Reset();
     bStorageBlocked = false; NextAttempt = NextStorage = 0; LastResponse = ERPGAuctionResponse::Ignored;
     Assets.Reset(); AssetsState=ERPGAuctionAssetsState::Idle;
+    RegistrationPolicy.Reset();RegistrationPolicyState=ERPGAuctionReadState::Idle;PolicyReceived=0;RegistrationError=FText::GetEmpty();
     ClearBrowse();
 }
 void FRPGAuctionCoordinator::Shutdown()

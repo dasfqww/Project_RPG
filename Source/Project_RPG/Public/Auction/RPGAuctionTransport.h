@@ -29,6 +29,7 @@ public:
     virtual bool SendPage(FGuid Character, const FRPGAuctionSearch& Search, bool bMine, FCompletion Completion) = 0;
     virtual bool SendListing(FGuid Character, FGuid Listing, FCompletion Completion) = 0;
     virtual bool SendPayable(FGuid Character, FGuid Listing, FCompletion Completion) = 0;
+    virtual bool SendRegistrationPolicy(FGuid Character,FCompletion Completion) { return false; }
     virtual bool SendReceipt(FGuid Character, FGuid Request, FCompletion Completion) = 0;
     virtual bool SendAssets(FGuid Character, FGuid Request, FCompletion Completion) { return false; }
     virtual void Cancel() = 0;
@@ -48,6 +49,7 @@ public:
     virtual bool SendPage(FGuid Character, const FRPGAuctionSearch& Search, bool bMine, FCompletion Completion) override;
     virtual bool SendListing(FGuid Character, FGuid Listing, FCompletion Completion) override;
     virtual bool SendPayable(FGuid Character, FGuid Listing, FCompletion Completion) override;
+    virtual bool SendRegistrationPolicy(FGuid Character,FCompletion Completion) override;
     virtual bool SendReceipt(FGuid Character, FGuid Request, FCompletion Completion) override;
     virtual bool SendAssets(FGuid Character, FGuid Request, FCompletion Completion) override;
     virtual void Cancel() override;

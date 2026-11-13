@@ -30,6 +30,8 @@ internal static class AuctionWireFixtures
         var seed=await items.CommitAsync(new(Guid.NewGuid(),"Test.Seed","wire",owner,10,[new(0,raw)]),clock.GetUtcNow(),default);
         if(seed.Status!=ItemRepositoryCommitStatus.Committed)throw new Exception("Wire seed failed");
         var terms=new AuctionTerms("Gold",1,long.MaxValue,TimeSpan.FromSeconds(1),TimeSpan.FromDays(7),333);
+        if(Guid.TryParseExact(Environment.GetEnvironmentVariable("PROJECT_RPG_AUCTION_REGISTRATION_RUN"),"N",out _))
+            await File.WriteAllTextAsync(Path.Combine(path,"policy.json"),JsonSerializer.Serialize(AuctionApiContracts.RegistrationPolicy(new(terms,clock.GetUtcNow())),new JsonSerializerOptions(JsonSerializerDefaults.Web)),new UTF8Encoding(false));
         var registration=new AuctionEscrowCommand(Guid.NewGuid(),Guid.NewGuid(),seller,AuctionEscrowKind.Register,Item:new(raw.ItemId,1,4),TotalPrice:long.MaxValue,ExpiresAt:clock.GetUtcNow().AddHours(1),Terms:terms);
         var registered=await store.ExecuteAsync(registration,default);
         async Task Write(string name,object value)=>await File.WriteAllTextAsync(Path.Combine(path,name+".json"),JsonSerializer.Serialize(value,new JsonSerializerOptions(JsonSerializerDefaults.Web)),new UTF8Encoding(false));
@@ -38,6 +40,8 @@ internal static class AuctionWireFixtures
         var secondListing=await store.ExecuteAsync(second,default);await Write("cancelOwn",AuctionApiContracts.Listing(secondListing.Listing,true));
         await Write("page",AuctionApiContracts.Page(await store.SearchAsync(new(1),null,default),false));
         await Write("registration",AuctionApiContracts.Result(registered));
+        if(Guid.TryParseExact(Environment.GetEnvironmentVariable("PROJECT_RPG_AUCTION_REGISTRATION_RUN"),"N",out _))
+            await Write("registrationAssets",AuctionApiContracts.Assets((await store.AssetsAsync(registration.RequestId,seller,default))!));
         var funding=await money.CommitAsync(new(Guid.NewGuid(),buyer.CharacterId,Guid.NewGuid(),"Test.Fund","wire","test",[new("Gold",long.MaxValue)]),(await game.GetCharacterEconomyContextAsync(buyer.CharacterId,default))!,clock.GetUtcNow(),default);
         if(funding.Status!=CurrencyTransactionStatus.Committed)throw new Exception("Wire fund failed");
         var purchase=await store.PurchaseAsync(new(Guid.NewGuid(),registration.ListingId,buyer,1,"Gold",long.MaxValue),default);

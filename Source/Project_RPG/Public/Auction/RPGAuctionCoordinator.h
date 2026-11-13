@@ -2,6 +2,7 @@
 #include "Auction/RPGAuctionTransport.h"
 #include "Auction/RPGAuctionIntentJournal.h"
 #include "Trading/RPGTradeAssets.h"
+#include "Trading/RPGTradeOfferDraft.h"
 
 enum class ERPGAuctionAssetsState : uint8 { Idle, Loading, Ready, Failed };
 enum class ERPGAuctionReadState : uint8 { Idle, Loading, Ready, Failed };
@@ -18,6 +19,10 @@ struct PROJECT_RPG_API FRPGAuctionScreenView
     bool bPublicVisible=false,bHasPending=false,bStorageBlocked=false,bHasReceipt=false;
     bool bCanPurchase=false,bCanCancel=false,bHasReview=false,bCanConfirm=false;
     bool bPayableVisible=false,bCanReadPayable=false,bCanClaim=false;
+    FText RegistrationStatus,PolicyText;
+    TArray<FRPGTradeBagItem> BagItems;
+    FGuid BagToken;
+    bool bRegistrationVisible=false,bCanReadPolicy=false,bCanReloadBag=false,bCanReviewRegistration=false;
 };
 
 struct PROJECT_RPG_API FRPGAuctionLobbyContext
@@ -53,6 +58,10 @@ public:
     bool ReviewListing(FGuid DisplayedPage,FGuid Listing,ERPGAuctionAction Action);
     bool ConfirmListing(FGuid DisplayedReview);
     void DismissReview(FGuid DisplayedReview);
+    void SetRegistrationBagSource(TFunction<FRPGTradeBagSnapshot()> Read,TFunction<bool()> Reload);
+    bool ReadRegistrationPolicy();
+    bool ReloadRegistrationBag();
+    bool ReviewRegistration(FGuid BagToken,FGuid Item,const FString& Quantity,const FString& Price,const FString& Seconds);
     FRPGAuctionScreenView GetScreenView();
     void SetItemPresenter(TFunction<bool(const FRPGTradeItemDetails&,FText&,FText&)> Presenter) { ItemPresenter=MoveTemp(Presenter); }
     FSimpleMulticastDelegate OnViewChanged;
@@ -84,6 +93,13 @@ private:
     FText ListingText(const FRPGAuctionListing& Listing,bool bDetail) const;
     bool CanReviewAction(ERPGAuctionAction Action) const;
     bool OwnSoldDetail() const;
+    bool NewCommandAllowed(bool bNewSale) const;
+    bool ReadRegistrationBag(FRPGTradeBagSnapshot& Out) const;
+    bool RegistrationPolicyCurrent() const;
+    bool RegistrationAllowed() const;
+    bool RegistrationConsentCurrent() const;
+    bool ConfirmRegistration(FGuid Token);
+    void RegistrationView(FRPGAuctionScreenView& View);
     TSharedRef<IRPGAuctionTransport> Transport;
     FContext Context;
     FString JournalRoot;
@@ -112,4 +128,20 @@ private:
     TFunction<bool(const FRPGTradeItemDetails&,FText&,FText&)> ItemPresenter;
     struct FListingReview { FRPGAuctionListing Listing; ERPGAuctionAction Action; FGuid Token; FText Text; TOptional<FRPGAuctionPayable> Payable; };
     TOptional<FListingReview> Review;
+    TFunction<FRPGTradeBagSnapshot()> RegistrationBagReader;
+    TFunction<bool()> RegistrationBagReload;
+    TOptional<FRPGAuctionRegistrationPolicy> RegistrationPolicy;
+    ERPGAuctionReadState RegistrationPolicyState=ERPGAuctionReadState::Idle;
+    double PolicyReceived=0;
+    FText RegistrationError;
+    struct FRegistrationReview
+    {
+        FGuid Token,BagToken,Item,Listing;
+        int64 Revision=0,Price=0;
+        int32 Quantity=0,Available=0;
+        FDateTime Expires;
+        FString PolicyTag;
+        FText Text;
+    };
+    TOptional<FRegistrationReview> RegistrationReview;
 };
