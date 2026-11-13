@@ -14,6 +14,8 @@
 #include "Trading/RPGTradeSubsystem.h"
 #include "Auction/RPGAuctionSubsystem.h"
 #include "UI/Lobby/RPGAuctionWidget.h"
+#include "UI/Riding/RPGRidingCollectionWidget.h"
+#include "Riding/RPGRidingCollectionSubsystem.h"
 #include "UI/Lobby/RPGOnlineLobbyLayout.h"
 #include "UI/Lobby/RPGTutorialEntryPolicy.h"
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
@@ -55,6 +57,7 @@ void URPGOnlineLobbyWidget::BuildMenuContent(UVerticalBox& Parent, bool bServerP
 	Add(TEXT("OpenStoryMenuButton"), NSLOCTEXT("RPGFrontend", "Story", "인물과 이야기"));
 	Add(TEXT("OpenTradeMenuButton"), NSLOCTEXT("RPGFrontend", "Trade", "거래 내역"));
 	Add(TEXT("OpenAuctionMenuButton"), NSLOCTEXT("RPGFrontend", "Auction", "경매 내역 · 처리 결과"));
+	Add(TEXT("OpenRidingCollectionButton"), NSLOCTEXT("RPGFrontend", "RidingCollection", "탈것 보관함"));
 	Add(TEXT("CloseLobbyDetailsButton"), NSLOCTEXT("RPGFrontend", "MenuHome", "로비 메뉴로 돌아가기"));
 	TutorialStatusText = RPGOnlineLobbyLayout::Text(*WidgetTree, *Rows, TEXT("TutorialEntryStatus"), FText::GetEmpty());
 }
@@ -160,6 +163,34 @@ void URPGOnlineLobbyWidget::HandleTradeClosed()
 bool URPGOnlineLobbyWidget::CanOpenAuctionMenu() const
 {
 	return bServerSelected && bPreparationOpen && !bTutorialEntryActive && CanUseCharacterConfiguration(false,false);
+}
+
+bool URPGOnlineLobbyWidget::CanUseRidingCollection() const { return CanUseTrading(); }
+void URPGOnlineLobbyWidget::OpenRidingCollection()
+{
+	if (!CanUseRidingCollection()) return;
+	auto* Owner = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGRidingCollectionSubsystem>() : nullptr;
+	const auto Reader = Owner ? Owner->GetReader() : nullptr;
+	if (!Reader) return;
+	if (RidingCollectionPanel && RidingCollectionPanel->IsInViewport()) { RidingCollectionPanel->SetKeyboardFocus(); return; }
+	RidingCollectionPanel = CreateWidget<URPGRidingCollectionWidget>(GetOwningPlayer(), URPGRidingCollectionWidget::StaticClass());
+	if (RidingCollectionPanel)
+	{
+		auto* Panel = RidingCollectionPanel.Get();
+		const TWeakObjectPtr<URPGRidingCollectionSubsystem> Weak(Owner);
+		Panel->OnClosed.AddUObject(this, &ThisClass::HandleRidingCollectionClosed);
+		Panel->SetReadOwner(Reader.ToSharedRef(), [Weak](const FString& Id)
+			{ const auto* Subsystem = Weak.Get(); return Subsystem ? Subsystem->DescribeMount(Id) : FText::GetEmpty(); });
+		if (RidingCollectionPanel == Panel && Panel->GetVisibility() != ESlateVisibility::Collapsed) Panel->AddToViewport(146);
+	}
+}
+void URPGOnlineLobbyWidget::HandleRidingCollectionClosed()
+{
+	if (auto* Owner = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGRidingCollectionSubsystem>() : nullptr) Owner->ReleaseReader();
+	RidingCollectionPanel = nullptr;
+	if (CanUseRidingCollection())
+		if (auto* Button = Buttons.FindRef(TEXT("OpenRidingCollectionButton")).Get(); Button && Button->GetIsEnabled() && Button->IsVisible())
+			Button->SetUserFocus(GetOwningPlayer());
 }
 void URPGOnlineLobbyWidget::OpenAuctionMenu()
 {
@@ -311,6 +342,8 @@ void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 	auto* Auctions=GetOwningLocalPlayer()?GetOwningLocalPlayer()->GetSubsystem<URPGAuctionSubsystem>():nullptr;
 	const auto AuctionOwner=Auctions?Auctions->GetCoordinator():nullptr;
 	Control(TEXT("OpenAuctionMenuButton"),CanOpenAuctionMenu(),bHome && AuctionOwner && AuctionOwner->GetScreenView().bAvailable);
+	Control(TEXT("OpenRidingCollectionButton"), CanUseRidingCollection(), bHome);
+	if (RidingCollectionPanel && !CanUseRidingCollection()) RidingCollectionPanel->CloseScreen();
 	if (NarrativePanel && NarrativePanel->IsInViewport()
 		&& (!CanOpenNarrativeDialogues() || NarrativePanel->GetCharacterId().ToString(EGuidFormats::DigitsWithHyphensLower) != Flow->GetSelectedCharacterId()))
 		NarrativePanel->CloseScreen();

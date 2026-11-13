@@ -1,13 +1,16 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8')
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$Screen)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
 $proofRoot = Join-Path $workspace ('Saved/BuildChecks/RidingOwnerRead-20261114/' + $id)
+$reservation = 'riding-owner-read-20261114'
+if ($Screen) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingCollectionScreen-20261114/'+$id); $reservation='riding-collection-screen-20261114' }
 $tempRoot = Join-Path $workspace 'Saved/RO'
 $temp = Join-Path $tempRoot $id.Substring(0,8)
 $project = Join-Path $temp 'Project'
 $proof = [ordered]@{Passed=$false;Scope='Native Riding owner collection wire/reader and actual UE Player HTTP to private Memory Kestrel, no UI/PG/Steam/full game link';Inputs=@();Tests=@();Cleanup=$null;Failure=$null}
+if ($Screen) { $proof.Scope='Native UMG read screen, filters/identity/authentication/close lifetimes, actual UMG click to reader to Player HTTP to Memory Kestrel; existing wire/reader/transport regressions. No concrete LocalPlayer/lobby/menu runtime, assets/GPU/PG/Steam/full game link' }
 $process = $null
 $hostProcess = $null
 $ownsTemp = $false
@@ -22,8 +25,8 @@ function Write-Utf8([string]$Path, [string]$Text) {
 }
 function Save-Proof { Write-Utf8 (Join-Path $proofRoot 'Result.json') ($proof | ConvertTo-Json -Depth 10) }
 function Assert-Reservation {
-    $rows = @(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') | Where-Object {$_ -match '^\|[^|]* / riding-owner-read-20261114 \|'})
-    if ($rows.Count -ne 1) { throw 'Trading client validation reservation missing' }
+    $rows = @(Get-Content -Encoding UTF8 (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') | Where-Object {$_ -match ('^\|[^|]* / '+[regex]::Escape($reservation)+' \|')})
+    if ($rows.Count -ne 1) { throw 'Riding owner validation reservation missing' }
 }
 try {
     Assert-Reservation
@@ -34,6 +37,7 @@ try {
     $ownsTemp = $true
     $proof.Head = (git -C $workspace rev-parse HEAD).Trim()
     $files = @('Source/Project_RPG/Public/Riding/RPGRidingTypes.h','Source/Project_RPG/Private/Riding/RPGRidingTypes.cpp','Source/Project_RPG/Public/Riding/RPGRidingCollection.h','Source/Project_RPG/Private/Riding/RPGRidingCollection.cpp','Source/Project_RPG/Public/Riding/RPGRidingOwnerTransport.h','Source/Project_RPG/Private/Riding/RPGRidingOwnerTransport.cpp','Source/Project_RPG/Public/Riding/RPGRidingCollectionReader.h','Source/Project_RPG/Private/Riding/RPGRidingCollectionReader.cpp','Source/Project_RPG/Private/Tests/RPGRidingCollectionTests.cpp','Source/Project_RPG/Public/Online/RPGBackendPlayerAuthState.h','Source/Project_RPG/Private/Online/RPGBackendPlayerAuthState.cpp')
+    if ($Screen) { $files+=@('Source/Project_RPG/Public/UI/Riding/RPGRidingCollectionWidget.h','Source/Project_RPG/Private/UI/Riding/RPGRidingCollectionWidget.cpp','Source/Project_RPG/Private/Tests/RPGRidingCollectionWidgetTests.cpp') }
     foreach ($relative in $files) {
         $source = Join-Path $workspace $relative
         $destination = Join-Path $project $relative
@@ -99,7 +103,7 @@ public class Project_RPG : ModuleRules {
     public Project_RPG(ReadOnlyTargetRules Target) : base(Target) {
         PCHUsage = PCHUsageMode.NoPCHs;
         bUseUnity = false;
-        PublicDependencyModuleNames.AddRange(new string[] {"Core", "CoreUObject", "Engine", "Json", "HTTP", "NetCore"});
+        PublicDependencyModuleNames.AddRange(new string[] {"Core", "CoreUObject", "Engine", "Json", "HTTP", "NetCore", "UMG", "Slate", "SlateCore", "InputCore"});
     }
 }
 '@
@@ -141,6 +145,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingOwnerR
     $result = Get-Content -LiteralPath (Join-Path $report 'index.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $proof.Tests = @($result.tests | Select-Object fullTestPath,state,errors,warnings)
     $expected = @('Wire','Malformed','ReaderLifetime','ReaderFailures','MemoryHttp') | ForEach-Object {'ProjectRPG.Riding.OwnerRead.'+$_}
+    if ($Screen) { $expected += @('Browse','Filters','Context','Lifetime','Failures','MemoryHttp') | ForEach-Object {'ProjectRPG.Riding.CollectionScreen.'+$_} }
     if ((Compare-Object $expected @($proof.Tests.fullTestPath)) -or @($proof.Tests | Where-Object {$_.state -ne 'Success' -or $_.errors -ne 0 -or $_.warnings -ne 0}).Count) { throw 'Missing or failing native cases' }
     foreach ($inputFile in $proof.Inputs) {
         if ((Get-FileHash -LiteralPath (Join-Path $workspace $inputFile.Path)).Hash -ne $inputFile.SHA256) { throw 'Original source changed during validation' }

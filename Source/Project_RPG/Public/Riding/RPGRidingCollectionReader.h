@@ -22,6 +22,7 @@ public:
     void RefreshContext();
     bool Read();
     void Shutdown();
+    FRPGRidingCollectionContext GetContext() { RefreshContext(); return Bound; }
     ERPGRidingCollectionReadState GetState() { RefreshContext(); return State; }
     const FRPGRidingCollection* GetCollection() { RefreshContext(); return State == ERPGRidingCollectionReadState::Ready ? &Collection : nullptr; }
     double GetRetryAfterSeconds() const;

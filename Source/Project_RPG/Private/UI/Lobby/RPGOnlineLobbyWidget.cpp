@@ -4,6 +4,8 @@
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
 #include "UI/Lobby/RPGTradeWidget.h"
 #include "UI/Lobby/RPGAuctionWidget.h"
+#include "UI/Riding/RPGRidingCollectionWidget.h"
+#include "Riding/RPGRidingCollectionSubsystem.h"
 #include "Trading/RPGTradeSubsystem.h"
 #include "Auction/RPGAuctionSubsystem.h"
 #include "Narrative/RPGNarrativeCoordinator.h"
@@ -348,6 +350,7 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 	BIND_ACTION("OpenEquipmentMenuButton", OpenEquipmentMenu);
 	BIND_ACTION("OpenTradeMenuButton", OpenTradeMenu);
 	BIND_ACTION("OpenAuctionMenuButton", OpenAuctionMenu);
+	BIND_ACTION("OpenRidingCollectionButton", OpenRidingCollection);
 	BIND_ACTION("OpenStoryMenuButton", OpenStoryMenu);
 	BIND_ACTION("OpenDungeonMenuButton", OpenDungeonMenu);
 	BIND_ACTION("CloseLobbyDetailsButton", CloseLobbyDetails);
@@ -426,6 +429,9 @@ void URPGOnlineLobbyWidget::NativeDestruct()
 	TradePanel = nullptr;
 	if (AuctionPanel) { AuctionPanel->OnClosed.RemoveAll(this); AuctionPanel->CloseScreen(); }
 	AuctionPanel = nullptr;
+	if (RidingCollectionPanel) { RidingCollectionPanel->OnClosed.RemoveAll(this); RidingCollectionPanel->CloseScreen(); }
+	RidingCollectionPanel = nullptr;
+	if (auto* Owner = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGRidingCollectionSubsystem>() : nullptr) Owner->ReleaseReader();
 	NarrativePanel = nullptr;
 	bTutorialEntryActive = bTutorialResolvingSession = false;
 	TutorialAccount.Reset(); TutorialCharacter.Reset(); TutorialDungeonId.Reset();

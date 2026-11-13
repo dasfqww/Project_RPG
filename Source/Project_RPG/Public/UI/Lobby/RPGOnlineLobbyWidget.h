@@ -23,6 +23,7 @@ class URPGEquipmentGrowthWidget;
 class URPGNarrativeDialogueWidget;
 class URPGTradeWidget;
 class URPGAuctionWidget;
+class URPGRidingCollectionWidget;
 class URPGServiceStatusSubsystem;
 
 struct PROJECT_RPG_API FRPGOnlineLobbyPresentation
@@ -96,6 +97,7 @@ public:
 	bool CreateSelectedDungeonSession();
 	bool IsFrontendRequestInFlight() const;
 	bool CanUseTrading() const;
+	bool CanUseRidingCollection() const;
 	UFUNCTION(BlueprintPure, Category = "RPG|Progression|Lobby")
 	URPGCharacterConfigurationWidget* GetCharacterConfigurationWidget() const { return ConfigurationPanel; }
 	UFUNCTION(BlueprintPure, Category = "RPG|Progression|Lobby")
@@ -151,6 +153,9 @@ private:
 	bool CanOpenAuctionMenu() const;
 	void HandleAuctionClosed();
 	UPROPERTY(Transient) TObjectPtr<URPGAuctionWidget> AuctionPanel;
+	UFUNCTION() void OpenRidingCollection();
+	void HandleRidingCollectionClosed();
+	UPROPERTY(Transient) TObjectPtr<URPGRidingCollectionWidget> RidingCollectionPanel;
 	UFUNCTION() void OpenStoryMenu();
 	bool CanOpenNarrativeDialogues() const;
 	UFUNCTION() void OpenDungeonMenu();
