@@ -52,6 +52,18 @@ bool URPGNarrativeCoordinator::ContextMatches() const
     return !bShuttingDown && IsInGameThread() && Transport && SelectedCharacter.IsValid()
         && Transport->GetContext(CurrentEndpoint, CurrentSteam) && CurrentEndpoint == Endpoint && CurrentSteam == SteamId;
 }
+bool URPGNarrativeCoordinator::HasAuthenticatedViewContext() const
+{
+    if (!ContextMatches()) return false;
+    const auto* Player = GetLocalPlayer();
+    const auto* Instance = Player ? Player->GetGameInstance() : nullptr;
+    const auto* Web = Instance ? Instance->GetSubsystem<UHttpWebManager>() : nullptr;
+    FString CurrentEndpoint, CurrentSteam;
+    // Stable identity survives invalid credentials so uncertain commands can be recovered.
+    // Showing cached personal text additionally requires a currently usable player token.
+    return Web && Web->HasAccessToken() && Web->GetPlayerEquipmentContext(CurrentEndpoint, CurrentSteam)
+        && CurrentEndpoint == Endpoint && CurrentSteam == SteamId;
+}
 TSharedPtr<FRPGNarrativeHistoryClient> URPGNarrativeCoordinator::GetAccountHistoryClient()
 {
     if (bShuttingDown || !EnsureTransport()) return nullptr;
@@ -65,7 +77,7 @@ TSharedPtr<FRPGNarrativeHistoryClient> URPGNarrativeCoordinator::GetAccountHisto
             [WeakThis](const FGuid Id)
             {
                 const auto* Owner = WeakThis.Get(); FGuid ActualSelection;
-                return Owner && Owner->SelectedCharacter == Id && Owner->ContextMatches() && Owner->DungeonFlow
+                return Owner && Owner->SelectedCharacter == Id && Owner->HasAuthenticatedViewContext() && Owner->DungeonFlow
                     && FGuid::Parse(Owner->DungeonFlow->GetSelectedCharacterId(), ActualSelection) && ActualSelection == Id;
             });
     }
@@ -73,7 +85,7 @@ TSharedPtr<FRPGNarrativeHistoryClient> URPGNarrativeCoordinator::GetAccountHisto
 }
 bool URPGNarrativeCoordinator::HasCurrentSnapshot() const
 {
-    return bHasView && ContextMatches() && Quests && Scenarios && Dialogues
+    return bHasView && HasAuthenticatedViewContext() && Quests && Scenarios && Dialogues
         && Quests->HasRevision(SelectedCharacter, Revision) && Scenarios->HasRevision(SelectedCharacter, Revision)
         && Dialogues->Readable();
 }
@@ -135,7 +147,7 @@ TSharedPtr<FRPGNarrativeTranscript> URPGNarrativeCoordinator::GetTranscript()
         Transcript = MakeShared<FRPGNarrativeTranscript>([WeakThis](FRPGNarrativeTranscriptContext& Out)
         {
             const auto* Owner = WeakThis.Get(); FGuid Selected;
-            if (!Owner || !Owner->ContextMatches() || !Owner->DungeonFlow
+            if (!Owner || !Owner->HasAuthenticatedViewContext() || !Owner->DungeonFlow
                 || !FGuid::Parse(Owner->DungeonFlow->GetSelectedCharacterId(), Selected) || Selected != Owner->SelectedCharacter) return false;
             Out.Character = Selected; Out.Account = Owner->SteamId; Out.Endpoint = Owner->Endpoint;
             Out.bHasActive = Owner->HasCurrentSnapshot() && Owner->Dialogues->GetActiveDialogue(Out.Active);
@@ -153,7 +165,7 @@ TSharedPtr<FRPGNarrativeQuestTracking> URPGNarrativeCoordinator::GetQuestTrackin
         QuestTracking = MakeShared<FRPGNarrativeQuestTracking>([WeakThis](FRPGNarrativeTrackingContext& Out)
         {
             const auto* Owner = WeakThis.Get(); FGuid Selected;
-            if (!Owner || !Owner->ContextMatches() || !Owner->DungeonFlow
+            if (!Owner || !Owner->HasAuthenticatedViewContext() || !Owner->DungeonFlow
                 || !FGuid::Parse(Owner->DungeonFlow->GetSelectedCharacterId(), Selected) || Selected != Owner->SelectedCharacter) return false;
             Out.Character = Selected; Out.Endpoint = Owner->Endpoint; Out.Account = Owner->SteamId;
             Out.bReadable = Owner->HasCurrentSnapshot();

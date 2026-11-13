@@ -2,6 +2,7 @@
 
 #include "Misc/AutomationTest.h"
 #include "Narrative/RPGNarrativeCoordinator.h"
+#include "Narrative/RPGNarrativeTranscript.h"
 #include "Narrative/RPGNarrativeTransport.h"
 #include "Narrative/RPGQuestManager.h"
 #include "Narrative/RPGScenarioManager.h"
@@ -40,6 +41,7 @@
 
 struct FRPGNarrativeTestAccess
 {
+    static bool StableContext(const URPGNarrativeCoordinator* Owner) { return Owner->ContextMatches(); }
     static void QueueDungeonRefresh(URPGNarrativeCoordinator* Owner) { Owner->ScheduleDungeonSync(true, true); }
     static void PumpDungeon(URPGNarrativeCoordinator* Owner)
     {
@@ -898,6 +900,50 @@ namespace RPGNarrativeTests
         URPGNarrativeCoordinator* Narrative = nullptr;
     };
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGNarrativeAuthenticatedViewTest, "ProjectRPG.Narrative.AuthenticatedView",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGNarrativeAuthenticatedViewTest::RunTest(const FString&)
+{
+    using namespace RPGNarrativeTests;
+    FGameFixture Fixture;
+    if (!TestTrue(TEXT("Actual game-instance auth and local-player managers"), Fixture.Init())) return false;
+    auto* Flow = Fixture.Player->GetSubsystem<URPGNarrativeCoordinator>();
+    auto* Web = Fixture.Instance->GetSubsystem<UHttpWebManager>();
+    const auto Transport = MakeShared<FTransport>();
+    FRPGNarrativeTestAccess::Attach(Flow, Transport);
+    TestTrue(TEXT("Select authenticated character"), Flow->SelectCharacter(Character));
+    TestTrue(TEXT("Read snapshot"), Flow->Refresh());
+    TestTrue(TEXT("Apply initial snapshot"), Transport->Complete(Snapshot(0)));
+    TestTrue(TEXT("Valid token allows current view"), Flow->HasCurrentSnapshot());
+    TestTrue(TEXT("Open active authored line"), Flow->BeginDialogue(TEXT("DEV.Contact.Offer")));
+    const auto Transcript = Flow->GetTranscript();
+    TestTrue(TEXT("Record displayed line before credential loss"), Transcript->Capture(Character, TEXT("DEV.Contact.Offer")));
+    TestTrue(TEXT("Start explicit choice"), Flow->Choose(TEXT("accept")));
+    const FString OriginalBody = Transport->LastBody;
+    Web->ClearAccessToken();
+    TestFalse(TEXT("Actual player credential invalidated"), Web->HasAccessToken());
+    TestTrue(TEXT("Recovery identity remains stable"), FRPGNarrativeTestAccess::StableContext(Flow));
+    TestTrue(TEXT("Uncertain original command retained"), Flow->HasPendingChoice());
+    TestFalse(TEXT("Stable identity alone cannot expose cached view"), Flow->HasCurrentSnapshot());
+    TArray<FRPGNarrativeTranscriptLine> Lines;
+    TestFalse(TEXT("Invalid token hides personal text"), Transcript->Read(Character, Lines));
+    TestEqual(TEXT("Invalid read output is empty"), Lines.Num(), 0);
+    TestFalse(TEXT("Invalid token cannot delete retained text"), Transcript->Clear(Character));
+    TestFalse(TEXT("Invalid token cannot collect a new line"), Transcript->Capture(Character, TEXT("DEV.Contact.Offer")));
+    TestTrue(TEXT("401 is received for original write"), Transport->Complete(TEXT("{}"), 401));
+    TestTrue(TEXT("401 preserves pending command"), Flow->HasPendingChoice());
+    FRPGNarrativeTestAccess::Login(Web);
+    TestTrue(TEXT("Same owner authenticates again"), Web->HasAccessToken());
+    TestTrue(TEXT("Same owner recovers previously read text"), Transcript->Read(Character, Lines));
+    TestEqual(TEXT("Text was hidden and retained"), Lines.Num(), 1);
+    TestTrue(TEXT("Original uncertain command can retry"), Flow->RetryPendingChoice());
+    TestEqual(TEXT("Request ID and body unchanged"), Transport->LastBody, OriginalBody);
+    TestTrue(TEXT("Authoritative original result applied"), Transport->Complete(Snapshot(1)));
+    TestFalse(TEXT("Original command is resolved"), Flow->HasPendingChoice());
+    TestTrue(TEXT("Authenticated authoritative view is readable again"), Flow->HasCurrentSnapshot());
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGNarrativeHttpDialoguePersistenceTest, "ProjectRPG.Narrative.HttpDialoguePersistence",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 bool FRPGNarrativeHttpDialoguePersistenceTest::RunTest(const FString&)

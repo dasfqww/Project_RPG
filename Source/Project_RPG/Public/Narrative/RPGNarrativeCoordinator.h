@@ -56,6 +56,7 @@ private:
     bool BindManagers();
     bool EnsureTransport();
     bool ContextMatches() const;
+    bool HasAuthenticatedViewContext() const;
     bool Dispatch(bool bWrite, bool bDungeon = false);
     void Receive(uint64 Generation, bool bWrite, FRPGNarrativeHttpResult Result);
     void Apply(FRPGNarrativeSnapshot Snapshot);
