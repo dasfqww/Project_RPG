@@ -15,6 +15,7 @@ class FRPGNarrativeHistoryClient;
 class FRPGNarrativeSkipClient;
 class URPGDungeonSessionSubsystem;
 class FRPGNarrativeQuestTracking;
+class FRPGNarrativeTranscript;
 class URPGNarrativeQuestTrackerWidget;
 struct FRPGDungeonSession;
 
@@ -49,6 +50,7 @@ public:
     TSharedPtr<FRPGNarrativeHistoryClient> GetAccountHistoryClient();
     TSharedPtr<FRPGNarrativeSkipClient> GetStorySkipClient();
     TSharedPtr<FRPGNarrativeQuestTracking> GetQuestTracking();
+    TSharedPtr<FRPGNarrativeTranscript> GetTranscript();
 private:
     friend struct FRPGNarrativeTestAccess;
     bool BindManagers();
@@ -71,6 +73,7 @@ private:
     TSharedPtr<FRPGNarrativeHistoryClient> HistoryClient;
     TSharedPtr<FRPGNarrativeSkipClient> SkipClient;
     TSharedPtr<FRPGNarrativeQuestTracking> QuestTracking;
+    TSharedPtr<FRPGNarrativeTranscript> Transcript;
     UPROPERTY(Transient) TObjectPtr<URPGNarrativeQuestTrackerWidget> TrackingHUD;
     FTSTicker::FDelegateHandle TrackingTick;
     TOptional<FRPGNarrativeCommand> PendingChoice;

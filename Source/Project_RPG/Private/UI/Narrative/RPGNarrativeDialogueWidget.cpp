@@ -17,6 +17,7 @@
 #include "UI/Narrative/RPGNarrativeHistoryPanel.h"
 #include "UI/Narrative/RPGNarrativeStorySkipPanel.h"
 #include "UI/Narrative/RPGNarrativeQuestTrackerWidget.h"
+#include "UI/Narrative/RPGNarrativeTranscriptPanel.h"
 #include "Narrative/RPGNarrativePresentation.h"
 #include "Actor/Narrative/RPGNarrativeNPC.h"
 #include "GameFramework/PlayerController.h"
@@ -72,6 +73,8 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
         Journal->SetAutoWrapText(true); JournalScroll->AddChild(Journal);
         QuestTracker = WidgetTree->ConstructWidget<URPGNarrativeQuestTrackerWidget>(URPGNarrativeQuestTrackerWidget::StaticClass(), TEXT("NarrativeQuestTracking"));
         JournalScroll->AddChild(QuestTracker);
+        TranscriptPanel = WidgetTree->ConstructWidget<URPGNarrativeTranscriptPanel>(URPGNarrativeTranscriptPanel::StaticClass(), TEXT("NarrativeTranscript"));
+        JournalScroll->AddChild(TranscriptPanel);
         AccountHistory = WidgetTree->ConstructWidget<URPGNarrativeHistoryPanel>(URPGNarrativeHistoryPanel::StaticClass(), TEXT("NarrativeAccountHistory"));
         JournalScroll->AddChild(AccountHistory);
         StorySkip = WidgetTree->ConstructWidget<URPGNarrativeStorySkipPanel>(URPGNarrativeStorySkipPanel::StaticClass(), TEXT("NarrativeStorySkip"));
@@ -91,6 +94,7 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
         RetryButton->OnClicked.AddUniqueDynamic(this, &ThisClass::RetryChoice);
         Button(TEXT("NarrativeClose"), NSLOCTEXT("RPGNarrative", "Close", "닫기"))->OnClicked.AddUniqueDynamic(this, &ThisClass::CloseScreen);
     }
+    if (TranscriptPanel && Coordinator && Character.IsValid()) TranscriptPanel->Configure(Coordinator->GetTranscript(), Character);
     if (QuestTracker && Coordinator && Character.IsValid()) QuestTracker->Configure(Coordinator->GetQuestTracking(), Character, true);
     if (AccountHistory && Coordinator && Character.IsValid()) AccountHistory->Configure(Coordinator->GetAccountHistoryClient(), Character);
     if (StorySkip && Coordinator && Character.IsValid())
@@ -147,6 +151,8 @@ bool URPGNarrativeDialogueWidget::OpenContext(const FGuid CharacterId)
     if (bNPCContext && !Flow->HasPendingChoice()) Flow->CloseDialogue();
     Coordinator->OnChanged.AddUniqueDynamic(this, &ThisClass::HandleChanged);
     Coordinator->OnRequestFinished.AddUniqueDynamic(this, &ThisClass::HandleFinished);
+    CapturedNode.Reset(); CapturedSpeaker.Reset(); CapturedText.Reset();
+    if (TranscriptPanel) TranscriptPanel->Configure(Coordinator->GetTranscript(), Character);
     if (QuestTracker) QuestTracker->Configure(Coordinator->GetQuestTracking(), Character, true);
     if (AccountHistory) AccountHistory->Configure(Coordinator->GetAccountHistoryClient(), Character);
     if (StorySkip)
@@ -196,6 +202,20 @@ void URPGNarrativeDialogueWidget::NativeTick(const FGeometry& Geometry, const fl
     const bool bBusy = MatchesSelection() && Coordinator->IsBusy();
     const bool bPending = MatchesSelection() && Coordinator->HasPendingChoice();
     if (bReadable != bLastReadable || bBusy != bLastBusy || bPending != bLastPending) Render();
+    CaptureDisplayedDialogue();
+}
+void URPGNarrativeDialogueWidget::CaptureDisplayedDialogue()
+{
+    FRPGDialogueNode Active;
+    if (!IsInViewport() || !IsVisible() || !MatchesSelection() || !Coordinator->HasCurrentSnapshot()
+        || !Coordinator->GetDialogueManager()->GetActiveDialogue(Active) || (bNPCContext && Active.Id != OwnedDialogue)
+        || !Body || !Speaker || !Body->GetText().EqualTo(Active.Text) || !Speaker->GetText().EqualTo(Active.Speaker))
+    { CapturedNode.Reset(); CapturedSpeaker.Reset(); CapturedText.Reset(); return; }
+    const auto Name = Active.Speaker.ToString(), Line = Active.Text.ToString();
+    if (CapturedNode.Equals(Active.Id, ESearchCase::CaseSensitive) && CapturedSpeaker.Equals(Name, ESearchCase::CaseSensitive)
+        && CapturedText.Equals(Line, ESearchCase::CaseSensitive)) return;
+    if (auto Model = Coordinator->GetTranscript()) Model->Capture(Character, Active.Id);
+    CapturedNode = Active.Id; CapturedSpeaker = Name; CapturedText = Line;
 }
 void URPGNarrativeDialogueWidget::Unbind()
 {

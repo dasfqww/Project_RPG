@@ -6,6 +6,7 @@
 #include "Narrative/RPGNarrativeHistory.h"
 #include "Narrative/RPGNarrativeStorySkip.h"
 #include "Narrative/RPGNarrativeQuestTracking.h"
+#include "Narrative/RPGNarrativeTranscript.h"
 #include "UI/Narrative/RPGNarrativeQuestTrackerWidget.h"
 #include "GameFramework/PlayerController.h"
 #include "Online/RPGDungeonSessionSubsystem.h"
@@ -124,6 +125,24 @@ TSharedPtr<FRPGNarrativeSkipClient> URPGNarrativeCoordinator::GetStorySkipClient
         });
     }
     return SkipClient;
+}
+TSharedPtr<FRPGNarrativeTranscript> URPGNarrativeCoordinator::GetTranscript()
+{
+    if (bShuttingDown) return nullptr;
+    if (!Transcript)
+    {
+        const TWeakObjectPtr<ThisClass> WeakThis(this);
+        Transcript = MakeShared<FRPGNarrativeTranscript>([WeakThis](FRPGNarrativeTranscriptContext& Out)
+        {
+            const auto* Owner = WeakThis.Get(); FGuid Selected;
+            if (!Owner || !Owner->ContextMatches() || !Owner->DungeonFlow
+                || !FGuid::Parse(Owner->DungeonFlow->GetSelectedCharacterId(), Selected) || Selected != Owner->SelectedCharacter) return false;
+            Out.Character = Selected; Out.Account = Owner->SteamId; Out.Endpoint = Owner->Endpoint;
+            Out.bHasActive = Owner->HasCurrentSnapshot() && Owner->Dialogues->GetActiveDialogue(Out.Active);
+            return true;
+        });
+    }
+    return Transcript;
 }
 TSharedPtr<FRPGNarrativeQuestTracking> URPGNarrativeCoordinator::GetQuestTracking()
 {
@@ -298,6 +317,7 @@ void URPGNarrativeCoordinator::Apply(FRPGNarrativeSnapshot Snapshot)
 void URPGNarrativeCoordinator::Deinitialize()
 {
     bShuttingDown = true; ++RequestGeneration;
+    if (Transcript) Transcript->Reset(); Transcript.Reset();
     FTSTicker::GetCoreTicker().RemoveTicker(TrackingTick); TrackingTick.Reset();
     if (TrackingHUD) TrackingHUD->RemoveFromParent(); TrackingHUD = nullptr;
     if (QuestTracking) QuestTracking->Reset(); QuestTracking.Reset();
