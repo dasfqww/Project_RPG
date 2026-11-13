@@ -11,6 +11,9 @@ public static class AuctionApiEndpoints
     private const string Root = "/api/characters/{characterId:guid}/auctions";
     public static void MapAuctionApi(this WebApplication app)
     {
+        app.MapGet(Root + "/registration-policy", (Guid characterId, HttpContext c, AuctionApplication a, CancellationToken ct) =>
+            Run(c, async () => { NoQuery(c); _ = await a.ActorAsync(c.GetProjectRpgPrincipal(), characterId, false, ct);
+                return AuctionApiContracts.RegistrationPolicy(a.RegistrationPolicy()); }));
         app.MapGet(Root, (Guid characterId, HttpContext c, AuctionApplication a, CancellationToken ct) =>
             Run(c, async () => { var actor = await a.ActorAsync(c.GetProjectRpgPrincipal(), characterId, true, ct);
                 return AuctionApiContracts.Page(await a.SearchAsync(AuctionApiContracts.Query(c.Request.Query), actor, false, ct), false); }));
@@ -63,7 +66,7 @@ public static class AuctionApiEndpoints
                         case "register":
                             if (r.ItemId is not { } item || item == Guid.Empty || r.Quantity is not > 0 || r.ExpiresAt is null) throw AuctionApiContracts.Invalid();
                             result = AuctionApiContracts.Result(await a.RegisterAsync(actor, listingId, r.RequestId, new(item, AuctionApiContracts.Integer(r.ExpectedItemRevision, true), r.Quantity.Value),
-                                AuctionApiContracts.Integer(r.TotalPrice), r.ExpiresAt.Value, ct)); break;
+                                AuctionApiContracts.Integer(r.TotalPrice), r.ExpiresAt.Value, ct, r.ExpectedPolicyTag)); break;
                         case "purchase":
                             result = AuctionApiContracts.Result(await a.PurchaseAsync(new(r.RequestId, listingId, actor, AuctionApiContracts.Integer(r.ExpectedRevision, true), r.ExpectedCurrencyCode!, AuctionApiContracts.Integer(r.TotalPrice)), ct)); break;
                         case "cancel":

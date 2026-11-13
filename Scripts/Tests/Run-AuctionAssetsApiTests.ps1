@@ -1,19 +1,20 @@
 [CmdletBinding()]
-param()
+param([switch]$RegistrationPolicy)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$taskId = 'auction-assets-20261113'
+$taskId = if($RegistrationPolicy){'auction-registration-policy-20261113'}else{'auction-assets-20261113'}
 $runId = [Guid]::NewGuid().ToString('N')
-$proofRoot = Join-Path $workspace 'Saved/BuildChecks/AuctionAssets-20261113'
+$proofRoot = Join-Path $workspace $(if($RegistrationPolicy){'Saved/BuildChecks/AuctionRegistrationPolicy-20261113'}else{'Saved/BuildChecks/AuctionAssets-20261113'})
 $proof = Join-Path $proofRoot $runId
 $tempRoot = Join-Path $workspace 'Saved/AA'
 $temp = Join-Path $tempRoot $runId.Substring(0,8)
 $inputs = Join-Path $temp 'Inputs'
-$containerName = 'rpg-auction-assets-' + $runId
+$containerName = $(if($RegistrationPolicy){'rpg-auction-policy-'}else{'rpg-auction-assets-'}) + $runId
 $containerId = $null
 $failure = $null
 $ownsTemp = $false
 $overlay = @(
+    'Backend/ProjectRpg.Backend/Domain/Trading/AuctionRegistrationPolicy.cs',
     'Backend/ProjectRpg.Backend/Domain/Trading/AuctionAssets.cs',
     'Backend/ProjectRpg.Backend/Data/PostgresAuctionQueryRepository.Assets.cs',
     'Backend/ProjectRpg.Backend/Configuration/AuctionOptions.cs',
@@ -32,14 +33,15 @@ $overlay = @(
     'Backend/ProjectRpg.Backend.TradingTests/AuctionApiCases.cs',
     'Backend/ProjectRpg.Backend.TradingTests/Program.cs'
 )
+if($RegistrationPolicy){$overlay=@($overlay|Where-Object {$_ -ne 'Backend/ProjectRpg.Backend/Program.cs'})}
 $environmentNames = @('Kestrel__Endpoints__Http__Url','PROJECT_RPG_TRADE_TEST_RUN','PROJECT_RPG_TRADE_TEST_POSTGRES',
     'PROJECT_RPG_EQUIPMENT_TEST_RUN_ID','PROJECT_RPG_EQUIPMENT_TEST_POSTGRES','PROJECT_RPG_AUCTION_API_TEST_POSTGRES')
 $savedEnvironment = @{}
 foreach ($name in $environmentNames) { $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
-$result = [ordered]@{ Passed=$false; Scope='Current auction owned assets and original auction/direct-trade bearer HTTP regressions with isolated Memory/PG. No Program restart/UE/Steam or original DB migration'; Head=''; Hashes=@{}; Modules=@{}; Commands=@(); Checks=@(); Cleanup=$null; CleanupComplete=$false }
+$result = [ordered]@{ Passed=$false; Scope='Auction registration terms query/consent and current owned assets plus original auction/direct-trade bearer HTTP regressions with isolated Memory/PG. Program.cs from posted HEAD in RegistrationPolicy mode. No Program restart/UE/Steam or original DB migration'; Head=''; Hashes=@{}; Modules=@{}; Commands=@(); Checks=@(); Cleanup=$null; CleanupComplete=$false }
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Assert-Reservation {
-    if (!(Select-String -LiteralPath (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 -Pattern '^\|[^|]* / auction-assets-20261113 \|')) { throw 'Reservation missing' }
+    if (!(Select-String -LiteralPath (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 -Pattern ('^\|[^|]* / '+[regex]::Escape($taskId)+' \|'))) { throw 'Reservation missing' }
 }
 function Invoke-Dotnet([string[]]$Arguments, [string]$Label) {
     $previous = $ErrorActionPreference

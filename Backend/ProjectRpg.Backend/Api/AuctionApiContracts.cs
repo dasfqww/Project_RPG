@@ -6,10 +6,15 @@ using ProjectRpg.Backend.Domain.Trading;
 namespace ProjectRpg.Backend.Api;
 
 public sealed record AuctionCommandRequest(Guid RequestId, Guid? ItemId = null, string? ExpectedItemRevision = null, int? Quantity = null,
-    string? TotalPrice = null, DateTimeOffset? ExpiresAt = null, string? ExpectedRevision = null, string? ExpectedCurrencyCode = null, string? RequestedAmount = null);
+    string? TotalPrice = null, DateTimeOffset? ExpiresAt = null, string? ExpectedRevision = null, string? ExpectedCurrencyCode = null, string? RequestedAmount = null,
+    string? ExpectedPolicyTag = null);
 
 public static class AuctionApiContracts
 {
+    public static object RegistrationPolicy(AuctionRegistrationPolicy p) => new { p.PolicyTag, p.Terms.CurrencyCode,
+        minimumTotalPrice = Text(p.Terms.MinimumTotalPrice), maximumTotalPrice = Text(p.Terms.MaximumTotalPrice),
+        minimumDurationSeconds = p.Terms.MinimumDuration.Ticks / TimeSpan.TicksPerSecond,
+        maximumDurationSeconds = p.Terms.MaximumDuration.Ticks / TimeSpan.TicksPerSecond, p.Terms.FeeBasisPoints, p.ObservedAt };
     public static object Assets(AuctionAssets r) => new { r.RequestId, r.CharacterId, r.ObservedAt, isComplete = true,
         wallet = EconomyApiContractMapper.ToContract(r.Wallet), items = r.Items.Select(ItemApiContractMapper.ToContract).ToArray() };
     internal static TradeRuleException Invalid() => new("invalid_auction_command");
@@ -21,7 +26,8 @@ public static class AuctionApiContracts
     }
     internal static void Shape(AuctionCommandRequest r, string action)
     {
-        if (r.RequestId == Guid.Empty || action != "register" && (r.ItemId is not null || r.ExpectedItemRevision is not null || r.Quantity is not null || r.ExpiresAt is not null)
+        if (r.RequestId == Guid.Empty || r.ExpectedPolicyTag is not null && (action != "register" || !AuctionRegistrationPolicy.ValidTag(r.ExpectedPolicyTag))
+            || action != "register" && (r.ItemId is not null || r.ExpectedItemRevision is not null || r.Quantity is not null || r.ExpiresAt is not null)
             || action == "register" && (r.ExpectedRevision is not null || r.ExpectedCurrencyCode is not null || r.RequestedAmount is not null)
             || action == "cancel" && (r.TotalPrice is not null || r.ExpectedCurrencyCode is not null || r.RequestedAmount is not null)
             || action == "purchase" && r.RequestedAmount is not null || action == "claim" && r.TotalPrice is not null) throw Invalid();

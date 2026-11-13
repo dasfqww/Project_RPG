@@ -38,12 +38,54 @@ internal static class AuctionApiCases
             if (mode == "--auction-api-restart") await ProgramRestart(f);
             else
             {
-                await Commands(f); await Assets(f); await QueriesAndPrivacy(f); await InputAndAccess(f); await WorkerAndLimits(f); await WideAmounts(f);
+                await RegistrationPolicy(f); await Commands(f); await Assets(f); await QueriesAndPrivacy(f); await InputAndAccess(f); await WorkerAndLimits(f); await WideAmounts(f);
                 if (f.Data is null) await ExpiryFairness();
             }
             Console.WriteLine($"PASS {mode}: {checks} assertions; real bearer HTTP/DI and isolated assets. No auction UE/Steam claim."); return 0;
         }
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }
+    }
+    private static async Task RegistrationPolicy(Fixture f)
+    {
+        var seller=await f.Person(0);var foreign=await f.Person(0);var route=Root(seller)+"/registration-policy";
+        var policy=await f.Get(seller,route);string tag=policy["policyTag"]!.GetValue<string>();
+        Check(policy.AsObject().Count==8 && AuctionRegistrationPolicy.ValidTag(tag),"policy has only explicit public terms and a valid consent tag");
+        Check(policy["currencyCode"]!.GetValue<string>()=="Gold" && policy["minimumTotalPrice"]!.GetValue<string>()=="1"
+            && policy["maximumTotalPrice"]!.GetValue<string>()==long.MaxValue.ToString(),"policy money retains integer strings");
+        Check(policy["minimumDurationSeconds"]!.GetValue<long>()==60 && policy["maximumDurationSeconds"]!.GetValue<long>()==604800
+            && policy["feeBasisPoints"]!.GetValue<int>()==500,"policy exposes actual duration and fee terms");
+        Check(DateTimeOffset.Parse(policy["observedAt"]!.GetValue<string>())==f.Clock.Now,"policy observes injected server clock");
+        f.Clock.Now=f.Clock.Now.AddSeconds(1);Check((await f.Get(seller,route))["policyTag"]!.GetValue<string>()==tag,"time observation does not change consent version");
+        var terms=f.Options.Terms();var variants=new[]{new AuctionTerms("Silver",1,long.MaxValue,terms.MinimumDuration,terms.MaximumDuration,500),
+            new AuctionTerms("Gold",2,long.MaxValue,terms.MinimumDuration,terms.MaximumDuration,500),
+            new AuctionTerms("Gold",1,long.MaxValue-1,terms.MinimumDuration,terms.MaximumDuration,500),
+            new AuctionTerms("Gold",1,long.MaxValue,terms.MinimumDuration+TimeSpan.FromSeconds(1),terms.MaximumDuration,500),
+            new AuctionTerms("Gold",1,long.MaxValue,terms.MinimumDuration,terms.MaximumDuration-TimeSpan.FromSeconds(1),500),
+            new AuctionTerms("Gold",1,long.MaxValue,terms.MinimumDuration,terms.MaximumDuration,501)};
+        foreach(var changed in variants)Check(AuctionRegistrationPolicy.Tag(changed)!=tag,"every displayed economic term participates in consent");
+        await f.Get(seller,route+"?extra=1",400);await f.Raw(foreign.Token,route,null,403);await f.Raw(f.Admin,route,null,403);await f.Raw(null,route,null,401);
+        var item=await f.Seed(seller);var id=Guid.NewGuid();var command=Registration(f,item) with {ExpectedPolicyTag=tag};
+        await f.Post(seller,id,"register",command with {ExpectedPolicyTag=""},400);
+        await f.Post(seller,id,"register",command with {ExpectedPolicyTag=new string('A',64)},400);
+        f.Options.FeeBasisPoints=501;
+        try
+        {
+            var refused=await f.Post(seller,id,"register",command,409);Check(refused["error"]!.GetValue<string>()=="auction_policy_conflict","stale reviewed terms rejected explicitly");
+            var unchanged=await f.Items.FindAsync(item.ItemId,default);Check(unchanged!.Revision==item.Revision && unchanged.State.Quantity==10,"stale consent reserves or consumes nothing");
+            Check(await f.Queries.FindReceiptAsync(command.RequestId,new(seller.Account,seller.Id),default) is null,"stale consent creates no receipt");
+            string current=(await f.Get(seller,route))["policyTag"]!.GetValue<string>();Check(current!=tag,"changed server policy supplies a new tag");
+            command=command with {ExpectedPolicyTag=current};var registered=await f.Post(seller,id,"register",command);
+            var listing=await f.Escrow.FindAsync(id,new(seller.Account,seller.Id),default);Check(listing!.State.Terms.FeeBasisPoints==501,"accepted consent uses exactly the captured terms");
+            f.Options.FeeBasisPoints=777;
+            Check(JsonNode.DeepEquals(registered,await f.Post(seller,id,"register",command)),"same original command replays after later policy change");
+            await f.Post(seller,id,"register",command with {ExpectedPolicyTag=(await f.Get(seller,route))["policyTag"]!.GetValue<string>()},409);
+            await f.Post(seller,id,"register",command with {TotalPrice="700"},409);
+            foreach(string action in new[]{"purchase","cancel","claim"})await f.Post(seller,id,action,new AuctionCommandRequest(Guid.NewGuid(),ExpectedRevision:"1",ExpectedPolicyTag:current),400);
+            f.Options.Enabled=false;await f.Get(seller,route,404);await f.Post(seller,id,"register",command,404);
+            Check(JsonNode.DeepEquals(registered,await f.Get(seller,Root(seller)+"/requests/"+command.RequestId)),"disabled policy retains original receipt recovery");
+        }
+        finally {f.Options.Enabled=true;f.Options.FeeBasisPoints=500;}
+        await f.Post(seller,id,"cancel",new AuctionCommandRequest(Guid.NewGuid(),ExpectedRevision:"1"));
     }
     private static async Task Commands(Fixture f)
     {

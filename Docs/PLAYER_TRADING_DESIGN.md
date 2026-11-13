@@ -1335,3 +1335,17 @@ UE의 `SendAssets`는 기존 비공개 Player HTTP 문맥/단일 요청/4MiB 한
 `Run-AuctionScreenTests.ps1 -Proceeds`는 게시 `9929a505`+명시36입력·생산 매퍼 JSON14의 최종 사설 DLL `AE76C6CE`를 실제 UE5.8 Cmd/NullRHI에서 실행했다. 신규 대금3검사와 기존 구매/취소/조회/자산/명령/복구의 writer25+별도 reader1 모두 Success, 검사 오류/경고0·각 UE0·54단계 빌드/링크0·Backend Release 오류/경고0이다. 실제 UMG의 명시 GET/검토/최종 버튼·전액의 정확한 int64 요청·저장 뒤 전송·중복 확인 차단·부분200/0원 지급·동일 nonce 영수증 복구·다른 판매 캐릭터/판매글/재화/최초 대금 거절·빈 대기금·429·재조회 동의 폐기·이전 캐릭터 응답 무시를 확인했다. HTTP 전송/응답은 모의이며 실제 경매 HTTP/PG 왕복은 아니다.
 
 `Run-AuctionScreenIntegrationCompile.ps1 -Proceeds`의 같은 게시 HEAD+명시15입력 전체 UHT/관련 CPP7 컴파일도 통과했다. 최종 고유42입력/러너2 SHA가 검증 후 일치하며 기본 UE 기동 Error15/ACL 경고4는 기능 검사와 별도로 기록한다. 자기2사본3,048,118,346 bytes·중복 로그393,465 bytes를 정리했다(합계 약2.839GiB). 임시 경로/소유 검사 프로세스/새 정리 예외0·원본 DLL/공유 출력/DB/에셋/타 담당 보존이며 작은 결과·명령·해시는 `Saved/BuildChecks/AuctionProceeds-20261113/Completion.json`에 로컬 보관한다. 폐기한 모듈 해시는 당시 근거다. 다음 UI 구현은 가방 물품의 신규 등록이다.
+
+## 41. T5e8a 등록 정책 조회·동의 조건 (2026-11-13)
+
+등록 UI를 연결하기 전에 서버 재화·가격 범위·기간·수수료를 읽고 같은 정책으로 제출하는 계약을 추가했다. 기존 등록 API는 서버 정책을 사용하지만, 클라이언트가 검토할 정책 조회/변경 감지 수단이 없었다. 이 단계는 그 선행 계약이며 가방 선택·등록 초안/최종 UI와 UE 요청 모델 연결은 아직 후속이다.
+
+- `GET /api/characters/{characterId}/auctions/registration-policy`는 소유 캐릭터의 Player 인증·기존 계정 조회 예산·쿼리 금지·`no-store`를 적용한다. 경매 비활성이면 404이며 기존 요청 영수증/회수 읽기는 유지한다. 응답은 `policyTag`, `currencyCode`, 문자열 int64 `minimumTotalPrice`/`maximumTotalPrice`, 정수 `minimumDurationSeconds`/`maximumDurationSeconds`, `feeBasisPoints`, 서버 `observedAt`이다. 계정/물품/지갑/비밀정보를 반환하지 않는다.
+- `policyTag`는 서버의 불변 `AuctionTerms` 전체(재화·최소/최대 가격·최소/최대 기간 ticks·수수료)의 버전 접두사/문화권 독립 정규 문자열을 SHA256으로 계산한 소문자64자리 값이다. 시간 관측은 버전에 포함하지 않는다. 동의한 조건의 식별자이며 인증/권한 토큰이 아니다.
+- 등록 본문의 선택 필드 `expectedPolicyTag`를 제공하면 서버가 실제 명령에 사용할 불변 Terms와 일치해야 한다. 형식 오류/다른 종류 명령의 필드 혼입은 400, 정상 형식의 정책 불일치는 409 `auction_policy_conflict`다. 비교한 같은 Terms 객체를 기존 원자 보관 명령에 전달하므로 이후 옵션 변경이 그 등록의 재화/수수료를 바꾸지 않는다. 플레이어가 재화/수수료 자체를 명령에 지정하지 않는다.
+- 기존 판매글/영수증이 있는 재전송은 현재 옵션 대신 등록 당시 Terms를 선택한다. 같은 원래 UUID/본문/태그는 정책 변경 뒤에도 원래 영수증을 재생하며, 새 태그/가격으로 같은 요청을 바꾸지 않는다. 태그 없는 구형 요청의 호환성은 유지한다. 새 UE 등록 화면은 정책 조회·표시·검토를 거치고 태그를 필수로 포함하도록 후속 연결해야 한다.
+- 정책 불일치는 이 시도의 등록 전 거절이며 이전 미확정 시도의 미커밋 증거가 아니다. 응답 유실 뒤에는 태그를 갱신하거나 새 UUID로 대체하지 않고 원래 요청/영수증을 확인한다. 소유/귀속/허용 물품·입장/제재·기간/등록 수/보관 한도 등의 최종 판단과 원자 저장은 기존 서버 저장소가 계속 맡는다.
+
+`Run-AuctionAssetsApiTests.ps1 -RegistrationPolicy`는 게시 `068d93c6` Backend 사본+명시18입력(러너 포함)으로 실제 bearer HTTP Memory 경매518/PG 경매419·기존 직거래541/553을 통과했다. 정책 금액/기간/수수료·모든 경제 조건의 태그 참여·서버 시각·조회 권한/no-store·형식/다른 명령 필드 혼입·정책 충돌 때 물품/영수증 무변경·정확한 정책 캡처·변경 후 원래 영수증 재생·비활성 영수증 복구·구형 등록 호환을 확인했다. Release 빌드 오류/경고0·입력/러너 SHA 일치다. 활성 타 담당의 `Backend/Program.cs`를 읽어 덮어넣지 않고 게시 사본을 사용했으며 실제 Program 재기동/UE/UI 검증은 아니다.
+
+자기 사본/obj/bin·사설 PG를 종료/폐기했고 26,819,937 bytes(약25.577MiB)를 정리했다. 임시 경로/소유 실행/컨테이너/새 정리 예외0·원본 DB/UE/타 담당 보존이다. 작은 결과·명령·소스/모듈 해시는 `Saved/BuildChecks/AuctionRegistrationPolicy-20261113/Completion.json`에 로컬 보관한다. 폐기한 모듈 해시는 당시 근거다. 다음은 이 정책을 표시하고 같은 태그/본문을 저장하는 UE 가방 등록 UI 연결이다.

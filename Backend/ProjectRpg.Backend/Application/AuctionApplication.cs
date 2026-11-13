@@ -8,7 +8,7 @@ using ProjectRpg.Backend.Domain.Trading;
 namespace ProjectRpg.Backend.Application;
 
 public sealed class AuctionApplication(IGameRepository game, IAuctionEscrowRepository escrow, IAuctionPurchaseRepository purchases,
-    IAuctionClaimRepository claims, IAuctionQueryRepository queries, IOptions<AuctionOptions> options, AuctionRequestLimiter limiter)
+    IAuctionClaimRepository claims, IAuctionQueryRepository queries, IOptions<AuctionOptions> options, AuctionRequestLimiter limiter, TimeProvider? clock = null)
 {
     public async Task<TradeParticipant> ActorAsync(AuthenticatedPrincipal principal, Guid id, bool search, CancellationToken ct)
     {
@@ -25,13 +25,18 @@ public sealed class AuctionApplication(IGameRepository game, IAuctionEscrowRepos
         var l = await queries.FindVisibleAsync(id, actor.AccountId, ct);
         return l is not null && (options.Value.Enabled || l.State.Seller.AccountId == actor.AccountId) ? l : null;
     }
-    public async Task<AuctionEscrowResult> RegisterAsync(TradeParticipant actor, Guid id, Guid request, TradeOfferedItem item, long price, DateTimeOffset expires, CancellationToken ct)
+    public AuctionRegistrationPolicy RegistrationPolicy()
+    { Enabled(); return new(options.Value.Terms(), (clock ?? TimeProvider.System).GetUtcNow()); }
+    public async Task<AuctionEscrowResult> RegisterAsync(TradeParticipant actor, Guid id, Guid request, TradeOfferedItem item, long price, DateTimeOffset expires, CancellationToken ct, string? expectedPolicyTag = null)
     {
         Enabled();
         // Keep server terms stable when replaying a registration after a policy change.
         var previous = await escrow.FindAsync(id, actor, ct);
+        var terms = previous?.State.Terms ?? options.Value.Terms();
+        if (expectedPolicyTag is not null && (!AuctionRegistrationPolicy.ValidTag(expectedPolicyTag)
+            || expectedPolicyTag != AuctionRegistrationPolicy.Tag(terms))) throw new TradeRuleException("auction_policy_conflict");
         return await escrow.ExecuteAsync(new(request, id, actor, AuctionEscrowKind.Register, Item: item, TotalPrice: price, ExpiresAt: expires,
-            Terms: previous?.State.Terms ?? options.Value.Terms()), ct);
+            Terms: terms), ct);
     }
     public Task<AuctionPurchaseResult> PurchaseAsync(AuctionPurchaseCommand cmd, CancellationToken ct) { Enabled(); return purchases.PurchaseAsync(cmd, ct); }
     public Task<AuctionEscrowResult> CancelAsync(TradeParticipant actor, Guid id, Guid request, long revision, CancellationToken ct) => escrow.ExecuteAsync(new(request, id, actor, AuctionEscrowKind.Cancel, revision), ct);
