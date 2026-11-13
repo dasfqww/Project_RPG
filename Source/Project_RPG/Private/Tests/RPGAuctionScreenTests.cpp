@@ -28,6 +28,10 @@ struct FRPGAuctionWidgetTestAccess
     static void Dismiss(URPGAuctionWidget* W){W->DismissButton->OnClicked.Broadcast();}
     static bool PurchaseEnabled(URPGAuctionWidget* W){return W->PurchaseButton->GetIsEnabled();}
     static bool Reviewing(URPGAuctionWidget* W){return W->ConfirmButton->GetVisibility()==ESlateVisibility::Visible;}
+    static void Payable(URPGAuctionWidget* W){W->PayableButton->OnClicked.Broadcast();}
+    static void Claim(URPGAuctionWidget* W){W->ClaimButton->OnClicked.Broadcast();}
+    static bool ClaimEnabled(URPGAuctionWidget* W){return W->ClaimButton->GetIsEnabled();}
+    static FString ClaimResult(URPGAuctionWidget* W){return W->ClaimResultText->GetText().ToString();}
 };
 namespace AuctionScreenTests
 {
@@ -44,7 +48,7 @@ FString WithRequest(const TCHAR* Name,FGuid Id){auto O=Obj(Load(Name));O->SetStr
 struct FFake final : IRPGAuctionTransport
 {
     FRPGAuctionLobbyContext* C;FCompletion Done;FRPGAuctionIntent Last;FRPGAuctionSearch Query;FGuid LastId;
-    int32 Posts=0,Pages=0,Details=0,Receipts=0,Assets=0;bool Mine=false;
+    int32 Posts=0,Pages=0,Details=0,Receipts=0,Assets=0,Payables=0;bool Mine=false;
     TFunction<void(const FRPGAuctionIntent&)> BeforeSend;
     explicit FFake(FRPGAuctionLobbyContext& In):C(&In){}
     virtual bool GetContext(FString& E,FString& A) const override {E=C->Endpoint;A=C->Account;return !A.IsEmpty();}
@@ -53,7 +57,7 @@ struct FFake final : IRPGAuctionTransport
     virtual bool SendPage(FGuid,const FRPGAuctionSearch& Q,bool M,FCompletion F) override {++Pages;Query=Q;Mine=M;Done=MoveTemp(F);return true;}
     virtual bool SendListing(FGuid,FGuid Id,FCompletion F) override {++Details;LastId=Id;Done=MoveTemp(F);return true;}
     virtual bool SendReceipt(FGuid,FGuid Id,FCompletion F) override {++Receipts;LastId=Id;Done=MoveTemp(F);return true;}
-    virtual bool SendPayable(FGuid,FGuid,FCompletion) override {return false;}
+    virtual bool SendPayable(FGuid,FGuid Id,FCompletion F) override {++Payables;LastId=Id;Done=MoveTemp(F);return true;}
     virtual bool SendAssets(FGuid,FGuid Id,FCompletion F) override {++Assets;LastId=Id;Done=MoveTemp(F);return true;}
     virtual void Cancel() override {Done={};}
     void Reply(int32 Code,const FString& Body=TEXT(""),double Delay=0)
@@ -63,6 +67,10 @@ TSharedRef<FRPGAuctionCoordinator> Owner(TSharedRef<FFake> T,FRPGAuctionLobbyCon
 {return MakeShared<FRPGAuctionCoordinator>(T,[&C]{return C;},Root(Name),[&Time]{return Time;});}
 void Present(const TSharedRef<FRPGAuctionCoordinator>& O)
 {O->SetItemPresenter([](const FRPGTradeItemDetails&,FText& Name,FText& Description){Name=FText::FromString(TEXT("검사용 광석"));Description=FText::FromString(TEXT("확인한 물품 정보"));return true;});}
+FRPGAuctionLobbyContext SellerContext()
+{auto C=Context();C.Account=TEXT("76561198880000001");FGuid::Parse(Obj(Load(TEXT("identity")))->GetStringField(TEXT("sellerCharacterId")),C.Character);C.bEnabled=false;return C;}
+FGuid SoldDetail(TSharedRef<FRPGAuctionCoordinator> O,TSharedRef<FFake> T)
+{O->ReadPage(true);T->Reply(200,TEXT("{\"listings\":[")+Load(TEXT("sold"))+TEXT("],\"nextCursor\":null}"));const auto P=O->GetScreenView().PageToken;O->ReadDetail(P,Listing().ListingId);T->Reply(200,Load(TEXT("sold")));return P;}
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAuctionScreenBrowse,"ProjectRPG.Auction.Screen.Browse",AuctionScreenTests::Flags)
 bool FAuctionScreenBrowse::RunTest(const FString&)
@@ -230,5 +238,64 @@ bool FAuctionConsentLifetime::RunTest(const FString&)
     TestTrue(TEXT("refusal explained without raw error"),O->GetScreenView().Status.ToString().Contains(TEXT("현재 상태")));
     TestFalse(TEXT("raw refusal code hidden"),O->GetScreenView().Status.ToString().Contains(TEXT("auction_not_active")));
     Current->CloseScreen();O->Shutdown();return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAuctionProceedsConsent,"ProjectRPG.Auction.Screen.ProceedsConfirmation",AuctionScreenTests::Flags)
+bool FAuctionProceedsConsent::RunTest(const FString&)
+{
+    using namespace AuctionScreenTests;auto C=SellerContext();double Time=100;auto T=MakeShared<FFake>(C);auto O=Owner(T,C,Time,TEXT("ProceedsConsent"));
+    auto* W=NewObject<URPGAuctionWidget>();W->SetOwner(O);const auto Slate=W->TakeWidget();
+    O->ReadPage(true);T->Reply(200,TEXT("{\"listings\":[")+Load(TEXT("sold"))+TEXT("],\"nextCursor\":null}"));
+    FRPGAuctionWidgetTestAccess::Select(W,0);FRPGAuctionWidgetTestAccess::Detail(W);T->Reply(200,Load(TEXT("sold")));
+    TestEqual(TEXT("opening and detail never auto-read proceeds"),T->Payables,0);TestFalse(TEXT("no claim without current payable"),FRPGAuctionWidgetTestAccess::ClaimEnabled(W));
+    FRPGAuctionWidgetTestAccess::Payable(W);TestEqual(TEXT("explicit payable GET"),T->Payables,1);TestEqual(TEXT("selected listing only"),T->LastId,Listing().ListingId);T->Reply(200,Load(TEXT("payable")));
+    FRPGAuctionPayable P;RPGAuction::DecodePayable(Load(TEXT("payable")),P);TestTrue(TEXT("claim remains available with auction feature disabled"),FRPGAuctionWidgetTestAccess::ClaimEnabled(W));
+    FRPGAuctionWidgetTestAccess::Claim(W);const auto V=O->GetScreenView();TestTrue(TEXT("review contains exact remaining integer"),V.ReviewText.ToString().Contains(FText::AsNumber(P.Remaining).ToString()));
+    TestEqual(TEXT("review creates no mutation"),T->Posts,0);TestNull(TEXT("review creates no intent"),O->GetClient().GetPending());
+    T->BeforeSend=[this](const FRPGAuctionIntent& I){FRPGAuctionIntent Disk;TestTrue(TEXT("claim persisted before dispatch"),FRPGAuctionIntentJournal::Load(Root(TEXT("ProceedsConsent")),I.Scope,Disk)==ERPGAuctionJournalRead::Ready);TestEqual(TEXT("claim journal body exact"),Disk.Request.Body,I.Request.Body);};
+    FRPGAuctionWidgetTestAccess::Confirm(W);FRPGAuctionWidgetTestAccess::Confirm(W);TestEqual(TEXT("final control submits once"),T->Posts,1);
+    TestTrue(TEXT("claim command only"),T->Last.Request.Action==ERPGAuctionAction::Claim);
+    TestEqual(TEXT("requests full current amount without float conversion"),Obj(T->Last.Request.Body)->GetStringField(TEXT("requestedAmount")),LexToString(P.Remaining));
+    TestEqual(TEXT("uses payable revision rather than listing revision"),Obj(T->Last.Request.Body)->GetStringField(TEXT("expectedRevision")),LexToString(P.Revision));
+    T->Reply(200,WithRequest(TEXT("claim"),T->Last.Request.RequestId));const auto* R=O->GetClient().GetReceipt();
+    if(!TestNotNull(TEXT("matching partial claim receipt"),R))return false;
+    TestEqual(TEXT("server paid only 200"),R->Paid,int64(200));TestEqual(TEXT("server retains unpaid proceeds"),R->Remaining,P.Remaining-200);
+    TestTrue(TEXT("actual widget shows paid amount"),FRPGAuctionWidgetTestAccess::ClaimResult(W).Contains(TEXT("지급액 200")));
+    TestTrue(TEXT("actual widget shows historical remaining amount"),FRPGAuctionWidgetTestAccess::ClaimResult(W).Contains(FText::AsNumber(R->Remaining).ToString()));
+    TestTrue(TEXT("receipt requires current assets refresh"),O->GetClient().NeedsAssetRefresh());TestEqual(TEXT("no automatic current wallet read or delta"),T->Assets,0);
+    W->CloseScreen();O->Shutdown();return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAuctionProceedsSafety,"ProjectRPG.Auction.Screen.ProceedsReadSafety",AuctionScreenTests::Flags)
+bool FAuctionProceedsSafety::RunTest(const FString&)
+{
+    using namespace AuctionScreenTests;auto C=Context();double Time=100;auto T=MakeShared<FFake>(C);auto O=Owner(T,C,Time,TEXT("ProceedsSafety"));
+    auto PageToken=SoldDetail(O,T);TestFalse(TEXT("another seller character cannot read proceeds"),O->ReadPayable(PageToken,Listing().ListingId));TestEqual(TEXT("no foreign payable GET"),T->Payables,0);
+    O->Shutdown();C=SellerContext();O=Owner(T,C,Time,TEXT("ProceedsSafetySeller"));PageToken=SoldDetail(O,T);
+    TestFalse(TEXT("another page cannot read"),O->ReadPayable(FGuid::NewGuid(),Listing().ListingId));TestFalse(TEXT("another selection cannot read"),O->ReadPayable(PageToken,FGuid::NewGuid()));
+    if(!TestTrue(TEXT("valid own sold page"),PageToken.IsValid()))return false;
+    auto Bad=Obj(Load(TEXT("payable")));Bad->SetStringField(TEXT("listingId"),FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower));
+    O->ReadPayable(PageToken,Listing().ListingId);T->Reply(200,Json(Bad));TestFalse(TEXT("mismatched payable id cannot authorize"),O->GetScreenView().bCanClaim);
+    Bad=Obj(Load(TEXT("payable")));Bad->SetStringField(TEXT("currencyCode"),TEXT("Silver"));O->ReadPayable(PageToken,Listing().ListingId);T->Reply(200,Json(Bad));TestFalse(TEXT("wrong currency cannot authorize"),O->GetScreenView().bCanClaim);
+    Bad=Obj(Load(TEXT("payable")));Bad->SetStringField(TEXT("initialAmount"),LexToString(MAX_int64));O->ReadPayable(PageToken,Listing().ListingId);T->Reply(200,Json(Bad));TestFalse(TEXT("initial proceeds must match sale"),O->GetScreenView().bCanClaim);
+    TestTrue(TEXT("failed payable read explained"),O->GetScreenView().PayableText.ToString().Contains(TEXT("불러오지 못했습니다")));
+    Bad=Obj(Load(TEXT("payable")));Bad->SetStringField(TEXT("remainingAmount"),TEXT("0"));O->ReadPayable(PageToken,Listing().ListingId);T->Reply(200,Json(Bad));TestFalse(TEXT("zero remaining cannot claim"),O->ReviewListing(PageToken,Listing().ListingId,ERPGAuctionAction::Claim));
+    O->ReadPayable(PageToken,Listing().ListingId);T->Reply(429,TEXT("{}"),30);TestFalse(TEXT("payable throttle reflected"),O->GetScreenView().bCanReadPayable);
+    Time=130;O->Tick();O->ReadPayable(PageToken,Listing().ListingId);T->Reply(200,Load(TEXT("payable")));O->ReviewListing(PageToken,Listing().ListingId,ERPGAuctionAction::Claim);const auto Old=O->GetScreenView().ReviewToken;
+    O->ReadPayable(PageToken,Listing().ListingId);TestFalse(TEXT("payable refresh invalidates old consent"),O->ConfirmListing(Old));const auto Late=T->Done;
+    C.Character=FGuid::NewGuid();O->Tick();Late({true,true,200,Load(TEXT("payable")),0});TestFalse(TEXT("old character callback ignored"),O->GetScreenView().bCanClaim);
+    TestEqual(TEXT("all reads and invalid consent send no mutation"),T->Posts,0);O->Shutdown();return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAuctionProceedsZero,"ProjectRPG.Auction.Screen.ProceedsZeroRecovery",AuctionScreenTests::Flags)
+bool FAuctionProceedsZero::RunTest(const FString&)
+{
+    using namespace AuctionScreenTests;auto C=SellerContext();double Time=100;auto T=MakeShared<FFake>(C);auto O=Owner(T,C,Time,TEXT("ProceedsZero"));const auto PageToken=SoldDetail(O,T);
+    O->ReadPayable(PageToken,Listing().ListingId);T->Reply(200,Load(TEXT("payableAfter")));FRPGAuctionPayable P;RPGAuction::DecodePayable(Load(TEXT("payableAfter")),P);
+    if(!TestTrue(TEXT("review remaining payable"),O->ReviewListing(PageToken,Listing().ListingId,ERPGAuctionAction::Claim)))return false;
+    if(!TestTrue(TEXT("consent to remaining amount"),O->ConfirmListing(O->GetScreenView().ReviewToken)))return false;
+    const auto Request=T->Last.Request.RequestId;T->Reply(0);Time=101;O->Tick();TestNotNull(TEXT("lost response preserves claim"),O->GetClient().GetPending());
+    O->Recover();TestEqual(TEXT("recovery uses same nonce"),T->LastId,Request);T->Reply(200,WithRequest(TEXT("claimZero"),Request));const auto* R=O->GetClient().GetReceipt();
+    if(!TestNotNull(TEXT("zero paid is a successful receipt"),R))return false;
+    TestEqual(TEXT("zero payment"),R->Paid,int64(0));TestEqual(TEXT("remaining preserved"),R->Remaining,P.Remaining);TestEqual(TEXT("zero payment preserves payable revision"),R->Revision,P.Revision);
+    TestTrue(TEXT("zero result visible"),O->GetScreenView().ClaimResult.ToString().Contains(TEXT("지급액 0")));TestTrue(TEXT("still refresh current assets"),O->GetClient().NeedsAssetRefresh());
+    TestEqual(TEXT("recovery never replays POST"),T->Posts,1);TestNull(TEXT("matching zero receipt resolves pending"),O->GetClient().GetPending());O->Shutdown();return true;
 }
 #endif

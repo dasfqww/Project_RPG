@@ -2,8 +2,8 @@
 
 void FRPGAuctionCoordinator::ClearBrowse()
 {
-    Page.Reset();Detail.Reset();Review.Reset();PageQuery={};PageToken.Invalidate();DetailSelection.Invalidate();bPageMine=false;
-    PageState=DetailState=ERPGAuctionReadState::Idle;
+    Page.Reset();Detail.Reset();Payable.Reset();Review.Reset();PageQuery={};PageToken.Invalidate();DetailSelection.Invalidate();bPageMine=false;
+    PageState=DetailState=PayableState=ERPGAuctionReadState::Idle;
 }
 bool FRPGAuctionCoordinator::RecheckStorage()
 {
@@ -53,7 +53,7 @@ bool FRPGAuctionCoordinator::ReadDetail(FGuid DisplayedPage,FGuid Listing)
     const auto KeepAlive=AsShared();
     if(!ReadAllowed(bPageMine) || !Page.IsSet() || !DisplayedPage.IsValid() || DisplayedPage!=PageToken
         || !Page->Listings.ContainsByPredicate([&](const auto& L){return L.ListingId==Listing;}))return false;
-    Detail.Reset();Review.Reset();DetailSelection=Listing;DetailState=ERPGAuctionReadState::Loading;bBusy=true;
+    Detail.Reset();Payable.Reset();Review.Reset();PayableState=ERPGAuctionReadState::Idle;DetailSelection=Listing;DetailState=ERPGAuctionReadState::Loading;bBusy=true;
     const bool Mine=bPageMine;const uint64 Expected=++Generation;TWeakPtr<FRPGAuctionCoordinator> Weak=AsShared();
     auto Done=[Weak,Expected,Listing,Mine,DisplayedPage](FRPGAuctionHttpResult R)
     {
@@ -70,13 +70,40 @@ bool FRPGAuctionCoordinator::ReadDetail(FGuid DisplayedPage,FGuid Listing)
     if(!Sent && Generation==Expected && bBusy)Done(FRPGAuctionHttpResult{});
     Notify();return Sent;
 }
+bool FRPGAuctionCoordinator::OwnSoldDetail() const
+{
+    return Page.IsSet() && PageToken.IsValid() && Detail.IsSet() && DetailState==ERPGAuctionReadState::Ready
+        && Detail->ListingId==DetailSelection && Detail->bOwn && Detail->SellerCharacter==Scope.Character && Detail->Status==ERPGAuctionStatus::Sold;
+}
+bool FRPGAuctionCoordinator::ReadPayable(FGuid DisplayedPage,FGuid Listing)
+{
+    const auto KeepAlive=AsShared();
+    if(!ReadAllowed(true) || !OwnSoldDetail() || DisplayedPage!=PageToken || Detail->ListingId!=Listing)return false;
+    Payable.Reset();Review.Reset();PayableState=ERPGAuctionReadState::Loading;bBusy=true;
+    const uint64 Expected=++Generation;TWeakPtr<FRPGAuctionCoordinator> Weak=AsShared();
+    auto Done=[Weak,Expected,Listing](FRPGAuctionHttpResult R)
+    {
+        const auto S=Weak.Pin();if(!S || S->Generation!=Expected || !S->Sync() || S->Generation!=Expected)return;
+        S->bBusy=false;S->PayableState=ERPGAuctionReadState::Failed;FRPGAuctionPayable Incoming;
+        if(R.bCurrentPlayerContext && R.bTransportSuccessful && R.StatusCode==200 && S->OwnSoldDetail()
+            && RPGAuction::DecodePayable(R.Body,Incoming) && Incoming.ListingId==Listing && Incoming.CurrencyCode==S->Detail->CurrencyCode
+            && S->Detail->SellerProceeds.IsSet() && Incoming.Initial==S->Detail->SellerProceeds.GetValue())
+        {S->Payable=MoveTemp(Incoming);S->PayableState=ERPGAuctionReadState::Ready;}
+        S->ReadDelay(R);S->Notify();
+    };
+    const bool Sent=Transport->SendPayable(Scope.Character,Listing,Done);
+    if(!Sent && Generation==Expected && bBusy)Done(FRPGAuctionHttpResult{});
+    Notify();return Sent;
+}
 bool FRPGAuctionCoordinator::CanReviewAction(ERPGAuctionAction Action) const
 {
     if(!Current.bAuthenticated || !Current.bEligible || bBusy || bStorageBlocked || ClearIntent.IsSet()
         || Client.GetPending() || Client.NeedsAssetRefresh() || Now<NextAttempt || !Transport->CanSend()
         || !Page.IsSet() || !PageToken.IsValid() || !Detail.IsSet() || DetailState!=ERPGAuctionReadState::Ready
-        || Detail->Status!=ERPGAuctionStatus::Active
         || (Client.GetReceipt() && AssetCurrent && (AssetsState!=ERPGAuctionAssetsState::Ready || !Assets.IsSet() || !AssetCurrent())))return false;
+    if(Action==ERPGAuctionAction::Claim)return OwnSoldDetail() && Payable.IsSet() && PayableState==ERPGAuctionReadState::Ready
+        && Payable->ListingId==Detail->ListingId && Payable->CurrencyCode==TEXT("Gold") && Payable->Remaining>0;
+    if(Detail->Status!=ERPGAuctionStatus::Active)return false;
     if(Action==ERPGAuctionAction::Cancel)return Detail->bOwn && Detail->SellerCharacter==Scope.Character;
     FText Name,Description;
     return Action==ERPGAuctionAction::Purchase && Current.bEnabled && !Detail->bOwn && Detail->CurrencyCode==TEXT("Gold")
@@ -86,10 +113,12 @@ bool FRPGAuctionCoordinator::ReviewListing(FGuid DisplayedPage,FGuid Listing,ERP
 {
     const auto KeepAlive=AsShared();
     if(!Sync() || Review.IsSet() || DisplayedPage!=PageToken || !CanReviewAction(Action) || Detail->ListingId!=Listing)return false;
-    const auto Text=Action==ERPGAuctionAction::Purchase
+    const auto Text=Action==ERPGAuctionAction::Claim
+        ?FText::Format(NSLOCTEXT("RPGAuction","ClaimReview","판매 대금 수령 확인\n{0}\n현재 수령 대기금 {1} 골드 전액을 요청합니다. 보유 한도에 따라 일부만 수령할 수 있으며, 남은 금액은 대기금으로 유지됩니다."),ListingText(*Detail,false),FText::AsNumber(Payable->Remaining))
+        :Action==ERPGAuctionAction::Purchase
         ?FText::Format(NSLOCTEXT("RPGAuction","PurchaseReview","구매 확인\n{0}\n표시된 수량 전체를 표시된 총액으로 구매합니다. 가방이 부족하면 물품은 우편으로 전달됩니다."),ListingText(*Detail,true))
         :FText::Format(NSLOCTEXT("RPGAuction","CancelReview","판매 취소 확인\n{0}\n이 판매를 취소하고 물품을 돌려받습니다. 가방이 부족하면 우편으로 전달됩니다. 이미 판매되거나 종료된 경우 서버가 취소를 거절할 수 있습니다."),ListingText(*Detail,true));
-    Review=FListingReview{*Detail,Action,FGuid::NewGuid(),Text};Notify();return true; // No intent or HTTP before final consent.
+    Review=FListingReview{*Detail,Action,FGuid::NewGuid(),Text,Action==ERPGAuctionAction::Claim?Payable:TOptional<FRPGAuctionPayable>{}};Notify();return true; // No intent or HTTP before final consent.
 }
 void FRPGAuctionCoordinator::DismissReview(FGuid DisplayedReview)
 {
@@ -106,7 +135,9 @@ bool FRPGAuctionCoordinator::ConfirmListing(FGuid DisplayedReview)
         || !Review.IsSet() || Review->Token!=DisplayedReview || !CanReviewAction(Accepted.Action))
     {DismissReview(DisplayedReview);return false;}
     Review.Reset();
-    const bool Prepared=Accepted.Action==ERPGAuctionAction::Purchase?Client.PreparePurchase(Accepted.Listing):Client.PrepareCancel(Accepted.Listing);
+    const bool Prepared=Accepted.Action==ERPGAuctionAction::Claim
+        ?Accepted.Payable.IsSet() && Client.PrepareClaim(*Accepted.Payable,Accepted.Payable->Remaining)
+        :Accepted.Action==ERPGAuctionAction::Purchase?Client.PreparePurchase(Accepted.Listing):Client.PrepareCancel(Accepted.Listing);
     if(Prepared)return SaveAndSend();
     Notify();return false;
 }
@@ -141,6 +172,17 @@ FRPGAuctionScreenView FRPGAuctionCoordinator::GetScreenView()
     V.bCanAssets=Ready && Current.bEligible && !Client.GetPending() && Client.GetReceipt() && AssetBegin && AssetApply && AssetCurrent;
     V.bHasReview=Review.IsSet();V.bCanPurchase=!V.bHasReview && CanReviewAction(ERPGAuctionAction::Purchase);
     V.bCanCancel=!V.bHasReview && CanReviewAction(ERPGAuctionAction::Cancel);
+    V.bPayableVisible=OwnSoldDetail();V.bCanReadPayable=V.bCanMine && V.bPayableVisible;
+    V.bCanClaim=!V.bHasReview && CanReviewAction(ERPGAuctionAction::Claim);
+    if(V.bPayableVisible)
+    {
+        V.PayableText=NSLOCTEXT("RPGAuction","PayablePrompt","판매 대금을 수령하려면 현재 수령 대기금을 불러오세요.");
+        if(PayableState==ERPGAuctionReadState::Loading)V.PayableText=NSLOCTEXT("RPGAuction","PayableLoading","현재 수령 대기금을 확인하고 있습니다.");
+        else if(PayableState==ERPGAuctionReadState::Failed)V.PayableText=NSLOCTEXT("RPGAuction","PayableFailed","수령 대기금을 불러오지 못했습니다. 다시 확인해 주세요.");
+        else if(Payable.IsSet())V.PayableText=Payable->CurrencyCode!=TEXT("Gold")?NSLOCTEXT("RPGAuction","PayableCurrency","수령 재화의 표시 정보를 확인할 수 없습니다.")
+            :Payable->Remaining==0?NSLOCTEXT("RPGAuction","PayableEmpty","수령할 대기금이 없습니다.")
+            :FText::Format(NSLOCTEXT("RPGAuction","PayableReady","현재 수령 대기금: {0} 골드"),FText::AsNumber(Payable->Remaining));
+    }
     if(Review.IsSet()){V.ReviewToken=Review->Token;V.ReviewText=Review->Text;V.bCanConfirm=CanReviewAction(Review->Action);}
     if(bStorageBlocked)V.Status=NSLOCTEXT("RPGAuction","Storage","저장된 요청을 읽거나 정리할 수 없습니다. 원본을 유지하며 저장 상태를 다시 확인해 주세요.");
     else if(!Current.bAuthenticated)V.Status=NSLOCTEXT("RPGAuction","Auth","로그인이 만료되었습니다. 다시 로그인한 뒤 처리 결과를 확인해 주세요.");
@@ -161,6 +203,8 @@ FRPGAuctionScreenView FRPGAuctionCoordinator::GetScreenView()
     else if(DetailState==ERPGAuctionReadState::Failed)V.Detail=NSLOCTEXT("RPGAuction","DetailFailed","현재 상세 정보를 확인할 수 없습니다. 내역을 다시 불러와 주세요.");
     if(Client.GetReceipt())
     {
+        const auto* Receipt=Client.GetReceipt();
+        if(Receipt->Action==ERPGAuctionAction::Claim)V.ClaimResult=FText::Format(NSLOCTEXT("RPGAuction","ClaimResult","최근 수령 결과: 지급액 {0} · 처리 당시 남은 대기금 {1}\n현재 보유 재화는 최신 조회로 확인하세요."),FText::AsNumber(Receipt->Paid),FText::AsNumber(Receipt->Remaining));
         V.Assets=Client.NeedsAssetRefresh()?NSLOCTEXT("RPGAuction","RefreshNeeded","요청 처리는 완료되었습니다. 최신 보유 물품과 재화를 불러와 주세요.")
             :NSLOCTEXT("RPGAuction","RefreshAgain","필요하면 최신 보유 물품과 재화를 다시 불러올 수 있습니다.");
         if(AssetsState==ERPGAuctionAssetsState::Failed)V.Assets=NSLOCTEXT("RPGAuction","AssetsFailed","최신 자산을 불러오지 못했습니다. 다시 불러와 주세요.");

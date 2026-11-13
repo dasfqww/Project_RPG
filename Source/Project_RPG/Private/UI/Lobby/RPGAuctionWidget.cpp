@@ -35,6 +35,10 @@ TSharedRef<SWidget> URPGAuctionWidget::RebuildWidget()
         DetailText=Text(FText::GetEmpty());
         PurchaseButton=Button(TEXT("AuctionPurchaseReview"),NSLOCTEXT("RPGAuction","ReviewPurchase","구매 내용 확인"));
         CancelSaleButton=Button(TEXT("AuctionCancelReview"),NSLOCTEXT("RPGAuction","ReviewCancel","판매 취소 내용 확인"));
+        PayableButton=Button(TEXT("AuctionReadPayable"),NSLOCTEXT("RPGAuction","ReadPayable","현재 수령 대기금 불러오기"));
+        PayableText=Text(FText::GetEmpty());
+        ClaimButton=Button(TEXT("AuctionClaimReview"),NSLOCTEXT("RPGAuction","ReviewClaim","대금 수령 내용 확인"));
+        ClaimResultText=Text(FText::GetEmpty());
         ReviewText=Text(FText::GetEmpty());
         ConfirmButton=Button(TEXT("AuctionConfirm"),NSLOCTEXT("RPGAuction","Confirm","위 내용으로 실행"));
         DismissButton=Button(TEXT("AuctionDismiss"),NSLOCTEXT("RPGAuction","Dismiss","실행하지 않고 돌아가기"));
@@ -48,6 +52,7 @@ TSharedRef<SWidget> URPGAuctionWidget::RebuildWidget()
         PublicButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReadPublic);MineButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReadMine);
         NextButton->OnClicked.AddUniqueDynamic(this,&ThisClass::NextPage);DetailButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReadDetail);
         PurchaseButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReviewPurchase);CancelSaleButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReviewCancel);
+        PayableButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReadPayable);ClaimButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReviewClaim);
         ConfirmButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Confirm);DismissButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Dismiss);
         RecoverButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Recover);RetryButton->OnClicked.AddUniqueDynamic(this,&ThisClass::Retry);
         StorageButton->OnClicked.AddUniqueDynamic(this,&ThisClass::CheckStorage);AssetsButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReloadAssets);
@@ -83,6 +88,11 @@ void URPGAuctionWidget::RefreshView()
     if(DismissButton)DismissButton->SetVisibility(V.bHasReview?ESlateVisibility::Visible:ESlateVisibility::Collapsed);
     if(PurchaseButton){PurchaseButton->SetVisibility(V.bPublicVisible?ESlateVisibility::Visible:ESlateVisibility::Collapsed);PurchaseButton->SetIsEnabled(V.bCanPurchase && Selected==V.DetailListing);}
     if(CancelSaleButton)CancelSaleButton->SetIsEnabled(V.bCanCancel && Selected==V.DetailListing);
+    const bool ShowPayable=V.bPayableVisible && Selected.IsValid() && Selected==V.DetailListing;
+    if(PayableButton){PayableButton->SetVisibility(ShowPayable?ESlateVisibility::Visible:ESlateVisibility::Collapsed);PayableButton->SetIsEnabled(V.bCanReadPayable);}
+    if(ClaimButton){ClaimButton->SetVisibility(ShowPayable?ESlateVisibility::Visible:ESlateVisibility::Collapsed);ClaimButton->SetIsEnabled(V.bCanClaim);}
+    if(PayableText){PayableText->SetText(ShowPayable?V.PayableText:FText::GetEmpty());PayableText->SetVisibility(ShowPayable?ESlateVisibility::Visible:ESlateVisibility::Collapsed);}
+    if(ClaimResultText){ClaimResultText->SetText(V.ClaimResult);ClaimResultText->SetVisibility(V.ClaimResult.IsEmpty()?ESlateVisibility::Collapsed:ESlateVisibility::Visible);}
     if(PublicButton)PublicButton->SetIsEnabled(V.bCanPublic);if(MineButton)MineButton->SetIsEnabled(V.bCanMine);
     if(NextButton)NextButton->SetIsEnabled(V.bCanNext);
     if(RecoverButton)RecoverButton->SetIsEnabled(V.bCanRecover);if(RetryButton)RetryButton->SetIsEnabled(V.bCanRetry);
@@ -120,6 +130,8 @@ void URPGAuctionWidget::NextPage(){if(const auto C=ActiveOwner())C->NextPage(Dis
 void URPGAuctionWidget::ReadDetail(){if(const auto C=ActiveOwner())C->ReadDetail(DisplayedPage,Selected);RefreshView();}
 void URPGAuctionWidget::ReviewPurchase(){if(const auto C=ActiveOwner())C->ReviewListing(DisplayedPage,Selected,ERPGAuctionAction::Purchase);RefreshView();}
 void URPGAuctionWidget::ReviewCancel(){if(const auto C=ActiveOwner())C->ReviewListing(DisplayedPage,Selected,ERPGAuctionAction::Cancel);RefreshView();}
+void URPGAuctionWidget::ReadPayable(){if(const auto C=ActiveOwner())C->ReadPayable(DisplayedPage,Selected);RefreshView();}
+void URPGAuctionWidget::ReviewClaim(){if(const auto C=ActiveOwner())C->ReviewListing(DisplayedPage,Selected,ERPGAuctionAction::Claim);RefreshView();}
 void URPGAuctionWidget::Confirm(){if(const auto C=ActiveOwner())C->ConfirmListing(DisplayedReview);RefreshView();}
 void URPGAuctionWidget::Dismiss(){if(const auto C=ActiveOwner())C->DismissReview(DisplayedReview);RefreshView();}
 void URPGAuctionWidget::Recover(){if(const auto C=ActiveOwner())C->Recover();RefreshView();}

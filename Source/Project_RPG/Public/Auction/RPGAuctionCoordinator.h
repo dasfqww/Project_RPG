@@ -10,13 +10,14 @@ struct PROJECT_RPG_API FRPGAuctionScreenView
 {
     // Native identity guard only; never rendered or persisted by the view.
     FRPGTradeIntentScope Context;
-    FText Status, Detail, Assets, ReviewText;
+    FText Status, Detail, Assets, ReviewText, PayableText, ClaimResult;
     TArray<FRPGAuctionScreenRow> Rows;
     FGuid PageToken, DetailListing, ReviewToken;
     bool bAvailable=false, bCanPublic=false, bCanMine=false, bCanNext=false, bCanDetail=false;
     bool bCanRecover=false, bCanRetry=false, bCanStorage=false, bCanAssets=false;
     bool bPublicVisible=false,bHasPending=false,bStorageBlocked=false,bHasReceipt=false;
     bool bCanPurchase=false,bCanCancel=false,bHasReview=false,bCanConfirm=false;
+    bool bPayableVisible=false,bCanReadPayable=false,bCanClaim=false;
 };
 
 struct PROJECT_RPG_API FRPGAuctionLobbyContext
@@ -48,6 +49,7 @@ public:
     bool ReadPage(bool bMine);
     bool NextPage(FGuid DisplayedPage);
     bool ReadDetail(FGuid DisplayedPage,FGuid Listing);
+    bool ReadPayable(FGuid DisplayedPage,FGuid Listing);
     bool ReviewListing(FGuid DisplayedPage,FGuid Listing,ERPGAuctionAction Action);
     bool ConfirmListing(FGuid DisplayedReview);
     void DismissReview(FGuid DisplayedReview);
@@ -81,6 +83,7 @@ private:
     void ReadDelay(const FRPGAuctionHttpResult& Result);
     FText ListingText(const FRPGAuctionListing& Listing,bool bDetail) const;
     bool CanReviewAction(ERPGAuctionAction Action) const;
+    bool OwnSoldDetail() const;
     TSharedRef<IRPGAuctionTransport> Transport;
     FContext Context;
     FString JournalRoot;
@@ -100,11 +103,13 @@ private:
     ERPGAuctionAssetsState AssetsState = ERPGAuctionAssetsState::Idle;
     TOptional<FRPGAuctionPage> Page;
     TOptional<FRPGAuctionListing> Detail;
+    TOptional<FRPGAuctionPayable> Payable;
+    ERPGAuctionReadState PayableState=ERPGAuctionReadState::Idle;
     FRPGAuctionSearch PageQuery;
     FGuid PageToken, DetailSelection;
     bool bPageMine=false;
     ERPGAuctionReadState PageState=ERPGAuctionReadState::Idle, DetailState=ERPGAuctionReadState::Idle;
     TFunction<bool(const FRPGTradeItemDetails&,FText&,FText&)> ItemPresenter;
-    struct FListingReview { FRPGAuctionListing Listing; ERPGAuctionAction Action; FGuid Token; FText Text; };
+    struct FListingReview { FRPGAuctionListing Listing; ERPGAuctionAction Action; FGuid Token; FText Text; TOptional<FRPGAuctionPayable> Payable; };
     TOptional<FListingReview> Review;
 };

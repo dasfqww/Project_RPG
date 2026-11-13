@@ -1,15 +1,16 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8', [switch]$Confirmation)
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$Confirmation, [switch]$Proceeds)
 $ErrorActionPreference = 'Stop'
+if($Confirmation -and $Proceeds){throw 'Select one validation mode'}
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
-$proofFolder=if($Confirmation){'AuctionConfirm-20261113'}else{'AuctionScreen-20261113'}
-$reservation=if($Confirmation){'auction-confirm-20261113'}else{'auction-screen-20261113'}
+$proofFolder=if($Proceeds){'AuctionProceeds-20261113'}elseif($Confirmation){'AuctionConfirm-20261113'}else{'AuctionScreen-20261113'}
+$reservation=if($Proceeds){'auction-proceeds-20261113'}elseif($Confirmation){'auction-confirm-20261113'}else{'auction-screen-20261113'}
 $proofRoot = Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/' + $id)
 $tempRoot = Join-Path $workspace 'Saved/AS'
 $temp = Join-Path $tempRoot $id.Substring(0,8)
 $project = Join-Path $temp 'Project'
-$proof = [ordered]@{Passed=$false; Scope='Actual native UMG purchase/cancel confirmation and read/recovery widget plus coordinator consent/pagination/lifetime/storage and original asset/client/recovery regressions; real mapper fixtures, fake HTTP, separate UE processes. No full lobby viewport, Steam, actual auction HTTP roundtrip or full game module link'; Inputs=@(); Tests=@(); Cleanup=$null; Failure=$null}
+$proof = [ordered]@{Passed=$false; Scope='Actual native UMG proceeds query/claim including partial/zero results, purchase/cancel confirmation and read/recovery widget plus coordinator consent/pagination/lifetime/storage and original asset/client/recovery regressions; real mapper fixtures, fake HTTP, separate UE processes. No full lobby viewport, Steam, actual auction HTTP roundtrip or full game module link'; Inputs=@(); Tests=@(); Cleanup=$null; Failure=$null}
 $process = $null
 $ownsTemp = $false
 $savedAssetsRun=[Environment]::GetEnvironmentVariable('PROJECT_RPG_AUCTION_ASSETS_RUN','Process')
@@ -162,7 +163,7 @@ ImportTagsFromConfig=True
             $expected=@('Wire','Commands','Receipts','UncertainRecovery','Lifetime','Intent')|ForEach-Object {'ProjectRPG.Auction.Client.'+$_}
             $expected+=@('Storage','Locking','Coordinator','Context','StorageFailure','Restart')|ForEach-Object {'ProjectRPG.Auction.Recovery.'+$_}
             $expected+=@('Codec','Projection','Lifetime')|ForEach-Object {'ProjectRPG.Auction.Assets.'+$_}
-            $expected+=@('Browse','ContextAndThrottle','WidgetAndRecovery','StorageRecheck','PurchaseConfirmation','CancelConfirmation','ConfirmationLifetime')|ForEach-Object {'ProjectRPG.Auction.Screen.'+$_}
+            $expected+=@('Browse','ContextAndThrottle','WidgetAndRecovery','StorageRecheck','PurchaseConfirmation','CancelConfirmation','ConfirmationLifetime','ProceedsConfirmation','ProceedsReadSafety','ProceedsZeroRecovery')|ForEach-Object {'ProjectRPG.Auction.Screen.'+$_}
         }
         if((Compare-Object $expected @($tests.fullTestPath)) -or @($tests|Where-Object {$_.state -ne 'Success' -or $_.errors -ne 0 -or $_.warnings -ne 0}).Count){throw ('Missing or failing native cases: '+$phase)}
     }

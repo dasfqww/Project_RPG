@@ -1,10 +1,11 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$Confirmation)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$Confirmation, [switch]$Proceeds)
 $ErrorActionPreference='Stop'
+if($Confirmation -and $Proceeds){throw 'Select one validation mode'}
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $run=[Guid]::NewGuid().ToString('N')
-$proofFolder=if($Confirmation){'AuctionConfirm-20261113'}else{'AuctionScreen-20261113'}
-$reservation=if($Confirmation){'auction-confirm-20261113'}else{'auction-screen-20261113'}
+$proofFolder=if($Proceeds){'AuctionProceeds-20261113'}elseif($Confirmation){'AuctionConfirm-20261113'}else{'AuctionScreen-20261113'}
+$reservation=if($Proceeds){'auction-proceeds-20261113'}elseif($Confirmation){'auction-confirm-20261113'}else{'auction-screen-20261113'}
 $proofRoot=Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/Integration-'+$run)
 $tempRoot=Join-Path $workspace 'Saved/AS'
 $temp=Join-Path $tempRoot $run.Substring(0,8)

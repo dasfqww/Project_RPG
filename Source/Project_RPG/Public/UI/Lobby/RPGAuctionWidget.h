@@ -33,6 +33,8 @@ private:
     UFUNCTION() void ReadDetail();
     UFUNCTION() void ReviewPurchase();
     UFUNCTION() void ReviewCancel();
+    UFUNCTION() void ReadPayable();
+    UFUNCTION() void ReviewClaim();
     UFUNCTION() void Confirm();
     UFUNCTION() void Dismiss();
     UFUNCTION() void Recover();
@@ -51,6 +53,8 @@ private:
     UPROPERTY(Transient) TObjectPtr<UTextBlock> AssetText;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> RetryHelpText;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> ReviewText;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> PayableText;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> ClaimResultText;
     UPROPERTY(Transient) TObjectPtr<UComboBoxString> Rows;
     UPROPERTY(Transient) TObjectPtr<UButton> PublicButton;
     UPROPERTY(Transient) TObjectPtr<UButton> MineButton;
@@ -58,6 +62,8 @@ private:
     UPROPERTY(Transient) TObjectPtr<UButton> DetailButton;
     UPROPERTY(Transient) TObjectPtr<UButton> PurchaseButton;
     UPROPERTY(Transient) TObjectPtr<UButton> CancelSaleButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> PayableButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> ClaimButton;
     UPROPERTY(Transient) TObjectPtr<UButton> ConfirmButton;
     UPROPERTY(Transient) TObjectPtr<UButton> DismissButton;
     UPROPERTY(Transient) TObjectPtr<UButton> RecoverButton;
