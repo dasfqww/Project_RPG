@@ -1,4 +1,5 @@
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
+#include "UI/Narrative/RPGNarrativeWindowLayout.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -52,23 +53,21 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
 {
     if (WidgetTree && !WidgetTree->RootWidget)
     {
-        auto* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>(); WidgetTree->RootWidget = Canvas;
-        auto* Width = WidgetTree->ConstructWidget<USizeBox>(); Width->SetWidthOverride(720.f);
-        auto* CanvasSlot = Canvas->AddChildToCanvas(Width); CanvasSlot->SetAnchors(FAnchors(.5f)); CanvasSlot->SetAlignment(FVector2D(.5f)); CanvasSlot->SetAutoSize(true);
-        auto* Border = WidgetTree->ConstructWidget<UBorder>(); Border->SetPadding(FMargin(24.f));
-        Border->SetBrushColor(FLinearColor(.025f, .035f, .055f, .98f)); Width->SetContent(Border);
-        auto* Page = WidgetTree->ConstructWidget<UVerticalBox>(); Border->SetContent(Page);
-        auto Text = [&](const TCHAR* Name)
+        const auto Frame = FRPGNarrativeWindowLayout::Build(*WidgetTree);
+        WindowBounds = Frame.Bounds; WindowBorder = Frame.Border; ContentScroll = Frame.Scroll;
+        auto* Page = Frame.Content;
+        auto Text = [&](const TCHAR* Name, UVerticalBox* Parent = nullptr)
         {
             auto* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), Name);
-            Label->SetAutoWrapText(true); Page->AddChildToVerticalBox(Label)->SetPadding(FMargin(0, 5)); return Label;
+            Label->SetAutoWrapText(true); (Parent ? Parent : Page)->AddChildToVerticalBox(Label)->SetPadding(FMargin(0, 5)); return Label;
         };
-        Text(TEXT("NarrativeTitle"))->SetText(NSLOCTEXT("RPGNarrative", "Title", "인물과 이야기"));
+        Text(TEXT("NarrativeTitle"), Frame.Header)->SetText(NSLOCTEXT("RPGNarrative", "Title", "인물과 이야기"));
         Speaker = Text(TEXT("NarrativeSpeaker")); Body = Text(TEXT("NarrativeBody"));
         Progress = Text(TEXT("NarrativeProgress")); Status = Text(TEXT("NarrativeStatus"));
         auto* JournalHeight = WidgetTree->ConstructWidget<USizeBox>(); JournalHeight->SetHeightOverride(120.f);
         Page->AddChildToVerticalBox(JournalHeight);
         auto* JournalScroll = WidgetTree->ConstructWidget<UScrollBox>(); JournalHeight->SetContent(JournalScroll);
+        JournalScroll->SetScrollWhenFocusChanges(EScrollWhenFocusChanges::InstantScroll);
         Journal = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("NarrativeQuestJournal"));
         Journal->SetAutoWrapText(true); JournalScroll->AddChild(Journal);
         QuestTracker = WidgetTree->ConstructWidget<URPGNarrativeQuestTrackerWidget>(URPGNarrativeQuestTrackerWidget::StaticClass(), TEXT("NarrativeQuestTracking"));
@@ -81,14 +80,15 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
         JournalScroll->AddChild(StorySkip);
         auto* Height = WidgetTree->ConstructWidget<USizeBox>(); Height->SetHeightOverride(180.f); Page->AddChildToVerticalBox(Height);
         auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>(); Height->SetContent(Scroll);
+        Scroll->SetScrollWhenFocusChanges(EScrollWhenFocusChanges::InstantScroll);
         Actions = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("NarrativeActions")); Scroll->AddChild(Actions);
-        auto Button = [&](const TCHAR* Name, const FText& Label)
+        auto Button = [&](const TCHAR* Name, const FText& Label, UVerticalBox* Parent = nullptr)
         {
             auto* Control = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), Name);
             auto* Caption = WidgetTree->ConstructWidget<UTextBlock>(); Caption->SetText(Label); Control->SetContent(Caption);
-            Page->AddChildToVerticalBox(Control)->SetPadding(FMargin(0, 4)); return Control;
+            (Parent ? Parent : Frame.Footer)->AddChildToVerticalBox(Control)->SetPadding(FMargin(0, 4)); return Control;
         };
-        RefreshButton = Button(TEXT("NarrativeRefresh"), NSLOCTEXT("RPGNarrative", "Refresh", "대화 다시 확인"));
+        RefreshButton = Button(TEXT("NarrativeRefresh"), NSLOCTEXT("RPGNarrative", "Refresh", "대화 다시 확인"), Page);
         RefreshButton->OnClicked.AddUniqueDynamic(this, &ThisClass::RefreshStory);
         RetryButton = Button(TEXT("NarrativeRetry"), NSLOCTEXT("RPGNarrative", "Retry", "진행 결과 다시 확인"));
         RetryButton->OnClicked.AddUniqueDynamic(this, &ThisClass::RetryChoice);
@@ -152,6 +152,8 @@ bool URPGNarrativeDialogueWidget::OpenContext(const FGuid CharacterId)
     Coordinator->OnChanged.AddUniqueDynamic(this, &ThisClass::HandleChanged);
     Coordinator->OnRequestFinished.AddUniqueDynamic(this, &ThisClass::HandleFinished);
     CapturedNode.Reset(); CapturedSpeaker.Reset(); CapturedText.Reset();
+    PresentedNode.Reset(); PresentedSpeaker.Reset(); PresentedText.Reset();
+    if (ContentScroll) ContentScroll->ScrollToStart();
     if (TranscriptPanel) TranscriptPanel->Configure(Coordinator->GetTranscript(), Character);
     if (QuestTracker) QuestTracker->Configure(Coordinator->GetQuestTracking(), Character, true);
     if (AccountHistory) AccountHistory->Configure(Coordinator->GetAccountHistoryClient(), Character);
@@ -197,20 +199,25 @@ void URPGNarrativeDialogueWidget::NativeConstruct() { Super::NativeConstruct(); 
 void URPGNarrativeDialogueWidget::NativeTick(const FGeometry& Geometry, const float DeltaTime)
 {
     Super::NativeTick(Geometry, DeltaTime);
+    FRPGNarrativeWindowLayout::ApplyViewport(WindowBounds, WindowBorder, Geometry.GetLocalSize());
     if (!EnsureNPCContext()) return;
     const bool bReadable = MatchesSelection() && Coordinator->HasCurrentSnapshot();
     const bool bBusy = MatchesSelection() && Coordinator->IsBusy();
     const bool bPending = MatchesSelection() && Coordinator->HasPendingChoice();
     if (bReadable != bLastReadable || bBusy != bLastBusy || bPending != bLastPending) Render();
-    CaptureDisplayedDialogue();
+    CaptureDisplayedDialogue(Geometry);
 }
-void URPGNarrativeDialogueWidget::CaptureDisplayedDialogue()
+void URPGNarrativeDialogueWidget::CaptureDisplayedDialogue(const FGeometry& ViewportGeometry)
 {
     FRPGDialogueNode Active;
     if (!IsInViewport() || !IsVisible() || !MatchesSelection() || !Coordinator->HasCurrentSnapshot()
         || !Coordinator->GetDialogueManager()->GetActiveDialogue(Active) || (bNPCContext && Active.Id != OwnedDialogue)
-        || !Body || !Speaker || !Body->GetText().EqualTo(Active.Text) || !Speaker->GetText().EqualTo(Active.Speaker))
+        || !Body || !Speaker || !Body->IsVisible() || !Speaker->IsVisible()
+        || !Body->GetText().EqualTo(Active.Text) || !Speaker->GetText().EqualTo(Active.Speaker))
     { CapturedNode.Reset(); CapturedSpeaker.Reset(); CapturedText.Reset(); return; }
+    // Scrolling away and back keeps the same line stamp, including after an explicit log clear.
+    if (!ContentScroll || !ContentScroll->IsVisible() || !FRPGNarrativeWindowLayout::HasVisibleArea(Body->GetCachedGeometry().GetRenderBoundingRect(),
+        ContentScroll->GetCachedGeometry().GetRenderBoundingRect(), ViewportGeometry.GetRenderBoundingRect())) return;
     const auto Name = Active.Speaker.ToString(), Line = Active.Text.ToString();
     if (CapturedNode.Equals(Active.Id, ESearchCase::CaseSensitive) && CapturedSpeaker.Equals(Name, ESearchCase::CaseSensitive)
         && CapturedText.Equals(Line, ESearchCase::CaseSensitive)) return;
@@ -305,6 +312,7 @@ void URPGNarrativeDialogueWidget::Render()
     RefreshButton->SetIsEnabled(MatchesSelection() && !bLastBusy && !bLastPending);
     RetryButton->SetVisibility(bLastPending ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
     RetryButton->SetIsEnabled(!bLastBusy);
+    bool bShowingActive = false;
     if (bLastReadable)
     {
         const auto Quests = Coordinator->GetQuestManager()->GetQuests(Character);
@@ -326,7 +334,13 @@ void URPGNarrativeDialogueWidget::Render()
         FRPGDialogueNode Active;
         if (Coordinator->GetDialogueManager()->GetActiveDialogue(Active) && (!bNPCContext || Active.Id == OwnedDialogue))
         {
+            bShowingActive = true;
             Speaker->SetText(Active.Speaker); Body->SetText(Active.Text);
+            const auto Name = Active.Speaker.ToString(), Line = Active.Text.ToString();
+            if (ContentScroll && (!PresentedNode.Equals(Active.Id, ESearchCase::CaseSensitive)
+                || !PresentedSpeaker.Equals(Name, ESearchCase::CaseSensitive) || !PresentedText.Equals(Line, ESearchCase::CaseSensitive)))
+                ContentScroll->ScrollToStart();
+            PresentedNode = Active.Id; PresentedSpeaker = Name; PresentedText = Line;
             for (const auto& Choice : Active.Choices) AddAction(Choice.Text, Active.Id, Choice.Id, !bLastBusy && !bLastPending);
         }
         else
@@ -341,6 +355,11 @@ void URPGNarrativeDialogueWidget::Render()
                 }
             if (Entries == 0) Body->SetText(NSLOCTEXT("RPGNarrative", "Empty", "지금 진행할 수 있는 대화가 없습니다."));
         }
+    }
+    if (!bShowingActive)
+    {
+        if (!PresentedNode.IsEmpty() && ContentScroll) ContentScroll->ScrollToStart();
+        PresentedNode.Reset(); PresentedSpeaker.Reset(); PresentedText.Reset();
     }
     Status->SetText(bLastBusy ? NSLOCTEXT("RPGNarrative", "Busy", "이야기를 확인하고 있습니다…") : !FailureText.IsEmpty() ? FailureText
         : bLastPending ? NSLOCTEXT("RPGNarrative", "Pending", "진행 결과를 다시 확인해 주세요.")

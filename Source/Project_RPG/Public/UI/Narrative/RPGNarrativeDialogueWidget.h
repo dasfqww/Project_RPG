@@ -8,6 +8,9 @@
 class UButton;
 class UTextBlock;
 class UVerticalBox;
+class USizeBox;
+class UBorder;
+class UScrollBox;
 class URPGNarrativeCoordinator;
 class URPGNarrativeHistoryPanel;
 class URPGNarrativeStorySkipPanel;
@@ -67,7 +70,7 @@ private:
     UFUNCTION() void HandleFinished(bool bSuccess, const FString& Error, bool bOutcomeUnknown);
     void Act(const FString& DialogueId, const FString& ChoiceId);
     void Render();
-    void CaptureDisplayedDialogue();
+    void CaptureDisplayedDialogue(const FGeometry& ViewportGeometry);
     void Unbind();
     bool MatchesSelection() const;
     void AddAction(const FText& Label, const FString& DialogueId, const FString& ChoiceId, bool bEnabled);
@@ -84,10 +87,14 @@ private:
     UPROPERTY(Transient) TObjectPtr<URPGNarrativeTranscriptPanel> TranscriptPanel;
     UPROPERTY(Transient) TObjectPtr<UButton> RefreshButton;
     UPROPERTY(Transient) TObjectPtr<UButton> RetryButton;
+    UPROPERTY(Transient) TObjectPtr<USizeBox> WindowBounds;
+    UPROPERTY(Transient) TObjectPtr<UBorder> WindowBorder;
+    UPROPERTY(Transient) TObjectPtr<UScrollBox> ContentScroll;
     FGuid Character;
     FText FailureText;
     FString OwnedDialogue;
     FString CapturedNode, CapturedSpeaker, CapturedText;
+    FString PresentedNode, PresentedSpeaker, PresentedText;
     bool bLastReadable = false, bLastBusy = false, bLastPending = false;
     bool bNPCContext = false;
     TWeakObjectPtr<ARPGNarrativeNPC> SourceNPC;
