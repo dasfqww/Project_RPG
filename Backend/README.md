@@ -558,3 +558,37 @@ Backend/postgres-integration-test.ps1
 - CI 및 운영 사양 PostgreSQL에 대한 통합/부하 테스트
 - TLS, secret manager, 다중 인스턴스 edge rate limit, 관측성
 - 재접속 유예와 전용 서버 장애 복구 정책
+
+## 거래·경매 허용 물품 서버 설정 (2026-11-14)
+
+일반 서버는 기동 시 `Trading:Items`를 읽어 직거래와 경매의 공통 물품 허용 목록을 만든다. 배포 기본값은 빈 목록이며 두 기능 플래그도 false다. 설정을 변경한 뒤에는 서버를 재시작해야 한다. 실제 운영 콘텐츠 목록은 별도로 선정하며, 아래 `Example.Ore`는 설정 형식만 보여주는 예시 ID다.
+
+```json
+{
+  "Trading": {
+    "Enabled": false,
+    "CurrencyCode": "Gold",
+    "Items": [
+      {
+        "DefinitionType": "Material",
+        "DefinitionName": "Example.Ore",
+        "DefinitionVersion": 1,
+        "AllowDirect": true,
+        "AllowAuction": false,
+        "MaximumStackSize": 100
+      }
+    ]
+  },
+  "Auctions": {
+    "Enabled": false
+  }
+}
+```
+
+실제 설정의 ID·버전·중첩 수는 서버에서 인정할 콘텐츠 정의 및 UE 표시 정의와 맞춘다. `AllowDirect`와 `AllowAuction`은 독립적인 물품 권한이며 기능 플래그를 대신하지 않는다. 목록이 비었으면 물품 거래는 거절하지만 기존 거래 재화 규칙은 바뀌지 않는다.
+
+각 항목에는 위 여섯 필드가 모두 필요하다. 누락·오타·중복 정의 ID+버전, 스칼라 대신 중첩된 필드, 비연속 목록 인덱스, 빈/잘못된 ID, 양의 int32가 아닌 버전·중첩 수, true/false가 아닌 허용 값은 일반 HTTP 서버 기동 시 오류다. 잘못된 항목을 무시한 부분 목록으로 시작하지 않는다. ID는 주변 공백을 제거하거나 대소문자를 바꾸지 않으며 정확한 정의/버전만 허용한다.
+
+표준 환경 변수 이름도 사용할 수 있다. 예를 들어 첫 항목은 `Trading__Items__0__DefinitionType`, `Trading__Items__0__DefinitionName`, `Trading__Items__0__DefinitionVersion`, `Trading__Items__0__AllowDirect`, `Trading__Items__0__AllowAuction`, `Trading__Items__0__MaximumStackSize`로 지정한다. 환경 변수만으로 여러 항목을 만들면 인덱스를 0부터 연속으로 지정한다. JSON 목록과 다른 공급자를 함께 사용할 때는 .NET 설정의 키별 병합을 따르므로, 제거한 항목이 하위 우선순위 설정에 남지 않도록 실제 적용 구성을 확인한다.
+
+목록에서 물품을 제거하고 재시작해도 이미 확정한 요청의 원래 영수증 재생과 판매 취소·반환은 유지한다. 새 등록과 직거래 준비·확정 시점의 물품 예약/이전에는 현재 허용 목록을 적용하며 소유권·귀속·잠금·만료·Revision·로비/제재·원자 이전 검사는 그대로 유지한다. 상세 계약과 재현 가능한 검사 경로는 [거래 개발 계약 43절](../Docs/PLAYER_TRADING_DESIGN.md#43-거래-허용-물품의-서버-설정-2026-11-14)을 따른다.

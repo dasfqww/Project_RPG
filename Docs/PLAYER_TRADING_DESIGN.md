@@ -1367,3 +1367,17 @@ UE의 `SendAssets`는 기존 비공개 Player HTTP 문맥/단일 요청/4MiB 한
 `Run-AuctionScreenIntegrationCompile.ps1 -Registration`의 게시 사본+명시19입력은 전체 UHT/실제 호출부 CPP10 컴파일0이다. 두 검증의 고유47입력/러너2 SHA가 현재 파일과 일치하며, 기존 Assets 실행기의 새 의존성과 PowerShell 파싱도 확인했다. 초기 날짜 함수 이름 충돌과 불완전한 호출부 사본 입력은 보완 후 성공 결과와 구분해 기록했다. 각 UE 기동의 기존 Error15/ACL 경고4는 검사 오류·경고0과 별도로 보존했다.
 
 자기4사본/OBJ/PCH/DLL/fixture/cache·소유 UE 실행을 모두 폐기했고 6,089,363,857 bytes(약5.671GiB)와 중복 증거868,978 bytes를 정리했다. 자기 Temp/PID/새 정리 예외0·원본 DLL/Intermediate/DDC/DB/에셋·타 담당 보존이다. 작은 명령/결과/소스·모듈 해시는 로컬 `Saved/BuildChecks/AuctionRegistrationUI-20261113/Completion.json`에 남긴다. 폐기한 모듈 해시는 당시 근거이며 실제 로비/HTTP/PG/전체 게임 링크/Steam 성공을 뜻하지 않는다.
+
+## 43. 거래 허용 물품의 서버 설정 (2026-11-14)
+
+`TradeItemCatalogConfiguration.Load`가 `Trading:Items`를 일반 HTTP 서버 기동 때 한 번 읽어 불변 `TradeItemPolicy`를 만든다. 실제 Program의 직거래 예약/세션·경매 저장소가 같은 인스턴스를 사용한다. 이전의 빈 목록 하드코딩을 대체하며 기본 `Trading:Enabled=false`, `Auctions:Enabled=false`, `Trading:Items=[]`는 유지한다. 실제 출시 물품 선정이나 운영 서버 활성화·배포는 이 변경에 포함하지 않는다.
+
+- 각 항목은 `DefinitionType`, `DefinitionName`, `DefinitionVersion`, `AllowDirect`, `AllowAuction`, `MaximumStackSize` 여섯 필드를 모두 명시한다. 정의 ID·버전의 일치는 기존 도메인의 ordinal 비교를 사용하며 주변 공백을 정규화하거나 물품 태그로 권한을 추론하지 않는다. 채널별 허용 값은 각각 명시적인 true/false이며, 버전과 최대 중첩 수는 양의 int32다.
+- 미설정/빈 목록은 모든 **물품**의 직거래·경매를 거절한다. 목록을 채워도 별도의 기능 플래그를 켜지 않으면 새 거래/등록/구매는 열리지 않는다. 재화만의 직거래 허용 여부는 기존 거래 기능 플래그와 규칙을 따른다.
+- 항목/필드의 스칼라·중첩 구조, 빠진 필드·알 수 없는 필드, 비연속/잘못된 목록 인덱스, 잘못된 정수/불리언, 빈/잘못된 ID·중복 정의 ID+버전은 일반 서버 기동을 실패시킨다. 잘못된 항목을 건너뛰거나 일부 목록만 적용하지 않는다. 일반 기동에서 이 검사는 저장소 스키마 초기화보다 먼저 수행한다.
+- 표준 JSON/환경 변수 설정을 지원한다. 예를 들어 `Trading__Items__0__AllowAuction=true`는 해당 항목의 경매 허용 값이다. 환경 변수로 목록을 만들 때도 모든 필드와 0부터 연속인 인덱스가 필요하다. 예시와 운영 절차는 [Backend 설정 안내](../Backend/README.md#거래경매-허용-물품-서버-설정-2026-11-14)를 따른다.
+- 정책은 기동 시 스냅샷이므로 적용/제거에는 서버 재시작이 필요하다. 이미 확정한 영수증은 현재 목록 검사보다 먼저 재생하고, 목록에서 제거한 물품의 판매 취소·반환은 기존 회수 경로를 유지한다. 새 등록과 직거래 준비·확정 시점의 물품 예약/이전은 현재 목록을 적용한다. 직거래 제안 편집 자체는 기존과 같이 의도를 저장하며 준비 시점에 허용 정책을 최종 검사한다. 소유권·귀속·잠금·만료·lease·Revision·중첩/수량·원자 이전 규칙은 기존 도메인/저장소가 계속 검사한다.
+
+유지 검사 `Scripts/Tests/Run-TradeCatalogTests.ps1`은 게시 Backend에 본인 설정/DI/검사 입력만 덧씌운 사설 사본으로 실행한다. 엄격 설정 파싱·기동 스냅샷과 실제 Program/Player HTTP/PostgreSQL의 기본 차단·직거래 전용/경매 전용 허용·버전/중첩 거절·정책 제거 뒤 재시작/원래 영수증 재생·취소 반환·기본 비활성을 확인한다. 기존 직거래/경매 Memory HTTP와 도메인 회귀도 같은 사본에서 실행한다. 작은 결과·명령·소스/모듈 해시·정리 근거는 로컬 `Saved/BuildChecks/TradeCatalog-20261114/Completion.json`에 기록한다. 원본 UE/개발 DB/실행 중 서버를 변경하지 않는다.
+
+최종 Release 빌드는 오류·경고0이며 실제 Program/PostgreSQL 포함 설정 검사73, 기존 직거래 HTTP Memory541·경매 HTTP Memory518·직거래 도메인105·경매 도메인1134를 통과했다. 직거래 정책은 기존 준비/예약 시점에서 검사하고, 영속 거절 응답의 갱신된 session/rejection을 유지하는 계약으로 검증했다. 초기 검사 fixture의 Gold 정의 누락·직거래 검사 시점/거절 응답 형식 기대 오류는 보완 뒤 최종 성공과 구분한다. 자기5시도 사본/OBJ/bin 및 사설 PG를 정리해 138,393,989 bytes(약131.98MiB)를 폐기했으며 Temp/소유 PID/컨테이너/예외0이다. 실행 입력6개/러너 SHA는 검증 뒤에도 일치한다. 전체 UE/Steam·운영 콘텐츠 활성화·기존 경매 PG 정산 전체 재검증은 이번 범위가 아니다.

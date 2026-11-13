@@ -2,6 +2,7 @@ using System.Text.Json;
 using ProjectRpg.Backend.Domain;
 using ProjectRpg.Backend.Domain.Trading;
 
+if (args is ["--item-catalog"]) return await CatalogCases.Run();
 if (args is ["--auction-domain"]) return AuctionCases.Run();
 if (args is ["--auction-transport-host", var hostDirectory]) return await AuctionTransportHost.Run(hostDirectory);
 if (args is ["--auction-memory"]) return await AuctionMemoryCases.Run();

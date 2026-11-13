@@ -170,8 +170,8 @@ else
 
 builder.Services.AddGameRepositoryContracts();
 builder.Services.AddRidingServices(builder.Configuration.GetSection("Riding").Get<RidingOptions>() ?? new());
-// No production definitions are tradable until an explicitly authored allowlist is connected.
-builder.Services.AddSingleton(new ProjectRpg.Backend.Domain.Trading.TradeItemPolicy([]));
+// Definitions remain blocked unless the server explicitly configures an allowlist.
+builder.Services.AddSingleton(TradeItemCatalogConfiguration.Load(builder.Configuration));
 var tradingOptions = builder.Configuration.GetSection("Trading").Get<TradingOptions>() ?? new();
 tradingOptions.Validate();
 builder.Services.AddSingleton<IOptions<TradingOptions>>(Options.Create(tradingOptions));
