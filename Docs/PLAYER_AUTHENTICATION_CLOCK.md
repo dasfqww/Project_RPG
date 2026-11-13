@@ -24,6 +24,12 @@
 조회를 담당한다. 인증 시계/토큰 소유권은 유지하며 정산 객체의 경계와 집중 검사는
 [보상 전송 계약](DUNGEON_REWARD_LIVE_REFRESH.md#ue-정산-전송의-책임-2026-11-13)을 따른다.
 
+세션 생성/조회/출발·서버 수명 요청과 응답 해석은 후속 `FRPGDungeonSessionTransport`로
+이관했다. `HttpWebManagerDungeonSession.cpp`는 기존 API/host 위임과 포기 처리를
+유지하며 공통 인증/던전 세대 규칙을 바꾸지 않는다. 세션 데이터 타입은 이름/필드를
+보존해 `Online/RPGDungeonSessionTypes.h`로 옮겼다.
+[세션 HTTP 경계](ONLINE_LOBBY_UI.md#세션-http-처리-경계-2026-11-14)를 따른다.
+
 ### 인증 요청의 수명과 소유권 (2026-11-13)
 
 `FRPGBackendAuthentication`이 로그인/로그아웃의 진행 요청·로그인 시작 단조 시각·

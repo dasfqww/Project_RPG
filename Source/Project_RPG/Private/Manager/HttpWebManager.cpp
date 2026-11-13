@@ -56,6 +56,7 @@ UHttpWebManager::UHttpWebManager()
 	DungeonRecovery = MakeShared<FRPGDungeonConnectionRecovery>(*this);
 	DungeonRewardSettlement = MakeShared<FRPGDungeonRewardSettlement>(*this);
 	PlayerAuthentication = MakeShared<FRPGBackendAuthentication>(*this, PlayerAuth);
+	DungeonSessionTransport = MakeShared<FRPGDungeonSessionTransport>(*this);
 }
 UObject& UHttpWebManager::GetRecoveryOwner() const { return *const_cast<UHttpWebManager*>(this); }
 UGameInstance* UHttpWebManager::GetRecoveryGameInstance() const { return GetGameInstance(); }

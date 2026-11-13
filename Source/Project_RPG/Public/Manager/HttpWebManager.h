@@ -13,6 +13,7 @@
 #include "Templates/SubclassOf.h"
 #include "Type/RPGStructTypes.h"
 #include "Online/RPGDungeonConnectionRecovery.h"
+#include "Online/RPGDungeonSessionTransport.h"
 #include "HttpWebManager.generated.h"
 
 class APlayerController;
@@ -74,61 +75,6 @@ struct PROJECT_RPG_API FRPGBackendCharacter
 	static bool Decode(const TSharedPtr<FJsonObject>& Object, FRPGBackendCharacter& OutCharacter);
 };
 
-USTRUCT(BlueprintType)
-struct PROJECT_RPG_API FRPGDungeonSessionMember
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
-	FString CharacterId;
-
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
-	FString JoinedAt;
-
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
-	FString LeaseExpiresAt;
-
-	/** Optional public character name from the authenticated session response; never identity/authority. */
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
-	FString CharacterName;
-};
-
-USTRUCT(BlueprintType)
-struct PROJECT_RPG_API FRPGDungeonSession
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
-	FString DungeonSessionId;
-
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
-	FString DungeonId;
-
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
-	FString Difficulty;
-
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
-	FString State;
-
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
-	FString ServerId;
-
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
-	FString ServerAddress;
-
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session") FString LeaderCharacterId;
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session") int64 LobbyRevision = 0;
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session") FString DepartureRequestId;
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session") int64 DepartureRequestRevision = 0;
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session") FString DepartureRequestedAt;
-
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
-	FString ExpiresAt;
-
-	UPROPERTY(BlueprintReadOnly, Category = "HTTP|Dungeon Session")
-	TArray<FRPGDungeonSessionMember> Members;
-};
-
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInventorySaved, bool, bSuccess);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	FOnCharacterInventorySaved,
@@ -188,7 +134,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_SixParams(
  */
 UCLASS(Config = Game, DefaultConfig)
 class PROJECT_RPG_API UHttpWebManager : public UGameInstanceSubsystem, public IRPGDungeonRecoveryHost,
-	public IRPGDungeonRewardSettlementHost, public IRPGBackendAuthenticationHost
+	public IRPGDungeonRewardSettlementHost, public IRPGBackendAuthenticationHost, public IRPGDungeonSessionTransportHost
 {
 	GENERATED_BODY()
 
@@ -467,6 +413,15 @@ private:
 	friend struct FRPGDungeonDisconnectionOrderingTestAccess;
 	FHttpRequestPtr CreateDungeonRewardSettlementRequest(const FString& RewardVersion,
 		const TArray<FRPGCurrencyChange>& CurrencyChanges, const TArray<FRPGDungeonItemReward>& ItemRewards);
+	TSharedPtr<FRPGDungeonSessionTransport> DungeonSessionTransport;
+	virtual UObject& GetSessionTransportOwner() const override;
+	virtual FRPGDungeonSessionTransportConfig GetSessionTransportConfig() const override;
+	virtual bool HasSessionAccessToken() const override;
+	virtual void ApplySessionTransportHeaders(const FHttpRequestRef& Request) const override;
+	virtual bool AcceptSessionPlayerResponse(const FHttpRequestPtr& Request, const FHttpResponsePtr& Response, bool& bWasSuccessful) override;
+	virtual void DispatchSessionTransportRequest(const FHttpRequestRef& Request) override;
+	virtual void BroadcastSessionTransportResult(const FRPGDungeonSession& Session, bool bSuccess) override;
+
 	TSharedPtr<FRPGDungeonConnectionRecovery> DungeonRecovery;
 	using FDungeonMutationScope = FRPGDungeonConnectionRecovery::FDungeonMutationScope;
 	FDungeonMutationScope CaptureDungeonMutationScope() const;
@@ -536,13 +491,6 @@ private:
 
 	/** Dungeon instance assigned to this process by the game-server allocator. */
 	FString ConfiguredDungeonSessionId;
-
-	void SendDungeonSessionRequest(
-		const FString& RelativePath,
-		const FString& Verb,
-		const TSharedPtr<FJsonObject>& RequestObject,
-		const FString& Operation,
-		const FString& ExpectedDungeonSessionId);
 
 	void SendConfiguredDungeonSessionRequest(
 		const FString& Action,

@@ -1,5 +1,30 @@
 # 온라인 로비 UI와 던전 입장
 
+## 세션 HTTP 처리 경계 (2026-11-14)
+
+`FRPGDungeonSessionTransport`가 세션 생성/참가/조회/활성 조회/나가기·출발 요청과
+서버 시작/heartbeat/종료의 본문·경로 작성, 세션 응답 해석을 담당한다. Manager의
+기존 공개 API와 `OnDungeonSessionUpdated`는 유지하고 객체에 위임한다. 화면/멤버십
+진행·인증 자격·공통 던전 요청 세대는 호스트에 남는다. 포기·입장권·연결 복구와
+지급/정산 처리도 이번 객체에 합치지 않는다.
+
+호스트는 현재 endpoint/서버 할당·플레이어 인증 여부·헤더/응답의 인증 정책·HTTP
+dispatch·결과 알림만 제공한다. 클라이언트의 이전 요청 세대는 기존과 같이 인증/401
+처리 전에 버리고, 서버 응답은 플레이어 세대와 독립적으로 처리한다. 독립 요청은
+계속 병렬로 허용하며 새 단일 요청 제한·자동 재전송·백엔드 변경 취소를 추가하지 않는다.
+호스트 UObject와 서비스의 약한 참조는 서비스 소멸 뒤 callback의 접근을 차단한다.
+
+`FRPGDungeonSession`/`FRPGDungeonSessionMember` 정의는 공용
+`Online/RPGDungeonSessionTypes.h`로 옮겼다. 기존 Manager 헤더도 이를 포함하므로
+호출부 include와 Blueprint API를 유지하며 `/Script/Project_RPG`의 타입명·필드·기본값은
+바꾸지 않는다. 구형 세션의 누락된 리더/Revision은 읽기 전용 정보로 남고, 잘못된
+선택 표시 이름 때문에 유효한 멤버십을 거절하거나 표시 이름을 권한으로 사용하지 않는다.
+
+`Scripts/Tests/Run-SessionTransportTests.ps1`은 실제 요청을 전송 직전 호스트에서
+관측하고 응답을 주입해 경로/본문·서버 할당·세대/인증 순서·204/세션/Revision·구형
+응답·수명·reflected 타입/필드 호환성을 검사한다. 전체 UHT/관련 실제 CPP 컴파일을
+함께 수행하며 실제 HTTP/DB·설치 DLL/전체 게임·Steam 검증과 구분한다.
+
 ## 거래 내역 화면과 로컬 수명 (2026-11-08)
 
 로비 준비 메뉴의 `거래 내역`은 `URPGTradeSubsystem`의 `bTradingUIEnabled`가 켜졌을 때 표시한다(기본 false).
