@@ -27,95 +27,24 @@ void UHttpWebManager::ClearAccessToken()
 	PlayerAuth.Invalidate();
 }
 
-bool UHttpWebManager::HasAccessToken() const
+bool UHttpWebManager::HasAccessToken() const { return PlayerAuthentication->HasAccessToken(); }
+UObject& UHttpWebManager::GetAuthenticationOwner() const { return *const_cast<UHttpWebManager*>(this); }
+FRPGBackendAuthenticationConfig UHttpWebManager::GetAuthenticationConfig() const
 {
-	return !IsPlayerLogoutInFlight() && PlayerAuth.HasAccessToken(FPlatformTime::Seconds());
+	return { ApiUrl, RequestTimeoutSeconds, IsHttpBackendServerRuntime(), IsPlayerProgressionRequestInFlight() };
 }
+void UHttpWebManager::ApplyAuthenticationHeaders(const FHttpRequestRef& Request) const { ApplyCommonHeaders(Request); }
+void UHttpWebManager::ObserveAuthenticationResponse(const FHttpRequestPtr& Request, const FHttpResponsePtr& Response)
+{ NotifyServiceDraining(Request, Response); }
+void UHttpWebManager::BroadcastAuthenticationResult(bool bSuccess) { OnBackendAuthenticationCompleted.Broadcast(bSuccess); }
+void UHttpWebManager::InvalidateAuthenticationDungeonRequests() { InvalidatePlayerDungeonRequests(); }
 
 bool UHttpWebManager::RequestPlayerLogout(TFunction<bool()> CanFinalize, TFunction<void(bool)> Completion)
-{
-	if (!IsInGameThread() || IsHttpBackendServerRuntime() || IsPlayerLogoutInFlight() || ActiveAuthenticationRequest.IsValid()
-		|| IsPlayerProgressionRequestInFlight() || !HasPlayerLogoutCredential() || !CanFinalize || !Completion) return false;
-	const auto Request = FHttpModule::Get().CreateRequest();
-	Request->SetDelegateThreadPolicy(EHttpRequestDelegateThreadPolicy::CompleteOnGameThread);
-	Request->SetURL(ApiUrl / TEXT("auth/logout"));
-	Request->SetVerb(TEXT("POST"));
-	Request->SetHeader(TEXT("Authorization"), PlayerAuth.LogoutAuthorization());
-	Request->SetTimeout(FMath::Clamp(RequestTimeoutSeconds, 1.f, 30.f));
-	Request->OnProcessRequestComplete().BindUObject(this, &ThisClass::OnPlayerLogoutResponse);
-	PlayerLogoutContextValidator = MoveTemp(CanFinalize);
-	PlayerLogoutCompletion = MoveTemp(Completion);
-	ActivePlayerLogoutRequest = Request;
-	if (!Request->ProcessRequest()) OnPlayerLogoutResponse(Request, nullptr, false);
-	return true;
-}
-
-void UHttpWebManager::OnPlayerLogoutResponse(FHttpRequestPtr Request, FHttpResponsePtr Response,
-	const bool bWasSuccessful)
-{
-	if (!Request.IsValid() || Request != ActivePlayerLogoutRequest) return;
-	const bool bSameCredential = PlayerAuth.MatchesRequest(Request->GetHeader(TEXT("Authorization")));
-	const bool bConfirmed = bWasSuccessful && Response.IsValid()
-		&& (Response->GetResponseCode() == 204 || Response->GetResponseCode() == 401);
-	auto ValidateContext = MoveTemp(PlayerLogoutContextValidator);
-	auto Completion = MoveTemp(PlayerLogoutCompletion);
-	const bool bSuccess = bSameCredential && bConfirmed && ValidateContext && ValidateContext();
-	if (bSuccess)
-	{
-		PlayerAuth.Reset();
-		InvalidatePlayerDungeonRequests();
-	}
-	else if (bSameCredential && bConfirmed)
-	{
-		// The server may have revoked the token, but a changed world/selection
-		// cannot authorize an account switch. Preserve the pinned identity.
-		PlayerAuth.Invalidate();
-	}
-	ActivePlayerLogoutRequest.Reset();
-	if (Completion) Completion(bSuccess);
-}
-
+{ return PlayerAuthentication->RequestLogout(MoveTemp(CanFinalize), MoveTemp(Completion)); }
+void UHttpWebManager::OnPlayerLogoutResponse(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful)
+{ PlayerAuthentication->HandleLogoutResponse(Request, Response, bWasSuccessful); }
 void UHttpWebManager::AuthenticateWithSteamTicket(const FString& SteamTicketHex)
-{
-	// Duplicate calls must not complete/cancel the existing login.
-	if (ActiveAuthenticationRequest.IsValid() || IsPlayerLogoutInFlight()) return;
-	if (SteamTicketHex.IsEmpty())
-	{
-		OnBackendAuthenticationCompleted.Broadcast(false);
-		return;
-	}
-
-	TSharedRef<FJsonObject> RootObject = MakeShared<FJsonObject>();
-	RootObject->SetStringField(TEXT("ticket"), SteamTicketHex);
-
-	FString RequestBody;
-	const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
-		TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(
-			&RequestBody);
-	if (!FJsonSerializer::Serialize(RootObject, Writer))
-	{
-		OnBackendAuthenticationCompleted.Broadcast(false);
-		return;
-	}
-
-	FHttpRequestRef Request = FHttpModule::Get().CreateRequest();
-	Request->OnProcessRequestComplete().BindUObject(
-		this, &ThisClass::OnAuthenticateResponseReceived);
-	Request->SetURL(ApiUrl / TEXT("auth/steam-ticket"));
-	Request->SetVerb(TEXT("POST"));
-	Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
-	ApplyCommonHeaders(Request);
-	Request->SetContentAsString(RequestBody);
-	Request->SetTimeout(RequestTimeoutSeconds);
-	ActiveAuthenticationRequest = Request;
-	ActiveAuthenticationRequestStartedSeconds = FPlatformTime::Seconds();
-	if (!Request->ProcessRequest() && ActiveAuthenticationRequest == Request)
-	{
-		ActiveAuthenticationRequest.Reset();
-		ActiveAuthenticationRequestStartedSeconds = -1.0;
-		OnBackendAuthenticationCompleted.Broadcast(false);
-	}
-}
+{ PlayerAuthentication->Authenticate(SteamTicketHex); }
 
 void UHttpWebManager::LoadCharacters()
 {
@@ -173,47 +102,8 @@ void UHttpWebManager::CreateCharacter(const FString& CharacterName, const FStrin
 	Request->ProcessRequest();
 }
 
-void UHttpWebManager::OnAuthenticateResponseReceived(
-	FHttpRequestPtr Request,
-	FHttpResponsePtr Response,
-	bool bWasSuccessful)
-{
-	if (!Request.IsValid() || Request != ActiveAuthenticationRequest) return;
-	NotifyServiceDraining(Request, Response);
-	const double RequestStartedSeconds = ActiveAuthenticationRequestStartedSeconds;
-	ActiveAuthenticationRequest.Reset();
-	ActiveAuthenticationRequestStartedSeconds = -1.0;
-	bool bSuccess = bWasSuccessful && Response.IsValid()
-		&& EHttpResponseCodes::IsOk(Response->GetResponseCode());
-
-	if (bSuccess)
-	{
-		TSharedPtr<FJsonObject> RootObject;
-		const TSharedRef<TJsonReader<>> Reader =
-			TJsonReaderFactory<>::Create(Response->GetContentAsString());
-		FString NewAccessToken;
-		FString SteamId;
-		FString ExpiresAt;
-		FString IssuedAt;
-		bSuccess = FJsonSerializer::Deserialize(Reader, RootObject)
-			&& RootObject.IsValid()
-			&& RootObject->TryGetStringField(TEXT("accessToken"), NewAccessToken)
-			&& RootObject->TryGetStringField(TEXT("steamId"), SteamId)
-			&& RootObject->TryGetStringField(TEXT("expiresAt"), ExpiresAt)
-			&& RootObject->TryGetStringField(TEXT("issuedAt"), IssuedAt)
-			&& PlayerAuth.AcceptLogin(NewAccessToken, SteamId, ExpiresAt, IssuedAt,
-				RequestStartedSeconds, FPlatformTime::Seconds());
-	}
-
-	if (!bSuccess)
-	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("Steam backend authentication failed (HTTP %d)."),
-			Response.IsValid() ? Response->GetResponseCode() : 0);
-	}
-
-	OnBackendAuthenticationCompleted.Broadcast(bSuccess);
-}
+void UHttpWebManager::OnAuthenticateResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful)
+{ PlayerAuthentication->HandleLoginResponse(Request, Response, bWasSuccessful); }
 
 bool UHttpWebManager::AcceptPlayerResponse(const FHttpRequestPtr& Request,
 	const FHttpResponsePtr& Response, bool& bWasSuccessful)

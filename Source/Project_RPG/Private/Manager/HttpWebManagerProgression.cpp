@@ -65,7 +65,7 @@ bool UHttpWebManager::RequestPlayerProgression(const FString& CharacterId, const
 	FGuid CharacterGuid;
 	FString Body;
 	if (!IsInGameThread() || IsRunningDedicatedServer() || IsConfiguredForDungeonServer() || !Completion
-		|| ActivePlayerProgressionRequest.IsValid() || ActiveAuthenticationRequest.IsValid() || !HasAccessToken()
+		|| ActivePlayerProgressionRequest.IsValid() || PlayerAuthentication->IsLoginActive() || !HasAccessToken()
 		|| !FRPGBackendPlayerAuthState::IsSteamId(GetAuthenticatedSteamId())
 		|| !FGuid::Parse(CharacterId, CharacterGuid) || !CharacterGuid.IsValid()
 		|| (Command && !FRPGCharacterProgressionSnapshotCodec::EncodeConfiguration(*Command, Body))) return false;

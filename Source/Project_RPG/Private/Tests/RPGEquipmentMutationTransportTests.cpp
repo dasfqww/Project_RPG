@@ -77,7 +77,7 @@ struct FRPGEquipmentMutationTestAccess
 	}
 	static void ConfigureReal(URPGEquipmentMutationSubsystem& Service, UHttpWebManager& Web, const FString& Root)
 	{ Service.TestManager = &Web; Service.JournalRoot = Root; }
-	static void Authenticating(UHttpWebManager& Web, bool Enabled) { Web.ActiveAuthenticationRequest = Enabled ? FHttpModule::Get().CreateRequest() : FHttpRequestPtr(); }
+	static void Authenticating(UHttpWebManager& Web, bool Enabled) { Web.PlayerAuthentication->ActiveLogin = Enabled ? FHttpModule::Get().CreateRequest() : FHttpRequestPtr(); }
 	static FRPGEquipmentMutationScope Scope(UHttpWebManager& Web, const FGuid& Character)
 	{ FRPGEquipmentMutationScope Result; FRPGEquipmentMutationScope::Create(Web.ApiUrl, Web.GetAuthenticatedSteamId(), Character, Result); return Result; }
 };

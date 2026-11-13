@@ -10,7 +10,7 @@ bool UHttpWebManager::GetPlayerEquipmentContext(FString& OutEndpoint, FString& O
 {
 	OutEndpoint.Reset(); OutSteamId.Reset();
 	if (!IsInGameThread() || IsRunningDedicatedServer() || IsConfiguredForDungeonServer()
-		|| ActiveAuthenticationRequest.IsValid() || ActivePlayerLogoutRequest.IsValid()
+		|| PlayerAuthentication->IsLoginActive() || PlayerAuthentication->IsLogoutActive()
 		|| ApiUrl.IsEmpty() || !FRPGBackendPlayerAuthState::IsSteamId(GetAuthenticatedSteamId())) return false;
 	OutEndpoint = ApiUrl; OutSteamId = GetAuthenticatedSteamId(); return true;
 }
@@ -19,7 +19,7 @@ FHttpRequestPtr UHttpWebManager::CreatePlayerEquipmentMutationRequest(const FRPG
 	TFunction<void(FRPGEquipmentMutationHttpResult)> Completion)
 {
 	FString Endpoint, SteamId, Body, Fingerprint; FRPGEquipmentMutationScope Scope;
-	if (!Completion || ActiveAuthenticationRequest.IsValid() || !HasAccessToken()
+	if (!Completion || PlayerAuthentication->IsLoginActive() || !HasAccessToken()
 		|| !GetPlayerEquipmentContext(Endpoint, SteamId) || !FRPGEquipmentMutationScope::Create(Endpoint, SteamId, Command.CharacterId, Scope)
 		|| !FRPGEquipmentMutationCodec::Encode(Command, Body, Fingerprint)) return nullptr;
 	const FString Authorization = PlayerAuth.Authorization(FPlatformTime::Seconds());

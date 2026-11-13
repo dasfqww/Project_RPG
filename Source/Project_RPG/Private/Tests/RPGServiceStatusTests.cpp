@@ -44,11 +44,11 @@ struct FRPGServiceStatusTestAccess
 	static void Login(UHttpWebManager* Web, const FString& Api)
 	{
 		auto Request = FHttpModule::Get().CreateRequest(); Request->SetURL(Api / TEXT("auth/steam-ticket")); Request->SetVerb(TEXT("POST"));
-		Web->ActiveAuthenticationRequest = Request; Web->ActiveAuthenticationRequestStartedSeconds = FPlatformTime::Seconds();
+		Web->PlayerAuthentication->ActiveLogin = Request; Web->PlayerAuthentication->LoginStartedSeconds = FPlatformTime::Seconds();
 		Request->OnProcessRequestComplete().BindUObject(Web, &UHttpWebManager::OnAuthenticateResponseReceived);
 		Request->SetTimeout(8.f); Request->ProcessRequest();
 	}
-	static bool LoggingIn(UHttpWebManager* Web) { return Web->ActiveAuthenticationRequest.IsValid(); }
+	static bool LoggingIn(UHttpWebManager* Web) { return Web->PlayerAuthentication->ActiveLogin.IsValid(); }
 };
 
 namespace

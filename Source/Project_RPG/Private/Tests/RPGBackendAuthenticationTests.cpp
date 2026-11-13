@@ -11,8 +11,8 @@ struct FRPGBackendAuthTestAccess
 {
 	static void PendingLogin(UHttpWebManager* Web, const FHttpRequestPtr& Request, double AgeSeconds = 0.0)
 	{
-		Web->ActiveAuthenticationRequest = Request;
-		Web->ActiveAuthenticationRequestStartedSeconds = FPlatformTime::Seconds() - AgeSeconds;
+		Web->PlayerAuthentication->ActiveLogin = Request;
+		Web->PlayerAuthentication->LoginStartedSeconds = FPlatformTime::Seconds() - AgeSeconds;
 	}
 	static bool AcceptResponse(UHttpWebManager* Web, const FHttpRequestPtr& Request,
 		const FHttpResponsePtr& Response, bool& bSuccessful)
@@ -35,9 +35,9 @@ struct FRPGBackendAuthTestAccess
 		TFunction<void(bool)> Completion)
 	{
 		Request->SetHeader(TEXT("Authorization"), Web->PlayerAuth.LogoutAuthorization());
-		Web->ActivePlayerLogoutRequest = Request;
-		Web->PlayerLogoutContextValidator = [bContextValid] { return bContextValid; };
-		Web->PlayerLogoutCompletion = MoveTemp(Completion);
+		Web->PlayerAuthentication->ActiveLogout = Request;
+		Web->PlayerAuthentication->LogoutContextValidator = [bContextValid] { return bContextValid; };
+		Web->PlayerAuthentication->LogoutCompletion = MoveTemp(Completion);
 	}
 	static void LogoutResponse(UHttpWebManager* Web, const FHttpRequestPtr& Request,
 		const FHttpResponsePtr& Response, bool bSuccessful = true)

@@ -7,6 +7,7 @@
 #include "Economy/Backend/RPGDungeonRewardSettlement.h"
 #include "Http.h"
 #include "Online/RPGBackendPlayerAuthState.h"
+#include "Online/RPGBackendAuthentication.h"
 #include "Online/RPGDungeonAbandonment.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Templates/SubclassOf.h"
@@ -186,7 +187,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_SixParams(
  */
 UCLASS(Config = Game, DefaultConfig)
 class PROJECT_RPG_API UHttpWebManager : public UGameInstanceSubsystem, public IRPGDungeonRecoveryHost,
-	public IRPGDungeonRewardSettlementHost
+	public IRPGDungeonRewardSettlementHost, public IRPGBackendAuthenticationHost
 {
 	GENERATED_BODY()
 
@@ -352,7 +353,7 @@ public:
 
 	/** Native transport; the lobby coordinator owns gameplay/UI eligibility. */
 	bool RequestPlayerLogout(TFunction<bool()> CanFinalize, TFunction<void(bool)> Completion);
-	bool IsPlayerLogoutInFlight() const { return ActivePlayerLogoutRequest.IsValid(); }
+	bool IsPlayerLogoutInFlight() const { return PlayerAuthentication->IsLogoutActive(); }
 	bool HasPlayerLogoutCredential() const { return !PlayerAuth.LogoutAuthorization().IsEmpty(); }
 
 	/** Account remains pinned across credential expiry; switching accounts needs an explicit logout flow. */
@@ -514,11 +515,13 @@ private:
 	/** Kept in memory only; never persist this token in a packaged client config. */
 	FRPGBackendPlayerAuthState PlayerAuth;
 	uint64 PlayerDungeonRequestGeneration = 0;
-	FHttpRequestPtr ActiveAuthenticationRequest;
-	FHttpRequestPtr ActivePlayerLogoutRequest;
-	TFunction<bool()> PlayerLogoutContextValidator;
-	TFunction<void(bool)> PlayerLogoutCompletion;
-	double ActiveAuthenticationRequestStartedSeconds = -1.0;
+	TSharedPtr<FRPGBackendAuthentication> PlayerAuthentication;
+	virtual UObject& GetAuthenticationOwner() const override;
+	virtual FRPGBackendAuthenticationConfig GetAuthenticationConfig() const override;
+	virtual void ApplyAuthenticationHeaders(const FHttpRequestRef& Request) const override;
+	virtual void ObserveAuthenticationResponse(const FHttpRequestPtr& Request, const FHttpResponsePtr& Response) override;
+	virtual void BroadcastAuthenticationResult(bool bSuccess) override;
+	virtual void InvalidateAuthenticationDungeonRequests() override;
 	bool AcceptPlayerResponse(const FHttpRequestPtr& Request, const FHttpResponsePtr& Response,
 		bool& bWasSuccessful);
 

@@ -55,6 +55,7 @@ UHttpWebManager::UHttpWebManager()
 {
 	DungeonRecovery = MakeShared<FRPGDungeonConnectionRecovery>(*this);
 	DungeonRewardSettlement = MakeShared<FRPGDungeonRewardSettlement>(*this);
+	PlayerAuthentication = MakeShared<FRPGBackendAuthentication>(*this, PlayerAuth);
 }
 UObject& UHttpWebManager::GetRecoveryOwner() const { return *const_cast<UHttpWebManager*>(this); }
 UGameInstance* UHttpWebManager::GetRecoveryGameInstance() const { return GetGameInstance(); }
@@ -122,25 +123,13 @@ void UHttpWebManager::Deinitialize()
 		ActivePlayerProgressionRequest->CancelRequest();
 		ActivePlayerProgressionRequest.Reset();
 	}
-	PlayerLogoutContextValidator = nullptr;
-	PlayerLogoutCompletion = nullptr;
-	if (ActivePlayerLogoutRequest.IsValid())
-	{
-		ActivePlayerLogoutRequest->OnProcessRequestComplete().Unbind();
-		ActivePlayerLogoutRequest->CancelRequest();
-		ActivePlayerLogoutRequest.Reset();
-	}
+	PlayerAuthentication->CancelLogout();
 	bDungeonMembershipTransportShutdown = true;
 	DungeonRecovery->Shutdown();
 	CancelDungeonConnectionMutations();
 	CancelDungeonMembershipRequest();
 	InvalidatePlayerDungeonRequests();
-	if (ActiveAuthenticationRequest.IsValid())
-	{
-		ActiveAuthenticationRequest->OnProcessRequestComplete().Unbind();
-		ActiveAuthenticationRequest->CancelRequest();
-		ActiveAuthenticationRequest.Reset();
-	}
+	PlayerAuthentication->CancelLogin();
 	OnInventoryLoaded.Clear();
 	OnCharacterInventoryLoaded.Clear();
 	OnInventorySaved.Clear();
@@ -158,7 +147,6 @@ void UHttpWebManager::Deinitialize()
 	OnJoinTicketConsumed.Clear();
 	OnDungeonRewardSettlementRequested.Clear();
 	PlayerAuth.Reset();
-	ActiveAuthenticationRequestStartedSeconds = -1.0;
 	BackendServiceToken.Reset();
 	GameServerId.Reset();
 	ConfiguredDungeonSessionId.Reset();
