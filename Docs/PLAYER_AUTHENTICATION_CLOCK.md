@@ -5,6 +5,20 @@
 
 ## 계약
 
+### UE HTTP 구현 파일 경계 (2026-11-13)
+
+`UHttpWebManager`의 공개 API·상태 소유권은 유지하고 구현을 기능별로 나눴다.
+`Private/Manager/HttpWebManagerPlayer.cpp`는 로그인·로그아웃·응답의 인증 상관 검사와
+캐릭터 조회/생성을, `HttpWebManagerDungeonSession.cpp`는 세션 조회·참가·출발·포기와
+서버 시작/heartbeat/종료를, `HttpWebManagerRewards.cpp`는 정산과 보상 스냅샷을 담당한다.
+기존 `HttpWebManager.cpp`는 subsystem 수명·공통 헤더·입장 티켓·연결 복구/멤버십을 유지한다.
+서버 실행 환경 판정은 private `HttpWebManagerRuntime.h`의 동일한 inline 함수로 공유하며,
+복구 진단 콘솔 명령은 기존 CPP에 한 번만 등록한다. 기존 70개 멤버 함수와 네 helper의
+본문을 보존했으며 인증 시계·요청 세대·서비스 자격·정산 영수증의 규칙을 바꾸지 않았다.
+
+분리한 실제 CPP 네 개는 게시 소스의 격리 사본에서 전체 프로젝트 UHT 후 개별 컴파일로
+확인한다. 이 검사는 모듈 링크·새 DLL 설치·Steam/게임 실행 검증과 구분한다.
+
 `POST /api/auth/steam-ticket`의 성공 응답은 기존 `accessToken`, `expiresAt`, `steamId`와
 새 `issuedAt`을 포함한다. `issuedAt`과 `expiresAt`은 동일한 서버 시각 표본에서 만들며,
 기존 DB 토큰 hash·만료 저장, 서버의 실제 만료/401 검증은 변경하지 않았다.
