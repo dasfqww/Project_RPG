@@ -169,6 +169,7 @@ else
 }
 
 builder.Services.AddGameRepositoryContracts();
+builder.Services.AddRidingServices(builder.Configuration.GetSection("Riding").Get<RidingOptions>() ?? new());
 // No production definitions are tradable until an explicitly authored allowlist is connected.
 builder.Services.AddSingleton(new ProjectRpg.Backend.Domain.Trading.TradeItemPolicy([]));
 var tradingOptions = builder.Configuration.GetSection("Trading").Get<TradingOptions>() ?? new();
@@ -1253,6 +1254,7 @@ app.MapDungeonRewardSnapshotApi();
 app.MapCharacterProgressionApi();
 app.MapNarrativeApi();
 app.MapEquipmentProgressionApi();
+app.MapRidingApi();
 app.MapTradeApi();
 app.MapAuctionApi();
 app.MapDungeonAbandonmentApi();

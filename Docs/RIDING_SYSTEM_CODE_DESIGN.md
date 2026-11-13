@@ -752,3 +752,24 @@ NPC 대화/콘텐츠 화면은 로컬 실행 경로이므로 30절의 전용 승
 검사는 [Run-RidingPostgresTests.ps1](../Scripts/Tests/Run-RidingPostgresTests.ps1)이다. 게시 `9929a505` Backend+고정8파일/러너1의 사설 사본·라벨 소유 `postgres:17-alpine`/임의 loopback 포트를 사용한다. PG **13개/85 assertion**, 별도 새 프로세스 복구 **1개/2 assertion**, 기존 도메인/Memory **27개/227 assertion**, 기존 배포 검사 **7개**를 통과했다. 세 Release 빌드는 모두 **0오류/0경고**다. 실제 여러 연결의 동일 요청12개/같은 원정대 부캐·거래 예약 경합5회, NOWAIT lease/미정산, 다른 world, 기존 서비스/계정 제재 저장기, 고의 부모 insert 오류 후 전체 롤백, 소비/해금 미확정 상태에서의 입장 차단, 기존 캐릭터/아이템을 둔 실제 v14→v15 배포/재적용0·readonly 검증을 확인했다. 트리거/수동 정산/다른 world 행은 사설 검사 fixture이며 운영 보상 worker/HTTP E2E는 아니다. 새 프로세스 검사는 저장소 클라이언트 재기동이며 DB 서버 재부팅·실제 HTTP 응답 유실 검사가 아니다.
 
 첫 캐릭터 fixture의 DB 이름 길이 초과와 완료된 검사 제어 트랜잭션의 재정리 오류를 수정했다. 성공한 PG 검사 뒤 기존 catalog 고정 개수 회귀도 v15에 맞추고 최종 전체 검증을 통과했다. 자기4회 **255,907,996 bytes(244.053MiB)** 및 사설 PG 컨테이너4개를 정리했고 Temp/PID/링크/정리 예외0이다. 작은 근거는 `Saved/BuildChecks/RidingPostgres-20261113/Completion.json`이며 폐기한 모듈 hash는 당시 증거다. 원본 DB/게임 DLL/공유 빌드 출력·타 담당 변경은 보존했다.
+
+## 35. M3a4 인증 HTTP와 저장소 연결 — 2026-11-13
+
+담당 `riding-http-20261113`. [RidingApiEndpoints](../Backend/ProjectRpg.Backend/Api/RidingApiEndpoints.cs)·[RidingApiContracts](../Backend/ProjectRpg.Backend/Api/RidingApiContracts.cs)가 소유 Player의 아래 경로를 제공한다. [RidingRegistrationServices](../Backend/ProjectRpg.Backend/Data/RidingRegistrationServices.cs)는 Program의 기존 **동일 IGameRepository/공용 item 저장소**를 `IRidingRegistrationStore`로 노출한다. Memory/PG 저장소를 새로 복제하거나 일반 아이템 commit을 Player에게 개방하지 않는다. 기존 bearer 인증/공통 ingress·principal 제한은 유지하며 Administrator/GameServer는 Player 경로를 사용할 수 없다.
+
+| 경로 | 현재 응답/동작 |
+|---|---|
+| GET `/api/characters/{characterId}/riding` | 실제 원정대 보유 `mounts`·`rosterRevision` 문자열·검증된 현재 catalogVersion/gameplayHash. 비활성은 catalogReady/registrationEnabled=false·catalogVersion/hash=null. `preferencesReady=false`로 아직 구현하지 않은 설정 저장을 구분 |
+| POST `.../riding/register` | 정확히 requestId/itemId/expectedItemRevision(정규 10진 문자열)/catalogVersion. 신규 Registered·이미 보유 AlreadyOwned·동일 요청 AlreadyApplied envelope 및 원래 `receipt` |
+| GET `.../riding/requests/{requestId}` | 같은 소유 캐릭터의 최초 receipt. 다른 캐릭터/없는 요청은 모두 NotFound로 감추며 현재 자격/소유·부모/자식 일치를 다시 검사 |
+
+응답의 int64 revision은 모두 문자열이다. receipt에는 당시 rosterRevision/시각·원래 itemReceipt/아이템 상태가 있고 내부 지문은 노출하지 않는다. 아이템의 lifecycle/container/owner/bind enum은 기존 Item 계약처럼 문자열이며 state·metadata를 유지한다. 원래 결과와 최신 보유/인벤토리는 다를 수 있으므로 재생 receipt를 최신 상태로 덮어쓰지 않는다. 등록의 임의 MountId/소모량·SteamId/RosterId/속도 필드는 받지 않는다.
+
+- [RidingOptions](../Backend/ProjectRpg.Backend/Configuration/RidingOptions.cs)의 `Riding.Enabled`는 기본 false다. 활성화 시 CatalogVersion·GameplayHash·Policy·Mounts·RegistrationItems로 공통 `RidingCatalog`를 만들고 서버가 기대한 hash와 정확히 일치해야 startup을 통과한다. Mounts 항목은 MountId/DefinitionVersion/Enabled/RegionTags, 등록 항목은 DefinitionType/DefinitionName/DefinitionVersion/MountId/MaximumStackSize/Uses다. 개발 검사 horse 정의를 기본 제품 allowlist로 추가하지 않았다. 검증된 catalog는 깊은 사본이며 구성 객체를 뒤에서 바꿔도 바뀌지 않는다. 제품 manifest exporter/배포 자동화는 후속이다.
+- 비활성화/다른 catalog 배포도 이미 확정된 결과를 지우지 않는다. POST는 현재 인증/소유로 기존 영수증을 먼저 조회하고 지문을 대조해 재생하며, 영수증이 없는 새 명령만 RidingDisabled/404다. GET 보유/영수증도 계속 제공한다. catalogReady는 HTTP의 구성 준비 여부이며 게임 서버의 보유/설정/입장 권한 Ready가 아니다.
+- 본문은 Content-Length와 실제 스트림을 모두 **16KiB**로 제한한다. application/json이 아니면415, 초과413이며 JSON null/배열/중복·알 수 없는 필드/다른 대소문자·숫자형 또는 비정규 revision·부적절한 GUID/version은400이다. 임의 query도 거절한다. 다른 소유/없는 아이템은 동일 NotFound/404로 감춘다. CAS/본문 충돌·잠금/예약·로비 거절은409, 현재 캐릭터 권한은403, 저장소 불가/영수증 불일치는503이며 최초 요청을 보존해 복구해야 한다. 공통 인증 미들웨어의401/제재·서비스 오류는 기존 계약을 따른다.
+- [RidingRequestLimiter](../Backend/ProjectRpg.Backend/Application/RidingRequestLimiter.cs)는 인증된 계정마다 조회/쓰기 별도 token bucket을 사용한다. 각각 burst10, 초당 조회5/쓰기2, 대기열0이다. 캐릭터를 바꿔 우회할 수 없고 429/Retry-After:1을 반환한다. 인증을 통과한 Riding 응답은 오류/재생/비활성도 Cache-Control:no-store다.
+
+검사는 [Run-RidingHttpTests.ps1](../Scripts/Tests/Run-RidingHttpTests.ps1)이다. 게시 `976b2d64` Backend+고정8파일/러너1의 사설 사본에서 실제 Kestrel/bearer/공용 저장소를 사용했다. Memory **7개/156 assertion**, PG **7개/156 assertion**, 실제 전체 Program의 별도 기동2회 **2개/10 assertion**, 합계 **16개/322 assertion** 및 Release **0오류/0경고**를 확인했다. 인증/게임 서버·관리자 거절, 원정대/영수증·아이템 격리, strict/chunked/큰 본문, CAS/로비·독립 예산과 재시도, 기본 비활성·확정 결과 복구, int64 문자열/불변 startup catalog를 검사한다. 실제 Program은 Testing/사설 PG와 설정 binding/공통 DI·HTTP 원래 결과 재생을 사용한다. 집중 host는 공통 인증과 Riding 예산을 실행하며 전체 Program 검사에서는 공통 요청 제한만 꺼 기능별 제한과 구분했다. 실제 Steam·운영 DB/배포·설정 쓰기·할당 게임 서버 snapshot/UE 전송/저널/보관함 UI·UE Ready는 미연결이다.
+
+검사 fixture의 init-only AuthOptions 초기화, 같은 계정의 본문 검사와 실제 요청 예산 간섭, 아직 할당되지 않은 검사 서버 자격을 보완한 뒤 통과했다. 아이템 bind enum도 공통 문자열 형식으로 맞췄다. 자기4회 **232,020,548 bytes(221.272MiB)**·사설 컨테이너4개 폐기·Temp/PID/링크/정리 예외0이며 작은 근거는 `Saved/BuildChecks/RidingHttp-20261113/Completion.json`이다. 원본 DB/UE/공유 빌드 출력·다른 담당 변경은 보존했다. 폐기한 검사 assembly hash는 당시 증거다.
