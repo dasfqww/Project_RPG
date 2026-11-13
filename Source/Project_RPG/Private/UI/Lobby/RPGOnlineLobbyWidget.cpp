@@ -479,10 +479,12 @@ bool URPGOnlineLobbyWidget::HasOwnedSelection() const
 
 bool URPGOnlineLobbyWidget::IsFrontendRequestInFlight() const
 {
+    auto* Riding = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGRidingCollectionSubsystem>() : nullptr;
 	const auto* Narrative = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGNarrativeCoordinator>() : nullptr;
 	auto* Trades = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGTradeSubsystem>() : nullptr;
 	auto* Auctions = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGAuctionSubsystem>() : nullptr;
 	return bLoadingCharacters || bCreatingCharacter || bLoggingIn || bLoggingOut || bAbandonmentConfirmationOpen
+        || (Riding && Riding->BlocksTransitions())
 		|| (Trades && Trades->BlocksTransitions())
 		|| (Auctions && Auctions->BlocksTransitions())
 		|| (Narrative && (Narrative->IsBusy() || Narrative->HasPendingChoice()))
@@ -578,7 +580,13 @@ FRPGOnlineLobbyPresentation URPGOnlineLobbyWidget::CurrentPresentation() const
 		View.bCanSelectCharacter = View.bCanCreateSession = View.bCanResume = View.bCanEnter = false;
 		View.bBusy = true;
 	}
-	if (IsServiceAdmissionBlocked(TEXT("EnterDungeonButton"))) View.bCanLogin = View.bCanCreateSession = View.bCanEnter = false;
+    if (auto* Riding = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGRidingCollectionSubsystem>() : nullptr;
+        Riding && Riding->BlocksTransitions())
+    {
+        View.bCanSelectCharacter = View.bCanCreateCharacter = View.bCanCreateSession = View.bCanResume = View.bCanEnter = false;
+        View.bBusy = true;
+    }
+    if (IsServiceAdmissionBlocked(TEXT("EnterDungeonButton"))) View.bCanLogin = View.bCanCreateSession = View.bCanEnter = false;
 	return View;
 }
 
@@ -781,6 +789,8 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 		Status = NSLOCTEXT("RPGOnlineLobby", "CharacterListFailed", "캐릭터 목록을 불러오지 못했습니다. 목록 새로고침으로 다시 확인하세요.");
 	else if (Same(Error, TEXT("create_character_failed")))
 		Status = NSLOCTEXT("RPGOnlineLobby", "CharacterCreationFailed", "캐릭터 생성 결과를 확인하지 못했습니다. 목록을 새로고침해 생성 여부와 이름을 확인하세요.");
+	else if (Same(Error, TEXT("riding_command_unresolved")))
+		Status = NSLOCTEXT("RPGOnlineLobby", "RidingCommandUnconfirmed", "탈것 작업 결과를 확인한 뒤 다시 시도하세요.");
 	else if (!Error.IsEmpty()) Status = FText::Format(NSLOCTEXT("RPGOnlineLobby", "Error", "요청 실패: {0} — 새로고침 또는 재시도하세요."), FText::FromString(Error));
 	else if (Web->HasAccessToken())
 	{

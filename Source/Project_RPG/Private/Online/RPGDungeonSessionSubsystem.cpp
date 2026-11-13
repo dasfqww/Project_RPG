@@ -4,6 +4,8 @@
 #include "Controller/RPGPlayerController.h"
 #include "GameState/RPGBossBattleGameState.h"
 #include "Online/RPGSteamAuthSubsystem.h"
+#include "Riding/RPGRidingCollectionSubsystem.h"
+#include "Engine/LocalPlayer.h"
 #include "Player/RPGPlayerState.h"
 #include "Security/RPGDungeonGameplayAuthority.h"
 #include "Engine/Engine.h"
@@ -126,6 +128,7 @@ bool URPGDungeonSessionSubsystem::SelectCharacter(
 {
 	if (RejectUnresolvedAbandonment()) return false;
 	const FString NormalizedCharacterId = CharacterId.TrimStartAndEnd();
+    if (NormalizedCharacterId != SelectedCharacterId && RejectRidingTransition()) return false;
 	if (IsRequestInFlight())
 	{
 		RejectRequest(TEXT("request_in_flight"));
@@ -166,6 +169,7 @@ bool URPGDungeonSessionSubsystem::CreateDungeonSession(
 	const FString& DungeonId,
 	const FString& Difficulty)
 {
+    if (RejectRidingTransition()) return false;
 	if (RejectUnresolvedAbandonment()) return false;
 	if (IsRequestInFlight())
 	{
@@ -209,6 +213,7 @@ bool URPGDungeonSessionSubsystem::CreateDungeonSession(
 bool URPGDungeonSessionSubsystem::JoinDungeonSession(
 	const FString& DungeonSessionId)
 {
+    if (RejectRidingTransition()) return false;
 	if (RejectUnresolvedAbandonment()) return false;
 	if (IsRequestInFlight())
 	{
@@ -250,6 +255,7 @@ bool URPGDungeonSessionSubsystem::JoinDungeonSession(
 
 bool URPGDungeonSessionSubsystem::ResumeDungeonSession()
 {
+    if (RejectRidingTransition()) return false;
 	if (RejectUnresolvedAbandonment()) return false;
 	if (IsRequestInFlight())
 	{
@@ -360,6 +366,7 @@ bool URPGDungeonSessionSubsystem::CanSetDeparture(bool bCancel) const
 
 bool URPGDungeonSessionSubsystem::SetDeparture(bool bCancel)
 {
+    if (!bCancel && RejectRidingTransition()) return false;
 	if (!RestoreDepartureCommand()) return false;
 	if (!CanSetDeparture(bCancel)) { RejectRequest(TEXT("dungeon_departure_not_available")); return false; }
 	if (PendingDepartureRequest.IsEmpty())
@@ -570,11 +577,19 @@ bool URPGDungeonSessionSubsystem::RejectUnresolvedAbandonment()
 	RejectRequest(TEXT("dungeon_abandonment_unconfirmed"));
 	return true;
 }
+bool URPGDungeonSessionSubsystem::RejectRidingTransition()
+{
+    auto* Player = GetGameInstance() ? GetGameInstance()->GetFirstGamePlayer() : nullptr;
+    auto* Riding = Player ? Player->GetSubsystem<URPGRidingCollectionSubsystem>() : nullptr;
+    if (!Riding || !Riding->BlocksTransitions()) return false;
+    RejectRequest(TEXT("riding_command_unresolved")); return true;
+}
 
 bool URPGDungeonSessionSubsystem::ConnectToDungeon(
 	APlayerController* PlayerController,
 	const FString& ServerAddress)
 {
+    if (RejectRidingTransition()) return false;
 	if (HasUnresolvedDeparture() || bDepartureRecoveryBlocked) { RejectRequest(TEXT("departure_result_unconfirmed")); return false; }
 	if (RejectUnresolvedAbandonment()) return false;
 	if (IsRequestInFlight())
@@ -901,6 +916,7 @@ void URPGDungeonSessionSubsystem::HandleLobbyTravelFailure(UWorld* World,
 void URPGDungeonSessionSubsystem::ResetDungeonFlow(
 	const bool bKeepSelectedCharacter)
 {
+    if (!bKeepSelectedCharacter && RejectRidingTransition()) return;
 	if (RejectUnresolvedAbandonment()) return;
 	if (HasUnresolvedDeparture() || bDepartureRecoveryBlocked) { RejectRequest(TEXT("departure_result_unconfirmed")); return; }
 	if (IsRequestInFlight())
@@ -1090,7 +1106,8 @@ void URPGDungeonSessionSubsystem::HandleJoinTicketIssued(
 
 	// A successful ticket only authorizes its session/member. It cannot revive a
 	// completed/removed membership or redirect travel after a newer session read.
-	if (bSuccess && (ServerAddress.IsEmpty()
+    if (bSuccess && RejectRidingTransition()) { SetFlowState(ERPGDungeonClientFlowState::Error, TEXT("riding_command_unresolved")); return; }
+    if (bSuccess && (ServerAddress.IsEmpty()
 		|| !ServerAddress.Equals(CurrentDungeonSession.ServerAddress.TrimStartAndEnd(), ESearchCase::CaseSensitive)
 		|| CurrentDungeonSession.ServerId.IsEmpty()
 		|| !IsConnectableDungeonState(CurrentDungeonSession.State)
@@ -1130,6 +1147,8 @@ bool URPGDungeonSessionSubsystem::BeginOperation(
 	const EPendingOperation Operation,
 	const ERPGDungeonClientFlowState RequestState)
 {
+    if ((Operation == EPendingOperation::Create || Operation == EPendingOperation::Join || Operation == EPendingOperation::Resume
+        || Operation == EPendingOperation::Connect) && RejectRidingTransition()) return false;
 	if (!WebManager)
 	{
 		FailOperation(TEXT("http_manager_unavailable"));

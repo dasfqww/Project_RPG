@@ -9,6 +9,7 @@
 #include "Online/RPGDungeonSessionSubsystem.h"
 #include "Online/RPGOnlineLobbySubsystem.h"
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
+#include "Misc/Paths.h"
 
 void URPGRidingCollectionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -18,7 +19,9 @@ void URPGRidingCollectionSubsystem::Initialize(FSubsystemCollectionBase& Collect
 void URPGRidingCollectionSubsystem::Deinitialize()
 {
     bEnding = true; FTSTicker::RemoveTicker(TickHandle); TickHandle.Reset();
-    ReleaseReader(); Super::Deinitialize();
+    ReleaseReader();
+    if (Commands) Commands->Shutdown(); Commands.Reset();
+    Super::Deinitialize();
 }
 FRPGRidingCollectionContext URPGRidingCollectionSubsystem::ReadContext() const
 {
@@ -48,6 +51,36 @@ TSharedPtr<FRPGRidingCollectionReader> URPGRidingCollectionSubsystem::GetReader(
     }
     Reader->RefreshContext(); return Reader;
 }
+FRPGRidingCommandContext URPGRidingCollectionSubsystem::ReadCommandContext() const
+{
+    FRPGRidingCommandContext C;
+    auto* Player = GetLocalPlayer(); auto* GI = Player ? Player->GetGameInstance() : nullptr;
+    auto* Web = GI ? GI->GetSubsystem<UHttpWebManager>() : nullptr;
+    if (bEnding || !GI || GI->GetFirstGamePlayer() != Player || !Web || IsRunningDedicatedServer() || Web->IsConfiguredForDungeonServer()) return C;
+    const auto* Flow = GI->GetSubsystem<URPGDungeonSessionSubsystem>(); FGuid Character;
+    if (Flow) FGuid::Parse(Flow->GetSelectedCharacterId(), Character);
+    // Preserve identity during credential refresh/expiry; eligibility and transport still require current Player auth.
+    FRPGRidingIntentScope::Create(Web->GetApiUrl(), Web->GetAuthenticatedSteamId(), Character, C.Scope);
+    C.bEligible = ReadContext().bEligible;
+    return C;
+}
+TSharedPtr<FRPGRidingCommandCoordinator> URPGRidingCollectionSubsystem::GetCommands()
+{
+    if (bEnding) return nullptr;
+    if (!Commands)
+    {
+        auto* Player = GetLocalPlayer(); auto* GI = Player ? Player->GetGameInstance() : nullptr;
+        auto* Web = GI ? GI->GetSubsystem<UHttpWebManager>() : nullptr;
+        if (!GI || GI->GetFirstGamePlayer() != Player || !Web || IsRunningDedicatedServer() || Web->IsConfiguredForDungeonServer()) return nullptr;
+        const TWeakObjectPtr<ThisClass> Weak(this);
+        Commands = MakeShared<FRPGRidingCommandCoordinator>(Web->CreatePlayerRidingOwnerTransport(), [Weak]
+            { const auto* Self = Weak.Get(); return Self ? Self->ReadCommandContext() : FRPGRidingCommandContext{}; },
+            FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("RidingIntents/v1")));
+    }
+    Commands->RefreshContext(); return Commands;
+}
+bool URPGRidingCollectionSubsystem::BlocksTransitions()
+{ const auto Owner = GetCommands(); return Owner && Owner->BlocksTransitions(); }
 void URPGRidingCollectionSubsystem::ReleaseReader()
 {
     if (Reader) Reader->Shutdown(); Reader.Reset();
@@ -56,6 +89,7 @@ void URPGRidingCollectionSubsystem::ReleaseReader()
 bool URPGRidingCollectionSubsystem::TickCollection(float)
 {
     if (bEnding) return false;
+    GetCommands(); // Restore/check only, including when no collection screen has been opened.
     if (Reader) { Reader->RefreshContext(); RefreshPresentationAssets(); }
     return true; // No HTTP dispatch from this ticker.
 }

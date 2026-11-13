@@ -2,11 +2,12 @@
 #include "Subsystems/LocalPlayerSubsystem.h"
 #include "Containers/Ticker.h"
 #include "Riding/RPGRidingCollectionReader.h"
+#include "Riding/RPGRidingCommandCoordinator.h"
 #include "RPGRidingCollectionSubsystem.generated.h"
 
 struct FStreamableHandle;
 
-/** Local owner of the lobby read screen. No registration, settings mutation or server authority. */
+/** Local owner of the read screen and durable commands; screen closure never disposes a command. */
 UCLASS()
 class PROJECT_RPG_API URPGRidingCollectionSubsystem final : public ULocalPlayerSubsystem
 {
@@ -16,12 +17,17 @@ public:
     virtual void Deinitialize() override;
     TSharedPtr<FRPGRidingCollectionReader> GetReader();
     void ReleaseReader();
+    TSharedPtr<FRPGRidingCommandCoordinator> GetCommands();
+    bool BlocksTransitions();
     FText DescribeMount(const FString& Id) const;
 private:
+    friend struct FRPGRidingLobbyCommandTestAccess;
     FRPGRidingCollectionContext ReadContext() const;
+    FRPGRidingCommandContext ReadCommandContext() const;
     bool TickCollection(float);
     void RefreshPresentationAssets();
     TSharedPtr<FRPGRidingCollectionReader> Reader;
+    TSharedPtr<FRPGRidingCommandCoordinator> Commands;
     TSharedPtr<FStreamableHandle> PresentationLoad;
     FString PresentationKey;
     FTSTicker::FDelegateHandle TickHandle;

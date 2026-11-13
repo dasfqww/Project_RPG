@@ -1,6 +1,7 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [switch]$IncludeCollection, [switch]$IncludeCollectionScreen, [switch]$IncludeIntent, [switch]$IncludeCommand, [switch]$EmotePresentationOnly, [ValidateRange(1,4)][int]$MaxParallelActions=1)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [switch]$IncludeCollection, [switch]$IncludeCollectionScreen, [switch]$IncludeIntent, [switch]$IncludeCommand, [switch]$IncludeLobbyCommand, [switch]$EmotePresentationOnly, [ValidateRange(1,4)][int]$MaxParallelActions=1)
 $ErrorActionPreference='Stop'
+if ($IncludeLobbyCommand) { $IncludeCommand=$true }
 if ($IncludeCommand) { $IncludeIntent=$true; $IncludeCollection=$true }
 if ($IncludeCollectionScreen) { $IncludeCollection=$true }
 if ($EmotePresentationOnly -and !$IncludeEmote) { throw 'EmotePresentationOnly requires IncludeEmote' }
@@ -43,6 +44,7 @@ if ($IncludeCollection) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/Ri
 if ($IncludeCollectionScreen) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingCollectionScreen-20261114/Integration-'+$run); $reservation='riding-collection-screen-20261114' }
 if ($IncludeIntent) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingIntent-20261114/Integration-'+$run); $reservation='riding-intent-journal-20261114' }
 if ($IncludeCommand) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingCommand-20261114/Integration-'+$run); $reservation='riding-command-recovery-20261114' }
+if ($IncludeLobbyCommand) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingLobbyCommand-20261114/Integration-'+$run); $reservation='riding-lobby-command-owner-20261114' }
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Save-Proof { [IO.File]::WriteAllText((Join-Path $proofRoot 'Result.json'),($proof|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false)) }
 function Assert-Reservation {
@@ -127,6 +129,7 @@ try {
     if ($IncludeIntent) { $files+=@('Source/Project_RPG/Public/Riding/RPGRidingCommand.h','Source/Project_RPG/Private/Riding/RPGRidingCommand.cpp','Source/Project_RPG/Private/Riding/RPGRidingIntentJson.h','Source/Project_RPG/Public/Riding/RPGRidingIntentJournal.h','Source/Project_RPG/Private/Riding/RPGRidingIntentJournal.cpp','Source/Project_RPG/Private/Tests/RPGRidingIntentJournalTests.cpp') }
     if ($IncludeCommand) { $files+=@('Source/Project_RPG/Public/Riding/RPGRidingReceipt.h','Source/Project_RPG/Private/Riding/RPGRidingReceipt.cpp','Source/Project_RPG/Public/Riding/RPGRidingCommandCoordinator.h','Source/Project_RPG/Private/Riding/RPGRidingCommandCoordinator.cpp','Source/Project_RPG/Private/Tests/RPGRidingCommandRecoveryTests.cpp') }
     if ($IncludeCommand) { $files=@($files|Where-Object{$_ -ne 'Source/Project_RPG/Public/Manager/HttpWebManager.h' -and $_ -ne 'Source/Project_RPG/Private/Manager/HttpWebManagerRiding.cpp'}) } # Concrete factory/manager use the immutable published snapshot.
+    if ($IncludeLobbyCommand) { $files=@('Source/Project_RPG/Public/Riding/RPGRidingCollectionSubsystem.h','Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp','Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyWidget.cpp','Source/Project_RPG/Private/Online/RPGOnlineLobbySubsystem.cpp','Source/Project_RPG/Public/Online/RPGDungeonSessionSubsystem.h','Source/Project_RPG/Private/Online/RPGDungeonSessionSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingLobbyCommandTests.cpp') }
     foreach($relative in @($files|Select-Object -Unique)) {
         $source=Join-Path $workspace $relative
         $destination=Join-Path $project $relative
@@ -164,6 +167,7 @@ try {
     if ($IncludeCollectionScreen) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp','Source/Project_RPG/Private/UI/Riding/RPGRidingCollectionWidget.cpp','Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyWidget.cpp','Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyMenu.cpp','Source/Project_RPG/Private/Riding/RPGRidingCollectionReader.cpp','Source/Project_RPG/Private/Tests/RPGRidingCollectionWidgetTests.cpp') }
     if ($IncludeIntent) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingCommand.cpp','Source/Project_RPG/Private/Riding/RPGRidingIntentJournal.cpp','Source/Project_RPG/Private/Tests/RPGRidingIntentJournalTests.cpp') }
     if ($IncludeCommand) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingReceipt.cpp','Source/Project_RPG/Private/Riding/RPGRidingCommandCoordinator.cpp','Source/Project_RPG/Private/Riding/RPGRidingOwnerTransport.cpp','Source/Project_RPG/Private/Manager/HttpWebManagerRiding.cpp','Source/Project_RPG/Private/Tests/RPGRidingCommandRecoveryTests.cpp') }
+    if ($IncludeLobbyCommand) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp','Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyWidget.cpp','Source/Project_RPG/Private/Online/RPGOnlineLobbySubsystem.cpp','Source/Project_RPG/Private/Online/RPGDungeonSessionSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingLobbyCommandTests.cpp') }
     $proof.CompileFiles=@($compile|Select-Object -Unique)
     [IO.File]::WriteAllLines($fileList,@($compile|Select-Object -Unique|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
     $dotnet=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'

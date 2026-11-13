@@ -185,6 +185,7 @@ public:
 
 private:
 	friend struct FRPGDungeonFlowTestAccess;
+    friend struct FRPGRidingLobbyCommandTestAccess;
 	friend struct FRPGDungeonDepartureJournalTestAccess;
 	friend struct FRPGSteamLobbyPublicationTestAccess;
 	friend struct FRPGDungeonAbandonmentTestAccess;
@@ -227,6 +228,7 @@ private:
 	bool BeginAbandonment(APlayerController* PlayerController, const FString& ExpectedSessionId,
 		const FString& ExpectedCharacterId, const FString& ExpectedSteamId);
 	bool RejectUnresolvedAbandonment();
+    bool RejectRidingTransition();
 	void ClearAbandonmentIdentity();
 	bool CanQueueDungeonAbandonmentFromBattle(APlayerController* PlayerController, bool bFromResult) const;
 	bool QueueDungeonAbandonmentFromBattle(APlayerController* PlayerController, int32 ExpectedBattleRevision,

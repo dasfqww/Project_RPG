@@ -10,6 +10,7 @@
 #include "Online/RPGSteamLobbySubsystem.h"
 #include "Trading/RPGTradeSubsystem.h"
 #include "Auction/RPGAuctionSubsystem.h"
+#include "Riding/RPGRidingCollectionSubsystem.h"
 #include "Engine/LocalPlayer.h"
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
 
@@ -73,6 +74,8 @@ bool URPGOnlineLobbySubsystem::IsLogoutAllowed(const bool bLocalLobby, const boo
 
 bool URPGOnlineLobbySubsystem::CanLogoutFromBackend(const APlayerController* Controller) const
 {
+    auto* Riding = Controller && Controller->GetLocalPlayer() ? Controller->GetLocalPlayer()->GetSubsystem<URPGRidingCollectionSubsystem>() : nullptr;
+    if (Riding && Riding->BlocksTransitions()) return false;
 	auto* Trades = Controller && Controller->GetLocalPlayer() ? Controller->GetLocalPlayer()->GetSubsystem<URPGTradeSubsystem>() : nullptr;
 	if (Trades && Trades->BlocksTransitions()) return false;
 	auto* Auctions = Controller && Controller->GetLocalPlayer() ? Controller->GetLocalPlayer()->GetSubsystem<URPGAuctionSubsystem>() : nullptr;
@@ -113,7 +116,9 @@ bool URPGOnlineLobbySubsystem::LogoutFromBackend(APlayerController* Controller)
 		auto* Player = ExpectedController.IsValid() ? ExpectedController->GetLocalPlayer() : nullptr;
 		auto* Trades = Player ? Player->GetSubsystem<URPGTradeSubsystem>() : nullptr;
 		auto* Auctions = Player ? Player->GetSubsystem<URPGAuctionSubsystem>() : nullptr;
+        auto* Riding = Player ? Player->GetSubsystem<URPGRidingCollectionSubsystem>() : nullptr;
 		return CurrentWeb && CurrentFlow && Auth && Steam
+            && (!Riding || !Riding->BlocksTransitions())
 			&& (!Trades || !Trades->BlocksTransitions())
 			&& (!Auctions || !Auctions->BlocksTransitions())
 			&& CurrentWeb->GetAuthenticatedSteamId() == SteamId

@@ -887,3 +887,20 @@ GET riding은 같은 잠금 안의 보유와 현재 설정을 반환하며 prefe
 초기 TSharedRef 변환 컴파일 실패와 다른 담당의 미게시 Manager 헤더를 복사한 통합 실패는 수정 후 성공과 구분한다. 공통 Manager/factory는 게시된 불변 사본만 소비했고 타 담당 파일을 수정하지 않았다. 이후 실제 저널 잠금으로 Clear 실패 검사를 보강한 최종 파일을 두 UE 프로세스/CPP5에서 확인했다. 기동 구간의 엔진 오류/ACL 경고와 검사 구간의 오류/경고0은 구분한다.
 
 자기7회 **712,362,862 bytes(679.362MiB)**·사본/모듈/토큰/SDK cache/UserDir·검사 저널/host·UE PID 및 자기 junction2개를 안전하게 폐기했고 Temp/PID/정리 예외0이다. 작은 결과/명령/소스·모듈 hash는 로컬 `Saved/BuildChecks/RidingCommand-20261114/Completion.json`에 남겼으며 폐기한 모듈 hash는 당시 근거다. 원본 DLL/Intermediate/DDC·실제 사용자 저널·다른 담당 변경은 보존했다.
+
+## 43. M3b5 LocalPlayer 명령 수명과 로비 전환 장벽 — 2026-11-14
+
+담당 `riding-lobby-command-owner-20261114`. [보관함 subsystem](../Source/Project_RPG/Public/Riding/RPGRidingCollectionSubsystem.h)이 기존 reader와 별도로 명령 coordinator를 소유한다. `GetCommands`는 첫 LocalPlayer/일반 클라이언트만 기존 Player factory를 사용해 생성하며 `Saved/RidingIntents/v1`의 원래 명령을 복원한다. 토큰은 저널에 넣지 않는다. 명령의 endpoint/account/선택 character scope와 적격 로비·현재 자격을 구분해 자격 갱신/만료 중에도 같은 식별의 pending을 보존한다.
+
+- 보관함을 열기 전에도 0.25초 ticker 또는 `BlocksTransitions`가 coordinator 문맥을 확인한다. 둘 다 HTTP를 시작하지 않는다. 화면의 `ReleaseReader`는 조회/metadata handle만 정리하고 명령을 취소/삭제하지 않는다. LocalPlayer deinitialize는 자기 명령 전송을 종료하되 원래 저널을 남긴다. 명시적인 Retry/Recover와 검증 후 Clear 규칙은 42절을 그대로 사용한다.
+- 로비의 전환 표시와 frontend busy 판정에 pending/저장 차단/성공 뒤 새 조회 장벽을 연결했다. 캐릭터 선택/생성·새 세션 생성/복구/진입 및 튜토리얼 진입을 막으며, 로그아웃은 시작 조건과 기존 최종 문맥 검사에서 모두 확인한다. 읽기/복구에 필요한 보관함 적격성은 이 장벽을 다시 조회하지 않아 자기 pending이 스스로의 복구 자격을 끊는 순환을 만들지 않는다.
+- `URPGDungeonSessionSubsystem`의 실제 캐릭터 변경·새 세션 생성/참가/복구·출발 요청·Connect에 같은 가드를 두었다. BeginOperation의 새 진입과 성공 입장권 처리 직전에도 다시 검사한다. 늦은 입장권은 전송/여행을 시작하지 않으며 `riding_command_unresolved`로 끝난다. 선택 식별을 지우는 Reset도 막지만 같은 캐릭터 재선택과 기존 세션 조회/나가기·출발 취소·비상 복귀 경로는 보존한다. 이 문자열은 내부 오류 코드이며 새 권한이나 탑승 상태가 아니다.
+- 확정 영수증 뒤의 `NeedsFreshReads`도 장벽을 유지한다. 현재 자산을 실제로 읽고 matching request로 확인하는 소비자, 등록/설정/명시 복구 UI는 아직 연결하지 않았다. 이 단계에서 보관함은 조회 화면이며 새 쓰기/자동 재전송 버튼을 공개하지 않는다.
+
+[전용 실행기](../Scripts/Tests/Run-RidingLobbyCommandTests.ps1)는 게시 소스/Config/플러그인에 본인 명시 소스만 덮은 별도 전체 Editor를 빌드·링크한다. 검사에서는 실제 GameInstance/LocalPlayer와 생산 subsystem/로비 frontend 판정/던전 API를 사용하되 명령 문맥/전송은 사설 fake로 주입한다. 화면 조회 수명 해제와 명령 보존·종료 후 원래 파일 유지, 화면 열기 전 pending 복원과 전송0, 캐릭터/던전 API 및 늦은 입장권/Reset 거절, 성공 뒤 새 조회 확인 전후 장벽을 검사한다. 실제 인증된 로비에서 제품 factory가 명령을 보내는 HTTP 결합·로그아웃 완료·실제 자산 새 조회/작성 UI·PG/Steam/물리 입력·여행 성공을 검증한 결과로 확대하지 않는다.
+
+게시 `767545cf`+고정7소스의 전체 Editor UHT/1020단계 빌드·링크 **종료0**, 실제 **`D2CCA1EE…93C94818`** 모듈에서 **native4 Success·검사 오류0·UE 종료0**을 확인했다. 초기 러너는 기존 콘텐츠 경고139건과 모의 LocalPlayer의 PlayerInput 미연결 경고4건까지 실패로 판정했다. 최종 러너의 정확한 메시지 계열/건수 검사를 보존된 원래 로그/결과에 실행해 통과했고, 알 수 없는 경고와 건수 변화 거절도 확인했다. 원래 러너 실패 기록은 그대로 남겼으며 새 DLL을 재실행한 것으로 기록하지 않는다. 예상 밖 검사 경고는0이다. 검증 후 중복 include1줄을 정리하고 내부 가드 코드 대신 한국어 오류 안내를 추가했다. 이 두 표시/정리 변경을 역적용하면 native 입력 SHA와 일치하며 명령/전환 로직과 선언은 같다. 최종 안내문을 포함한 파일은 아래 CPP 검사로 확인했다.
+
+검증 중 게시된 입장권/포기 전송 분리 `7f2d287b`의 Manager 레이아웃 변경은 본인 수정 파일과 독립이며 기존 Riding factory/API가 유지됨을 대조했다. 후발 거래 카탈로그 `846f9d81`은 Backend/문서만 변경한다. 이 두 게시를 포함한 `846f9d81` 불변 Source 사본에 같은 본인7입력만 덮어 [통합 실행기](../Scripts/Tests/Run-RidingIntegrationCompile.ps1)의 `-IncludeLobbyCommand`로 전체 UHT/본인 **CPP5 컴파일0**을 확인했다. 최신 매니저의 실제 HTTP 실행을 다시 검증한 결과는 아니다. 최종 소스 대조와 두 러너 문법 검사를 통과했다.
+
+자기3사본 **7,253,022,028 bytes(6.755GiB)**·PCH/OBJ/DLL·UserDir/cache·검사 저널과 자기 junction7개를 안전하게 폐기했고 Temp/PID/정리 예외0이다. 작은 결과/명령/소스·모듈 hash와 원래 러너 판정/최종 로그 재평가는 로컬 `Saved/BuildChecks/RidingLobbyCommand-20261114/Completion.json`에 남겼으며 폐기한 DLL hash는 당시 근거다. 원본 Binaries/Intermediate/DDC·콘텐츠·실제 사용자 저널·다른 담당 변경은 보존했다.
