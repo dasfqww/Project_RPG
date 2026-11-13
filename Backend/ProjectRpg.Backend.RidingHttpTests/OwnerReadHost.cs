@@ -12,8 +12,9 @@ static partial class Program
         Directory.CreateDirectory(directory);
         await using var enabled = await Fixture.Create(false);
         var owner = await enabled.New(); var empty = await enabled.New(owner.Account); var foreign = await enabled.New(); var unowned = await enabled.New();
-        await enabled.Post(owner, owner.Command(Guid.NewGuid()));
-        await Put(enabled, owner, PreferenceCommand(Guid.NewGuid()));
+        var registrationCommand = owner.Command(Guid.NewGuid()); var preferencesCommand = PreferenceCommand(Guid.NewGuid());
+        await enabled.Post(owner, registrationCommand);
+        await Put(enabled, owner, preferencesCommand);
         await using var disabled = await Fixture.Create(false, new RidingOptions { Enabled = false }, enabled);
         var body = await enabled.Get(owner); var emptyBody = await enabled.Get(empty); var disabledBody = await disabled.Get(owner); var unownedBody = await enabled.Get(unowned);
         await File.WriteAllTextAsync(Path.Combine(directory, "private.json"), JsonSerializer.Serialize(new
@@ -21,6 +22,7 @@ static partial class Program
             run, endpoint = enabled.Client.BaseAddress!.AbsoluteUri.TrimEnd('/') + "/api",
             disabledEndpoint = disabled.Client.BaseAddress!.AbsoluteUri.TrimEnd('/') + "/api",
             owner.Account, owner.Token, enabled.Admin, character = owner.Character.CharacterId,
+            registrationBody = JsonSerializer.Serialize(registrationCommand, Json), preferencesBody = JsonSerializer.Serialize(preferencesCommand, Json),
             emptyCharacter = empty.Character.CharacterId, foreignCharacter = foreign.Character.CharacterId,
             unownedCharacter = unowned.Character.CharacterId, unownedAccount = unowned.Account, unownedToken = unowned.Token,
             body = body.ToJsonString(), emptyBody = emptyBody.ToJsonString(), disabledBody = disabledBody.ToJsonString(), unownedBody = unownedBody.ToJsonString()

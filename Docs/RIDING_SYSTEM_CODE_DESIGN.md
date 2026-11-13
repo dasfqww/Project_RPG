@@ -852,3 +852,19 @@ GET riding은 같은 잠금 안의 보유와 현재 설정을 반환하며 prefe
 게시 `474eb10b`+고정 입력의 최소 UHT/15단계 빌드·링크0, 실제 **`496BA6DA…8FF19BAD`** 모듈의 **native11 Success(화면6/기존조회5)·검사 오류/경고0·종료0**, 전체 UHT/실제 subsystem·부모/메뉴·위젯/reader/검사 **CPP6 컴파일0**을 확인했다. Backend Release0오류/경고, 실제 UMG→Player GET 표시 및 조회 뒤 저장 상태 무변경, 고유38입력/러너2 SHA·문법도 확인했다. 초기 UHT의 반영 함수 인자 이름 누락·상속 Slot 이름 가림 컴파일 실패는 수정 후 성공과 구분한다. 필터 fixture의 프로그램 SetText만으로 입력 이벤트가 발생한다고 가정한 실패는 실제 OnTextChanged 전송으로 보완했으며 제품 필터 기준을 바꾸지 않았다. 추가 보유 행은 필터용 사설 JSON fixture다. 엔진 기동 Error15/ACL경고4도 검사 구간과 구분한다.
 
 자기8회 **913,765,498 bytes(871.435MiB)**·native/통합 사본/모듈/토큰 fixture/SDK cache/UserDir·host/UE PID를 폐기했고 Temp/PID/정리 예외0이다. 작은 결과/명령/해시는 로컬 `Saved/BuildChecks/RidingCollectionScreen-20261114/Completion.json`에 남겼으며 폐기한 모듈 hash는 당시 근거다. 원본 DLL/Intermediate/DDC·다른 담당 변경을 보존했다.
+
+## 41. M3b3 등록/설정 명령과 영속 의도 저널 — 2026-11-14
+
+담당 `riding-intent-journal-20261114`. [명령 값 타입](../Source/Project_RPG/Public/Riding/RPGRidingCommand.h)과 [의도 저널](../Source/Project_RPG/Public/Riding/RPGRidingIntentJournal.h)을 구현했다. HTTP 전송/영수증 적용과 분리된 기반이며 현재 보관함에 쓰기 버튼을 추가하지 않는다.
+
+- `FRPGRidingIntentScope`는 정규 endpoint·17자리 계정 식별·character UUID다. API base의 앞뒤 공백/끝 slash만 정규화하고 query/fragment/userinfo·역슬래시/제어·공백·상대 URL을 거절한다. 자격 갱신은 scope를 바꾸지 않는다. 서버 자격/토큰을 값 타입에 담지 않으며 이 scope는 인증 증명이 아니다.
+- Register는 원래 UUID/item UUID·양수 expectedItemRevision 문자열·양수 catalogVersion의 POST, Preferences는 원래 UUID·비음수 expectedRevision 문자열·선택/최대32 고유 즐겨찾기/Selected·Specific·RandomFavorites의 PUT이다. 쓰기 불가 int64 최댓값·잘못된 ID/모드·혼합 shortcut 필드를 거절하고 즐겨찾기는 ordinal 정렬한다. 원래 JSON을 다시 읽을 때 중복/누락/추가 키·타입/범위·UUID 상관·정규 본문 바이트를 검증한다. 복원 시 현재 카탈로그/아이템 revision으로 원래 본문을 재작성하지 않는다. 현재 보유/활성 정의·로비 자격/최신 CAS 검사는 이 순수 생성기의 역할이 아니며 서버/후속 작성 UI가 수행해야 한다.
+- 경로/HTTP method는 검증한 operation/character로만 생성한다. `IsValid`를 통과하지 못한 intent는 경로를 만들지 못한다. 등록과 설정은 같은 scope 파일을 공유하므로 다른 operation/새 UUID로 불확정 요청을 덮을 수 없다. 계정/endpoint/character는 SHA256 scope key에만 들어가며 파일에는 원래 character/request/operation·method/path/body와 버전/checksum을 보존한다. checksum은 무결성 검사이며 서버 영수증/권한 증명이 아니다.
+- Windows의 절대 root·plain 경로/ancestor를 검사하고 symlink/junction·파일인 root를 거절한다. scope별 exclusive lock을 잡고 최대64KiB 파일을 엄격히 읽는다. 같은 디렉터리의 고유 임시 파일에 원래 값을 쓰고 flush한 뒤 기존 파일을 교체하지 않는 rename을 한다. 기존/손상/oversize/알 수 없는 버전·checksum 불일치는 보존하고 새 명령이나 자동 수리로 덮지 않는다. 쓰기 실패는 전송 허가가 아니며 읽기/복원이 HTTP를 시작하지 않는다.
+- Clear는 잠금 안에서 저장된 값과 원래 intent의 scope/UUID/operation/body 전체가 일치할 때만 가능하다. 호출자는 반드시 일치하는 확정 서버 결과 뒤에만 호출해야 한다. timeout·취소·404/없는 영수증·정책 변경/재로그인은 삭제 근거가 아니다. 그 판정을 수행하는 coordinator/HTTP/영수증 decoder·전환 차단/작성 UI는 후속이며 이 저널만으로 결과 확정이나 중복 소비 방지가 완성됐다고 취급하지 않는다.
+
+검사는 [Run-RidingIntentTests.ps1](../Scripts/Tests/Run-RidingIntentTests.ps1)와 [통합 실행기](../Scripts/Tests/Run-RidingIntegrationCompile.ps1)의 `-IncludeIntent`다. 사설 실제 Memory Kestrel가 이미 수락한 등록/설정 JSON과 생성기 바이트를 비교한다. 첫 UE 프로세스는 정규화/거절·단일 pending/operation 충돌·격리/무자격 저장·잠금/redirect/손상 보존·재시작 파일 생성을, 두 번째 프로세스는 원래 UUID/body/method/path 복원과 일치 삭제를 검사한다. 제품 UE 명령 HTTP·실제 응답 유실 후 영수증 복구/사용자 저널·UI/PG/Steam·전체 게임 링크 검증은 아니다.
+
+게시 `b52132e3`+고정 입력의 최소 UHT/11단계 빌드·링크0, 실제 **`E087063F…15D33BF0`** 모듈에서 writer6/별도 reader1 **native7 Success·검사 오류/경고0·두 UE 종료0**, 전체 UHT/실제 **CPP3 컴파일0**을 확인했다. 실제 백엔드가 수락한 등록/설정 본문과 바이트 일치·writer/reader 원래 요청 동일·잠금/redirect/손상 보존·상호 operation 충돌·계정/endpoint/character 격리·무자격 저장을 통과했다. Backend Release0오류/경고·fixture 저장 상태 무변경·고유25입력/러너2 SHA·문법 일치를 확인했다. 엔진 기동 Error15/ACL경고4는 검사 구간과 구분한다. 선행 `b52132e3` 세션 매니저 분리의 변경 경로와 직접 입력의 독립성을 확인했다. 게시 전 helper EOF 공백을 정리한 최종 파일로 두 UE 프로세스/CPP3을 재검증했으며 최종 고정25입력 SHA가 일치한다.
+
+자기4회 **347,751,944 bytes(331.642MiB)**·사본/모듈/토큰/SDK cache/UserDir·검사 저널/PID와 자기 junction2개를 안전하게 폐기했고 Temp/PID/예외0이다. 작은 결과/명령/소스·모듈 hash는 로컬 `Saved/BuildChecks/RidingIntent-20261114/Completion.json`에 남겼으며 폐기한 모듈 hash는 당시 근거다. 원본 DLL/Intermediate/DDC/실제 사용자 저널·다른 담당 변경은 보존했다.
