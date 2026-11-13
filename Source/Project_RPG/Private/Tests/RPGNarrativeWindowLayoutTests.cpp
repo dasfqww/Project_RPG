@@ -144,4 +144,68 @@ bool FRPGNarrativeWindowVisibilityTest::RunTest(const FString&)
     TestFalse(TEXT("Non-finite geometry is rejected"), FRPGNarrativeWindowLayout::HasVisibleArea(FSlateRect(NaN,0,100,100),Scroll,Viewport));
     return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGNarrativeEntryPreviewTest, "ProjectRPG.Narrative.WindowLayout.EntryPreview", Flags)
+bool FRPGNarrativeEntryPreviewTest::RunTest(const FString&)
+{
+    TStrongObjectPtr<UTextBlock> Label(NewObject<UTextBlock>(GetTransientPackage()));
+    const FText Authored = FText::FromString(TEXT(" \t안내자\r\n첫 줄\u0085다음\u2028마지막\u2029끝 \U0001F680  "));
+    FRPGNarrativeWindowLayout::SetActionLabel(*Label, Authored, true);
+    TestEqual(TEXT("Line separators and repeated spaces become an inline preview without damaging Unicode"),
+        Label->GetText().ToString(), FString(TEXT("안내자 첫 줄 다음 마지막 끝 \U0001F680")));
+    TestFalse(TEXT("Entry preview does not wrap"), Label->GetAutoWrapText());
+    TestEqual(TEXT("Narrow rows use text ellipsis"), Label->GetTextOverflowPolicy(), ETextOverflowPolicy::Ellipsis);
+    FRPGNarrativeWindowLayout::SetActionLabel(*Label, FText::FromString(TEXT("\r\n\t \u2028")), true);
+    TestFalse(TEXT("Whitespace-only entry remains a named actionable control"), Label->GetText().IsEmptyOrWhitespace());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGNarrativeEntrySizingTest, "ProjectRPG.Narrative.WindowLayout.EntrySizing", Flags)
+bool FRPGNarrativeEntrySizingTest::RunTest(const FString&)
+{
+    TStrongObjectPtr<UWidgetTree> Tree(NewObject<UWidgetTree>(GetTransientPackage()));
+    auto* Page = Tree->ConstructWidget<UVerticalBox>(); Tree->RootWidget = Page;
+    TArray<UButton*> Buttons;
+    FString Long; for (int32 I = 0; I < 160; ++I) Long += TEXT("아주 긴 대사의 진입 미리보기\n");
+    for (const FString& Caption : {Long, FString(TEXT("다음 대화"))})
+    {
+        auto* Button = Tree->ConstructWidget<UButton>(); auto* Text = Tree->ConstructWidget<UTextBlock>();
+        FRPGNarrativeWindowLayout::SetActionLabel(*Text, FText::FromString(Caption), true);
+        Button->SetContent(Text); Page->AddChildToVerticalBox(Button); Buttons.Add(Button);
+    }
+    auto Slate = Page->TakeWidget();
+    for (const float Width : {80.f,160.f,320.f}) for (const float Scale : {.75f,1.f,2.f})
+    {
+        Slate->SlatePrepass(Scale);
+        const auto Root = FGeometry::MakeRoot(FVector2f(Width,400), FSlateLayoutTransform(Scale));
+        FGeometry First, Next;
+        if (!TestTrue(TEXT("Both entry buttons are arranged"), Find(Slate,Root,Buttons[0]->GetCachedWidget(),First)
+            && Find(Slate,Root,Buttons[1]->GetCachedWidget(),Next))) return false;
+        TestTrue(TEXT("A 160-line entry occupies the same height as a short entry"),
+            FMath::IsNearlyEqual(First.GetLocalSize().Y, Next.GetLocalSize().Y, .1));
+        TestTrue(TEXT("Following entry stays immediately reachable"),
+            Next.GetRenderBoundingRect().Bottom <= 2 * First.GetLocalSize().Y * Scale + 1);
+        FGeometry Caption;
+        if (!TestTrue(TEXT("The real preview text is arranged"), Find(Slate,Root,Buttons[0]->GetContent()->GetCachedWidget(),Caption))) return false;
+        const auto Rect = Caption.GetRenderBoundingRect();
+        TestTrue(TEXT("Ellipsis text receives the available row width"), Rect.Left >= -.1 && Rect.Right <= Width * Scale + .1);
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGNarrativeChoiceTextTest, "ProjectRPG.Narrative.WindowLayout.ChoiceText", Flags)
+bool FRPGNarrativeChoiceTextTest::RunTest(const FString&)
+{
+    TStrongObjectPtr<UTextBlock> Label(NewObject<UTextBlock>(GetTransientPackage()));
+    const FText Authored = FText::FromString(TEXT("  첫 선택\r\n둘째 줄\t원문  "));
+    FRPGNarrativeWindowLayout::SetActionLabel(*Label, Authored, true);
+    auto Slate = Label->TakeWidget(); Slate->SlatePrepass(1.f);
+    const float PreviewHeight = Slate->GetDesiredSize().Y;
+    FRPGNarrativeWindowLayout::SetActionLabel(*Label, Authored, false);
+    Slate->SlatePrepass(1.f);
+    TestEqual(TEXT("Switching a built label to a choice restores the exact authored text"), Label->GetText().ToString(), Authored.ToString());
+    TestTrue(TEXT("Active choices retain wrapping"), Label->GetAutoWrapText());
+    TestEqual(TEXT("Active choices are not shortened by preview ellipsis"), Label->GetTextOverflowPolicy(), ETextOverflowPolicy::Clip);
+    TestTrue(TEXT("Explicit choice line breaks still create multiple lines"), Slate->GetDesiredSize().Y > PreviewHeight * 1.5f);
+    return true;
+}
 #endif

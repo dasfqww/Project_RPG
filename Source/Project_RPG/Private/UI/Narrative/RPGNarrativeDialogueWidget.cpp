@@ -30,10 +30,10 @@
 #include "InputCoreTypes.h"
 
 void URPGNarrativeActionWidget::Configure(const FText& Label, const FString& DialogueId,
-    const FString& ChoiceId, FRPGNarrativeAction Action)
+    const FString& ChoiceId, FRPGNarrativeAction Action, const bool bEntryPreview)
 {
-    Caption = Label; NodeId = DialogueId; OptionId = ChoiceId; OnAction = MoveTemp(Action);
-    if (LabelWidget) LabelWidget->SetText(Caption);
+    Caption = Label; NodeId = DialogueId; OptionId = ChoiceId; OnAction = MoveTemp(Action); bPreview = bEntryPreview;
+    if (LabelWidget) FRPGNarrativeWindowLayout::SetActionLabel(*LabelWidget, Caption, bPreview);
 }
 TSharedRef<SWidget> URPGNarrativeActionWidget::RebuildWidget()
 {
@@ -41,7 +41,7 @@ TSharedRef<SWidget> URPGNarrativeActionWidget::RebuildWidget()
     {
         auto* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("NarrativeActionButton"));
         LabelWidget = WidgetTree->ConstructWidget<UTextBlock>();
-        LabelWidget->SetText(Caption); LabelWidget->SetAutoWrapText(true);
+        FRPGNarrativeWindowLayout::SetActionLabel(*LabelWidget, Caption, bPreview);
         Button->SetContent(LabelWidget); Button->OnClicked.AddUniqueDynamic(this, &ThisClass::Click);
         WidgetTree->RootWidget = Button;
     }
@@ -294,11 +294,11 @@ void URPGNarrativeDialogueWidget::Act(const FString& DialogueId, const FString& 
     }
     Render();
 }
-void URPGNarrativeDialogueWidget::AddAction(const FText& Label, const FString& DialogueId, const FString& ChoiceId, bool bEnabled)
+void URPGNarrativeDialogueWidget::AddAction(const FText& Label, const FString& DialogueId, const FString& ChoiceId, bool bEnabled, bool bEntryPreview)
 {
     auto* Row = CreateWidget<URPGNarrativeActionWidget>(this, URPGNarrativeActionWidget::StaticClass());
     if (!Row) return;
-    Row->Configure(Label, DialogueId, ChoiceId, FRPGNarrativeAction::CreateUObject(this, &ThisClass::Act));
+    Row->Configure(Label, DialogueId, ChoiceId, FRPGNarrativeAction::CreateUObject(this, &ThisClass::Act), bEntryPreview);
     Row->SetIsEnabled(bEnabled); Actions->AddChildToVerticalBox(Row)->SetPadding(FMargin(0, 5));
 }
 void URPGNarrativeDialogueWidget::Render()
@@ -350,7 +350,7 @@ void URPGNarrativeDialogueWidget::Render()
             for (const auto& Node : Nodes)
                 if (Node.bEntryPoint && (!bNPCContext || SourceNPC->HasEntry(Node.Id)))
                 {
-                    AddAction(FText::Format(NSLOCTEXT("RPGNarrative", "Node", "{0}: {1}"), Node.Speaker, Node.Text), Node.Id, FString(), !bLastBusy && !bLastPending);
+                    AddAction(FText::Format(NSLOCTEXT("RPGNarrative", "Node", "{0}: {1}"), Node.Speaker, Node.Text), Node.Id, FString(), !bLastBusy && !bLastPending, true);
                     ++Entries;
                 }
             if (Entries == 0) Body->SetText(NSLOCTEXT("RPGNarrative", "Empty", "지금 진행할 수 있는 대화가 없습니다."));

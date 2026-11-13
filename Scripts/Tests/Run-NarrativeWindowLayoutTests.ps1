@@ -1,12 +1,14 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [string]$BaseCommit='HEAD', [switch]$IntegrationOnly)
+param([string]$EngineRoot='D:/UE_5.8', [string]$BaseCommit='HEAD', [switch]$IntegrationOnly,
+    [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$TaskId='narrative-window-layout-20261114',
+    [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$ProofName='NarrativeWindowLayout-20261114')
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $run=[Guid]::NewGuid().ToString('N')
-$proofRoot=Join-Path $workspace ('Saved/BuildChecks/NarrativeWindowLayout-20261114/'+$run)
+$proofRoot=Join-Path $workspace ('Saved/BuildChecks/'+$ProofName+'/'+$run)
 $tempRoot=Join-Path $workspace 'Saved/NWL'
 $temp=Join-Path $tempRoot $run.Substring(0,8)
-$proof=[ordered]@{Passed=$false;Scope='Actual shared UMG frame/Slate layout with4096-limit long text, pinned footer, small viewport/DPI resize and clipping predicates; full project UHT and actual helper/story/test CPP3. No whole game link, real story viewport rendering/physical input, HTTP or Steam proof.';Inputs=@();Failure=$null;Cleanup=$null}
+$proof=[ordered]@{Passed=$false;Scope='Actual shared UMG frame/Slate layout with4096-limit long text, pinned footer, small viewport/DPI resize and clipping predicates; one-line Unicode entry previews and preserved multiline choices; full project UHT and actual helper/story/test CPP3. No whole game link, real story viewport rendering/physical input, HTTP or Steam proof.';Inputs=@();Failure=$null;Cleanup=$null}
 $process=$null
 $ownsTemp=$false
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
@@ -16,8 +18,9 @@ function Write-Utf8([string]$Path,[string]$Text) {
 }
 function Save-Proof { Write-Utf8 (Join-Path $proofRoot 'Result.json') ($proof|ConvertTo-Json -Depth 10) }
 function Assert-Reservation {
-    $rows=@(Get-Content (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object {$_ -match '^\|[^|]* / narrative-window-layout-20261114 \|'})
-    if($rows.Count -ne 1){throw 'Investigation reservation missing'}
+    $pattern='^\|[^|]* / '+[regex]::Escape($TaskId)+' \|'
+    $rows=@(Get-Content (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8 | Where-Object {$_ -match $pattern})
+    if($rows.Count -ne 1){throw 'Narrative window reservation missing'}
 }
 function Copy-Input([string]$Relative,[string]$Root) {
     $source=Join-Path (Join-Path $temp 'Inputs') $Relative
@@ -116,7 +119,7 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "NarrativeWin
     if($process.ExitCode -ne 0){throw 'Native automation process failed'}
     $result=Get-Content -LiteralPath (Join-Path $report 'index.json') -Raw -Encoding UTF8|ConvertFrom-Json
     $proof.Tests=@($result.tests|Select-Object fullTestPath,state,errors,warnings)
-    $expected=@('Bounds','LongContent','Resize','Visibility')|ForEach-Object {'ProjectRPG.Narrative.WindowLayout.'+$_}
+    $expected=@('Bounds','LongContent','Resize','Visibility','EntryPreview','EntrySizing','ChoiceText')|ForEach-Object {'ProjectRPG.Narrative.WindowLayout.'+$_}
     if((Compare-Object $expected @($proof.Tests.fullTestPath)) -or @($proof.Tests|Where-Object {$_.state -ne 'Success' -or $_.errors -ne 0 -or $_.warnings -ne 0}).Count){throw 'Missing or failing native tests'}
     }
     Assert-Reservation

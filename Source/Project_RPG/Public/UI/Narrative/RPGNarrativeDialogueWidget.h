@@ -28,7 +28,8 @@ class PROJECT_RPG_API URPGNarrativeActionWidget final : public UUserWidget
 {
     GENERATED_BODY()
 public:
-    void Configure(const FText& Label, const FString& DialogueId, const FString& ChoiceId, FRPGNarrativeAction Action);
+    void Configure(const FText& Label, const FString& DialogueId, const FString& ChoiceId, FRPGNarrativeAction Action,
+        bool bEntryPreview = false);
     const FString& GetDialogueId() const { return NodeId; }
     const FString& GetChoiceId() const { return OptionId; }
 protected:
@@ -39,6 +40,7 @@ private:
     FText Caption;
     FString NodeId, OptionId;
     FRPGNarrativeAction OnAction;
+    bool bPreview = false;
 };
 
 /** Owner-local story menu. Only server-provided dialogue/actions are selectable. */
@@ -73,7 +75,7 @@ private:
     void CaptureDisplayedDialogue(const FGeometry& ViewportGeometry);
     void Unbind();
     bool MatchesSelection() const;
-    void AddAction(const FText& Label, const FString& DialogueId, const FString& ChoiceId, bool bEnabled);
+    void AddAction(const FText& Label, const FString& DialogueId, const FString& ChoiceId, bool bEnabled, bool bEntryPreview = false);
     UPROPERTY(Transient) TObjectPtr<URPGNarrativeCoordinator> Coordinator;
     UPROPERTY(Transient) TObjectPtr<UVerticalBox> Actions;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> Speaker;

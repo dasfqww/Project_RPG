@@ -5,8 +5,34 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
+#include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+
+void FRPGNarrativeWindowLayout::SetActionLabel(UTextBlock& Label, const FText& Caption, const bool bEntryPreview)
+{
+    FText Display = Caption;
+    if (bEntryPreview)
+    {
+        const FString Source = Caption.ToString();
+        FString Inline; Inline.Reserve(Source.Len());
+        bool bSpace = false;
+        for (const TCHAR C : Source)
+        {
+            if (FChar::IsWhitespace(C) || C == 0x0085 || C == 0x2028 || C == 0x2029)
+                bSpace = !Inline.IsEmpty();
+            else
+            {
+                if (bSpace) Inline.AppendChar(TEXT(' '));
+                Inline.AppendChar(C); bSpace = false;
+            }
+        }
+        Display = Inline.IsEmpty() ? NSLOCTEXT("RPGNarrative", "EntryPreviewEmpty", "대화하기") : FText::FromString(Inline);
+    }
+    Label.SetAutoWrapText(!bEntryPreview);
+    Label.SetTextOverflowPolicy(bEntryPreview ? ETextOverflowPolicy::Ellipsis : ETextOverflowPolicy::Clip);
+    Label.SetText(Display);
+}
 
 FVector2D FRPGNarrativeWindowLayout::SizeForViewport(const FVector2D Viewport)
 {
