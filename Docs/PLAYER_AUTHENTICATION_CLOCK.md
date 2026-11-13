@@ -25,7 +25,7 @@
 [보상 전송 계약](DUNGEON_REWARD_LIVE_REFRESH.md#ue-정산-전송의-책임-2026-11-13)을 따른다.
 
 세션 생성/조회/출발·서버 수명 요청과 응답 해석은 후속 `FRPGDungeonSessionTransport`로
-이관했다. `HttpWebManagerDungeonSession.cpp`는 기존 API/host 위임과 포기 처리를
+이관했다. `HttpWebManagerDungeonSession.cpp`는 기존 API/host 위임을
 유지하며 공통 인증/던전 세대 규칙을 바꾸지 않는다. 세션 데이터 타입은 이름/필드를
 보존해 `Online/RPGDungeonSessionTypes.h`로 옮겼다.
 [세션 HTTP 경계](ONLINE_LOBBY_UI.md#세션-http-처리-경계-2026-11-14)를 따른다.
@@ -33,6 +33,11 @@
 서버 멤버십 GET/단절 만료 POST의 공통 진행 요청·취소/종료 상태는
 `FRPGDungeonMembershipTransport`로 이관했다. 공통 플레이어 헤더와 독립된 기존
 서버 자격 검증/적용을 유지한다. [멤버십 전송 경계](DUNGEON_ABANDONMENT.md#ue-멤버십-전송의-책임-2026-11-14)를 따른다.
+
+입장 티켓 발급/포기 요청의 작성·응답 검증은 `FRPGDungeonPlayerTransport`로 이관했다.
+티켓의 기존 헤더와 포기의 플레이어 전용 자격·공통 세대/신원 검사·알림 순서를 유지한다.
+서버 티켓 소비/연결 복구·실제 이동은 포함하지 않는다.
+[플레이어 전송 경계](ONLINE_LOBBY_UI.md#플레이어-입장-티켓포기-http-경계-2026-11-14)를 따른다.
 
 ### 인증 요청의 수명과 소유권 (2026-11-13)
 

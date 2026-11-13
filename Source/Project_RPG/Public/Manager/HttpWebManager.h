@@ -15,6 +15,7 @@
 #include "Online/RPGDungeonConnectionRecovery.h"
 #include "Online/RPGDungeonSessionTransport.h"
 #include "Online/RPGDungeonMembershipTransport.h"
+#include "Online/RPGDungeonPlayerTransport.h"
 #include "HttpWebManager.generated.h"
 
 class APlayerController;
@@ -136,7 +137,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_SixParams(
 UCLASS(Config = Game, DefaultConfig)
 class PROJECT_RPG_API UHttpWebManager : public UGameInstanceSubsystem, public IRPGDungeonRecoveryHost,
 	public IRPGDungeonRewardSettlementHost, public IRPGBackendAuthenticationHost, public IRPGDungeonSessionTransportHost,
-	public IRPGDungeonMembershipTransportHost
+	public IRPGDungeonMembershipTransportHost, public IRPGDungeonPlayerTransportHost
 {
 	GENERATED_BODY()
 
@@ -404,6 +405,17 @@ private:
 	void OnPlayerLogoutResponse(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful);
 	void BroadcastJoinTicketResult(const FString& DungeonSessionId, const FString& CharacterId,
 		const FString& JoinTicket, const FString& ExpiresAt, bool bSuccess, const FString& ErrorCode = FString());
+	TSharedPtr<FRPGDungeonPlayerTransport> DungeonPlayerTransport;
+	virtual UObject& GetDungeonPlayerTransportOwner() const override;
+	virtual FRPGDungeonPlayerTransportConfig GetDungeonPlayerTransportConfig() const override;
+	virtual bool HasDungeonPlayerToken() const override;
+	virtual void ApplyJoinTicketHeaders(const FHttpRequestRef& Request) const override;
+	virtual void ApplyAbandonmentAuthorization(const FHttpRequestRef& Request) const override;
+	virtual bool AcceptDungeonPlayerResponse(const FHttpRequestPtr& Request, const FHttpResponsePtr& Response, bool& bWasSuccessful) override;
+	virtual bool DispatchDungeonPlayerRequest(const FHttpRequestRef& Request) override;
+	virtual void BroadcastPlayerJoinTicketResult(const FString& SessionId, const FString& CharacterId,
+		const FString& Ticket, const FString& ExpiresAt, bool bSuccess, const FString& ErrorCode = FString()) override;
+	virtual void BroadcastPlayerAbandonmentResult(const FRPGDungeonAbandonmentReceipt& Receipt, bool bSuccess, const FString& ErrorCode) override;
 	friend struct FRPGBackendAuthTestAccess;
 	friend struct FRPGEquipmentMutationTestAccess;
 	friend struct FRPGNarrativeTestAccess;

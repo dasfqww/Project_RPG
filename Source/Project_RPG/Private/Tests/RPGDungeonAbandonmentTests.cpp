@@ -9,6 +9,7 @@
 #include "IpConnection.h"
 #include "Player/RPGPlayerState.h"
 #include "UObject/UnrealType.h"
+#include "UObject/Package.h"
 #include "Tests/RPGDungeonEjectionTestFixture.h"
 #include "Online/RPGSteamAuthSubsystem.h"
 #include "Blueprint/WidgetTree.h"

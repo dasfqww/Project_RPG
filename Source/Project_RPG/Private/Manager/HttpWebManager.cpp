@@ -3,25 +3,18 @@
 #include "HAL/PlatformTime.h"
 #include "HttpWebManagerRuntime.h"
 #include "Online/RPGDungeonMembershipSnapshot.h"
-#include "Online/RPGJoinTicketAdmission.h"
 
 #include "GenericPlatform/GenericPlatformHttp.h"
 #include "HAL/PlatformMisc.h"
 #include "HAL/IConsoleManager.h"
-#include "HttpModule.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "Item/Backend/RPGItemBackendSubsystem.h"
 #include "GameFramework/PlayerController.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
-#include "Policies/CondensedJsonPrintPolicy.h"
-#include "Misc/Paths.h"
 #include "Misc/OutputDevice.h"
-#include "Serialization/JsonReader.h"
-#include "Serialization/JsonSerializer.h"
 #include "Subsystems/SubsystemCollection.h"
-#include "TimerManager.h"
 
 namespace
 {
@@ -58,6 +51,7 @@ UHttpWebManager::UHttpWebManager()
 	PlayerAuthentication = MakeShared<FRPGBackendAuthentication>(*this, PlayerAuth);
 	DungeonSessionTransport = MakeShared<FRPGDungeonSessionTransport>(*this);
 	DungeonMembershipTransport = MakeShared<FRPGDungeonMembershipTransport>(*this);
+	DungeonPlayerTransport = MakeShared<FRPGDungeonPlayerTransport>(*this);
 }
 UObject& UHttpWebManager::GetRecoveryOwner() const { return *const_cast<UHttpWebManager*>(this); }
 UGameInstance* UHttpWebManager::GetRecoveryGameInstance() const { return GetGameInstance(); }
@@ -178,58 +172,23 @@ void UHttpWebManager::ApplyCommonHeaders(const FHttpRequestRef& Request) const
 	}
 }
 
-void UHttpWebManager::RequestJoinTicket(
-	const FString& CharacterId,
-	const FString& DungeonSessionId)
-{
-	if (CharacterId.IsEmpty()
-		|| DungeonSessionId.IsEmpty()
-		|| !HasAccessToken())
-	{
-		BroadcastJoinTicketResult(
-			DungeonSessionId,
-			CharacterId,
-			FString(),
-			FString(),
-			false);
-		return;
-	}
-
-	TSharedRef<FJsonObject> RootObject = MakeShared<FJsonObject>();
-	RootObject->SetStringField(TEXT("characterId"), CharacterId);
-	RootObject->SetStringField(
-		TEXT("dungeonSessionId"), DungeonSessionId);
-
-	FString RequestBody;
-	const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
-		TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(
-			&RequestBody);
-	if (!FJsonSerializer::Serialize(RootObject, Writer))
-	{
-		BroadcastJoinTicketResult(
-			DungeonSessionId,
-			CharacterId,
-			FString(),
-			FString(),
-			false);
-		return;
-	}
-
-	FHttpRequestRef Request = FHttpModule::Get().CreateRequest();
-	Request->OnProcessRequestComplete().BindUObject(
-		this,
-		&ThisClass::OnRequestJoinTicketResponseReceived,
-		CharacterId,
-		DungeonSessionId,
-		PlayerDungeonRequestGeneration);
-	Request->SetURL(ApiUrl / TEXT("join-tickets"));
-	Request->SetVerb(TEXT("POST"));
-	Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
-	ApplyCommonHeaders(Request);
-	Request->SetContentAsString(RequestBody);
-	Request->SetTimeout(RequestTimeoutSeconds);
-	Request->ProcessRequest();
-}
+UObject& UHttpWebManager::GetDungeonPlayerTransportOwner() const { return *const_cast<UHttpWebManager*>(this); }
+FRPGDungeonPlayerTransportConfig UHttpWebManager::GetDungeonPlayerTransportConfig() const
+{ return { ApiUrl, GetAuthenticatedSteamId(), RequestTimeoutSeconds, PlayerDungeonRequestGeneration, IsHttpBackendServerRuntime() }; }
+bool UHttpWebManager::HasDungeonPlayerToken() const { return HasAccessToken(); }
+void UHttpWebManager::ApplyJoinTicketHeaders(const FHttpRequestRef& Request) const { ApplyCommonHeaders(Request); }
+void UHttpWebManager::ApplyAbandonmentAuthorization(const FHttpRequestRef& Request) const
+{ Request->SetHeader(TEXT("Authorization"), PlayerAuth.Authorization(FPlatformTime::Seconds())); }
+bool UHttpWebManager::AcceptDungeonPlayerResponse(const FHttpRequestPtr& Request, const FHttpResponsePtr& Response, bool& bWasSuccessful)
+{ return AcceptPlayerResponse(Request, Response, bWasSuccessful); }
+bool UHttpWebManager::DispatchDungeonPlayerRequest(const FHttpRequestRef& Request) { return Request->ProcessRequest(); }
+void UHttpWebManager::BroadcastPlayerJoinTicketResult(const FString& SessionId, const FString& CharacterId,
+	const FString& Ticket, const FString& ExpiresAt, bool bSuccess, const FString& ErrorCode)
+{ BroadcastJoinTicketResult(SessionId, CharacterId, Ticket, ExpiresAt, bSuccess, ErrorCode); }
+void UHttpWebManager::BroadcastPlayerAbandonmentResult(const FRPGDungeonAbandonmentReceipt& Receipt, bool bSuccess, const FString& ErrorCode)
+{ OnDungeonAbandonmentCompleted.Broadcast(Receipt, bSuccess, ErrorCode); }
+void UHttpWebManager::RequestJoinTicket(const FString& CharacterId, const FString& SessionId)
+{ DungeonPlayerTransport->RequestJoinTicket(CharacterId, SessionId); }
 
 void UHttpWebManager::ConsumeJoinTicket(const FString& Ticket, const FString& Steam)
 { DungeonRecovery->ConsumeJoinTicket(Ticket, Steam); }
@@ -304,72 +263,9 @@ void UHttpWebManager::BroadcastJoinTicketResult(const FString& DungeonSessionId,
 	OnJoinTicketIssued.Broadcast(DungeonSessionId, CharacterId, JoinTicket, ExpiresAt, bSuccess);
 }
 
-void UHttpWebManager::OnRequestJoinTicketResponseReceived(
-	FHttpRequestPtr Request,
-	FHttpResponsePtr Response,
-	bool bWasSuccessful,
-	FString CharacterId,
-	FString DungeonSessionId,
-	uint64 RequestGeneration)
-{
-	if (RequestGeneration != PlayerDungeonRequestGeneration) return;
-	if (!AcceptPlayerResponse(Request, Response, bWasSuccessful)) return;
-	bool bSuccess = bWasSuccessful && Response.IsValid()
-		&& EHttpResponseCodes::IsOk(Response->GetResponseCode());
-	FString JoinTicket;
-	FString ExpiresAt;
-	FString ErrorCode;
-
-	if (bSuccess)
-	{
-		TSharedPtr<FJsonObject> RootObject;
-		const TSharedRef<TJsonReader<>> Reader =
-			TJsonReaderFactory<>::Create(Response->GetContentAsString());
-		FString ResponseCharacterId;
-		FString ResponseDungeonSessionId;
-		bSuccess = FJsonSerializer::Deserialize(Reader, RootObject)
-			&& RootObject.IsValid()
-			&& RootObject->TryGetStringField(
-				TEXT("dungeonSessionId"), ResponseDungeonSessionId)
-			&& RootObject->TryGetStringField(
-				TEXT("characterId"), ResponseCharacterId)
-			&& RootObject->TryGetStringField(TEXT("joinTicket"), JoinTicket)
-			&& RootObject->TryGetStringField(TEXT("expiresAt"), ExpiresAt)
-			&& ResponseDungeonSessionId == DungeonSessionId
-			&& ResponseCharacterId == CharacterId
-			&& !JoinTicket.IsEmpty();
-	}
-
-	if (!bSuccess)
-	{
-		JoinTicket.Reset();
-		ExpiresAt.Reset();
-		// Only the defined conflict codes are UI state. Never forward arbitrary
-		// HTTP bodies, transport errors or a forged code from a successful response.
-		if (bWasSuccessful && Response.IsValid() && Response->GetResponseCode() == 409
-			&& Response->GetContentLength() <= 4096)
-		{
-			TSharedPtr<FJsonObject> ErrorObject;
-			FString Code;
-			if (FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Response->GetContentAsString()), ErrorObject)
-				&& ErrorObject.IsValid() && ErrorObject->TryGetStringField(TEXT("error"), Code)
-				&& (Code.Equals(TEXT("dungeon_reconnect_grace_expired"), ESearchCase::CaseSensitive)
-					|| Code.Equals(TEXT("dungeon_member_not_active"), ESearchCase::CaseSensitive)))
-				ErrorCode = Code;
-		}
-		UE_LOG(LogTemp, Warning,
-			TEXT("Join ticket request failed for character %s (HTTP %d)."),
-			*CharacterId,
-			Response.IsValid() ? Response->GetResponseCode() : 0);
-	}
-
-	BroadcastJoinTicketResult(
-		DungeonSessionId,
-		CharacterId,
-		JoinTicket,
-		ExpiresAt,
-		bSuccess, ErrorCode);
-}
+void UHttpWebManager::OnRequestJoinTicketResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response,
+	bool bWasSuccessful, FString CharacterId, FString SessionId, uint64 RequestGeneration)
+{ DungeonPlayerTransport->HandleJoinTicketResponse(Request, Response, bWasSuccessful, CharacterId, SessionId, RequestGeneration); }
 
 void UHttpWebManager::NotifyServiceDraining(const FHttpRequestPtr& Request, const FHttpResponsePtr& Response)
 {
