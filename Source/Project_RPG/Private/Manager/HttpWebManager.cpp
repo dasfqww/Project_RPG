@@ -57,6 +57,7 @@ UHttpWebManager::UHttpWebManager()
 	DungeonRewardSettlement = MakeShared<FRPGDungeonRewardSettlement>(*this);
 	PlayerAuthentication = MakeShared<FRPGBackendAuthentication>(*this, PlayerAuth);
 	DungeonSessionTransport = MakeShared<FRPGDungeonSessionTransport>(*this);
+	DungeonMembershipTransport = MakeShared<FRPGDungeonMembershipTransport>(*this);
 }
 UObject& UHttpWebManager::GetRecoveryOwner() const { return *const_cast<UHttpWebManager*>(this); }
 UGameInstance* UHttpWebManager::GetRecoveryGameInstance() const { return GetGameInstance(); }
@@ -85,7 +86,7 @@ void UHttpWebManager::BroadcastConsumedTicket(const FString& Ticket, const FStri
 void UHttpWebManager::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	bDungeonMembershipTransportShutdown = false;
+	DungeonMembershipTransport->Initialize();
 	if (IsHttpBackendServerRuntime())
 	{
 		// The Item V2 gateway is server-owned.  Make its initialization order
@@ -125,7 +126,7 @@ void UHttpWebManager::Deinitialize()
 		ActivePlayerProgressionRequest.Reset();
 	}
 	PlayerAuthentication->CancelLogout();
-	bDungeonMembershipTransportShutdown = true;
+	DungeonMembershipTransport->BeginShutdown();
 	DungeonRecovery->Shutdown();
 	CancelDungeonConnectionMutations();
 	CancelDungeonMembershipRequest();
@@ -256,118 +257,23 @@ void UHttpWebManager::CancelDungeonConnectionMutations()
 	DungeonRewardSettlement->Cancel();
 }
 
-void UHttpWebManager::CancelDungeonMembershipRequest()
+UObject& UHttpWebManager::GetMembershipTransportOwner() const { return *const_cast<UHttpWebManager*>(this); }
+FRPGDungeonMembershipTransportConfig UHttpWebManager::GetMembershipTransportConfig() const
 {
-	++DungeonMembershipRequestGeneration;
-	if (!ActiveDungeonMembershipRequest.IsValid()) return;
-	ActiveDungeonMembershipRequest->OnProcessRequestComplete().Unbind();
-	ActiveDungeonMembershipRequest->CancelRequest();
-	ActiveDungeonMembershipRequest.Reset();
+	return { ApiUrl, ConfiguredDungeonSessionId, GameServerId, RequestTimeoutSeconds,
+		IsConfiguredForDungeonServer(), IsHttpBackendServerRuntime() };
 }
-
-FHttpRequestPtr UHttpWebManager::CreateConfiguredDungeonMembershipRequest(
-	TFunction<void(FRPGDungeonMembershipSnapshotResult)> Completion)
-{
-	FRPGDungeonMembershipMonitor Scope;
-	if (bDungeonMembershipTransportShutdown || ActiveDungeonMembershipRequest.IsValid()
-		|| !IsConfiguredForDungeonServer() || !Scope.Configure(ConfiguredDungeonSessionId, GameServerId)) return nullptr;
-	if (BackendServiceToken.Len() > 4096) return nullptr;
-	for (const TCHAR Character : BackendServiceToken)
-		if (Character <= TEXT(' ') || Character >= TEXT('\x7f')) return nullptr;
-	const FString ExpectedSessionId = ConfiguredDungeonSessionId;
-	const FString ExpectedServerId = GameServerId;
-	const uint64 Generation = ++DungeonMembershipRequestGeneration;
-	FHttpRequestRef Request = FHttpModule::Get().CreateRequest();
-	// This completion now revokes live gameplay authority and closes connections.
-	Request->SetDelegateThreadPolicy(EHttpRequestDelegateThreadPolicy::CompleteOnGameThread);
-	ActiveDungeonMembershipRequest = Request;
-	Request->OnProcessRequestComplete().BindWeakLambda(this,
-		[this, Generation, ExpectedSessionId, ExpectedServerId, Completion = MoveTemp(Completion)]
-		(FHttpRequestPtr CompletedRequest, FHttpResponsePtr Response, bool bSuccess) mutable
-		{
-			if (bDungeonMembershipTransportShutdown || Generation != DungeonMembershipRequestGeneration
-				|| CompletedRequest != ActiveDungeonMembershipRequest) return;
-			ActiveDungeonMembershipRequest.Reset();
-			FRPGDungeonMembershipSnapshotResult Result;
-			Result.HttpStatus = Response.IsValid() ? Response->GetResponseCode() : 0;
-			if (ConfiguredDungeonSessionId == ExpectedSessionId && GameServerId == ExpectedServerId
-				&& bSuccess && Response.IsValid() && Response->GetContentLength() <= 64 * 1024
-				&& Response->GetContent().Num() <= 64 * 1024)
-				Result.bSuccess = FRPGDungeonMembershipSnapshotCodec::Decode(Response->GetContentAsString(),
-					Result.HttpStatus, ExpectedSessionId, ExpectedServerId, Result.Snapshot);
-			if (Completion) Completion(MoveTemp(Result));
-		});
-	Request->SetURL(ApiUrl / FString::Printf(TEXT("dungeon-sessions/%s/membership-snapshot"),
-		*FGenericPlatformHttp::UrlEncode(ExpectedSessionId)));
-	Request->SetVerb(TEXT("GET"));
-	Request->SetHeader(TEXT("Accept"), TEXT("application/json"));
-	Request->SetHeader(TEXT("Cache-Control"), TEXT("no-cache"));
-	// ApplyCommonHeaders prefers a player token. This authority boundary must
-	// never use it or fall back to a player/admin credential.
-	Request->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *BackendServiceToken));
-	Request->SetTimeout(FMath::IsFinite(RequestTimeoutSeconds)
-		? FMath::Clamp(RequestTimeoutSeconds, 1.f, 30.f) : 10.f);
-	return Request;
-}
-
-bool UHttpWebManager::LoadConfiguredDungeonMembershipSnapshot(
-	TFunction<void(FRPGDungeonMembershipSnapshotResult)> Completion)
-{
-	if (!IsHttpBackendServerRuntime()) return false;
-	FHttpRequestPtr Request = CreateConfiguredDungeonMembershipRequest(MoveTemp(Completion));
-	if (!Request.IsValid()) return false;
-	if (Request->ProcessRequest()) return true;
-	if (ActiveDungeonMembershipRequest == Request) CancelDungeonMembershipRequest();
-	return false;
-}
-
-FHttpRequestPtr UHttpWebManager::CreateConfiguredDungeonDisconnectionExpirationsRequest(
-	TFunction<void()> Completion)
-{
-	FRPGDungeonMembershipMonitor Scope;
-	if (bDungeonMembershipTransportShutdown || ActiveDungeonMembershipRequest.IsValid()
-		|| !IsConfiguredForDungeonServer() || !Scope.Configure(ConfiguredDungeonSessionId, GameServerId)) return nullptr;
-	if (BackendServiceToken.Len() > 4096) return nullptr;
-	for (const TCHAR Character : BackendServiceToken)
-		if (Character <= TEXT(' ') || Character >= TEXT('\x7f')) return nullptr;
-	const FString ExpectedSessionId = ConfiguredDungeonSessionId;
-	const FString ExpectedServerId = GameServerId;
-	const uint64 Generation = ++DungeonMembershipRequestGeneration;
-	FHttpRequestRef Request = FHttpModule::Get().CreateRequest();
-	Request->SetDelegateThreadPolicy(EHttpRequestDelegateThreadPolicy::CompleteOnGameThread);
-	ActiveDungeonMembershipRequest = Request;
-	Request->OnProcessRequestComplete().BindWeakLambda(this,
-		[this, Generation, ExpectedSessionId, ExpectedServerId, Completion = MoveTemp(Completion)]
-		(FHttpRequestPtr CompletedRequest, FHttpResponsePtr, bool) mutable
-		{
-			if (bDungeonMembershipTransportShutdown || Generation != DungeonMembershipRequestGeneration
-				|| CompletedRequest != ActiveDungeonMembershipRequest) return;
-			ActiveDungeonMembershipRequest.Reset();
-			// A POST response alone is never ejection evidence. Even 403 after the
-			// final member leaves must be followed by the grace-window GET.
-			if (ConfiguredDungeonSessionId == ExpectedSessionId && GameServerId == ExpectedServerId
-				&& Completion) Completion();
-		});
-	Request->SetURL(ApiUrl / FString::Printf(TEXT("dungeon-sessions/%s/disconnection-expirations"),
-		*FGenericPlatformHttp::UrlEncode(ExpectedSessionId)));
-	Request->SetVerb(TEXT("POST"));
-	Request->SetHeader(TEXT("Accept"), TEXT("application/json"));
-	Request->SetHeader(TEXT("Cache-Control"), TEXT("no-cache"));
-	Request->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *BackendServiceToken));
-	Request->SetTimeout(FMath::IsFinite(RequestTimeoutSeconds)
-		? FMath::Clamp(RequestTimeoutSeconds, 1.f, 30.f) : 10.f);
-	return Request;
-}
-
+bool UHttpWebManager::HasValidMembershipCredential() const { return HasValidRecoveryServiceCredential(); }
+void UHttpWebManager::ApplyMembershipAuthorization(const FHttpRequestRef& Request) const { ApplyRecoveryServiceAuthorization(Request); }
+void UHttpWebManager::CancelDungeonMembershipRequest() { DungeonMembershipTransport->Cancel(); }
+FHttpRequestPtr UHttpWebManager::CreateConfiguredDungeonMembershipRequest(TFunction<void(FRPGDungeonMembershipSnapshotResult)> Completion)
+{ return DungeonMembershipTransport->CreateSnapshotRequest(MoveTemp(Completion)); }
+bool UHttpWebManager::LoadConfiguredDungeonMembershipSnapshot(TFunction<void(FRPGDungeonMembershipSnapshotResult)> Completion)
+{ return DungeonMembershipTransport->LoadSnapshot(MoveTemp(Completion)); }
+FHttpRequestPtr UHttpWebManager::CreateConfiguredDungeonDisconnectionExpirationsRequest(TFunction<void()> Completion)
+{ return DungeonMembershipTransport->CreateExpirationRequest(MoveTemp(Completion)); }
 bool UHttpWebManager::ProcessConfiguredDungeonDisconnectionExpirations(TFunction<void()> Completion)
-{
-	if (!IsHttpBackendServerRuntime()) return false;
-	FHttpRequestPtr Request = CreateConfiguredDungeonDisconnectionExpirationsRequest(MoveTemp(Completion));
-	if (!Request.IsValid()) return false;
-	if (Request->ProcessRequest()) return true;
-	if (ActiveDungeonMembershipRequest == Request) CancelDungeonMembershipRequest();
-	return false;
-}
+{ return DungeonMembershipTransport->ProcessExpirations(MoveTemp(Completion)); }
 
 bool UHttpWebManager::ConnectWithJoinTicket(
 	APlayerController* PlayerController,

@@ -14,6 +14,7 @@
 #include "Type/RPGStructTypes.h"
 #include "Online/RPGDungeonConnectionRecovery.h"
 #include "Online/RPGDungeonSessionTransport.h"
+#include "Online/RPGDungeonMembershipTransport.h"
 #include "HttpWebManager.generated.h"
 
 class APlayerController;
@@ -134,7 +135,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_SixParams(
  */
 UCLASS(Config = Game, DefaultConfig)
 class PROJECT_RPG_API UHttpWebManager : public UGameInstanceSubsystem, public IRPGDungeonRecoveryHost,
-	public IRPGDungeonRewardSettlementHost, public IRPGBackendAuthenticationHost, public IRPGDungeonSessionTransportHost
+	public IRPGDungeonRewardSettlementHost, public IRPGBackendAuthenticationHost, public IRPGDungeonSessionTransportHost,
+	public IRPGDungeonMembershipTransportHost
 {
 	GENERATED_BODY()
 
@@ -456,9 +458,11 @@ private:
 		TFunction<void(FRPGDungeonMembershipSnapshotResult)> Completion);
 	FHttpRequestPtr CreateConfiguredDungeonDisconnectionExpirationsRequest(TFunction<void()> Completion);
 	void CancelDungeonMembershipRequest();
-	FHttpRequestPtr ActiveDungeonMembershipRequest;
-	uint64 DungeonMembershipRequestGeneration = 0;
-	bool bDungeonMembershipTransportShutdown = false;
+	TSharedPtr<FRPGDungeonMembershipTransport> DungeonMembershipTransport;
+	virtual UObject& GetMembershipTransportOwner() const override;
+	virtual FRPGDungeonMembershipTransportConfig GetMembershipTransportConfig() const override;
+	virtual bool HasValidMembershipCredential() const override;
+	virtual void ApplyMembershipAuthorization(const FHttpRequestRef& Request) const override;
 	void OnAbandonDungeonSessionResponse(FHttpRequestPtr Request, FHttpResponsePtr Response,
 		bool bWasSuccessful, FString SessionId, FString CharacterId, FString ExpectedSteamId,
 		uint64 RequestGeneration);

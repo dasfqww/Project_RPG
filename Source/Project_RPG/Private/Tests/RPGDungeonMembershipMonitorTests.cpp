@@ -32,7 +32,7 @@ struct FRPGDungeonMembershipTestAccess
 	static FHttpRequestPtr PrepareExpiration(UHttpWebManager* Web, TFunction<void()> Callback)
 	{ return Web->CreateConfiguredDungeonDisconnectionExpirationsRequest(MoveTemp(Callback)); }
 	static void Cancel(UHttpWebManager* Web) { Web->CancelDungeonMembershipRequest(); }
-	static bool HasRequest(UHttpWebManager* Web) { return Web->ActiveDungeonMembershipRequest.IsValid(); }
+	static bool HasRequest(UHttpWebManager* Web) { return Web->DungeonMembershipTransport->IsActive(); }
 	static FRPGDungeonMembershipMonitor& Monitor(ARPGGameModeBase* Mode) { return Mode->DungeonMembershipMonitor; }
 	static bool AdmissionDenied(ARPGGameModeBase* Mode, const FString& Session, const FString& Character, const FString& Steam)
 	{ return Mode->IsDungeonAdmissionAbandoned(Session, Character, Steam); }

@@ -30,6 +30,10 @@
 보존해 `Online/RPGDungeonSessionTypes.h`로 옮겼다.
 [세션 HTTP 경계](ONLINE_LOBBY_UI.md#세션-http-처리-경계-2026-11-14)를 따른다.
 
+서버 멤버십 GET/단절 만료 POST의 공통 진행 요청·취소/종료 상태는
+`FRPGDungeonMembershipTransport`로 이관했다. 공통 플레이어 헤더와 독립된 기존
+서버 자격 검증/적용을 유지한다. [멤버십 전송 경계](DUNGEON_ABANDONMENT.md#ue-멤버십-전송의-책임-2026-11-14)를 따른다.
+
 ### 인증 요청의 수명과 소유권 (2026-11-13)
 
 `FRPGBackendAuthentication`이 로그인/로그아웃의 진행 요청·로그인 시작 단조 시각·
