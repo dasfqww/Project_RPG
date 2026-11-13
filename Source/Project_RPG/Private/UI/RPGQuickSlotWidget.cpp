@@ -354,8 +354,8 @@ void URPGQuickSlotWidget::NativeTick(const FGeometry& Geometry, const float Delt
 	Super::NativeTick(Geometry, DeltaTime);
 	const bool bHighlight = IsHovered() && GetIsEnabled() &&
 		!(FSlateApplication::IsInitialized() && FSlateApplication::Get().IsDragDropping());
-	const float NewAlpha = FMath::FInterpConstantTo(HoverHighlightAlpha, bHighlight ? 1.0f : 0.0f,
-		DeltaTime, 1.0f / FMath::Max(HoverHighlightFadeDuration, 0.01f));
+	const float NewAlpha = bHighlight ? FMath::FInterpConstantTo(HoverHighlightAlpha, 1.0f,
+		DeltaTime, 1.0f / FMath::Max(HoverHighlightFadeDuration, 0.01f)) : 0.0f;
 	if (NewAlpha != HoverHighlightAlpha)
 	{
 		HoverHighlightAlpha = NewAlpha;
@@ -371,6 +371,15 @@ void URPGQuickSlotWidget::NativeTick(const FGeometry& Geometry, const float Delt
 	}
 }
 
+void URPGQuickSlotWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
+{
+	Super::NativeOnMouseLeave(InMouseEvent);
+	// Restore the original slot immediately, including when it is cached between ticks.
+	HoverHighlightAlpha = 0.0f;
+	if (const TSharedPtr<SWidget> Widget = GetCachedWidget())
+		Widget->Invalidate(EInvalidateWidgetReason::Paint);
+}
+
 int32 URPGQuickSlotWidget::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
 	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements,
 	int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
@@ -380,7 +389,7 @@ int32 URPGQuickSlotWidget::NativePaint(const FPaintArgs& Args, const FGeometry& 
 	const FVector2D Size = AllottedGeometry.GetLocalSize();
 	const float Width = FMath::Min(FMath::Clamp(HoverHighlightWidth, 0.0f, 16.0f),
 		static_cast<float>(FMath::Min(Size.X, Size.Y)) * 0.25f);
-	if (HoverHighlightAlpha <= 0.0f || Width <= 0.0f || !bParentEnabled || !GetIsEnabled())
+	if (!IsHovered() || HoverHighlightAlpha <= 0.0f || Width <= 0.0f || !bParentEnabled || !GetIsEnabled())
 		return ContentLayer;
 
 	// Only outlines are painted above the contents: the icon, key and count remain readable.
