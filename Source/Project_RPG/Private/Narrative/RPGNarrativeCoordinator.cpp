@@ -5,6 +5,9 @@
 #include "Narrative/RPGNarrativeTransport.h"
 #include "Narrative/RPGNarrativeHistory.h"
 #include "Narrative/RPGNarrativeStorySkip.h"
+#include "Narrative/RPGNarrativeQuestTracking.h"
+#include "UI/Narrative/RPGNarrativeQuestTrackerWidget.h"
+#include "GameFramework/PlayerController.h"
 #include "Online/RPGDungeonSessionSubsystem.h"
 #include "Manager/HttpWebManager.h"
 #include "Engine/GameInstance.h"
@@ -121,6 +124,48 @@ TSharedPtr<FRPGNarrativeSkipClient> URPGNarrativeCoordinator::GetStorySkipClient
         });
     }
     return SkipClient;
+}
+TSharedPtr<FRPGNarrativeQuestTracking> URPGNarrativeCoordinator::GetQuestTracking()
+{
+    if (bShuttingDown) return nullptr;
+    if (!QuestTracking)
+    {
+        const TWeakObjectPtr<ThisClass> WeakThis(this);
+        QuestTracking = MakeShared<FRPGNarrativeQuestTracking>([WeakThis](FRPGNarrativeTrackingContext& Out)
+        {
+            const auto* Owner = WeakThis.Get(); FGuid Selected;
+            if (!Owner || !Owner->ContextMatches() || !Owner->DungeonFlow
+                || !FGuid::Parse(Owner->DungeonFlow->GetSelectedCharacterId(), Selected) || Selected != Owner->SelectedCharacter) return false;
+            Out.Character = Selected; Out.Endpoint = Owner->Endpoint; Out.Account = Owner->SteamId;
+            Out.bReadable = Owner->HasCurrentSnapshot();
+            if (Out.bReadable) Out.Quests = Owner->Quests->GetQuests(Selected);
+            return true;
+        });
+        TrackingTick = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &ThisClass::TickQuestTracking), .25f);
+    }
+    return QuestTracking;
+}
+bool URPGNarrativeCoordinator::TickQuestTracking(float)
+{
+    if (bShuttingDown || !QuestTracking) return false;
+    FRPGQuestProgress Quest;
+    auto* Player = GetLocalPlayer();
+    auto* PC = Player ? Player->GetPlayerController(Player->GetWorld()) : nullptr;
+    if (TrackingHUD && (!PC || TrackingHUD->GetOwningPlayer() != PC || !QuestTracking->Read(Quest)))
+    { TrackingHUD->RemoveFromParent(); TrackingHUD = nullptr; }
+    if (PC && QuestTracking->Read(Quest) && !TrackingHUD)
+    {
+        TrackingHUD = CreateWidget<URPGNarrativeQuestTrackerWidget>(PC);
+        if (TrackingHUD)
+        {
+            TrackingHUD->Configure(QuestTracking, FGuid(), false);
+            if (!TrackingHUD->AddToPlayerScreen()) TrackingHUD = nullptr;
+        }
+    }
+    // Travel can remove a viewport widget while the LocalPlayer/model survives.
+    if (TrackingHUD && !TrackingHUD->IsInViewport())
+    { TrackingHUD->Configure(QuestTracking, FGuid(), false); TrackingHUD->AddToPlayerScreen(); }
+    return true;
 }
 void URPGNarrativeCoordinator::ClearView()
 {
@@ -253,6 +298,9 @@ void URPGNarrativeCoordinator::Apply(FRPGNarrativeSnapshot Snapshot)
 void URPGNarrativeCoordinator::Deinitialize()
 {
     bShuttingDown = true; ++RequestGeneration;
+    FTSTicker::GetCoreTicker().RemoveTicker(TrackingTick); TrackingTick.Reset();
+    if (TrackingHUD) TrackingHUD->RemoveFromParent(); TrackingHUD = nullptr;
+    if (QuestTracking) QuestTracking->Reset(); QuestTracking.Reset();
     FTSTicker::GetCoreTicker().RemoveTicker(DungeonSyncTick); DungeonSyncTick.Reset();
     if (DungeonFlow) DungeonFlow->OnDungeonSessionChanged.RemoveDynamic(this, &ThisClass::HandleDungeonSessionChanged);
     if (DungeonFlow) DungeonFlow->OnFlowStateChanged.RemoveDynamic(this, &ThisClass::HandleDungeonFlowChanged);

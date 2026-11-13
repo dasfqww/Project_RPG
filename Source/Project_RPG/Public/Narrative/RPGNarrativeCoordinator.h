@@ -14,6 +14,8 @@ class IRPGNarrativeTransport;
 class FRPGNarrativeHistoryClient;
 class FRPGNarrativeSkipClient;
 class URPGDungeonSessionSubsystem;
+class FRPGNarrativeQuestTracking;
+class URPGNarrativeQuestTrackerWidget;
 struct FRPGDungeonSession;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FRPGNarrativeChanged);
@@ -46,6 +48,7 @@ public:
     UPROPERTY(BlueprintAssignable, Category="RPG|Narrative") FRPGNarrativeRequestFinished OnRequestFinished;
     TSharedPtr<FRPGNarrativeHistoryClient> GetAccountHistoryClient();
     TSharedPtr<FRPGNarrativeSkipClient> GetStorySkipClient();
+    TSharedPtr<FRPGNarrativeQuestTracking> GetQuestTracking();
 private:
     friend struct FRPGNarrativeTestAccess;
     bool BindManagers();
@@ -55,6 +58,7 @@ private:
     void Receive(uint64 Generation, bool bWrite, FRPGNarrativeHttpResult Result);
     void Apply(FRPGNarrativeSnapshot Snapshot);
     void ClearView();
+    bool TickQuestTracking(float DeltaSeconds);
     UFUNCTION() void HandleDungeonSessionChanged(const FRPGDungeonSession& Session);
     UFUNCTION() void HandleDungeonFlowChanged(ERPGDungeonClientFlowState State, const FString& Error);
     void ScheduleDungeonSync(bool bRefresh, bool bResetBudget = false);
@@ -66,6 +70,9 @@ private:
     TSharedPtr<IRPGNarrativeTransport> Transport;
     TSharedPtr<FRPGNarrativeHistoryClient> HistoryClient;
     TSharedPtr<FRPGNarrativeSkipClient> SkipClient;
+    TSharedPtr<FRPGNarrativeQuestTracking> QuestTracking;
+    UPROPERTY(Transient) TObjectPtr<URPGNarrativeQuestTrackerWidget> TrackingHUD;
+    FTSTicker::FDelegateHandle TrackingTick;
     TOptional<FRPGNarrativeCommand> PendingChoice;
     TOptional<FRPGNarrativeDungeonCommand> PendingDungeon;
     TArray<FRPGNarrativeDungeonCandidate> DungeonCandidates;

@@ -318,6 +318,18 @@ Git3d0903c+본인7 소스의 닫힌 사본에서 빌드 경고/오류0·기존 �
 
 본인 임시334,105,976 bytes/연결33·DB/자식 프로세스와 Git 사본을 폐기했고 Temp/대형 예외0이다. 해시는 당시 증거이며 사본 재실행 가능성을 뜻하지 않는다. 근거: `Saved/BuildChecks/NarrativeJournal-20261105/BackendSnapshot.json`, `943a0679756b45e9b8fae7e4e07afb8c/Result.json`, `7980d9e747c64ecb8def6ab8ce6b489a/Result.json`. `Run-NarrativeFrontendTests.ps1`과 `Run-NarrativeDialogueE2E.ps1`의 `TaskId`/`ProofName`으로 검사 예약/출력을 구분하고, 후자는 `BackendRoot`로 독립 서버 입력을 선택할 수 있다. 운영툴 담당의 의존성 인계에 맞춰 Core 프로젝트와 Razor 원본도 선택적으로 복사하도록 보완했으며, 해당 추가 복사 분기는 정적으로 확인했다. GPU·물리 마우스 검증과 전체 Editor 타깃 빌드는 이 결과에 포함하지 않는다.
 
+## 개인 의뢰 추적과 HUD
+
+NPC/로비 이야기 창의 저널에서 진행 중·보고 가능한 의뢰 하나를 골라 **선택한 의뢰 추적**을 누른다. **의뢰 추적 해제**는 표시 고정을 지우며 수락·진행·포기 명령이 아니다. 메인·선택 서브를 모두 고를 수 있고 같은 제목은 순번으로 구분한다. 완료한 의뢰는 후보에서 제외하며 내부 ID를 표시 이름으로 사용하지 않는다. 창 열기·후보 선택만으로 자동 추적하지 않는다.
+
+LocalPlayer의 `URPGNarrativeCoordinator`가 순수 `FRPGNarrativeQuestTracking` 모델과 별도 `URPGNarrativeQuestTrackerWidget` HUD를 소유한다. 저널은 같은 위젯의 조작 모드를 사용한다. 모델은 선택 GUID·계정·endpoint가 일치하고 기존 매니저의 스냅샷이 읽을 수 있을 때만 진행 상태를 반환한다. 추적/해제는 HTTP·저장·성장·입장 상태를 바꾸지 않는다. 추적 고정은 해당 LocalPlayer 세션의 한 의뢰이며 별도 영속 저장이나 캐릭터별 여러 고정 목록을 추가하지 않는다. 다른 캐릭터/계정에서는 이전 고정이 보이지 않으며, 다른 고정으로 교체하지 않았다면 원래 문맥의 진도를 다시 읽은 뒤 복원된다.
+
+HUD는 기존 공용 제목·목표/수량 표시와 보고 가능 안내를 사용한다. 응답 대기 중 마지막 확정 뷰가 계속 유효하면 그 값만 표시하며, 인증/선택/읽기 문맥이 유효하지 않으면 숨긴다. 조회 실패·일시적인 읽기 불가는 고정을 삭제하는 근거가 아니다. 읽을 수 있는 새 확정 스냅샷에서 보고 완료 또는 의뢰 제거/스킵을 확인했을 때만 고정을 해제하며 다음 의뢰를 자동 선택하지 않는다. 이야기를 닫아도 HUD는 유지되고, LocalPlayer의 짧은 ticker가 Controller 교체/뷰포트 제거 후 현재 소유자로 다시 연결한다. HUD는 hit-test-invisible/포커스 없음이며 입력 잠금·공용 HUD/Controller·기존 에셋을 교체하지 않는다. LocalPlayer 종료 때 자기 ticker·HUD·고정만 정리한다.
+
+`Scripts/Tests/Run-NarrativeTrackingUETests.ps1`은 별도 모듈에서 추적 선택/문맥·확정 진도와 실제 UMG 버튼·닫기/재열기·HUD 표시를 검사하고 전체 UHT/관련 실제 CPP를 집중 컴파일한다. 모형 provider는 서버가 이미 승인한 캐시 입력을 대신하며 실제 HTTP·레벨 이동·GPU/물리 입력·Steam 검증은 별도다.
+
+2026-11-13 확인: 게시 `9929a505`+고정13입력의 `d76c8188bb484a59a53d18c752d9f704`에서 작은 모듈 링크0·실제 `03C08B31…00CB6DDD`의 native4 Success/검사 오류·경고0/UE0, 전체 UHT/실제 CPP7 컴파일0이 통과했다. 추적/해제와 exact ID, 메인·서브/동일 제목 후보, 이전 캐릭터의 늦은 조작·계정/endpoint·인증/조회 실패, 보고 완료·스킵의 고정 제거, 닫기/재열기·목표 수량·보고 안내·HUD 비입력 모드를 확인했다. 초기 지역/검사 상수 이름 가림 컴파일 오류는 수정본과 구분하고 기동 Error15/Warning4도 검사 구간과 별도다. 본인 입력/러너 SHA는 동일하며 자기2회222,476,083 bytes(212.17MiB)/Temp·소유 PID를 폐기해 새 예외0이다. 작은 근거 `Saved/BuildChecks/NarrativeTracking-20261113/CompletionAudit.json`을 유지한다. 사본 DLL 해시는 당시 증거이며 전체 게임 링크·실제 Controller 전환/레벨 이동·GPU 외형·물리 입력·HTTP/Steam 검증을 뜻하지 않는다.
+
 ## 로비의 이야기 창
 
 캐릭터로 로비에 접속한 뒤 **인물과 이야기**를 누르면 해당 LocalPlayer의 `URPGNarrativeDialogueWidget`을 연다. 화면은 서버의 현재 가능한 대화, 인물·본문·선택지, 완료한 의뢰 수와 진행 저널을 표시한다. 진행할 대화가 없으면 빈 상태를 안내한다. 이 화면은 네이티브 UMG로 구성하며 기존 대화 Blueprint나 NPC 에셋을 교체하지 않는다.

@@ -16,6 +16,7 @@
 #include "Narrative/RPGQuestManager.h"
 #include "UI/Narrative/RPGNarrativeHistoryPanel.h"
 #include "UI/Narrative/RPGNarrativeStorySkipPanel.h"
+#include "UI/Narrative/RPGNarrativeQuestTrackerWidget.h"
 #include "Narrative/RPGNarrativePresentation.h"
 #include "Actor/Narrative/RPGNarrativeNPC.h"
 #include "GameFramework/PlayerController.h"
@@ -69,6 +70,8 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
         auto* JournalScroll = WidgetTree->ConstructWidget<UScrollBox>(); JournalHeight->SetContent(JournalScroll);
         Journal = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("NarrativeQuestJournal"));
         Journal->SetAutoWrapText(true); JournalScroll->AddChild(Journal);
+        QuestTracker = WidgetTree->ConstructWidget<URPGNarrativeQuestTrackerWidget>(URPGNarrativeQuestTrackerWidget::StaticClass(), TEXT("NarrativeQuestTracking"));
+        JournalScroll->AddChild(QuestTracker);
         AccountHistory = WidgetTree->ConstructWidget<URPGNarrativeHistoryPanel>(URPGNarrativeHistoryPanel::StaticClass(), TEXT("NarrativeAccountHistory"));
         JournalScroll->AddChild(AccountHistory);
         StorySkip = WidgetTree->ConstructWidget<URPGNarrativeStorySkipPanel>(URPGNarrativeStorySkipPanel::StaticClass(), TEXT("NarrativeStorySkip"));
@@ -88,6 +91,7 @@ TSharedRef<SWidget> URPGNarrativeDialogueWidget::RebuildWidget()
         RetryButton->OnClicked.AddUniqueDynamic(this, &ThisClass::RetryChoice);
         Button(TEXT("NarrativeClose"), NSLOCTEXT("RPGNarrative", "Close", "닫기"))->OnClicked.AddUniqueDynamic(this, &ThisClass::CloseScreen);
     }
+    if (QuestTracker && Coordinator && Character.IsValid()) QuestTracker->Configure(Coordinator->GetQuestTracking(), Character, true);
     if (AccountHistory && Coordinator && Character.IsValid()) AccountHistory->Configure(Coordinator->GetAccountHistoryClient(), Character);
     if (StorySkip && Coordinator && Character.IsValid())
     {
@@ -143,6 +147,7 @@ bool URPGNarrativeDialogueWidget::OpenContext(const FGuid CharacterId)
     if (bNPCContext && !Flow->HasPendingChoice()) Flow->CloseDialogue();
     Coordinator->OnChanged.AddUniqueDynamic(this, &ThisClass::HandleChanged);
     Coordinator->OnRequestFinished.AddUniqueDynamic(this, &ThisClass::HandleFinished);
+    if (QuestTracker) QuestTracker->Configure(Coordinator->GetQuestTracking(), Character, true);
     if (AccountHistory) AccountHistory->Configure(Coordinator->GetAccountHistoryClient(), Character);
     if (StorySkip)
     {
