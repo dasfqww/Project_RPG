@@ -47,7 +47,7 @@ static partial class Program
         public IGameRepository Game = null!; public IItemRepository Items = null!; public HttpClient Client = null!;
         public NpgsqlDataSource? Data; public readonly string Admin = Guid.NewGuid().ToString("N");
         WebApplication app = null!; bool ownsData;
-        public static async Task<Fixture> Create(bool pg, RidingOptions? options = null, Fixture? shared = null)
+        public static async Task<Fixture> Create(bool pg, RidingOptions? options = null, Fixture? shared = null, Action<WebApplication>? configure = null)
         {
             var f = new Fixture(); var b = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing", ContentRootPath = AppContext.BaseDirectory });
             b.Logging.ClearProviders(); b.Configuration["Kestrel:Endpoints:Http:Url"] = "http://127.0.0.1:0"; b.WebHost.UseUrls("http://127.0.0.1:0");
@@ -65,7 +65,7 @@ static partial class Program
             b.Services.AddSingleton(f.Game); b.Services.AddSingleton<TimeProvider>(TimeProvider.System); b.Services.AddSingleton<AccessTokenService>();
             b.Services.AddSingleton<Microsoft.Extensions.Options.IOptions<AuthOptions>>(Microsoft.Extensions.Options.Options.Create(new AuthOptions { AdminToken = f.Admin })); b.Services.Configure<SecurityTelemetryOptions>(_ => { });
             b.Services.AddScoped<BearerAuthenticator>(); b.Services.AddRidingServices(options ?? Options());
-            f.app = b.Build(); f.app.UseMiddleware<ApiAuthenticationMiddleware>(); f.app.MapRidingApi();
+            f.app = b.Build(); configure?.Invoke(f.app); f.app.UseMiddleware<ApiAuthenticationMiddleware>(); f.app.MapRidingApi();
             await f.app.StartAsync(); f.Client = new() { BaseAddress = new(f.app.Urls.Single()) }; return f;
         }
         public async Task<Person> New(string? account = null)
@@ -255,6 +255,7 @@ static partial class Program
     }
     static async Task<int> Main(string[] args)
     {
+        if (args.Length == 2 && args[0] == "--command-host") return await CommandHost(args[1]);
         if (args.Length == 2 && args[0] == "--owner-read-host") return await OwnerReadHost(args[1]);
         try { bool prefs = args.Length == 1 && args[0].StartsWith("--preferences", StringComparison.Ordinal);
             bool snapshot = args.Length == 1 && args[0].StartsWith("--snapshot", StringComparison.Ordinal);

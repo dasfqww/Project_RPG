@@ -37,6 +37,7 @@ try {
     $ownsTemp = $true
     $proof.Head = (git -C $workspace rev-parse HEAD).Trim()
     $files = @('Source/Project_RPG/Public/Riding/RPGRidingTypes.h','Source/Project_RPG/Private/Riding/RPGRidingTypes.cpp','Source/Project_RPG/Public/Riding/RPGRidingCollection.h','Source/Project_RPG/Private/Riding/RPGRidingCollection.cpp','Source/Project_RPG/Public/Riding/RPGRidingOwnerTransport.h','Source/Project_RPG/Private/Riding/RPGRidingOwnerTransport.cpp','Source/Project_RPG/Public/Riding/RPGRidingCollectionReader.h','Source/Project_RPG/Private/Riding/RPGRidingCollectionReader.cpp','Source/Project_RPG/Private/Tests/RPGRidingCollectionTests.cpp','Source/Project_RPG/Public/Online/RPGBackendPlayerAuthState.h','Source/Project_RPG/Private/Online/RPGBackendPlayerAuthState.cpp')
+    $files+=@('Source/Project_RPG/Public/Riding/RPGRidingCommand.h','Source/Project_RPG/Private/Riding/RPGRidingCommand.cpp','Source/Project_RPG/Private/Riding/RPGRidingIntentJson.h')
     if ($Screen) { $files+=@('Source/Project_RPG/Public/UI/Riding/RPGRidingCollectionWidget.h','Source/Project_RPG/Private/UI/Riding/RPGRidingCollectionWidget.cpp','Source/Project_RPG/Private/Tests/RPGRidingCollectionWidgetTests.cpp') }
     foreach ($relative in $files) {
         $source = Join-Path $workspace $relative
@@ -55,7 +56,7 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Backend archive failed'}
     & tar -xf (Join-Path $temp 'Backend.tar') -C $backend
     if($LASTEXITCODE -ne 0){throw 'Backend archive extraction failed'}
-    foreach($relative in @('Backend/ProjectRpg.Backend.RidingHttpTests/OwnerReadHost.cs','Backend/ProjectRpg.Backend.RidingHttpTests/Program.cs')){
+    foreach($relative in @('Backend/ProjectRpg.Backend.RidingHttpTests/OwnerReadHost.cs','Backend/ProjectRpg.Backend.RidingHttpTests/CommandHost.cs','Backend/ProjectRpg.Backend.RidingHttpTests/Program.cs')){
         $source=Join-Path $workspace $relative;$destination=Join-Path $backend $relative
         $hash=(Get-FileHash -LiteralPath $source).Hash
         Copy-Item -LiteralPath $source -Destination $destination

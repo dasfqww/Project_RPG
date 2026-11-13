@@ -33,13 +33,24 @@ bool FRPGHttpRidingOwnerTransport::HasCredential() const
 }
 bool FRPGHttpRidingOwnerTransport::CanSend() const { return !Active && HasCredential(); }
 bool FRPGHttpRidingOwnerTransport::ReadCollection(FGuid Character, FCompletion Completion)
+{ return Send(Character, TEXT("characters/") + Character.ToString(EGuidFormats::DigitsWithHyphensLower) + TEXT("/riding"), TEXT("GET"), FString(), MoveTemp(Completion)); }
+bool FRPGHttpRidingOwnerTransport::SendIntent(const FRPGRidingPendingIntent& I, FCompletion Completion)
+{ return I.IsValid() && Send(I.Scope.Character, I.Path().Mid(5), I.Method(), I.Body, MoveTemp(Completion), &I.Scope); }
+bool FRPGHttpRidingOwnerTransport::ReadReceipt(const FRPGRidingPendingIntent& I, FCompletion Completion)
+{ return I.IsValid() && Send(I.Scope.Character, TEXT("characters/") + I.Scope.Character.ToString(EGuidFormats::DigitsWithHyphensLower)
+    + TEXT("/riding/requests/") + I.RequestId.ToString(EGuidFormats::DigitsWithHyphensLower), TEXT("GET"), FString(), MoveTemp(Completion), &I.Scope); }
+bool FRPGHttpRidingOwnerTransport::Send(FGuid Character, const FString& Path, const FString& Method, const FString& Body,
+    FCompletion Completion, const FRPGRidingIntentScope* ExpectedScope)
 {
     FRPGRidingOwnerHttpContext C;
     if (!IsInGameThread() || Active || !Character.IsValid() || !Completion || !Context || !Validate || !Context(C) || !ValidContext(C, true)) return false;
+    FRPGRidingIntentScope Scope;
+    if (!FRPGRidingIntentScope::Create(C.Endpoint, C.Account, Character, Scope) || (ExpectedScope && !(Scope == *ExpectedScope))) return false;
     auto Request = FHttpModule::Get().CreateRequest();
     Request->SetDelegateThreadPolicy(EHttpRequestDelegateThreadPolicy::CompleteOnGameThread);
-    Request->SetURL(C.Endpoint / TEXT("characters") / Character.ToString(EGuidFormats::DigitsWithHyphensLower) / TEXT("riding"));
-    Request->SetVerb(TEXT("GET")); Request->SetHeader(TEXT("Accept"), TEXT("application/json"));
+    Request->SetURL(Scope.Endpoint / Path);
+    Request->SetVerb(Method); Request->SetHeader(TEXT("Accept"), TEXT("application/json"));
+    if (!Body.IsEmpty()) { Request->SetHeader(TEXT("Content-Type"), TEXT("application/json")); Request->SetContentAsString(Body); }
     Request->SetHeader(TEXT("Cache-Control"), TEXT("no-cache, no-store"));
     Request->SetHeader(TEXT("Authorization"), C.Authorization); Request->SetTimeout(TimeoutSeconds);
     const uint64 Expected = ++Generation; const TWeakPtr<FRPGHttpRidingOwnerTransport> Weak = AsShared();

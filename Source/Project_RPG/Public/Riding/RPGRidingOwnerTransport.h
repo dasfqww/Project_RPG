@@ -1,6 +1,7 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "HttpFwd.h"
+#include "Riding/RPGRidingCommand.h"
 
 /** Ephemeral private-auth input; never persist or expose in a collection/view. */
 struct FRPGRidingOwnerHttpContext { FString Endpoint, Account, Authorization; };
@@ -20,9 +21,11 @@ public:
     virtual bool HasCredential() const = 0;
     virtual bool CanSend() const = 0;
     virtual bool ReadCollection(FGuid Character, FCompletion Completion) = 0;
+    virtual bool SendIntent(const FRPGRidingPendingIntent&, FCompletion) { return false; }
+    virtual bool ReadReceipt(const FRPGRidingPendingIntent&, FCompletion) { return false; }
     virtual void Cancel() = 0;
 };
-/** One GET in flight, player credential only, explicit dispatch without automatic retry. */
+/** One request in flight, player credential only, explicit dispatch without automatic retry. */
 class PROJECT_RPG_API FRPGHttpRidingOwnerTransport final : public IRPGRidingOwnerTransport, public TSharedFromThis<FRPGHttpRidingOwnerTransport>
 {
 public:
@@ -34,8 +37,12 @@ public:
     virtual bool HasCredential() const override;
     virtual bool CanSend() const override;
     virtual bool ReadCollection(FGuid Character, FCompletion Completion) override;
+    virtual bool SendIntent(const FRPGRidingPendingIntent& Intent, FCompletion Completion) override;
+    virtual bool ReadReceipt(const FRPGRidingPendingIntent& Intent, FCompletion Completion) override;
     virtual void Cancel() override;
 private:
+    bool Send(FGuid Character, const FString& Path, const FString& Method, const FString& Body,
+        FCompletion Completion, const FRPGRidingIntentScope* Expected = nullptr);
     FContext Context;
     FValidate Validate;
     float TimeoutSeconds;
