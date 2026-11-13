@@ -82,7 +82,8 @@ public sealed record NarrativeCommand(Guid RequestId, long ExpectedRevision, int
 
 public sealed class NarrativeConflictException(string code) : Exception(code);
 public sealed record DialogueView(string Id, string Speaker, string Text,
-    ImmutableArray<DialogueChoiceView> Choices, bool Informational = false, bool EntryPoint = true);
+    ImmutableArray<DialogueChoiceView> Choices, bool Informational = false, bool EntryPoint = true,
+    string? QuestId = null, string? QuestAction = null);
 public sealed record DialogueChoiceView(string Id, string Text, string? NextDialogueId = null);
 public sealed record QuestObjectiveView(string Id, string? Text, bool Completed, int? CurrentCount = null, int? RequiredCount = null);
 public sealed record QuestJournalEntry(string QuestId, int DefinitionVersion, string Status,

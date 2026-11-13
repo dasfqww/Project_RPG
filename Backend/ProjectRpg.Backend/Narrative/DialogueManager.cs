@@ -5,6 +5,8 @@ namespace ProjectRpg.Backend.Narrative;
 /// <summary>Authored choice eligibility and presentation; no independent quest state.</summary>
 public sealed class DialogueManager(QuestManager quests)
 {
+    internal static string? QuestAction(DialogueDefinition definition) => definition.Informational ? null
+        : definition.RequiredStatus switch { null => "Accept", QuestStatus.Active => "Progress", QuestStatus.ReadyToReport => "Report", _ => null };
     private bool Available(NarrativeState state, NarrativeCatalog catalog, DialogueDefinition definition)
     {
         if (!definition.CompletionRequirements.All(id => state.Quests.Any(q => q.QuestId == id && q.Status == QuestStatus.Completed)))
@@ -37,6 +39,6 @@ public sealed class DialogueManager(QuestManager quests)
             .Where(d => Available(state, catalog, d))
             .Select(d => new DialogueView(d.Id, d.Speaker, d.Text,
                 [.. d.Choices.Where(c => ChoiceAvailable(state, catalog, d, c)).Select(c => new DialogueChoiceView(c.Id, c.Text, c.NextDialogueId))],
-                d.Informational, d.EntryPoint))
+                d.Informational, d.EntryPoint, d.QuestId, QuestAction(d)))
             .Where(d => d.Choices.Length != 0)];
 }

@@ -166,6 +166,23 @@ bool FRPGNarrativeCodec::Decode(const FString& Body, const FGuid ExpectedCharact
                 && (!Next->TryGetString(Choice.NextDialogueId) || !Id(Choice.NextDialogueId) || !Dialogue.bInformational)) return false;
             ChoiceIds.Add(Choice.Id); Choice.Text = FText::FromString(Label); Dialogue.Choices.Add(MoveTemp(Choice));
         }
+        const auto QuestField = (*Item)->TryGetField(TEXT("questId"));
+        const auto ActionField = (*Item)->TryGetField(TEXT("questAction"));
+        const bool HasQuest = QuestField && !QuestField->IsNull(), HasAction = ActionField && !ActionField->IsNull();
+        if (HasQuest != HasAction) return false;
+        if (HasQuest)
+        {
+            FString Action;
+            if (Dialogue.bInformational || !Dialogue.bEntryPoint || QuestField->Type != EJson::String || ActionField->Type != EJson::String
+                || !QuestField->TryGetString(Dialogue.QuestId) || !Id(Dialogue.QuestId) || !ActionField->TryGetString(Action)) return false;
+            if (Action.Equals(TEXT("Accept"), ESearchCase::CaseSensitive)) Dialogue.QuestAction = ERPGNarrativeQuestAction::Accept;
+            else if (Action.Equals(TEXT("Progress"), ESearchCase::CaseSensitive)) Dialogue.QuestAction = ERPGNarrativeQuestAction::Progress;
+            else if (Action.Equals(TEXT("Report"), ESearchCase::CaseSensitive)) Dialogue.QuestAction = ERPGNarrativeQuestAction::Report;
+            else return false;
+            const auto* Quest = Parsed.Quests.FindByPredicate([&](const auto& Q) { return Q.QuestId.Equals(Dialogue.QuestId, ESearchCase::CaseSensitive); });
+            if (Dialogue.QuestAction == ERPGNarrativeQuestAction::Accept ? Quest != nullptr
+                : !Quest || Quest->Status != (Dialogue.QuestAction == ERPGNarrativeQuestAction::Report ? ERPGQuestStatus::ReadyToReport : ERPGQuestStatus::Active)) return false;
+        }
         DialogueIds.Add(Dialogue.Id); Parsed.AvailableDialogues.Add(MoveTemp(Dialogue));
     }
     for (const auto& Node : Parsed.AvailableDialogues)

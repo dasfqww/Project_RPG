@@ -2,6 +2,7 @@
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
+#include "Components/WidgetComponent.h"
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
@@ -10,6 +11,8 @@
 #include "Manager/HttpWebManager.h"
 #include "Manager/UIManager.h"
 #include "Narrative/RPGNarrativeCoordinator.h"
+#include "Narrative/RPGDialogueManager.h"
+#include "UI/Narrative/RPGNarrativeNPCMarkerWidget.h"
 #include "Online/RPGDungeonSessionSubsystem.h"
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
 #include "Riding/RPGRidingLocalInteractionComponent.h"
@@ -17,7 +20,7 @@
 ARPGNarrativeNPC::ARPGNarrativeNPC()
 {
     bReplicates = true;
-    PrimaryActorTick.bCanEverTick = false;
+    PrimaryActorTick.bCanEverTick = true; PrimaryActorTick.TickInterval = .5f;
     InteractionBounds = CreateDefaultSubobject<USphereComponent>(TEXT("InteractionBounds"));
     SetRootComponent(InteractionBounds); InteractionBounds->InitSphereRadius(40.f);
     InteractionBounds->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
@@ -35,6 +38,55 @@ ARPGNarrativeNPC::ARPGNarrativeNPC()
 void ARPGNarrativeNPC::BeginPlay()
 {
     Super::BeginPlay(); InteractableData.Name = DisplayName; Nameplate->SetText(DisplayName);
+    if (GetNetMode() == NM_DedicatedServer) SetActorTickEnabled(false);
+    else RefreshPersonalMarkers();
+}
+void ARPGNarrativeNPC::Tick(float DeltaSeconds) { Super::Tick(DeltaSeconds); RefreshPersonalMarkers(); }
+void ARPGNarrativeNPC::RefreshPersonalMarkers()
+{
+    if (GetNetMode() == NM_DedicatedServer || !GetWorld() || GetWorld()->bIsTearingDown) return;
+    auto* Game = GetGameInstance(); if (!Game) return;
+    for (auto It = PersonalMarkers.CreateIterator(); It; ++It)
+    {
+        auto* Player = It.Key().Get(); auto* Component = It.Value().Get();
+        auto* PC = Player ? Player->GetPlayerController(GetWorld()) : nullptr;
+        auto* Widget = Component ? Component->GetUserWidgetObject() : nullptr;
+        if (!bShowPersonalQuestMarker || !Player || !Game->GetLocalPlayers().Contains(Player) || !PC || !Widget || Widget->GetOwningPlayer() != PC)
+        {
+            if (Component) { RemoveInstanceComponent(Component); Component->DestroyComponent(); }
+            It.RemoveCurrent();
+        }
+    }
+    if (!bShowPersonalQuestMarker || !HasValidEntries()) return;
+    for (const auto& PlayerEntry : Game->GetLocalPlayers())
+    {
+        ULocalPlayer* Player = PlayerEntry; auto* PC = Player ? Player->GetPlayerController(GetWorld()) : nullptr;
+        if (!PC || !PC->IsLocalController() || PersonalMarkers.Contains(Player)) continue;
+        auto* Widget = CreateWidget<URPGNarrativeNPCMarkerWidget>(PC); if (!Widget) continue;
+        const TWeakObjectPtr<ThisClass> WeakThis(this); const TWeakObjectPtr<ULocalPlayer> WeakPlayer(Player);
+        Widget->Configure([WeakThis, WeakPlayer](TArray<FString>& Entries, TArray<FRPGDialogueNode>& Nodes)
+        {
+            const auto* NPC = WeakThis.Get(); auto* Local = WeakPlayer.Get();
+            auto* Controller = Local && NPC ? Local->GetPlayerController(NPC->GetWorld()) : nullptr;
+            const APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+            const auto* Flow = Local ? Local->GetSubsystem<URPGNarrativeCoordinator>() : nullptr;
+            const auto* Instance = Local ? Local->GetGameInstance() : nullptr;
+            const auto* Dungeon = Instance ? Instance->GetSubsystem<URPGDungeonSessionSubsystem>() : nullptr; FGuid Selected;
+            if (!NPC || NPC->IsActorBeingDestroyed() || !NPC->bShowPersonalQuestMarker || !NPC->HasValidEntries()
+                || !Controller || !Controller->IsLocalController() || !Pawn || Pawn->IsActorBeingDestroyed()
+                || Pawn->GetWorld() != NPC->GetWorld() || !FMath::IsFinite(NPC->QuestMarkerDistance)
+                || NPC->GetActorLocation().ContainsNaN() || Pawn->GetActorLocation().ContainsNaN()
+                || FVector::DistSquared(NPC->GetActorLocation(),Pawn->GetActorLocation()) > FMath::Square(FMath::Clamp(NPC->QuestMarkerDistance,50.f,10000.f))
+                || !Flow || !Dungeon || !FGuid::Parse(Dungeon->GetSelectedCharacterId(),Selected)
+                || Flow->GetSelectedCharacterId() != Selected || !Flow->HasCurrentSnapshot()) return false;
+            Entries = NPC->DialogueEntryIds; Nodes = Flow->GetDialogueManager()->GetAvailableDialogues(); return true;
+        });
+        auto* Component = NewObject<UWidgetComponent>(this, NAME_None, RF_Transient);
+        AddInstanceComponent(Component); Component->SetupAttachment(RootComponent); Component->SetRelativeLocation(FVector(0,0,150));
+        Component->SetWidgetSpace(EWidgetSpace::Screen); Component->SetOwnerPlayer(Player); Component->SetDrawAtDesiredSize(true);
+        Component->SetCollisionEnabled(ECollisionEnabled::NoCollision); Component->SetIsReplicated(false); Component->SetWidget(Widget);
+        Component->RegisterComponent(); PersonalMarkers.Add(Player, Component);
+    }
 }
 void ARPGNarrativeNPC::BeginFocus() { Nameplate->SetTextRenderColor(FColor::Cyan); }
 void ARPGNarrativeNPC::EndFocus() { Nameplate->SetTextRenderColor(FColor::White); }
@@ -122,6 +174,9 @@ bool ARPGNarrativeNPC::OpenDialogue(APlayerController* Controller)
 }
 void ARPGNarrativeNPC::EndPlay(const EEndPlayReason::Type Reason)
 {
+    for (const auto& Entry : PersonalMarkers) if (auto* Component = Entry.Value.Get())
+    { RemoveInstanceComponent(Component); Component->DestroyComponent(); }
+    PersonalMarkers.Reset();
     auto Panels = MoveTemp(OpenPanels);
     for (const auto& Entry : Panels) if (auto* Panel = Entry.Value.Get()) Panel->CloseScreen();
     Super::EndPlay(Reason);

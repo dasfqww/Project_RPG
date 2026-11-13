@@ -270,6 +270,18 @@ NPC 대화창은 원래 Pawn/캐릭터/계정/엔드포인트·거리·월드를
 
 검증 중의 UE5.8 TObjectPtr 추론·가상 화면 없는 fixture·SDK UBT 대기·복사 시각으로 남은 이전 객체·NPC/로비 로그 표식 차이를 보완했고, 동일 모듈의 성공한 native는 HTTP 표식 보완 때 재사용했다. SDK 확인은 이미 빌드된 모듈의 검증 자식 프로세스에서만 엔진 지원 `UE_SKIP_UBT_SDK_SETUP=1`로 생략하고 부모 값을 즉시 복원한다. 초기/빌드 경고와 검사 발견 전 콘텐츠 로드 로그는 성공 구간과 구분해 보존했다. 마지막으로 자기 사본/OBJ/PCH/DLL/PDB·UserDir·DB·자식과 연결84개, 총7,024,255,873 bytes를 정리했고 Temp/대형 예외0이다. 근거: `Saved/BuildChecks/NarrativeNPC-20261105/8537e8310e684d54bb068d079d47e380/Result.json`, `35a35fb26b4142aeb9bbafcd3d9bbeff/Result.json`, `6c715f41b783495fa13e7c56d3c9b38e/Result.json`, `CleanupSummary.json`. 폐기한 바이너리의 해시는 당시 근거다. 실제 키/마우스·GPU 외형·Steam/다인 네트워크·최신 다른 담당의 미완료 플러그인 통합과 구분하며, 정적 NPC 배치/메시/진입점 설정은 저작 안내를 따른다.
 
+## NPC의 개인 의뢰 상태 표식
+
+`DialogueManager.GetAvailable`은 기존 자격/선행/선택지 검사를 통과한 노드에만 `questId`/`questAction`을 제공한다. `Accept`는 수락 전, `Progress`는 Active, `Report`는 ReadyToReport다. 정보형 노드는 두 필드가 null이다. 메타데이터는 현재 뷰에서 계산하며 개인 저장·명령 DTO/fingerprint·영수증·보상·훈련/스킵 판정을 바꾸지 않는다. 응답 크기 예산에도 이 필드들을 포함한다.
+
+UE는 두 필드의 부재/null을 구 서버와 호환하고, 새 필드가 있으면 쌍·문자열 종류/값·의뢰 ID와 현재 저널 상태 일치를 검사한다. 불완전하거나 모순된 응답은 뷰 전체를 거절하고 기존 스냅샷을 보존한다. `FRPGNarrativeNPCMarker`가 NPC의 명시 진입점과 허용 노드를 정확히 교차해 보고/수락/진행/일반 대화 우선순위를 계산한다. 개인 `URPGNarrativeNPCMarkerWidget`은 기존 매니저 캐시만 읽으며 표시나 사라짐이 완료·입장·지급 근거가 되지 않는다.
+
+`ARPGNarrativeNPC`는 LocalPlayer별 screen-space 컴포넌트에 OwnerPlayer를 지정한다. 인증·선택 GUID·확정 캐시·Pawn/월드/거리 조건이 없으면 숨기고 같은 조건의 새 진도에서 갱신한다. 조회를 자동 시작하지 않고 공용 `Nameplate`의 이름/포커스 표시와 개인 표식을 분리한다. Controller 교체/로컬 플레이어 제거·NPC 종료에서는 자기 화면 컴포넌트만 제거/재연결한다. 실제 배치 옵션은 [저작 안내](NARRATIVE_CONTENT_AUTHORING.md#npc-개인-의뢰-표식)를 따른다.
+
+`Run-NarrativeMarkerTests.ps1`은 Memory와 실제 bearer HTTP의 상태별 메타데이터·소유권·무변경 및 기존 이야기/스킵 회귀를 확인한다. `Run-NarrativeMarkerUETests.ps1 -HttpWirePath <앞 검사의 HttpWire.json>`은 그 실제 응답을 native codec/표식 판정에 공급하고 개별 UMG 제공자의 분리/숨김/갱신을 검사한다. 전체 UHT/관련 실제 CPP 컴파일과 작은 모듈의 링크/native 실행을 구분하며 실제 NPC 맵 렌더·화면 위치/가림·split-screen/Controller 교체·GPU/물리 입력·Steam/다인 실행 증거는 별도다.
+
+2026-11-13 확인: 게시 `617abb25`+명시 입력의 backend `18e4a0899bbc4cf7b300005c0ba01c93`에서 Release3종0경고/0오류, 실제 인증 HTTP의 상태별 Accept/Progress/Report·완료·소유권/no-store·읽기 전후 진도 불변과 기존 이야기/스킵 회귀가 통과했다. 같은 HTTP 바이트를 사용한 `5ec6e74455e842308bc465d383ca25aa`의 실제 `98589538…59163B4E`에서 native4 Success/검사 오류·경고0/UE0을 확인했다. NPC 호출부의 GetPawn/TObjectPtr 추론을 명시 포인터로 보완한 `2882e8dc4a7b472eb1616c5438f16a20`에서 전체 UHT/실제 CPP5 컴파일0을 확인했으며, native에 실제 복사/컴파일한7입력은 그대로이고 최신 호출부9입력/러너·생산자/소비자 HTTP SHA도 일치한다. 기동Error15/Warning4와 첫 호출부 컴파일 실패를 최종 성공과 구분한다. 자기backend1/UE2회287,908,464 bytes(274.57MiB)/Temp/소유PID를 폐기해 새 예외0이다. 작은 근거 `Saved/BuildChecks/NarrativeMarker-20261113/CompletionAudit.json`에 두 검증 범위를 구분해 유지한다. 사본 DLL 해시는 당시 증거이며 실제 NPC 배치/OwnerPlayer 화면·Controller 전환/거리·GPU·PG·Steam 증거는 별도다.
+
 ## 목표의 선행 조건
 
 2026-11-05: `QuestDefinition.ObjectivePrerequisites`로 같은 의뢰 안의 순차/동시 목표 연결을 작성한다. 생략/null/빈 매핑은 기존 동시 진행이며, 지정된 선행은 모두 확인해야 한다. 카탈로그는 잘못된 참조·중복·자기 참조/순환·null 배열을 거절한다. `QuestManager.CanRecordObjective`를 선택지 조회/선택 승인·실제 전이에서 사용하고 Coordinator의 저장 검사에도 선행 일관성을 적용한다. 가능한 선택지가 없는 노드는 응답에서 빠지며, 저널/UE 응답과 저장 스키마는 유지한다. [작성 규칙](NARRATIVE_CONTENT_AUTHORING.md#순차-목표와-동시-목표).

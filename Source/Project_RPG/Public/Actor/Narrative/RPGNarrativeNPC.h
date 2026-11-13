@@ -10,6 +10,7 @@ class UStaticMeshComponent;
 class UTextRenderComponent;
 class URPGNarrativeDialogueWidget;
 class ULocalPlayer;
+class UWidgetComponent;
 
 /** Placeable dialogue entry point. Quest authority remains in the narrative backend. */
 UCLASS()
@@ -18,6 +19,7 @@ class PROJECT_RPG_API ARPGNarrativeNPC : public AActor, public IInteractionInter
     GENERATED_BODY()
 public:
     ARPGNarrativeNPC();
+    virtual void Tick(float DeltaSeconds) override;
     virtual void BeginFocus() override;
     virtual void EndFocus() override;
     virtual void Interact(APlayerController* PlayerController) override;
@@ -36,9 +38,13 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="RPG|Narrative") FText DisplayName;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="RPG|Narrative") TArray<FString> DialogueEntryIds;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="RPG|Narrative", meta=(ClampMin="50", ClampMax="1000")) float InteractionDistance = 250.f;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="RPG|Narrative") bool bShowPersonalQuestMarker = true;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="RPG|Narrative", meta=(ClampMin="50", ClampMax="10000")) float QuestMarkerDistance = 2000.f;
 private:
     friend struct FRPGNarrativeTestAccess;
     bool HasValidEntries() const;
     bool CanOpenDialogue(APlayerController* Controller) const;
+    void RefreshPersonalMarkers();
+    TMap<TWeakObjectPtr<ULocalPlayer>, TWeakObjectPtr<UWidgetComponent>> PersonalMarkers;
     TMap<TWeakObjectPtr<ULocalPlayer>, TWeakObjectPtr<URPGNarrativeDialogueWidget>> OpenPanels;
 };

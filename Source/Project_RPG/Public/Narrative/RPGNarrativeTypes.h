@@ -9,6 +9,9 @@ enum class ERPGQuestStatus : uint8 { Active, ReadyToReport, Completed };
 UENUM(BlueprintType)
 enum class ERPGQuestCategory : uint8 { Unspecified, Main, Side };
 
+UENUM(BlueprintType)
+enum class ERPGNarrativeQuestAction : uint8 { None, Accept, Progress, Report };
+
 USTRUCT(BlueprintType)
 struct PROJECT_RPG_API FRPGQuestObjectiveView
 {
@@ -54,6 +57,8 @@ struct PROJECT_RPG_API FRPGDialogueNode
     UPROPERTY(BlueprintReadOnly) TArray<FRPGDialogueChoice> Choices;
     UPROPERTY(BlueprintReadOnly) bool bInformational = false;
     UPROPERTY(BlueprintReadOnly) bool bEntryPoint = true;
+    UPROPERTY(BlueprintReadOnly) FString QuestId;
+    UPROPERTY(BlueprintReadOnly) ERPGNarrativeQuestAction QuestAction = ERPGNarrativeQuestAction::None;
 };
 
 struct PROJECT_RPG_API FRPGNarrativeDungeonCandidate

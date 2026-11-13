@@ -126,6 +126,7 @@ public static class NarrativeCatalogLoader
                 .OrderByDescending(c => c.QuestId.Length + c.ObjectiveId.Length).Take(256),
             availableDialogues = catalog.Dialogues.Values.Select(d => new { id = d.Id, speaker = d.Speaker,
                 text = d.Text, informational = d.Informational, entryPoint = d.EntryPoint,
+                questId = d.QuestId, questAction = DialogueManager.QuestAction(d),
                 choices = d.Choices.Select(c => new { id = c.Id, text = c.Text, nextDialogueId = c.NextDialogueId }) })
         });
         if (response.Length > MaximumBytes) throw new NarrativeCatalogException("narrative_catalog_response_too_large");
