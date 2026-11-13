@@ -4,6 +4,7 @@
 #include "Containers/Ticker.h"
 #include "Economy/RPGCurrencyTypes.h"
 #include "Economy/RPGDungeonRewardTypes.h"
+#include "Economy/Backend/RPGDungeonRewardSettlement.h"
 #include "Http.h"
 #include "Online/RPGBackendPlayerAuthState.h"
 #include "Online/RPGDungeonAbandonment.h"
@@ -184,7 +185,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_SixParams(
  * Authentication and database transactions still belong to the backend service.
  */
 UCLASS(Config = Game, DefaultConfig)
-class PROJECT_RPG_API UHttpWebManager : public UGameInstanceSubsystem, public IRPGDungeonRecoveryHost
+class PROJECT_RPG_API UHttpWebManager : public UGameInstanceSubsystem, public IRPGDungeonRecoveryHost,
+	public IRPGDungeonRewardSettlementHost
 {
 	GENERATED_BODY()
 
@@ -481,7 +483,13 @@ private:
 	virtual void ApplyRecoveryHeaders(const FHttpRequestRef& Request) const override;
 	virtual void BroadcastConsumedTicket(const FString& Ticket, const FString& Session,
 		const FString& Character, const FString& Steam, int64 Generation, bool bSuccess) override;
-	FHttpRequestPtr ActiveDungeonSettlementRequest;
+	TSharedPtr<FRPGDungeonRewardSettlement> DungeonRewardSettlement;
+	virtual UObject& GetRewardSettlementOwner() const override;
+	virtual FRPGDungeonRewardSettlementConfig GetRewardSettlementConfig() const override;
+	virtual bool CanDispatchRewardSettlement() const override;
+	virtual TFunction<bool()> CaptureRewardSettlementScope() const override;
+	virtual void ApplyRewardSettlementHeaders(const FHttpRequestRef& Request) const override;
+	virtual void BroadcastRewardSettlement(const FString& State, int32 HttpStatus, bool bSuccess) override;
 	FHttpRequestPtr ActivePlayerProgressionRequest;
 	bool RequestPlayerProgression(const FString& CharacterId, const FRPGCharacterSkillConfiguration* Command,
 		TFunction<void(FRPGCharacterProgressionResult)> Completion);

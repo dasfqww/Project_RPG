@@ -19,6 +19,11 @@
 분리한 실제 CPP 네 개는 게시 소스의 격리 사본에서 전체 프로젝트 UHT 후 개별 컴파일로
 확인한다. 이 검사는 모듈 링크·새 DLL 설치·Steam/게임 실행 검증과 구분한다.
 
+후속 책임 분리에서는 정산 본문·진행 요청·응답/취소를 `FRPGDungeonRewardSettlement`로
+이관했다. 현재 `HttpWebManagerRewards.cpp`는 기존 API의 위임·좁은 host 구현과 스냅샷
+조회를 담당한다. 인증 시계/토큰 소유권은 유지하며 정산 객체의 경계와 집중 검사는
+[보상 전송 계약](DUNGEON_REWARD_LIVE_REFRESH.md#ue-정산-전송의-책임-2026-11-13)을 따른다.
+
 `POST /api/auth/steam-ticket`의 성공 응답은 기존 `accessToken`, `expiresAt`, `steamId`와
 새 `issuedAt`을 포함한다. `issuedAt`과 `expiresAt`은 동일한 서버 시각 표본에서 만들며,
 기존 DB 토큰 hash·만료 저장, 서버의 실제 만료/401 검증은 변경하지 않았다.

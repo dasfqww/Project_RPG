@@ -54,6 +54,7 @@ namespace
 UHttpWebManager::UHttpWebManager()
 {
 	DungeonRecovery = MakeShared<FRPGDungeonConnectionRecovery>(*this);
+	DungeonRewardSettlement = MakeShared<FRPGDungeonRewardSettlement>(*this);
 }
 UObject& UHttpWebManager::GetRecoveryOwner() const { return *const_cast<UHttpWebManager*>(this); }
 UGameInstance* UHttpWebManager::GetRecoveryGameInstance() const { return GetGameInstance(); }
@@ -68,7 +69,7 @@ bool UHttpWebManager::HasValidRecoveryServiceCredential() const
 		if (Character <= TEXT(' ') || Character >= TEXT('\x7f')) return false;
 	return true;
 }
-bool UHttpWebManager::IsRecoverySettlementActive() const { return ActiveDungeonSettlementRequest.IsValid(); }
+bool UHttpWebManager::IsRecoverySettlementActive() const { return DungeonRewardSettlement->IsActive(); }
 void UHttpWebManager::ApplyRecoveryServiceAuthorization(const FHttpRequestRef& Request) const
 { Request->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *BackendServiceToken)); }
 float UHttpWebManager::GetRecoveryRequestTimeout() const { return RequestTimeoutSeconds; }
@@ -263,12 +264,7 @@ bool UHttpWebManager::IsCurrentDungeonMutationScope(const FDungeonMutationScope&
 void UHttpWebManager::CancelDungeonConnectionMutations()
 {
 	DungeonRecovery->CancelDungeonConnectionMutations();
-	if (ActiveDungeonSettlementRequest.IsValid())
-	{
-		ActiveDungeonSettlementRequest->OnProcessRequestComplete().Unbind();
-		ActiveDungeonSettlementRequest->CancelRequest();
-		ActiveDungeonSettlementRequest.Reset();
-	}
+	DungeonRewardSettlement->Cancel();
 }
 
 void UHttpWebManager::CancelDungeonMembershipRequest()

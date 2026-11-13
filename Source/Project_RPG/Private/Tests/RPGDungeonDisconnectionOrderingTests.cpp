@@ -68,7 +68,7 @@ struct FRPGDungeonDisconnectionOrderingTestAccess
 	static void CancelMutations(UHttpWebManager& Web) { Web.CancelDungeonConnectionMutations(); }
 	static FHttpRequestPtr ActiveConsume(UHttpWebManager& Web, const FString& Ticket)
 	{ return Web.DungeonRecovery->ActiveDungeonConsumeRequests.FindRef(Ticket); }
-	static FHttpRequestPtr ActiveSettlement(UHttpWebManager& Web) { return Web.ActiveDungeonSettlementRequest; }
+	static FHttpRequestPtr ActiveSettlement(UHttpWebManager& Web) { return Web.DungeonRewardSettlement->ActiveRequest; }
 	static auto Recovery(UHttpWebManager& Web, const FString& Ticket) { return Web.DungeonRecovery->DungeonConsumeRecoveries.FindRef(Ticket); }
 	static FHttpRequestPtr Retry(UHttpWebManager& Web, const FString& Ticket)
 	{
