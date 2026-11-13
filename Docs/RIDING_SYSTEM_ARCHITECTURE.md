@@ -290,6 +290,8 @@ M3a1의 실제 구현은 서버의 불변 `RidingCatalog`와 `RidingRegistration
 
 M3a2에서는 `InMemoryGameRepository`가 `IRidingRegistrationStore`를 구현한다. 기존 공용 dungeon→item→character 잠금으로 현재 계정/소유·로비/미정산·예약을 검사하고 실제 공통 Item V2 소비·원정대 해금·두 영수증을 함께 확정/롤백한다. 현재 소유 범위를 통과한 재시도는 최초 영수증을 현재 아이템/CAS/카탈로그·로비 쓰기 검사보다 먼저 재생한다. 이 포트는 아직 DI/HTTP에 등록하지 않았으며 재시작 보존을 제공하지 않는다. PostgreSQL 트랜잭션·API·서버 snapshot/UE Ready는 후속이다. [Memory 원자 등록](RIDING_SYSTEM_CODE_DESIGN.md#33-m3a2-메모리-원자-등록과-영수증--2026-11-13).
 
+M3a3에서는 `PostgresGameRepository`도 같은 등록/보관함/영수증 포트를 구현한다. 기존 서비스/계정·캐릭터/lease·공통 아이템 잠금과 같은 connection/transaction의 Item V2 저장기를 사용하며, migration15의 원정대 상태·해금·부모 영수증을 함께 확정한다. 실제 PG 경합·중간 실패 롤백·새 프로세스의 원래 결과 복구·v14→v15 업그레이드를 확인했다. 운영 DB 적용과 DI/HTTP·설정·서버 snapshot/UE Ready 연결은 후속이다. [PG 영속 등록](RIDING_SYSTEM_CODE_DESIGN.md#34-m3a3-postgresql-영속-등록--2026-11-13).
+
 ## 7. 코드와 에셋 배치
 
 이 목록은 향후 파일 지도다. 이번 문서 예약으로 아래 공통 파일을 선점하지 않는다.
