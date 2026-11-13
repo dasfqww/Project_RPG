@@ -29,9 +29,7 @@
 #include "Skill/QuickSlot/RPGQuickSlotInputBindings.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Application/SlateUser.h"
-#include "Brushes/SlateRoundedBoxBrush.h"
-#include "Rendering/DrawElements.h"
-#include "Widgets/SWidget.h"
+#include "UI/Slots/SRPGSlotFrame.h"
 
 #include "RPGGameplayTags.h"
 #include "RPGDebugHelper.h"
@@ -69,13 +67,13 @@ void URPGQuickSlotWidget::NativeOnInitialized()
 void URPGQuickSlotWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-	HoverHighlightAlpha = 0.0f;
+	if (const auto Frame = SlotFrame.Pin()) Frame->ResetHover();
 	BindToQuickSlot();
 }
 
 void URPGQuickSlotWidget::NativeDestruct()
 {
-	HoverHighlightAlpha = 0.0f;
+	if (const auto Frame = SlotFrame.Pin()) Frame->ResetHover();
 	UnbindFromQuickSlot();
 	Super::NativeDestruct();
 }
@@ -352,16 +350,6 @@ void URPGQuickSlotWidget::UpdateSkillCooldownView(const float RemainingFraction)
 void URPGQuickSlotWidget::NativeTick(const FGeometry& Geometry, const float DeltaTime)
 {
 	Super::NativeTick(Geometry, DeltaTime);
-	const bool bHighlight = IsHovered() && GetIsEnabled() &&
-		!(FSlateApplication::IsInitialized() && FSlateApplication::Get().IsDragDropping());
-	const float NewAlpha = bHighlight ? FMath::FInterpConstantTo(HoverHighlightAlpha, 1.0f,
-		DeltaTime, 1.0f / FMath::Max(HoverHighlightFadeDuration, 0.01f)) : 0.0f;
-	if (NewAlpha != HoverHighlightAlpha)
-	{
-		HoverHighlightAlpha = NewAlpha;
-		if (const TSharedPtr<SWidget> Widget = GetCachedWidget())
-			Widget->Invalidate(EInvalidateWidgetReason::Paint);
-	}
 	if (!bIsSkillSlot || !LinkedQuickSlotComponent.IsValid()) return;
 	SkillRefreshElapsed += DeltaTime;
 	if (SkillRefreshElapsed >= 0.1f)
@@ -371,45 +359,22 @@ void URPGQuickSlotWidget::NativeTick(const FGeometry& Geometry, const float Delt
 	}
 }
 
-void URPGQuickSlotWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
+TSharedRef<SWidget> URPGQuickSlotWidget::RebuildWidget()
 {
-	Super::NativeOnMouseLeave(InMouseEvent);
-	// Restore the original slot immediately, including when it is cached between ticks.
-	HoverHighlightAlpha = 0.0f;
-	if (const TSharedPtr<SWidget> Widget = GetCachedWidget())
-		Widget->Invalidate(EInvalidateWidgetReason::Paint);
-}
-
-int32 URPGQuickSlotWidget::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
-	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements,
-	int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
-{
-	const int32 ContentLayer = Super::NativePaint(Args, AllottedGeometry, MyCullingRect,
-		OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
-	const FVector2D Size = AllottedGeometry.GetLocalSize();
-	const float Width = FMath::Min(FMath::Clamp(HoverHighlightWidth, 0.0f, 16.0f),
-		static_cast<float>(FMath::Min(Size.X, Size.Y)) * 0.25f);
-	if (!IsHovered() || HoverHighlightAlpha <= 0.0f || Width <= 0.0f || !bParentEnabled || !GetIsEnabled())
-		return ContentLayer;
-
-	// Only outlines are painted above the contents: the icon, key and count remain readable.
-	// Overlapping narrow rings form a soft inward falloff without textures, MIDs or hit targets.
-	constexpr int32 RingCount = 10;
-	for (int32 Ring = 0; Ring < RingCount; ++Ring)
-	{
-		const float Fraction = static_cast<float>(Ring) / (RingCount - 1);
-		const float Inset = 0.5f + Fraction * Width;
-		const FVector2D RingSize = Size - FVector2D(Inset * 2.0f);
-		if (RingSize.X <= 0.0f || RingSize.Y <= 0.0f) break;
-		FLinearColor Color = HoverHighlightColor * InWidgetStyle.GetColorAndOpacityTint();
-		Color.A *= HoverHighlightAlpha * FMath::Square(1.0f - Fraction);
-		const FSlateRoundedBoxBrush Brush(FLinearColor::Transparent,
-			FMath::Max(4.0f - Inset, 0.0f), Color, 1.0f);
-		FSlateDrawElement::MakeBox(OutDrawElements, ContentLayer + 1,
-			AllottedGeometry.ToPaintGeometry(RingSize, FSlateLayoutTransform(FVector2D(Inset))),
-			&Brush, ESlateDrawEffect::None, FLinearColor::Transparent);
-	}
-	return ContentLayer + 1;
+	const TSharedRef<SWidget> Content = Super::RebuildWidget();
+	const TWeakObjectPtr<URPGQuickSlotWidget> WeakThis(this);
+	const auto Frame = SNew(SRPGSlotFrame).Appearance_Lambda([WeakThis] {
+		FRPGSlotAppearance Appearance;
+		if (const auto* Self = WeakThis.Get())
+		{
+			Appearance.HighlightColor = Self->HoverHighlightColor;
+			Appearance.HighlightWidth = Self->HoverHighlightWidth;
+			Appearance.FadeInDuration = Self->HoverHighlightFadeDuration;
+		}
+		return Appearance;
+	})[Content];
+	SlotFrame = Frame;
+	return Frame;
 }
 
 FReply URPGQuickSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
@@ -553,7 +518,7 @@ void URPGQuickSlotWidget::NativeOnMouseCaptureLost(const FCaptureLostEvent& Capt
 
 void URPGQuickSlotWidget::NativeOnDeactivated()
 {
-	HoverHighlightAlpha = 0.0f;
+	if (const auto Frame = SlotFrame.Pin()) Frame->ResetHover();
 	CancelPendingItemClick();
 	Super::NativeOnDeactivated();
 }

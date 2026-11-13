@@ -1,4 +1,5 @@
 #include "UI/ActionBar/RPGActionBarLayout.h"
+#include "UI/Slots/SRPGSlotFrame.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBorder.h"
@@ -38,9 +39,11 @@ TSharedRef<SHorizontalBox> RPGActionBarLayout::CreateRow(TConstArrayView<int32> 
             Row->AddSlot().AutoWidth().Padding(3.f)[CreateCell(ActionIndex)];
         else
             Row->AddSlot().AutoWidth().Padding(3.f)[
+                SNew(SRPGSlotFrame)[
                 SNew(SBox).WidthOverride(CellWidth).HeightOverride(CellHeight).Visibility(EVisibility::HitTestInvisible)[
                     SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
                     .BorderBackgroundColor(FLinearColor(0.f, 0.f, 0.f, 0.2f))
+                ]
                 ]
             ];
     }

@@ -8,6 +8,7 @@
 #include "UI/RPGWidgetBase.h"
 #include "UI/MVVM/RPGQuickSlotViewModel.h"
 #include "UObject/StrongObjectPtr.h"
+#include "UI/Slots/RPGSlotAppearance.h"
 #include "RPGQuickSlotWidget.generated.h"
 
 class UImage;
@@ -18,6 +19,7 @@ class UQuickSlotComponent;
 class UTexture2D;
 class URPGInventoryProjectionViewModel;
 struct FStreamableHandle;
+class SRPGSlotFrame;
 
 
 
@@ -36,10 +38,7 @@ public:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& Geometry, float DeltaTime) override;
-	virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
-		const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements,
-		int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
-	virtual void NativeOnMouseLeave(const FPointerEvent& InMouseEvent) override;
+	virtual TSharedRef<SWidget> RebuildWidget() override;
 
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry,
 		const FPointerEvent& InMouseEvent) override;
@@ -111,7 +110,7 @@ private:
 	void UpdateSkillCooldownView(float RemainingFraction);
 	TStrongObjectPtr<URPGQuickSlotViewModel> SkillViewModel;
 	float SkillRefreshElapsed = 0.0f;
-	float HoverHighlightAlpha = 0.0f;
+	TWeakPtr<SRPGSlotFrame> SlotFrame;
 
 	UFUNCTION()
 	void HandleSlotChanged(int32 ChangedSlotIndex, const FRPGQuickSlotContent& Content);
@@ -121,14 +120,15 @@ protected:
 
 	/** Transparent center with a soft red edge, shared by item and skill slots. */
 	UPROPERTY(EditAnywhere, Category = "QuickSlot|Appearance")
-	FLinearColor HoverHighlightColor = FLinearColor(1.0f, 0.025f, 0.012f, 0.85f);
+	FLinearColor HoverHighlightColor = FRPGSlotAppearance().HighlightColor;
 
 	/** Inward spread in Slate units; kept inside the slot so adjacent cells stay clear. */
 	UPROPERTY(EditAnywhere, Category = "QuickSlot|Appearance", meta = (ClampMin = "0.0", ClampMax = "16.0"))
-	float HoverHighlightWidth = 6.0f;
+	float HoverHighlightWidth = FRPGSlotAppearance().HighlightWidth;
 
+	/** Fade in while hovered; leaving always restores the original appearance immediately. */
 	UPROPERTY(EditAnywhere, Category = "QuickSlot|Appearance", meta = (ClampMin = "0.01", ClampMax = "1.0", Units = "s"))
-	float HoverHighlightFadeDuration = 0.12f;
+	float HoverHighlightFadeDuration = FRPGSlotAppearance().FadeInDuration;
 
 	// 슬롯에 아이템을 배치할 텍스트/이미지 블록
 	UPROPERTY(meta = (BindWidget))

@@ -18,6 +18,8 @@
 
 ## 입력과 표시
 
+- 일반 아이템/스킬 `URPGQuickSlotWidget`와 native 액션 셀·빈 자리는 공통 `SRPGSlotFrame`을 사용한다. 프레임은 호출자의 콘텐츠/원래 크기를 감싸고 `FRPGSlotAppearance`의 붉은 테두리·진입 페이드·마우스 이탈 즉시 복귀만 담당한다. 클릭/드래그/키/아이템 소비나 제공자 호출을 처리하지 않는다. 일반 슬롯의 기존 Blueprint 색상/폭/시간 속성과 아이콘·수량/쿨타임 배치는 보존한다. native 빈 자리도 호버할 수 있지만 실행 버튼/입력 핸들러는 없다. 프레임/외형 변경은 두 표시 경로에 함께 반영되며 일반 슬롯 재생성/비활성화 때 호버 강도를 초기화한다.
+
 - 기존 스킬 슬롯 키는 현재 프로필의 SkillSlot으로 전달된다. 기존 능력 입력 태그는 InputTag로 전달되며 프로필에 없는 전투/아이덴티티 입력은 override 중 소비된다.
 - Riding 전용 IMC/추가 키 제공자는 `PressAction(Source, ActionId, Context->GetRevision())` / `ReleaseInput(Source)`로 단일 경로에 합류한다. Source는 물리 입력별로 고유해야 한다. 동일 물리 키를 기존 슬롯과 전용 IMC 양쪽에서 실행하지 않는다.
 - 여러 입력이 같은 ActionId를 누르면 첫 Press와 마지막 Release만 제공자에 전달한다. 전환 후 누른 키를 새 동작으로 재생하지 않는다. 이전 위젯의 revision은 새로운 액션을 실행할 수 없다.

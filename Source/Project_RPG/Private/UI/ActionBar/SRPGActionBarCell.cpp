@@ -1,5 +1,6 @@
 #include "UI/ActionBar/SRPGActionBarCell.h"
 #include "UI/ActionBar/RPGActionBarLayout.h"
+#include "UI/Slots/SRPGSlotFrame.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Images/SImage.h"
@@ -39,6 +40,7 @@ void SRPGActionBarCell::Construct(const FArguments& Args)
         return Cell->Label.IsEmpty() ? Reason : FText::Format(LOCTEXT("UnavailableToolTip", "{0}\n{1}"), Cell->Label, Reason);
     }));
     ChildSlot[
+        SNew(SRPGSlotFrame)[
         SNew(SBox).WidthOverride(RPGActionBarLayout::CellWidth).HeightOverride(RPGActionBarLayout::CellHeight)[
             SNew(SButton).IsFocusable(false)
             .IsEnabled_Lambda([WeakCell] {
@@ -85,6 +87,7 @@ void SRPGActionBarCell::Construct(const FArguments& Args)
                     ]
                 ]
             ]
+        ]
         ]
     ];
 }

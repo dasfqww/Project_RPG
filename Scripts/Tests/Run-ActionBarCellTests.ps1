@@ -1,12 +1,13 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IconLifetime, [switch]$SlotLayout, [switch]$Cooldown, [switch]$InputBoundary)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IconLifetime, [switch]$SlotLayout, [switch]$Cooldown, [switch]$InputBoundary, [switch]$SharedSlotFrame)
 $ErrorActionPreference='Stop'
+if($SharedSlotFrame -and ($IconLifetime -or $SlotLayout -or $Cooldown -or $InputBoundary)){throw 'SharedSlotFrame is a separate validation mode'}
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id=[Guid]::NewGuid().ToString('N')
-$suite=if($InputBoundary){'ActionBarInputBoundary-20261109'}elseif($Cooldown){'ActionBarCooldown-20261109'}elseif($SlotLayout){'ActionBarLayout-20261108'}elseif($IconLifetime){'ActionBarIconLifetime-20261108'}else{'ActionBarFeedback-20261108'}
-$reservation=if($InputBoundary){'actionbar-input-boundary-20261109'}elseif($Cooldown){'actionbar-cooldown-20261109'}elseif($SlotLayout){'actionbar-layout-20261108'}elseif($IconLifetime){'actionbar-icon-lifetime-20261108'}else{'actionbar-feedback-20261108'}
+$suite=if($SharedSlotFrame){'SharedSlotFrame-20261113'}elseif($InputBoundary){'ActionBarInputBoundary-20261109'}elseif($Cooldown){'ActionBarCooldown-20261109'}elseif($SlotLayout){'ActionBarLayout-20261108'}elseif($IconLifetime){'ActionBarIconLifetime-20261108'}else{'ActionBarFeedback-20261108'}
+$reservation=if($SharedSlotFrame){'shared-slot-frame-20261113'}elseif($InputBoundary){'actionbar-input-boundary-20261109'}elseif($Cooldown){'actionbar-cooldown-20261109'}elseif($SlotLayout){'actionbar-layout-20261108'}elseif($IconLifetime){'actionbar-icon-lifetime-20261108'}else{'actionbar-feedback-20261108'}
 $root=Join-Path $workspace ('Saved/BuildChecks/'+$suite+'/'+$id)
-$tempRoot=Join-Path $workspace $(if($InputBoundary){'Saved/AX'}elseif($Cooldown){'Saved/AC'}elseif($SlotLayout){'Saved/AL'}elseif($IconLifetime){'Saved/AI'}else{'Saved/AF'})
+$tempRoot=Join-Path $workspace $(if($SharedSlotFrame){'Saved/SF'}elseif($InputBoundary){'Saved/AX'}elseif($Cooldown){'Saved/AC'}elseif($SlotLayout){'Saved/AL'}elseif($IconLifetime){'Saved/AI'}else{'Saved/AF'})
 $temp=Join-Path $tempRoot $id.Substring(0,8)
 $project=Join-Path $temp 'Cell'
 $process=$null
@@ -47,6 +48,16 @@ try {
         'Source/Project_RPG/Private/UI/ActionBar/RPGActionBarContext.cpp',
         'Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp')
     $nativeFiles=@($files|Select-Object -First 4)+@($files[7],$files[8],$files[9])
+    $commonFiles=@('Source/Project_RPG/Public/UI/Slots/RPGSlotAppearance.h',
+        'Source/Project_RPG/Public/UI/Slots/SRPGSlotFrame.h',
+        'Source/Project_RPG/Private/UI/Slots/SRPGSlotFrame.cpp')
+    $files+=$commonFiles
+    $nativeFiles+=$commonFiles
+    if($SharedSlotFrame){
+        $frameTests='Source/Project_RPG/Private/Tests/RPGSlotFrameTests.cpp'
+        $files+=@($frameTests,'Source/Project_RPG/Public/UI/RPGQuickSlotWidget.h','Source/Project_RPG/Private/UI/RPGQuickSlotWidget.cpp')
+        $nativeFiles+=$frameTests
+    }
     if($InputBoundary){
         $files+=@('Source/Project_RPG/Public/UI/ActionBar/RPGActionBarContext.h',
             'Source/Project_RPG/Public/UI/ActionBar/RPGActionBarProvider.h',
@@ -174,6 +185,7 @@ FText FRPGQuickSlotInputBindings::ReadKeyLabel(const APlayerController*, bool, i
     $report=Join-Path $temp 'Report'
     $editor=Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe'
     $selection='ProjectRPG.UI.ActionBar.Cell+ProjectRPG.UI.ActionBar.Layout'
+    if($SharedSlotFrame){$selection+='+ProjectRPG.UI.SlotFrame'}
     if($InputBoundary){$selection+='+ProjectRPG.UI.ActionBar.InputBoundary'}
     $arguments=@(('"'+$uproject+'"'),'/Engine/Maps/Entry',('-ExecCmds="Automation RunTests '+$selection+'"'),'-TestExit="Automation Test Queue Empty"','-unattended','-nullrhi','-nosound','-nosteam','-nop4','-nosplash','-NoLiveCoding','-DisablePython','-Multiprocess','-DDC=(InstalledEnginePak,Local)',('-LocalDataCachePath="'+(Join-Path $temp 'Cache')+'"'),('-UserDir="'+(Join-Path $temp 'User')+'"'),('-abslog="'+(Join-Path $root 'Native.log')+'"'),('-ReportExportPath="'+$report+'"'))
     $proof.NativeCommand=@($editor)+$arguments
@@ -192,6 +204,7 @@ FText FRPGQuickSlotInputBindings::ReadKeyLabel(const APlayerController*, bool, i
     $proof.Tests=@($data.tests|Select-Object fullTestPath,state,errors,warnings)
     $expected=@('DisabledTooltip','LiveFeedback','CooldownAndRelease','IconLifetime','CooldownPresentation')|ForEach-Object{'ProjectRPG.UI.ActionBar.Cell.'+$_}
     $expected+=@('Validation','Compatibility','SparseRowAndInput')|ForEach-Object{'ProjectRPG.UI.ActionBar.Layout.'+$_}
+    if($SharedSlotFrame){$expected+=@('HoverLifecycle','AppearanceAndDisabled','ContentAndInput','NativeAdapter')|ForEach-Object{'ProjectRPG.UI.SlotFrame.'+$_}}
     if($InputBoundary){$expected+=@('OwnershipAndWindows','Cancellation','SourceReuse')|ForEach-Object{'ProjectRPG.UI.ActionBar.InputBoundary.'+$_}}
     if((Compare-Object $expected @($proof.Tests.fullTestPath))-or@($proof.Tests|Where-Object{$_.state-ne'Success'-or$_.errors-ne0-or$_.warnings-ne0}).Count){throw 'Missing or failing cell cases'}
     foreach($entry in $proof.Inputs){
@@ -229,6 +242,8 @@ FText FRPGQuickSlotInputBindings::ReadKeyLabel(const APlayerController*, bool, i
         'Source/Project_RPG/Private/Tests/RPGActionBarLayoutTests.cpp',
         'Source/Project_RPG/Private/UI/ActionBar/RPGRidingActionBarSubsystem.cpp')
     if($InputBoundary){$compileFiles+='Source/Project_RPG/Private/Tests/RPGActionBarInputTests.cpp'}
+    $compileFiles+='Source/Project_RPG/Private/UI/Slots/SRPGSlotFrame.cpp'
+    if($SharedSlotFrame){$compileFiles+=@('Source/Project_RPG/Private/UI/RPGQuickSlotWidget.cpp','Source/Project_RPG/Private/Tests/RPGSlotFrameTests.cpp')}
     $fileList=Join-Path $temp 'CompileFiles.txt'
     [IO.File]::WriteAllLines($fileList,@($compileFiles|ForEach-Object{Join-Path $integration $_}),[Text.UTF8Encoding]::new($false))
     Build-Project 'Project_RPGEditor' (Join-Path $integration 'Project_RPG.uproject') 'IntegrationBuild' @(('-FileList='+$fileList))

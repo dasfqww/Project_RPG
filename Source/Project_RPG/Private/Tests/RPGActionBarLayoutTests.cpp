@@ -78,7 +78,10 @@ bool FRPGActionBarSparseRow::RunTest(const FString&)
     {
         const auto Gap = Row->GetChildren()->GetChildAt(I);
         TestFalse(TEXT("Empty position has no action button"), FindButton(Gap).IsValid());
-        TestFalse(TEXT("Empty position cannot intercept input"), Gap->GetVisibility().IsHitTestVisible());
+        TestEqual(TEXT("Empty position shares the slot frame"), Gap->GetType(), FName(TEXT("SRPGSlotFrame")));
+        TestTrue(TEXT("Empty position can receive hover"), Gap->GetVisibility().IsHitTestVisible());
+        TestFalse(TEXT("Empty position cannot handle action input"),
+            Gap->OnMouseButtonDown(FGeometry(), FPointerEvent()).IsEventHandled());
     }
     Row->SlatePrepass(1.f);
     FArrangedChildren Arranged(EVisibility::Visible);
