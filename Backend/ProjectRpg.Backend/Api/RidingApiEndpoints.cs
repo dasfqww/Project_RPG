@@ -14,6 +14,7 @@ public static partial class RidingApiEndpoints
     public static void MapRidingApi(this WebApplication app)
     {
         MapRidingPreferencesApi(app);
+        MapRidingServerSnapshotApi(app);
         app.MapGet(Root, (Guid characterId, HttpContext c, IRidingPreferencesStore store, RidingRuntime runtime, RidingRequestLimiter limiter, CancellationToken ct) =>
             Run(c, limiter, false, async account =>
             {

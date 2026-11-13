@@ -199,7 +199,7 @@ static partial class Program
         });
     }
     sealed record Probe(string Token, string Root, string Command, JsonNode Receipt);
-    static async Task ProgramHost(bool enabled, bool preferences = false)
+    static async Task ProgramHost(bool enabled, bool preferences = false, bool snapshot = false)
     {
         var probe = JsonSerializer.Deserialize<Probe>(await File.ReadAllTextAsync(Environment.GetEnvironmentVariable("PROJECT_RPG_RIDING_HTTP_PROOF")!))!;
         var start = new ProcessStartInfo("dotnet") { WorkingDirectory = AppContext.BaseDirectory, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
@@ -230,7 +230,18 @@ static partial class Program
         {
             using var client = new HttpClient { BaseAddress = new(await listening.Task.WaitAsync(TimeSpan.FromSeconds(30))) };
             client.DefaultRequestHeaders.Authorization = new("Bearer", probe.Token);
-            using var get = await client.GetAsync(probe.Root); Check(get.IsSuccessStatusCode, "Actual Program authenticates existing player");
+            using var get = await client.GetAsync(probe.Root);
+            if (snapshot)
+            {
+                Check((int)get.StatusCode == (enabled ? 200 : 404), "Actual Program snapshot route uses configured feature state");
+                var body = JsonNode.Parse(await get.Content.ReadAsStringAsync())!;
+                Check(get.Headers.CacheControl?.NoStore == true, "Actual snapshot response no-store");
+                if (enabled) Check(body["connectionGeneration"]!.GetValue<string>() == probe.Receipt["connectionGeneration"]!.GetValue<string>()
+                    && JsonNode.DeepEquals(body["preferences"], probe.Receipt["preferences"]) && JsonNode.DeepEquals(body["mounts"], probe.Receipt["mounts"]), "Fresh Program authenticates assigned server and reads exact persisted owner state");
+                else Check(body["error"]!.GetValue<string>() == "RidingDisabled", "Disabled server snapshot never fabricates readiness");
+                return;
+            }
+            Check(get.IsSuccessStatusCode, "Actual Program authenticates existing player");
             var collection = JsonNode.Parse(await get.Content.ReadAsStringAsync())!;
             Check(collection["catalogReady"]!.GetValue<bool>() == enabled, "Actual startup binds/validates configured catalog and disabled mode");
             using var receipt = await client.GetAsync(probe.Root + "/requests/" + JsonNode.Parse(probe.Command)!["requestId"]!.GetValue<string>());
@@ -245,11 +256,12 @@ static partial class Program
     static async Task<int> Main(string[] args)
     {
         try { bool prefs = args.Length == 1 && args[0].StartsWith("--preferences", StringComparison.Ordinal);
-            bool pg = args.SequenceEqual(new[] { "--postgres" }) || args.SequenceEqual(new[] { "--preferences-postgres" });
-            bool program = args.SequenceEqual(new[] { "--program" }) || args.SequenceEqual(new[] { "--preferences-program" });
-            if (args.Length > 0 && !pg && !program && !args.SequenceEqual(new[] { "--preferences" })) throw new ArgumentException("Unknown mode");
-            if (program) { await Case("http_actual_program_enabled", () => ProgramHost(true, prefs)); await Case("http_actual_program_disabled", () => ProgramHost(false, prefs)); }
-            else if (prefs) await PreferencesCases(pg); else await MainCases(pg);
+            bool snapshot = args.Length == 1 && args[0].StartsWith("--snapshot", StringComparison.Ordinal);
+            bool pg = args.SequenceEqual(new[] { "--postgres" }) || args.SequenceEqual(new[] { "--preferences-postgres" }) || args.SequenceEqual(new[] { "--snapshot-postgres" });
+            bool program = args.SequenceEqual(new[] { "--program" }) || args.SequenceEqual(new[] { "--preferences-program" }) || args.SequenceEqual(new[] { "--snapshot-program" });
+            if (args.Length > 0 && !pg && !program && !args.SequenceEqual(new[] { "--preferences" }) && !args.SequenceEqual(new[] { "--snapshot" })) throw new ArgumentException("Unknown mode");
+            if (program) { await Case("http_actual_program_enabled", () => ProgramHost(true, prefs, snapshot)); await Case("http_actual_program_disabled", () => ProgramHost(false, prefs, snapshot)); }
+            else if (snapshot) await SnapshotCases(pg); else if (prefs) await PreferencesCases(pg); else await MainCases(pg);
             Console.WriteLine(JsonSerializer.Serialize(new { Passed = true, Mode = program ? "Program" : pg ? "Postgres" : "Memory", CaseCount = cases.Count, Assertions = assertions, Cases = cases })); return 0; }
         catch (Exception e) { Console.Error.WriteLine(e); Console.WriteLine(JsonSerializer.Serialize(new { Passed = false, Assertions = assertions, Cases = cases })); return 1; }
     }

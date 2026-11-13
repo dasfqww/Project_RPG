@@ -296,6 +296,8 @@ M3a4에서는 Program이 같은 `IGameRepository`를 Riding 저장소 포트에 
 
 M3a5에서는 캐릭터별 선택 탈것·즐겨찾기·논리 퀵슬롯 설정의 전체교체 CAS/영수증을 Memory·PG·인증 PUT에 연결했다. 보유는 원정대 공유, 설정은 캐릭터별이며 등록/설정 요청 ID는 같은 namespace에서 충돌을 검사한다. 공개 GET은 같은 잠금 안의 보유/설정을 읽고 공용 requests 경로는 operation으로 원래 결과를 구분한다. 설정 저장 구현 여부와 게임 서버/UE Ready를 구분하며 후자는 아직 연결하지 않았다. [개인 설정 저장](RIDING_SYSTEM_CODE_DESIGN.md#36-m3a5-개인-탈것-설정-저장--2026-11-13).
 
+M3a6에서는 할당 GameServer의 확정된 현재 접속에만 보유·설정 snapshot GET을 제공한다. 서버/세션/캐릭터·현재/확정 generation·연결/리스/제재를 검사하고 요청한 catalog version/hash를 일치시킨다. Memory의 같은 잠금 또는 PG 읽기 전용 RepeatableRead로 한 시점의 멤버십과 상태를 읽으며, 응답의 유효 기한과 세대를 UE 소비자가 다시 확인해야 한다. Player/Admin/telemetry-only 자격·미확정/끊긴/오래된 접속은 사용할 수 없다. UE 전송/입장 callback·Ready 소비는 후속이다. [입장 snapshot 계약](RIDING_SYSTEM_CODE_DESIGN.md#37-m3a6-게임-서버-입장-snapshot--2026-11-13).
+
 ## 7. 코드와 에셋 배치
 
 이 목록은 향후 파일 지도다. 이번 문서 예약으로 아래 공통 파일을 선점하지 않는다.
