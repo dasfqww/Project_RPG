@@ -261,7 +261,15 @@ static partial class Program
         if (args.Length == 2 && args[0] == "--fresh-read-host") return await FreshReadHost(args[1]);
         if (args.Length == 2 && args[0] == "--command-host") return await CommandHost(args[1]);
         if (args.Length == 2 && args[0] == "--owner-read-host") return await OwnerReadHost(args[1]);
-        try { bool prefs = args.Length == 1 && args[0].StartsWith("--preferences", StringComparison.Ordinal);
+        try {
+            if (args.Length == 1 && args[0] is "--registration-options" or "--registration-options-postgres")
+            {
+                bool postgres = args[0].EndsWith("-postgres", StringComparison.Ordinal);
+                await RegistrationOptionsCases(postgres);
+                Console.WriteLine(JsonSerializer.Serialize(new { Passed = true, Mode = postgres ? "Postgres" : "Memory", CaseCount = cases.Count, Assertions = assertions, Cases = cases }));
+                return 0;
+            }
+            bool prefs = args.Length == 1 && args[0].StartsWith("--preferences", StringComparison.Ordinal);
             bool snapshot = args.Length == 1 && args[0].StartsWith("--snapshot", StringComparison.Ordinal);
             bool pg = args.SequenceEqual(new[] { "--postgres" }) || args.SequenceEqual(new[] { "--preferences-postgres" }) || args.SequenceEqual(new[] { "--snapshot-postgres" });
             bool program = args.SequenceEqual(new[] { "--program" }) || args.SequenceEqual(new[] { "--preferences-program" }) || args.SequenceEqual(new[] { "--snapshot-program" });
