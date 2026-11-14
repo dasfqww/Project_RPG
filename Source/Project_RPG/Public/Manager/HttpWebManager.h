@@ -418,6 +418,8 @@ private:
 	virtual void BroadcastPlayerAbandonmentResult(const FRPGDungeonAbandonmentReceipt& Receipt, bool bSuccess, const FString& ErrorCode) override;
 	friend struct FRPGBackendAuthTestAccess;
 	friend struct FRPGEquipmentMutationTestAccess;
+	FHttpRequestRef CreatePlayerEquipmentRequest(const FString& Endpoint, const FString& SteamId,
+		const FString& Authorization, TFunction<void(FRPGEquipmentMutationHttpResult)> Completion);
 	friend struct FRPGNarrativeTestAccess;
 	friend class FRPGMenuFrontendTest;
 	friend struct FRPGDungeonDepartureJournalTestAccess;
