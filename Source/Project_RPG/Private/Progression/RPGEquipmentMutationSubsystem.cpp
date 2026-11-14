@@ -209,6 +209,17 @@ bool URPGEquipmentMutationSubsystem::ApplyExternalRead(FRPGEquipmentReadTicket& 
 	if (ReadGuard.Current()!=Expected) return false;
 	Ticket.Generation=ReadGuard.Current();return IsExternalReadCurrent(Ticket);
 }
+bool URPGEquipmentMutationSubsystem::ApplyExternalInventoryRead(FRPGEquipmentReadTicket& Ticket,
+    const TArray<FRPGInventoryProjectionEntry>& Items, const TArray<FRPGInventoryProjectionEntry>& Mail)
+{
+    if (!IsExternalReadCurrent(Ticket)) return false;
+    auto View = GetState(Ticket.Scope.CharacterId); View.Items = Items; View.MailItems = Mail;
+    View.ItemsLoadState = ERPGInventoryProjectionLoadState::Ready; View.bNeedsInventoryRefresh = false;
+    const uint64 Expected = ReadGuard.Current() + 1;
+    Publish(Ticket.Scope, MoveTemp(View)); // Inventory only; never assert a fresh wallet observation.
+    if (ReadGuard.Current() != Expected) return false;
+    Ticket.Generation = ReadGuard.Current(); return IsExternalReadCurrent(Ticket);
+}
 
 bool URPGEquipmentMutationSubsystem::RefreshItems(FGuid CharacterId)
 {

@@ -34,6 +34,8 @@ public:
 	// Native-only read projection import. Never dispatches, clears a journal or changes server assets.
 	bool BeginExternalRead(FGuid Character, FRPGEquipmentReadTicket& Out);
 	bool IsExternalReadCurrent(const FRPGEquipmentReadTicket& Ticket) const;
+    bool ApplyExternalInventoryRead(FRPGEquipmentReadTicket& Ticket, const TArray<FRPGInventoryProjectionEntry>& Items,
+        const TArray<FRPGInventoryProjectionEntry>& Mail);
 	bool ApplyExternalRead(FRPGEquipmentReadTicket& Ticket, const TArray<FRPGInventoryProjectionEntry>& Items,
 		const TArray<FRPGInventoryProjectionEntry>& Mail, const FRPGEconomyWalletResult& Wallet);
 	UFUNCTION(BlueprintCallable, Category="RPG|Equipment") bool UpgradeEquipment(FGuid CharacterId,

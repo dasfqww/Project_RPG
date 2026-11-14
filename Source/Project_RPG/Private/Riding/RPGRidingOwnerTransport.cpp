@@ -34,13 +34,16 @@ bool FRPGHttpRidingOwnerTransport::HasCredential() const
 bool FRPGHttpRidingOwnerTransport::CanSend() const { return !Active && HasCredential(); }
 bool FRPGHttpRidingOwnerTransport::ReadCollection(FGuid Character, FCompletion Completion)
 { return Send(Character, TEXT("characters/") + Character.ToString(EGuidFormats::DigitsWithHyphensLower) + TEXT("/riding"), TEXT("GET"), FString(), MoveTemp(Completion)); }
+bool FRPGHttpRidingOwnerTransport::ReadInventory(FGuid Character, FCompletion Completion)
+{ return Send(Character, TEXT("items?ownerType=Character&ownerId=") + Character.ToString(EGuidFormats::DigitsWithHyphensLower)
+    + TEXT("&includeTerminal=false&limit=500"), TEXT("GET"), FString(), MoveTemp(Completion), nullptr, 1024 * 1024); }
 bool FRPGHttpRidingOwnerTransport::SendIntent(const FRPGRidingPendingIntent& I, FCompletion Completion)
 { return I.IsValid() && Send(I.Scope.Character, I.Path().Mid(5), I.Method(), I.Body, MoveTemp(Completion), &I.Scope); }
 bool FRPGHttpRidingOwnerTransport::ReadReceipt(const FRPGRidingPendingIntent& I, FCompletion Completion)
 { return I.IsValid() && Send(I.Scope.Character, TEXT("characters/") + I.Scope.Character.ToString(EGuidFormats::DigitsWithHyphensLower)
     + TEXT("/riding/requests/") + I.RequestId.ToString(EGuidFormats::DigitsWithHyphensLower), TEXT("GET"), FString(), MoveTemp(Completion), &I.Scope); }
 bool FRPGHttpRidingOwnerTransport::Send(FGuid Character, const FString& Path, const FString& Method, const FString& Body,
-    FCompletion Completion, const FRPGRidingIntentScope* ExpectedScope)
+    FCompletion Completion, const FRPGRidingIntentScope* ExpectedScope, int32 MaximumBytes)
 {
     FRPGRidingOwnerHttpContext C;
     if (!IsInGameThread() || Active || !Character.IsValid() || !Completion || !Context || !Validate || !Context(C) || !ValidContext(C, true)) return false;
@@ -54,7 +57,7 @@ bool FRPGHttpRidingOwnerTransport::Send(FGuid Character, const FString& Path, co
     Request->SetHeader(TEXT("Cache-Control"), TEXT("no-cache, no-store"));
     Request->SetHeader(TEXT("Authorization"), C.Authorization); Request->SetTimeout(TimeoutSeconds);
     const uint64 Expected = ++Generation; const TWeakPtr<FRPGHttpRidingOwnerTransport> Weak = AsShared();
-    Request->OnProcessRequestComplete().BindLambda([Weak, Expected, C, Completion = MoveTemp(Completion)](FHttpRequestPtr, FHttpResponsePtr Response, bool bSuccess) mutable
+    Request->OnProcessRequestComplete().BindLambda([Weak, Expected, C, MaximumBytes, Completion = MoveTemp(Completion)](FHttpRequestPtr, FHttpResponsePtr Response, bool bSuccess) mutable
     {
         auto Self = Weak.Pin(); if (!Self || Self->Generation != Expected) return;
         Self->Active.Reset(); FRPGRidingOwnerHttpResult Result;
@@ -63,7 +66,7 @@ bool FRPGHttpRidingOwnerTransport::Send(FGuid Character, const FString& Path, co
         if (Result.bCurrentPlayerContext)
         {
             Result.bTransportSuccessful = bReceived; Result.StatusCode = Code;
-            if (bReceived && Response->GetContent().Num() <= RPGRidingCollection::MaximumBytes) Result.Body = Response->GetContentAsString();
+            if (bReceived && Response->GetContent().Num() <= MaximumBytes) Result.Body = Response->GetContentAsString();
             if (bReceived && (Code == 429 || Code == 503))
             {
                 const FString Text = Response->GetHeader(TEXT("Retry-After")); int32 Seconds = 0;

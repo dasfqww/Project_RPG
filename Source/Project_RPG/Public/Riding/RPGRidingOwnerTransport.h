@@ -21,6 +21,7 @@ public:
     virtual bool HasCredential() const = 0;
     virtual bool CanSend() const = 0;
     virtual bool ReadCollection(FGuid Character, FCompletion Completion) = 0;
+    virtual bool ReadInventory(FGuid Character, FCompletion Completion) { return false; }
     virtual bool SendIntent(const FRPGRidingPendingIntent&, FCompletion) { return false; }
     virtual bool ReadReceipt(const FRPGRidingPendingIntent&, FCompletion) { return false; }
     virtual void Cancel() = 0;
@@ -37,12 +38,13 @@ public:
     virtual bool HasCredential() const override;
     virtual bool CanSend() const override;
     virtual bool ReadCollection(FGuid Character, FCompletion Completion) override;
+    virtual bool ReadInventory(FGuid Character, FCompletion Completion) override;
     virtual bool SendIntent(const FRPGRidingPendingIntent& Intent, FCompletion Completion) override;
     virtual bool ReadReceipt(const FRPGRidingPendingIntent& Intent, FCompletion Completion) override;
     virtual void Cancel() override;
 private:
     bool Send(FGuid Character, const FString& Path, const FString& Method, const FString& Body,
-        FCompletion Completion, const FRPGRidingIntentScope* Expected = nullptr);
+        FCompletion Completion, const FRPGRidingIntentScope* Expected = nullptr, int32 MaximumBytes = 256 * 1024);
     FContext Context;
     FValidate Validate;
     float TimeoutSeconds;

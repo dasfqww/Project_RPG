@@ -904,3 +904,21 @@ GET riding은 같은 잠금 안의 보유와 현재 설정을 반환하며 prefe
 검증 중 게시된 입장권/포기 전송 분리 `7f2d287b`의 Manager 레이아웃 변경은 본인 수정 파일과 독립이며 기존 Riding factory/API가 유지됨을 대조했다. 후발 거래 카탈로그 `846f9d81`은 Backend/문서만 변경한다. 이 두 게시를 포함한 `846f9d81` 불변 Source 사본에 같은 본인7입력만 덮어 [통합 실행기](../Scripts/Tests/Run-RidingIntegrationCompile.ps1)의 `-IncludeLobbyCommand`로 전체 UHT/본인 **CPP5 컴파일0**을 확인했다. 최신 매니저의 실제 HTTP 실행을 다시 검증한 결과는 아니다. 최종 소스 대조와 두 러너 문법 검사를 통과했다.
 
 자기3사본 **7,253,022,028 bytes(6.755GiB)**·PCH/OBJ/DLL·UserDir/cache·검사 저널과 자기 junction7개를 안전하게 폐기했고 Temp/PID/정리 예외0이다. 작은 결과/명령/소스·모듈 hash와 원래 러너 판정/최종 로그 재평가는 로컬 `Saved/BuildChecks/RidingLobbyCommand-20261114/Completion.json`에 남겼으며 폐기한 DLL hash는 당시 근거다. 원본 Binaries/Intermediate/DDC·콘텐츠·실제 사용자 저널·다른 담당 변경은 보존했다.
+
+## 44. M3b6 확정 후 최신 보유/인벤토리 조회 — 2026-11-14
+
+담당 `riding-fresh-assets-20261114`. [FRPGRidingFreshRead](../Source/Project_RPG/Public/Riding/RPGRidingFreshRead.h)가 확정 영수증 뒤 실제 보유/설정과 현재 아이템을 새로 읽고, 검증한 읽기 반영 뒤에만 `AcknowledgeFreshReads`를 호출한다. 명령/조회 전송기는 별도 인스턴스이며 등록/설정 쓰기나 영수증을 재전송하지 않는다.
+
+- 새 읽기는 같은 endpoint/account/character의 검증된 영수증, 해제된 pending 저널, 현재 로비/자격과 `NeedsFreshReads`가 있어야 한다. 원정대 GUID 및 등록이면 roster revision/등록 탈것, 설정이면 preferences revision의 하한을 GET과 대조한다. 기존 화면의 Ready 캐시는 새 읽기의 증거가 아니다. request nonce/현재 문맥/자격을 각 완료와 외부 반영 전후에 재확인하며, 이전 문맥의 늦은 응답을 버린다.
+- 먼저 보관함 GET, 이어서 Player 전용 고정 `items?ownerType=Character&ownerId=...&includeTerminal=false&limit=500` GET을 수행한다. 기존 private Player 자격 검증/취소/단일 요청을 사용하며 collection은 256KiB, items는 1MiB 상한이다. 아이템 JSON 중복 키/크기와 기존 V2 codec·Inventory/Mail mapper로 실제 Character 소유/중복 ID·위치를 검증한다. 페이지 커서 없는 500개 결과는 완전한 목록으로 채택하지 않는다. 두 GET은 별개의 현재 관측이며 하나의 원자 snapshot이라고 주장하지 않는다.
+- 첫 GET 전에 기존 장비 subsystem의 `BeginExternalRead`로 읽기 세대를 잡는다. 다른 읽기/쓰기/게시가 끼면 현재성 검사가 실패하고 장벽을 유지한다. 새 `ApplyExternalInventoryRead`는 inventory/mail 읽기 projection만 게시하며 wallet의 최신성·아이템/통화/GAS 권한을 부여하지 않는다. 게시의 동기 subscriber가 새 작업을 시작하면 갱신된 세대/문맥을 다시 확인해 옛 완료가 장벽을 풀지 못하게 한다.
+- 열린 보관함 reader에는 `InstallFreshSnapshot`으로 같은 문맥의 새 관측을 전달한다. 진행 중인 별도 읽기나 더 높은 보유/설정 revision은 덮지 않는다. 닫힌 화면은 되살리지 않으며 읽기 서비스가 독립적으로 완료될 수 있다. projection 반영 뒤 화면 반영/세대 검사가 실패해도 확인 장벽은 남으며, 과거 상태로 되돌리는 보정은 하지 않는다.
+- LocalPlayer는 성공 영수증마다 처음 한 번만 GET 묶음을 시작한다. 실패·401/403·잘못된 응답/500개 한계·취소·세대 변경은 같은 문맥의 `NeedsFreshReads`를 유지하며, 식별이 바뀐 완료는 채택하지 않는다. 429/503의 Retry-After를 지키고 `RefreshFreshAssets`로 명시 재조회한다. 이 getter/문맥 검사는 HTTP를 시작하지 않는다. ticker의 최초 성공 후 읽기만 추가됐으며 자동 mutation/recovery polling은 없다. deinitialize는 자기 읽기를 취소하고 화면 닫기는 서비스 수명을 종료하지 않는다.
+
+[전용 실행기](../Scripts/Tests/Run-RidingFreshReadTests.ps1)는 게시 Inventory 플러그인과 최소 모듈/실제 사설 Memory Kestrel를 사용한다. 실제 Player POST가 등록을 확정한 뒤 검사 middleware가 남은 등록 물품을 별도 정상 Item 트랜잭션으로 더 소비하고 원래 응답을 전달한다. 이어 실제 보관함/items GET을 각각 한 번만 수행하여, 영수증의 남은 수량을 되살리지 않고 현재 대상 소멸 및 무관한 기본 장비 보존을 확인한다. 순서/부분 성공·실패/Retry-After·소유/중복/500개 한계·세대 개입·인증/캐릭터 변경·재진입·화면의 최신 revision/진행 읽기 보존도 검사한다.
+
+검사에서는 생산 전송기/codec/mapper/명령/읽기 서비스를 실행하고 최종 projection 반영 대상과 문맥은 모의 sink다. 실제 LocalPlayer의 ticker/장비 subsystem import와 열린 화면을 한 프로세스에서 결합 실행한 결과는 아니며 이 연결은 전체 Source 사본의 UHT/CPP 컴파일로 확인한다. 작성/복구 UI·실제 제품 factory 인증/로비/장비 캐시 결합·PG/Steam/GPU·전체 게임 링크는 별도다.
+
+게시 `7ea4c163`+고정26입력·게시 Inventory 플러그인 tree의 사설 모듈 UHT/빌드·링크0, 실제 **`D3C96109…CD630AB6`** DLL에서 **native6 Success·검사 오류/경고0·UE 종료0**, 실제 Memory Player 등록1/collection GET1/items GET1과 소비 대상 revision3/quantity0을 확인했다. 전체 Source 사본의 UHT/관련 **CPP6 컴파일0**, Backend Release0오류/경고·입력/두 러너 문법·SHA 대조도 통과했다. 초기 C# 옵션명의 지역 변수 가림 빌드 실패는 이름 변경으로 수정했다. 초기 native 두 기대값은 기본 지급 장비를 빠뜨리고 가방 전체를 1개/0개로 가정한 검사 오류였으며, 소비 대상의 수량과 무관한 장비 보존을 분리한 최종 파일로 native6/CPP6를 다시 확인했다. 기동 구간 진단과 검사 구간의 오류/경고0은 구분한다. 후발 `7ea4c163` 이야기 화면 변경은 본인 입력과 독립이다.
+
+자기5회 **6,037,998,180 bytes(5.623GiB)**·사설 모듈/Inventory 플러그인 빌드/PCH/OBJ·backend 사본/SDK cache/토큰·검사 저널/host·UE PID를 폐기했고 Temp/PID/정리 예외0이다. 작은 결과/실행 명령·소스/모듈 hash는 로컬 `Saved/BuildChecks/RidingFreshAssets-20261114/Completion.json`에 남겼으며 폐기한 DLL hash는 당시 근거다. 원본 Binaries/Intermediate/DDC·콘텐츠·사용자 저널·다른 담당 변경은 보존했다.

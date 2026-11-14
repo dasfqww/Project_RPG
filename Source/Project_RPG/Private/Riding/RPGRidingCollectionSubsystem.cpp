@@ -20,6 +20,7 @@ void URPGRidingCollectionSubsystem::Deinitialize()
 {
     bEnding = true; FTSTicker::RemoveTicker(TickHandle); TickHandle.Reset();
     ReleaseReader();
+    if (FreshReads) FreshReads->Shutdown(); FreshReads.Reset();
     if (Commands) Commands->Shutdown(); Commands.Reset();
     Super::Deinitialize();
 }
@@ -81,6 +82,30 @@ TSharedPtr<FRPGRidingCommandCoordinator> URPGRidingCollectionSubsystem::GetComma
 }
 bool URPGRidingCollectionSubsystem::BlocksTransitions()
 { const auto Owner = GetCommands(); return Owner && Owner->BlocksTransitions(); }
+TSharedPtr<FRPGRidingFreshRead> URPGRidingCollectionSubsystem::GetFreshReads()
+{
+    const auto Owner = GetCommands(); if (!Owner) return nullptr;
+    if (!FreshReads)
+    {
+        auto* GI = GetLocalPlayer()->GetGameInstance(); auto* Web = GI->GetSubsystem<UHttpWebManager>();
+        const TWeakObjectPtr<ThisClass> Weak(this);
+        const TWeakObjectPtr<URPGEquipmentMutationSubsystem> Equipment(GI->GetSubsystem<URPGEquipmentMutationSubsystem>());
+        FRPGRidingFreshRead::FSink Sink;
+        Sink.Begin = [Weak, Equipment](FGuid Character)
+        { auto* S = Weak.Get(); return S && !S->bEnding && Equipment.IsValid() && Equipment->BeginExternalRead(Character, S->InventoryTicket); };
+        Sink.IsCurrent = [Weak, Equipment]
+        { const auto* S = Weak.Get(); return S && !S->bEnding && Equipment.IsValid() && Equipment->IsExternalReadCurrent(S->InventoryTicket); };
+        Sink.Inventory = [Weak, Equipment](const TArray<FRPGInventoryProjectionEntry>& Items, const TArray<FRPGInventoryProjectionEntry>& Mail)
+        { auto* S = Weak.Get(); return S && !S->bEnding && Equipment.IsValid() && Equipment->ApplyExternalInventoryRead(S->InventoryTicket, Items, Mail); };
+        Sink.Collection = [Weak](const FRPGRidingCollection& C)
+        { auto* S = Weak.Get(); return S && !S->bEnding && (!S->Reader || S->Reader->InstallFreshSnapshot(S->ReadContext(), C)); };
+        FreshReads = MakeShared<FRPGRidingFreshRead>(Owner.ToSharedRef(), Web->CreatePlayerRidingOwnerTransport(),
+            [Weak] { const auto* S = Weak.Get(); return S ? S->ReadCommandContext() : FRPGRidingCommandContext{}; }, MoveTemp(Sink));
+    }
+    FreshReads->RefreshContext(); return FreshReads;
+}
+bool URPGRidingCollectionSubsystem::RefreshFreshAssets()
+{ const auto Fresh = GetFreshReads(); return Fresh && Fresh->Refresh(); }
 void URPGRidingCollectionSubsystem::ReleaseReader()
 {
     if (Reader) Reader->Shutdown(); Reader.Reset();
@@ -89,9 +114,10 @@ void URPGRidingCollectionSubsystem::ReleaseReader()
 bool URPGRidingCollectionSubsystem::TickCollection(float)
 {
     if (bEnding) return false;
-    GetCommands(); // Restore/check only, including when no collection screen has been opened.
+    if (const auto Fresh = GetFreshReads(); Fresh && Fresh->IsUnattempted())
+        Fresh->Refresh(); // One initial GET sequence after a verified receipt; failures require explicit refresh.
     if (Reader) { Reader->RefreshContext(); RefreshPresentationAssets(); }
-    return true; // No HTTP dispatch from this ticker.
+    return true; // Never sends a mutation or retries a failed read here.
 }
 void URPGRidingCollectionSubsystem::RefreshPresentationAssets()
 {

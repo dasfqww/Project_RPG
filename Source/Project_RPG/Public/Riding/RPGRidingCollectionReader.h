@@ -21,6 +21,7 @@ public:
     ~FRPGRidingCollectionReader();
     void RefreshContext();
     bool Read();
+    bool InstallFreshSnapshot(const FRPGRidingCollectionContext& Context, const FRPGRidingCollection& Snapshot);
     void Shutdown();
     FRPGRidingCollectionContext GetContext() { RefreshContext(); return Bound; }
     ERPGRidingCollectionReadState GetState() { RefreshContext(); return State; }

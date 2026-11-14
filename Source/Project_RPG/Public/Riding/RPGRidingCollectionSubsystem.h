@@ -3,6 +3,8 @@
 #include "Containers/Ticker.h"
 #include "Riding/RPGRidingCollectionReader.h"
 #include "Riding/RPGRidingCommandCoordinator.h"
+#include "Riding/RPGRidingFreshRead.h"
+#include "Progression/RPGEquipmentMutationSubsystem.h"
 #include "RPGRidingCollectionSubsystem.generated.h"
 
 struct FStreamableHandle;
@@ -19,6 +21,8 @@ public:
     void ReleaseReader();
     TSharedPtr<FRPGRidingCommandCoordinator> GetCommands();
     bool BlocksTransitions();
+    TSharedPtr<FRPGRidingFreshRead> GetFreshReads();
+    bool RefreshFreshAssets();
     FText DescribeMount(const FString& Id) const;
 private:
     friend struct FRPGRidingLobbyCommandTestAccess;
@@ -28,6 +32,8 @@ private:
     void RefreshPresentationAssets();
     TSharedPtr<FRPGRidingCollectionReader> Reader;
     TSharedPtr<FRPGRidingCommandCoordinator> Commands;
+    TSharedPtr<FRPGRidingFreshRead> FreshReads;
+    FRPGEquipmentReadTicket InventoryTicket;
     TSharedPtr<FStreamableHandle> PresentationLoad;
     FString PresentationKey;
     FTSTicker::FDelegateHandle TickHandle;

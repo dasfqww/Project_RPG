@@ -49,3 +49,17 @@ void FRPGRidingCollectionReader::Complete(FGuid Request, FRPGRidingCollectionCon
     OnChanged.Broadcast();
 }
 double FRPGRidingCollectionReader::GetRetryAfterSeconds() const { return FMath::Max(0., RetryAt - FPlatformTime::Seconds()); }
+bool FRPGRidingCollectionReader::InstallFreshSnapshot(const FRPGRidingCollectionContext& C, const FRPGRidingCollection& Snapshot)
+{
+    RefreshContext();
+    if (bEnding || !IsInGameThread() || !Bound.bEligible || !Bound.SameIdentity(C) || !C.bEligible || Pending.IsValid()
+        || Snapshot.CharacterId != Bound.Character || !Snapshot.RosterId.IsValid()) return false;
+    if (State == ERPGRidingCollectionReadState::Ready && (Collection.RosterId != Snapshot.RosterId
+        || Collection.RosterRevision > Snapshot.RosterRevision || Collection.PreferencesRevision > Snapshot.PreferencesRevision)) return false;
+    Collection = Snapshot; State = ERPGRidingCollectionReadState::Ready; RetryAt = 0;
+    OnChanged.Broadcast();
+    RefreshContext();
+    return !bEnding && Bound.bEligible && Bound.SameIdentity(C) && State == ERPGRidingCollectionReadState::Ready
+        && Collection.RosterId == Snapshot.RosterId && Collection.RosterRevision == Snapshot.RosterRevision
+        && Collection.PreferencesRevision == Snapshot.PreferencesRevision && !Pending.IsValid();
+}
