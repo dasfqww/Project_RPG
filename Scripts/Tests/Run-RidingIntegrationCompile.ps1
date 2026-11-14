@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [switch]$IncludeCollection, [switch]$IncludeCollectionScreen, [switch]$IncludeIntent, [switch]$IncludeCommand, [switch]$IncludeLobbyCommand, [switch]$IncludeFreshAssets, [switch]$EmotePresentationOnly, [ValidateRange(1,4)][int]$MaxParallelActions=1)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [switch]$IncludeCollection, [switch]$IncludeCollectionScreen, [switch]$IncludeIntent, [switch]$IncludeCommand, [switch]$IncludeLobbyCommand, [switch]$IncludeFreshAssets, [switch]$IncludeRegistrationClient, [string]$InputRoot, [switch]$EmotePresentationOnly, [ValidateRange(1,4)][int]$MaxParallelActions=1)
 $ErrorActionPreference='Stop'
 if ($IncludeFreshAssets) { $IncludeLobbyCommand=$true }
 if ($IncludeLobbyCommand) { $IncludeCommand=$true }
@@ -7,6 +7,8 @@ if ($IncludeCommand) { $IncludeIntent=$true; $IncludeCollection=$true }
 if ($IncludeCollectionScreen) { $IncludeCollection=$true }
 if ($EmotePresentationOnly -and !$IncludeEmote) { throw 'EmotePresentationOnly requires IncludeEmote' }
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+if ($InputRoot -and !$IncludeRegistrationClient) { throw 'InputRoot requires IncludeRegistrationClient' }
+$sourceRoot=if($InputRoot){[IO.Path]::GetFullPath($InputRoot)}else{$workspace}
 $run=[Guid]::NewGuid().ToString('N')
 if ($IncludeControl) { $IncludeDamage = $true }
 if ($IncludeEmote) { $IncludeDashPrediction = $true }
@@ -47,6 +49,7 @@ if ($IncludeIntent) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/Riding
 if ($IncludeCommand) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingCommand-20261114/Integration-'+$run); $reservation='riding-command-recovery-20261114' }
 if ($IncludeLobbyCommand) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingLobbyCommand-20261114/Integration-'+$run); $reservation='riding-lobby-command-owner-20261114' }
 if ($IncludeFreshAssets) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingFreshAssets-20261114/Integration-'+$run); $reservation='riding-fresh-assets-20261114' }
+if ($IncludeRegistrationClient) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingRegistrationClient-20261114/Integration-'+$run); $reservation='riding-registration-client-20261114' }
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Save-Proof { [IO.File]::WriteAllText((Join-Path $proofRoot 'Result.json'),($proof|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false)) }
 function Assert-Reservation {
@@ -133,8 +136,16 @@ try {
     if ($IncludeCommand) { $files=@($files|Where-Object{$_ -ne 'Source/Project_RPG/Public/Manager/HttpWebManager.h' -and $_ -ne 'Source/Project_RPG/Private/Manager/HttpWebManagerRiding.cpp'}) } # Concrete factory/manager use the immutable published snapshot.
     if ($IncludeLobbyCommand) { $files=@('Source/Project_RPG/Public/Riding/RPGRidingCollectionSubsystem.h','Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp','Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyWidget.cpp','Source/Project_RPG/Private/Online/RPGOnlineLobbySubsystem.cpp','Source/Project_RPG/Public/Online/RPGDungeonSessionSubsystem.h','Source/Project_RPG/Private/Online/RPGDungeonSessionSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingLobbyCommandTests.cpp') }
     if ($IncludeFreshAssets) { $files=@('Source/Project_RPG/Public/Riding/RPGRidingFreshRead.h','Source/Project_RPG/Private/Riding/RPGRidingFreshRead.cpp','Source/Project_RPG/Public/Riding/RPGRidingOwnerTransport.h','Source/Project_RPG/Private/Riding/RPGRidingOwnerTransport.cpp','Source/Project_RPG/Public/Riding/RPGRidingCollectionReader.h','Source/Project_RPG/Private/Riding/RPGRidingCollectionReader.cpp','Source/Project_RPG/Public/Riding/RPGRidingCollectionSubsystem.h','Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp','Source/Project_RPG/Public/Progression/RPGEquipmentMutationSubsystem.h','Source/Project_RPG/Private/Progression/RPGEquipmentMutationSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingFreshReadTests.cpp') }
+    if ($IncludeRegistrationClient) {
+        $files=@('Source/Project_RPG/Public/Riding/RPGRidingRegistrationOptions.h','Source/Project_RPG/Private/Riding/RPGRidingRegistrationOptions.cpp',
+            'Source/Project_RPG/Public/Riding/RPGRidingRegistrationReader.h','Source/Project_RPG/Private/Riding/RPGRidingRegistrationReader.cpp',
+            'Source/Project_RPG/Public/Riding/RPGRidingOwnerTransport.h','Source/Project_RPG/Private/Riding/RPGRidingOwnerTransport.cpp',
+            'Source/Project_RPG/Public/Riding/RPGRidingCollectionSubsystem.h','Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp',
+            'Source/Project_RPG/Private/Tests/RPGRidingRegistrationTests.cpp')
+        $proof.SourceRoot=$sourceRoot
+    }
     foreach($relative in @($files|Select-Object -Unique)) {
-        $source=Join-Path $workspace $relative
+        $source=Join-Path $sourceRoot $relative
         $destination=Join-Path $project $relative
         $sha=(Get-FileHash -LiteralPath $source).Hash
         $null=[IO.Directory]::CreateDirectory((Split-Path $destination))
@@ -172,6 +183,11 @@ try {
     if ($IncludeCommand) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingReceipt.cpp','Source/Project_RPG/Private/Riding/RPGRidingCommandCoordinator.cpp','Source/Project_RPG/Private/Riding/RPGRidingOwnerTransport.cpp','Source/Project_RPG/Private/Manager/HttpWebManagerRiding.cpp','Source/Project_RPG/Private/Tests/RPGRidingCommandRecoveryTests.cpp') }
     if ($IncludeLobbyCommand) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp','Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyWidget.cpp','Source/Project_RPG/Private/Online/RPGOnlineLobbySubsystem.cpp','Source/Project_RPG/Private/Online/RPGDungeonSessionSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingLobbyCommandTests.cpp') }
     if ($IncludeFreshAssets) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingFreshRead.cpp','Source/Project_RPG/Private/Riding/RPGRidingOwnerTransport.cpp','Source/Project_RPG/Private/Riding/RPGRidingCollectionReader.cpp','Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp','Source/Project_RPG/Private/Progression/RPGEquipmentMutationSubsystem.cpp','Source/Project_RPG/Private/Tests/RPGRidingFreshReadTests.cpp') }
+    if ($IncludeRegistrationClient) {
+        $compile=@('Source/Project_RPG/Private/Riding/RPGRidingRegistrationOptions.cpp','Source/Project_RPG/Private/Riding/RPGRidingRegistrationReader.cpp',
+            'Source/Project_RPG/Private/Riding/RPGRidingOwnerTransport.cpp','Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp',
+            'Source/Project_RPG/Private/Tests/RPGRidingRegistrationTests.cpp')
+    }
     $proof.CompileFiles=@($compile|Select-Object -Unique)
     [IO.File]::WriteAllLines($fileList,@($compile|Select-Object -Unique|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
     $dotnet=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
@@ -186,7 +202,7 @@ try {
     $proof.BuildExit=$LASTEXITCODE
     if($LASTEXITCODE -ne 0){throw 'Integration compile failed'}
     foreach($inputFile in $proof.Inputs) {
-        if((Get-FileHash -LiteralPath (Join-Path $workspace $inputFile.Path)).Hash -ne $inputFile.SHA256){throw 'Original integration input changed'}
+        if((Get-FileHash -LiteralPath (Join-Path $sourceRoot $inputFile.Path)).Hash -ne $inputFile.SHA256){throw 'Original integration input changed'}
     }
     $proof.Passed=$true
 } catch { $proof.Failure=$_.Exception.Message }

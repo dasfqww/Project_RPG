@@ -1,16 +1,22 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8', [switch]$Screen)
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$Screen, [switch]$Registration, [string]$InputRoot)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+if ($Screen -and $Registration) { throw 'Choose one screen or registration mode' }
+if ($InputRoot -and !$Registration) { throw 'InputRoot requires Registration mode' }
+$sourceRoot = if ($InputRoot) { [IO.Path]::GetFullPath($InputRoot) } else { $workspace }
 $id = [Guid]::NewGuid().ToString('N')
 $proofRoot = Join-Path $workspace ('Saved/BuildChecks/RidingOwnerRead-20261114/' + $id)
 $reservation = 'riding-owner-read-20261114'
 if ($Screen) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingCollectionScreen-20261114/'+$id); $reservation='riding-collection-screen-20261114' }
+if ($Registration) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingRegistrationClient-20261114/'+$id); $reservation='riding-registration-client-20261114' }
 $tempRoot = Join-Path $workspace 'Saved/RO'
+if ($Registration) { $tempRoot=Join-Path $workspace 'Saved/RC' }
 $temp = Join-Path $tempRoot $id.Substring(0,8)
 $project = Join-Path $temp 'Project'
 $proof = [ordered]@{Passed=$false;Scope='Native Riding owner collection wire/reader and actual UE Player HTTP to private Memory Kestrel, no UI/PG/Steam/full game link';Inputs=@();Tests=@();Cleanup=$null;Failure=$null}
 if ($Screen) { $proof.Scope='Native UMG read screen, filters/identity/authentication/close lifetimes, actual UMG click to reader to Player HTTP to Memory Kestrel; existing wire/reader/transport regressions. No concrete LocalPlayer/lobby/menu runtime, assets/GPU/PG/Steam/full game link' }
+if ($Registration) { $proof.Scope='Native strict registration metadata/owner reader and actual Memory Player HTTP, with collection regressions; no registration UI/PG/Steam/full game link'; $proof.SourceRoot=$sourceRoot }
 $process = $null
 $hostProcess = $null
 $ownsTemp = $false
@@ -39,8 +45,9 @@ try {
     $files = @('Source/Project_RPG/Public/Riding/RPGRidingTypes.h','Source/Project_RPG/Private/Riding/RPGRidingTypes.cpp','Source/Project_RPG/Public/Riding/RPGRidingCollection.h','Source/Project_RPG/Private/Riding/RPGRidingCollection.cpp','Source/Project_RPG/Public/Riding/RPGRidingOwnerTransport.h','Source/Project_RPG/Private/Riding/RPGRidingOwnerTransport.cpp','Source/Project_RPG/Public/Riding/RPGRidingCollectionReader.h','Source/Project_RPG/Private/Riding/RPGRidingCollectionReader.cpp','Source/Project_RPG/Private/Tests/RPGRidingCollectionTests.cpp','Source/Project_RPG/Public/Online/RPGBackendPlayerAuthState.h','Source/Project_RPG/Private/Online/RPGBackendPlayerAuthState.cpp')
     $files+=@('Source/Project_RPG/Public/Riding/RPGRidingCommand.h','Source/Project_RPG/Private/Riding/RPGRidingCommand.cpp','Source/Project_RPG/Private/Riding/RPGRidingIntentJson.h')
     if ($Screen) { $files+=@('Source/Project_RPG/Public/UI/Riding/RPGRidingCollectionWidget.h','Source/Project_RPG/Private/UI/Riding/RPGRidingCollectionWidget.cpp','Source/Project_RPG/Private/Tests/RPGRidingCollectionWidgetTests.cpp') }
+    if ($Registration) { $files+=@('Source/Project_RPG/Public/Riding/RPGRidingRegistrationOptions.h','Source/Project_RPG/Private/Riding/RPGRidingRegistrationOptions.cpp','Source/Project_RPG/Public/Riding/RPGRidingRegistrationReader.h','Source/Project_RPG/Private/Riding/RPGRidingRegistrationReader.cpp','Source/Project_RPG/Private/Tests/RPGRidingRegistrationTests.cpp') }
     foreach ($relative in $files) {
-        $source = Join-Path $workspace $relative
+        $source = Join-Path $sourceRoot $relative
         $destination = Join-Path $project $relative
         $hash = (Get-FileHash -LiteralPath $source).Hash
         $null = [IO.Directory]::CreateDirectory((Split-Path -Parent $destination))
@@ -56,8 +63,10 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Backend archive failed'}
     & tar -xf (Join-Path $temp 'Backend.tar') -C $backend
     if($LASTEXITCODE -ne 0){throw 'Backend archive extraction failed'}
-    foreach($relative in @('Backend/ProjectRpg.Backend.RidingHttpTests/OwnerReadHost.cs','Backend/ProjectRpg.Backend.RidingHttpTests/CommandHost.cs','Backend/ProjectRpg.Backend.RidingHttpTests/Program.cs')){
-        $source=Join-Path $workspace $relative;$destination=Join-Path $backend $relative
+    $backendFiles=@('Backend/ProjectRpg.Backend.RidingHttpTests/OwnerReadHost.cs','Backend/ProjectRpg.Backend.RidingHttpTests/CommandHost.cs','Backend/ProjectRpg.Backend.RidingHttpTests/Program.cs')
+    if ($Registration) { $backendFiles+='Backend/ProjectRpg.Backend.RidingHttpTests/RegistrationReadHost.cs' }
+    foreach($relative in $backendFiles){
+        $source=Join-Path $sourceRoot $relative;$destination=Join-Path $backend $relative
         $hash=(Get-FileHash -LiteralPath $source).Hash
         Copy-Item -LiteralPath $source -Destination $destination
         if((Get-FileHash -LiteralPath $source).Hash -ne $hash -or (Get-FileHash -LiteralPath $destination).Hash -ne $hash){throw 'Fixture source drift'}
@@ -74,7 +83,8 @@ try {
     $backendModule=Join-Path $backend 'Backend/ProjectRpg.Backend.RidingHttpTests/bin/Release/net9.0/ProjectRpg.Backend.RidingHttpTests.dll'
     $proof.BackendProducerSHA256=(Get-FileHash -LiteralPath $backendModule).Hash
     $proof.BackendModuleSHA256=(Get-FileHash -LiteralPath (Join-Path (Split-Path $backendModule) 'ProjectRpg.Backend.dll')).Hash
-    $hostArgs=@(('"'+$backendModule+'"'),'--owner-read-host',('"'+$fixtureDirectory+'"'))
+    $hostMode = if ($Registration) { '--registration-read-host' } else { '--owner-read-host' }
+    $hostArgs=@(('"'+$backendModule+'"'),$hostMode,('"'+$fixtureDirectory+'"'))
     $hostProcess=Start-Process (Get-Command dotnet).Source -ArgumentList $hostArgs -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $temp 'Host.stdout') -RedirectStandardError (Join-Path $temp 'Host.stderr')
     $null=$hostProcess.Handle
     $readyDeadline=[DateTime]::UtcNow.AddSeconds(30)
@@ -116,7 +126,8 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingOwnerR
     if (!(Test-Path -LiteralPath (Join-Path $EngineRoot 'Engine/Build/InstalledBuild.txt'))) { throw 'Installed engine required' }
     $build = Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
     $ubt = Join-Path $EngineRoot 'Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll'
-    $buildArgs = @($ubt,'RidingOwnerReadEditor','Win64','Development',$uproject,'-NoMutex','-NoEngineChanges','-NoUBA','-UBADisableRemote',('-UBARootDir='+(Join-Path $temp 'Uba')),('-UBATraceOutputFile='+(Join-Path $temp 'Build.uba')),'-NoHotReloadFromIDE','-MaxParallelActions=2',('-log='+(Join-Path $proofRoot 'Build.log')))
+    $parallel = if ($Registration) { 1 } else { 2 }
+    $buildArgs = @($ubt,'RidingOwnerReadEditor','Win64','Development',$uproject,'-NoMutex','-NoEngineChanges','-NoUBA','-UBADisableRemote',('-UBARootDir='+(Join-Path $temp 'Uba')),('-UBATraceOutputFile='+(Join-Path $temp 'Build.uba')),'-NoHotReloadFromIDE',('-MaxParallelActions='+$parallel),('-log='+(Join-Path $proofRoot 'Build.log')))
     $proof.BuildCommand = @($build) + $buildArgs
     Save-Proof
     Write-Output ('Building isolated Riding owner reader; proof: '+$proofRoot)
@@ -147,9 +158,10 @@ IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, Project_RPG, "RidingOwnerR
     $proof.Tests = @($result.tests | Select-Object fullTestPath,state,errors,warnings)
     $expected = @('Wire','Malformed','ReaderLifetime','ReaderFailures','MemoryHttp') | ForEach-Object {'ProjectRPG.Riding.OwnerRead.'+$_}
     if ($Screen) { $expected += @('Browse','Filters','Context','Lifetime','Failures','MemoryHttp') | ForEach-Object {'ProjectRPG.Riding.CollectionScreen.'+$_} }
+    if ($Registration) { $expected += @('Wire','Malformed','Lifetime','Failures','MemoryHttp') | ForEach-Object {'ProjectRPG.Riding.RegistrationClient.'+$_} }
     if ((Compare-Object $expected @($proof.Tests.fullTestPath)) -or @($proof.Tests | Where-Object {$_.state -ne 'Success' -or $_.errors -ne 0 -or $_.warnings -ne 0}).Count) { throw 'Missing or failing native cases' }
     foreach ($inputFile in $proof.Inputs) {
-        if ((Get-FileHash -LiteralPath (Join-Path $workspace $inputFile.Path)).Hash -ne $inputFile.SHA256) { throw 'Original source changed during validation' }
+        if ((Get-FileHash -LiteralPath (Join-Path $sourceRoot $inputFile.Path)).Hash -ne $inputFile.SHA256) { throw 'Captured source changed during validation' }
     }
     if ((Get-FileHash -LiteralPath $PSCommandPath).Hash -ne $proof.RunnerSHA256) { throw 'Runner changed during validation' }
     $proof.Passed = $true

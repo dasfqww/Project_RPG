@@ -52,6 +52,18 @@ TSharedPtr<FRPGRidingCollectionReader> URPGRidingCollectionSubsystem::GetReader(
     }
     Reader->RefreshContext(); return Reader;
 }
+TSharedPtr<FRPGRidingRegistrationReader> URPGRidingCollectionSubsystem::GetRegistrationReader()
+{
+    if (bEnding || !ReadContext().bEligible) return nullptr;
+    if (!RegistrationReader)
+    {
+        auto* Web = GetLocalPlayer()->GetGameInstance()->GetSubsystem<UHttpWebManager>();
+        const TWeakObjectPtr<ThisClass> Weak(this);
+        RegistrationReader = MakeShared<FRPGRidingRegistrationReader>(Web->CreatePlayerRidingOwnerTransport(), [Weak]
+            { const auto* Self = Weak.Get(); return Self ? Self->ReadContext() : FRPGRidingCollectionContext{}; });
+    }
+    RegistrationReader->RefreshContext(); return RegistrationReader;
+}
 FRPGRidingCommandContext URPGRidingCollectionSubsystem::ReadCommandContext() const
 {
     FRPGRidingCommandContext C;
@@ -98,7 +110,11 @@ TSharedPtr<FRPGRidingFreshRead> URPGRidingCollectionSubsystem::GetFreshReads()
         Sink.Inventory = [Weak, Equipment](const TArray<FRPGInventoryProjectionEntry>& Items, const TArray<FRPGInventoryProjectionEntry>& Mail)
         { auto* S = Weak.Get(); return S && !S->bEnding && Equipment.IsValid() && Equipment->ApplyExternalInventoryRead(S->InventoryTicket, Items, Mail); };
         Sink.Collection = [Weak](const FRPGRidingCollection& C)
-        { auto* S = Weak.Get(); return S && !S->bEnding && (!S->Reader || S->Reader->InstallFreshSnapshot(S->ReadContext(), C)); };
+        {
+            auto* S = Weak.Get(); if (!S || S->bEnding) return false;
+            if (S->RegistrationReader) S->RegistrationReader->Invalidate();
+            return !S->Reader || S->Reader->InstallFreshSnapshot(S->ReadContext(), C);
+        };
         FreshReads = MakeShared<FRPGRidingFreshRead>(Owner.ToSharedRef(), Web->CreatePlayerRidingOwnerTransport(),
             [Weak] { const auto* S = Weak.Get(); return S ? S->ReadCommandContext() : FRPGRidingCommandContext{}; }, MoveTemp(Sink));
     }
@@ -109,6 +125,7 @@ bool URPGRidingCollectionSubsystem::RefreshFreshAssets()
 void URPGRidingCollectionSubsystem::ReleaseReader()
 {
     if (Reader) Reader->Shutdown(); Reader.Reset();
+    if (RegistrationReader) RegistrationReader->Shutdown(); RegistrationReader.Reset();
     if (PresentationLoad) PresentationLoad->CancelHandle(); PresentationLoad.Reset(); PresentationKey.Reset();
 }
 bool URPGRidingCollectionSubsystem::TickCollection(float)
@@ -117,6 +134,7 @@ bool URPGRidingCollectionSubsystem::TickCollection(float)
     if (const auto Fresh = GetFreshReads(); Fresh && Fresh->IsUnattempted())
         Fresh->Refresh(); // One initial GET sequence after a verified receipt; failures require explicit refresh.
     if (Reader) { Reader->RefreshContext(); RefreshPresentationAssets(); }
+    if (RegistrationReader) RegistrationReader->RefreshContext();
     return true; // Never sends a mutation or retries a failed read here.
 }
 void URPGRidingCollectionSubsystem::RefreshPresentationAssets()

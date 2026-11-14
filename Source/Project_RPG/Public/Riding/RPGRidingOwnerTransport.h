@@ -22,6 +22,7 @@ public:
     virtual bool CanSend() const = 0;
     virtual bool ReadCollection(FGuid Character, FCompletion Completion) = 0;
     virtual bool ReadInventory(FGuid Character, FCompletion Completion) { return false; }
+    virtual bool ReadRegistrationOptions(FGuid Character, FCompletion Completion) { return false; }
     virtual bool SendIntent(const FRPGRidingPendingIntent&, FCompletion) { return false; }
     virtual bool ReadReceipt(const FRPGRidingPendingIntent&, FCompletion) { return false; }
     virtual void Cancel() = 0;
@@ -39,6 +40,7 @@ public:
     virtual bool CanSend() const override;
     virtual bool ReadCollection(FGuid Character, FCompletion Completion) override;
     virtual bool ReadInventory(FGuid Character, FCompletion Completion) override;
+    virtual bool ReadRegistrationOptions(FGuid Character, FCompletion Completion) override;
     virtual bool SendIntent(const FRPGRidingPendingIntent& Intent, FCompletion Completion) override;
     virtual bool ReadReceipt(const FRPGRidingPendingIntent& Intent, FCompletion Completion) override;
     virtual void Cancel() override;

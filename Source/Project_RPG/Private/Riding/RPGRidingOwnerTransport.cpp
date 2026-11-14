@@ -34,6 +34,8 @@ bool FRPGHttpRidingOwnerTransport::HasCredential() const
 bool FRPGHttpRidingOwnerTransport::CanSend() const { return !Active && HasCredential(); }
 bool FRPGHttpRidingOwnerTransport::ReadCollection(FGuid Character, FCompletion Completion)
 { return Send(Character, TEXT("characters/") + Character.ToString(EGuidFormats::DigitsWithHyphensLower) + TEXT("/riding"), TEXT("GET"), FString(), MoveTemp(Completion)); }
+bool FRPGHttpRidingOwnerTransport::ReadRegistrationOptions(FGuid Character, FCompletion Completion)
+{ return Send(Character, TEXT("characters/") + Character.ToString(EGuidFormats::DigitsWithHyphensLower) + TEXT("/riding/registration-options"), TEXT("GET"), FString(), MoveTemp(Completion)); }
 bool FRPGHttpRidingOwnerTransport::ReadInventory(FGuid Character, FCompletion Completion)
 { return Send(Character, TEXT("items?ownerType=Character&ownerId=") + Character.ToString(EGuidFormats::DigitsWithHyphensLower)
     + TEXT("&includeTerminal=false&limit=500"), TEXT("GET"), FString(), MoveTemp(Completion), nullptr, 1024 * 1024); }
