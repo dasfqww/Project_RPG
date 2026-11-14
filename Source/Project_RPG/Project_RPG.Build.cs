@@ -23,7 +23,7 @@ public class Project_RPG : ModuleRules
             "OnlineSubsystem", "OnlineSubsystemUtils",
             "CommonUI", "CommonInput", "CommonCoroutine", "CommonUser","UIExtension", "GameFeatures", "CommonGame", "DeveloperSettings", "ModularGameplay" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "CommonLoadingScreen", "ApplicationCore" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "CommonLoadingScreen", "ApplicationCore", "RenderCore" });
 		AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenSSL");
 
 		// Registers this module's native FastArray serializers with Iris.

@@ -8,6 +8,8 @@ class UButton;
 class UTextBlock;
 class UVerticalBox;
 class UEditableTextBox;
+class USizeBox;
+class UBorder;
 
 /** Explicit listing consent and durable recovery. Closing never cancels a submitted request. */
 UCLASS()
@@ -22,8 +24,12 @@ protected:
     virtual TSharedRef<SWidget> RebuildWidget() override;
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+    virtual void NativeTick(const FGeometry&,float) override;
     virtual FReply NativeOnKeyDown(const FGeometry&,const FKeyEvent&) override;
 private:
+    friend struct FRPGTradingWindowTestAccess;
+    UPROPERTY(Transient) TObjectPtr<USizeBox> WindowBounds;
+    UPROPERTY(Transient) TObjectPtr<UBorder> WindowBorder;
     friend struct FRPGAuctionWidgetTestAccess;
     friend struct FRPGAuctionRegistrationWidgetTestAccess;
     void Subscribe();

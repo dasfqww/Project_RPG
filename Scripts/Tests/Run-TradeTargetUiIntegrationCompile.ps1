@@ -35,7 +35,7 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Source archive failed'}
     & tar -xf $archive -C $project
     if($LASTEXITCODE -ne 0){throw 'Source extraction failed'}
-    $files=@('Source/Project_RPG/Public/Trading/RPGTradePreview.h','Source/Project_RPG/Private/Trading/RPGTradePreview.cpp','Source/Project_RPG/Private/Trading/RPGTradeJson.h','Source/Project_RPG/Public/Trading/RPGTradeClient.h','Source/Project_RPG/Private/Trading/RPGTradeClient.cpp','Source/Project_RPG/Public/Trading/RPGTradeTransport.h','Source/Project_RPG/Private/Trading/RPGTradeTransport.cpp','Source/Project_RPG/Public/Trading/RPGTradeCoordinator.h','Source/Project_RPG/Private/Trading/RPGTradeCoordinator.cpp','Source/Project_RPG/Public/Trading/RPGTradeLobbyOwner.h','Source/Project_RPG/Private/Trading/RPGTradeLobbyOwner.cpp','Source/Project_RPG/Public/Trading/RPGTradeSubsystem.h','Source/Project_RPG/Private/Trading/RPGTradeSubsystem.cpp','Source/Project_RPG/Public/UI/Lobby/RPGTradeWidget.h','Source/Project_RPG/Private/UI/Lobby/RPGTradeWidget.cpp','Source/Project_RPG/Public/Trading/RPGTradeOfferDraft.h','Source/Project_RPG/Private/Trading/RPGTradeOfferDraft.cpp')
+    $files=@('Source/Project_RPG/Public/Trading/RPGTradePreview.h','Source/Project_RPG/Private/Trading/RPGTradePreview.cpp','Source/Project_RPG/Private/Trading/RPGTradeJson.h','Source/Project_RPG/Public/Trading/RPGTradeClient.h','Source/Project_RPG/Private/Trading/RPGTradeClient.cpp','Source/Project_RPG/Public/Trading/RPGTradeTransport.h','Source/Project_RPG/Private/Trading/RPGTradeTransport.cpp','Source/Project_RPG/Public/Trading/RPGTradeCoordinator.h','Source/Project_RPG/Private/Trading/RPGTradeCoordinator.cpp','Source/Project_RPG/Public/Trading/RPGTradeLobbyOwner.h','Source/Project_RPG/Private/Trading/RPGTradeLobbyOwner.cpp','Source/Project_RPG/Public/Trading/RPGTradeSubsystem.h','Source/Project_RPG/Private/Trading/RPGTradeSubsystem.cpp','Source/Project_RPG/Public/UI/Lobby/RPGTradeWidget.h','Source/Project_RPG/Public/UI/Lobby/RPGTradingWindowLayout.h','Source/Project_RPG/Private/UI/Lobby/RPGTradingWindowLayout.cpp','Source/Project_RPG/Private/UI/Lobby/RPGTradeWidget.cpp','Source/Project_RPG/Public/Trading/RPGTradeOfferDraft.h','Source/Project_RPG/Private/Trading/RPGTradeOfferDraft.cpp')
     $files+=@('Source/Project_RPG/Public/Trading/RPGTradeTargets.h','Source/Project_RPG/Private/Trading/RPGTradeTargets.cpp')
     foreach($relative in $files) {
         $source=Join-Path $workspace $relative
@@ -48,7 +48,7 @@ try {
         $proof.Inputs+=@{Path=$relative;SHA256=$sha}
     }
     $fileList=Join-Path $temp 'CompileFiles.txt'
-    $compile=@('Source/Project_RPG/Private/Trading/RPGTradeTransport.cpp','Source/Project_RPG/Private/Trading/RPGTradeCoordinator.cpp','Source/Project_RPG/Private/Trading/RPGTradeLobbyOwner.cpp','Source/Project_RPG/Private/UI/Lobby/RPGTradeWidget.cpp')
+    $compile=@('Source/Project_RPG/Private/UI/Lobby/RPGTradingWindowLayout.cpp','Source/Project_RPG/Private/Trading/RPGTradeTransport.cpp','Source/Project_RPG/Private/Trading/RPGTradeCoordinator.cpp','Source/Project_RPG/Private/Trading/RPGTradeLobbyOwner.cpp','Source/Project_RPG/Private/UI/Lobby/RPGTradeWidget.cpp')
     [IO.File]::WriteAllLines($fileList,@($compile|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
     $dotnet=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
     $ubt=Join-Path $EngineRoot 'Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll'

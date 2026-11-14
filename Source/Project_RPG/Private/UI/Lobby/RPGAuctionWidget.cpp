@@ -1,4 +1,5 @@
 #include "UI/Lobby/RPGAuctionWidget.h"
+#include "UI/Lobby/RPGTradingWindowLayout.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -16,17 +17,13 @@ TSharedRef<SWidget> URPGAuctionWidget::RebuildWidget()
     if(!WidgetTree)WidgetTree=NewObject<UWidgetTree>(this,TEXT("AuctionTree"));
     if(!WidgetTree->RootWidget)
     {
-        auto* Canvas=WidgetTree->ConstructWidget<UCanvasPanel>();WidgetTree->RootWidget=Canvas;
-        auto* Shade=WidgetTree->ConstructWidget<UBorder>();Shade->SetBrushColor(FLinearColor(0,0,0,.75f));
-        auto* ShadeSlot=Canvas->AddChildToCanvas(Shade);ShadeSlot->SetAnchors(FAnchors(0,0,1,1));ShadeSlot->SetOffsets(FMargin(0));
-        auto* Size=WidgetTree->ConstructWidget<USizeBox>();Size->SetWidthOverride(680);Size->SetMaxDesiredHeight(720);
-        auto* DialogSlot=Canvas->AddChildToCanvas(Size);DialogSlot->SetAnchors(FAnchors(.5f));DialogSlot->SetAlignment(FVector2D(.5f));DialogSlot->SetAutoSize(true);
-        auto* Panel=WidgetTree->ConstructWidget<UBorder>();Panel->SetPadding(FMargin(24));Panel->SetBrushColor(FLinearColor(.035f,.05f,.07f,1));Size->AddChild(Panel);
-        auto* Scroll=WidgetTree->ConstructWidget<UScrollBox>();Panel->SetContent(Scroll);
-        auto* List=WidgetTree->ConstructWidget<UVerticalBox>();Scroll->AddChild(List);
-        auto Text=[&](const FText& Label){auto* T=WidgetTree->ConstructWidget<UTextBlock>();T->SetText(Label);T->SetAutoWrapText(true);List->AddChild(T);return T;};
-        auto Button=[&](const TCHAR* Name,const FText& Label){auto* B=WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(),FName(Name));auto* T=WidgetTree->ConstructWidget<UTextBlock>();T->SetText(Label);B->SetContent(T);List->AddChild(B);return B;};
-        Text(NSLOCTEXT("RPGAuction","Title","경매 내역 · 처리 결과 확인"));
+        const auto Frame=FRPGTradingWindowLayout::Build(*WidgetTree,TEXT("Auction"),FVector2D(680,720));
+        WindowBounds=Frame.Bounds;WindowBorder=Frame.Border;
+        auto* List=Frame.Header;
+        auto Text=[&](const FText& Label){auto* T=WidgetTree->ConstructWidget<UTextBlock>();T->SetText(Label);FRPGTradingWindowLayout::FormatText(*T);List->AddChild(T);return T;};
+        auto Button=[&](const TCHAR* Name,const FText& Label){auto* B=WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(),FName(Name));auto* T=WidgetTree->ConstructWidget<UTextBlock>();T->SetText(Label);FRPGTradingWindowLayout::FormatText(*T);B->SetContent(T);List->AddChild(B);return B;};
+        FRPGTradingWindowLayout::FormatText(*Text(NSLOCTEXT("RPGAuction","Title","경매 내역 · 처리 결과 확인")),true);
+        List=Frame.Content;
         StatusText=Text(FText::GetEmpty());
         PublicButton=Button(TEXT("AuctionPublic"),NSLOCTEXT("RPGAuction","ReadPublic","판매 중인 물품 불러오기"));
         MineButton=Button(TEXT("AuctionMine"),NSLOCTEXT("RPGAuction","ReadMine","내 판매 내역 불러오기"));
@@ -59,6 +56,7 @@ TSharedRef<SWidget> URPGAuctionWidget::RebuildWidget()
         RetryHelpText=Text(NSLOCTEXT("RPGAuction","RetryHelp","결과가 미확정이면 먼저 처리 결과를 확인하세요. 재시도하면 이전 요청 내용으로 처리될 수 있습니다."));
         StorageButton=Button(TEXT("AuctionStorage"),NSLOCTEXT("RPGAuction","CheckStorage","저장 상태 다시 확인"));
         AssetText=Text(FText::GetEmpty());AssetsButton=Button(TEXT("AuctionAssets"),NSLOCTEXT("RPGAuction","ReloadAssets","최신 물품 · 우편 · 재화 불러오기"));
+        List=Frame.Footer;
         CloseButton=Button(TEXT("AuctionClose"),NSLOCTEXT("RPGAuction","Close","닫기"));
         PublicButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReadPublic);MineButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReadMine);
         NextButton->OnClicked.AddUniqueDynamic(this,&ThisClass::NextPage);DetailButton->OnClicked.AddUniqueDynamic(this,&ThisClass::ReadDetail);
@@ -76,6 +74,8 @@ TSharedRef<SWidget> URPGAuctionWidget::RebuildWidget()
 }
 void URPGAuctionWidget::Subscribe()
 {if(const auto C=Owner.Pin()){C->OnViewChanged.Remove(ChangeHandle);ChangeHandle=C->OnViewChanged.AddUObject(this,&ThisClass::RefreshView);}}
+void URPGAuctionWidget::NativeTick(const FGeometry& Geometry,float DeltaSeconds)
+{Super::NativeTick(Geometry,DeltaSeconds);FRPGTradingWindowLayout::Apply(WindowBounds,WindowBorder,Geometry.GetLocalSize(),FVector2D(680,720));}
 void URPGAuctionWidget::SetOwner(TSharedRef<FRPGAuctionCoordinator> InOwner)
 {
     if(const auto Old=Owner.Pin()){Old->OnViewChanged.Remove(ChangeHandle);Old->DismissReview(DisplayedReview);}

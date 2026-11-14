@@ -1,4 +1,5 @@
 #include "UI/Lobby/RPGTradeWidget.h"
+#include "UI/Lobby/RPGTradingWindowLayout.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -17,25 +18,20 @@ TSharedRef<SWidget> URPGTradeWidget::RebuildWidget()
     if (!WidgetTree) WidgetTree = NewObject<UWidgetTree>(this, TEXT("TradeTree"));
     if (!WidgetTree->RootWidget)
     {
-        auto* Root = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("TradeRoot"));
-        WidgetTree->RootWidget = Root;
-        auto* Shade = WidgetTree->ConstructWidget<UBorder>(); Shade->SetBrushColor(FLinearColor(0, 0, 0, .75f));
-        auto* ShadeSlot = Root->AddChildToCanvas(Shade); ShadeSlot->SetAnchors(FAnchors(0, 0, 1, 1)); ShadeSlot->SetOffsets(FMargin(0));
-        auto* Size = WidgetTree->ConstructWidget<USizeBox>(); Size->SetWidthOverride(640); Size->SetMaxDesiredHeight(680);
-        auto* DialogSlot = Root->AddChildToCanvas(Size); DialogSlot->SetAnchors(FAnchors(.5f)); DialogSlot->SetAlignment(FVector2D(.5f)); DialogSlot->SetAutoSize(true);
-        auto* Panel = WidgetTree->ConstructWidget<UBorder>(); Panel->SetPadding(FMargin(24)); Panel->SetBrushColor(FLinearColor(.035f, .05f, .07f, 1)); Size->AddChild(Panel);
-        auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>(); Panel->SetContent(Scroll);
-        auto* Rows = WidgetTree->ConstructWidget<UVerticalBox>(); Scroll->AddChild(Rows);
+        const auto Frame=FRPGTradingWindowLayout::Build(*WidgetTree,TEXT("Trade"),FVector2D(640,680));
+        WindowBounds=Frame.Bounds;WindowBorder=Frame.Border;
+        auto* Rows=Frame.Header;
         auto Text = [&](const TCHAR* Name, const FText& Label)
-        { auto* T = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), FName(Name)); T->SetText(Label); T->SetAutoWrapText(true); Rows->AddChild(T); return T; };
-        Text(TEXT("TradeTitle"), NSLOCTEXT("RPGTrade", "Title", "거래 내역"));
+        { auto* T = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), FName(Name)); T->SetText(Label); FRPGTradingWindowLayout::FormatText(*T); Rows->AddChild(T); return T; };
+        FRPGTradingWindowLayout::FormatText(*Text(TEXT("TradeTitle"), NSLOCTEXT("RPGTrade", "Title", "거래 내역")),true);
+        Rows=Frame.Content;
         StatusText = Text(TEXT("TradeStatus"), FText::GetEmpty());
         Text(TEXT("TradeMyLabel"), NSLOCTEXT("RPGTrade", "Mine", "내 제안 요약")); MyOfferText = Text(TEXT("TradeMyOffer"), FText::GetEmpty());
         MyDetailsText = Text(TEXT("TradeMyDetails"), FText::GetEmpty());
         Text(TEXT("TradeOtherLabel"), NSLOCTEXT("RPGTrade", "Other", "상대 제안 요약")); OtherOfferText = Text(TEXT("TradeOtherOffer"), FText::GetEmpty());
         OtherDetailsText = Text(TEXT("TradeOtherDetails"), FText::GetEmpty());
         auto Button = [&](const TCHAR* Name, const FText& Label)
-        { auto* B = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), FName(Name)); auto* T = WidgetTree->ConstructWidget<UTextBlock>(); T->SetText(Label); B->SetContent(T); Rows->AddChild(B); return B; };
+        { auto* B = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), FName(Name)); auto* T = WidgetTree->ConstructWidget<UTextBlock>(); T->SetText(Label); FRPGTradingWindowLayout::FormatText(*T); B->SetContent(T); Rows->AddChild(B); return B; };
         RefreshButton = Button(TEXT("TradeRefresh"), NSLOCTEXT("RPGTrade", "Refresh", "새로 고침"));
         RetryButton = Button(TEXT("TradeRetry"), NSLOCTEXT("RPGTrade", "Retry", "처리 결과 다시 확인"));
         AssetStatusText=Text(TEXT("TradeAssetStatus"),FText::GetEmpty());AssetSummaryText=Text(TEXT("TradeAssetSummary"),FText::GetEmpty());
@@ -74,6 +70,7 @@ TSharedRef<SWidget> URPGTradeWidget::RebuildWidget()
         ConfirmButton = Button(TEXT("TradeConfirm"), NSLOCTEXT("RPGTrade", "Confirm", "거래 최종 확정"));
         WithdrawButton = Button(TEXT("TradeWithdraw"), NSLOCTEXT("RPGTrade", "Withdraw", "준비 해제"));
         CancelButton = Button(TEXT("TradeCancel"), NSLOCTEXT("RPGTrade", "Cancel", "거래 취소"));
+        Rows=Frame.Footer;
         CloseButton = Button(TEXT("TradeClose"), NSLOCTEXT("RPGTrade", "Close", "닫기"));
         RefreshButton->OnClicked.AddDynamic(this, &ThisClass::RefreshTrade); RetryButton->OnClicked.AddDynamic(this, &ThisClass::RetryTrade);
         AcceptButton->OnClicked.AddDynamic(this, &ThisClass::AcceptTrade); CancelButton->OnClicked.AddDynamic(this, &ThisClass::CancelTrade);
@@ -101,6 +98,8 @@ void URPGTradeWidget::Subscribe()
     if (auto Owner = TradeOwner.Pin()) { Owner->OnChanged.Remove(ChangeHandle); ChangeHandle = Owner->OnChanged.AddUObject(this, &ThisClass::RefreshView); }
 }
 void URPGTradeWidget::NativeConstruct() { Super::NativeConstruct(); Subscribe(); RefreshView(); if (CloseButton && GetOwningPlayer()) CloseButton->SetKeyboardFocus(); }
+void URPGTradeWidget::NativeTick(const FGeometry& Geometry,float DeltaSeconds)
+{Super::NativeTick(Geometry,DeltaSeconds);FRPGTradingWindowLayout::Apply(WindowBounds,WindowBorder,Geometry.GetLocalSize(),FVector2D(640,680));}
 void URPGTradeWidget::NativeDestruct()
 {
     if (auto Owner = TradeOwner.Pin()) Owner->OnChanged.Remove(ChangeHandle);

@@ -10,6 +10,8 @@ class UCheckBox;
 class UComboBoxString;
 class UEditableTextBox;
 class UVerticalBox;
+class USizeBox;
+class UBorder;
 
 /** Explicit discovery/invitation and exact-offer review. The local owner outlives the view. */
 UCLASS()
@@ -24,8 +26,12 @@ protected:
     virtual TSharedRef<SWidget> RebuildWidget() override;
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+    virtual void NativeTick(const FGeometry&,float) override;
     virtual FReply NativeOnKeyDown(const FGeometry&, const FKeyEvent&) override;
 private:
+    friend struct FRPGTradingWindowTestAccess;
+    UPROPERTY(Transient) TObjectPtr<USizeBox> WindowBounds;
+    UPROPERTY(Transient) TObjectPtr<UBorder> WindowBorder;
     friend struct FRPGTradeWidgetTestAccess;
     friend struct FRPGTradeOfferWidgetAccess;
     void RefreshView();
