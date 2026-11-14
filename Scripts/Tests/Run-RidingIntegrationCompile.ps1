@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [switch]$IncludeCollection, [switch]$IncludeCollectionScreen, [switch]$IncludeIntent, [switch]$IncludeCommand, [switch]$IncludeLobbyCommand, [switch]$IncludeFreshAssets, [switch]$IncludeRegistrationClient, [string]$InputRoot, [switch]$EmotePresentationOnly, [ValidateRange(1,4)][int]$MaxParallelActions=1)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [switch]$IncludeCollection, [switch]$IncludeCollectionScreen, [switch]$IncludeIntent, [switch]$IncludeCommand, [switch]$IncludeLobbyCommand, [switch]$IncludeFreshAssets, [switch]$IncludeRegistrationClient, [switch]$IncludeRegistrationUI, [string]$InputRoot, [switch]$EmotePresentationOnly, [ValidateRange(1,4)][int]$MaxParallelActions=1)
 $ErrorActionPreference='Stop'
 if ($IncludeFreshAssets) { $IncludeLobbyCommand=$true }
 if ($IncludeLobbyCommand) { $IncludeCommand=$true }
@@ -50,6 +50,7 @@ if ($IncludeCommand) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/Ridin
 if ($IncludeLobbyCommand) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingLobbyCommand-20261114/Integration-'+$run); $reservation='riding-lobby-command-owner-20261114' }
 if ($IncludeFreshAssets) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingFreshAssets-20261114/Integration-'+$run); $reservation='riding-fresh-assets-20261114' }
 if ($IncludeRegistrationClient) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingRegistrationClient-20261114/Integration-'+$run); $reservation='riding-registration-client-20261114' }
+if ($IncludeRegistrationUI) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingRegistrationUI-20261114/Integration-'+$run); $reservation='riding-registration-ui-20261114' }
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Save-Proof { [IO.File]::WriteAllText((Join-Path $proofRoot 'Result.json'),($proof|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false)) }
 function Assert-Reservation {
@@ -144,6 +145,12 @@ try {
             'Source/Project_RPG/Private/Tests/RPGRidingRegistrationTests.cpp')
         $proof.SourceRoot=$sourceRoot
     }
+    if ($IncludeRegistrationUI) {
+        $files=@('Source/Project_RPG/Public/Riding/RPGRidingRegistrationClient.h','Source/Project_RPG/Private/Riding/RPGRidingRegistrationClient.cpp',
+            'Source/Project_RPG/Public/UI/Riding/RPGRidingCollectionWidget.h','Source/Project_RPG/Private/UI/Riding/RPGRidingCollectionWidget.cpp',
+            'Source/Project_RPG/Public/Riding/RPGRidingCollectionSubsystem.h','Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp',
+            'Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyMenu.cpp','Source/Project_RPG/Private/Tests/RPGRidingRegistrationUiTests.cpp')
+    }
     foreach($relative in @($files|Select-Object -Unique)) {
         $source=Join-Path $sourceRoot $relative
         $destination=Join-Path $project $relative
@@ -187,6 +194,11 @@ try {
         $compile=@('Source/Project_RPG/Private/Riding/RPGRidingRegistrationOptions.cpp','Source/Project_RPG/Private/Riding/RPGRidingRegistrationReader.cpp',
             'Source/Project_RPG/Private/Riding/RPGRidingOwnerTransport.cpp','Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp',
             'Source/Project_RPG/Private/Tests/RPGRidingRegistrationTests.cpp')
+    }
+    if ($IncludeRegistrationUI) {
+        $compile=@('Source/Project_RPG/Private/Riding/RPGRidingRegistrationClient.cpp','Source/Project_RPG/Private/UI/Riding/RPGRidingCollectionWidget.cpp',
+            'Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp','Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyMenu.cpp',
+            'Source/Project_RPG/Private/Tests/RPGRidingRegistrationUiTests.cpp')
     }
     $proof.CompileFiles=@($compile|Select-Object -Unique)
     [IO.File]::WriteAllLines($fileList,@($compile|Select-Object -Unique|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))

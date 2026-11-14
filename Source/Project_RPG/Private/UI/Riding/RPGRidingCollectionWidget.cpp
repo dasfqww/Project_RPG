@@ -22,7 +22,8 @@ TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
         auto* Frame = WidgetTree->ConstructWidget<UBorder>(); Frame->SetBrushColor(FLinearColor(.025f, .035f, .045f, .98f)); Frame->SetPadding(FMargin(18));
         auto* CanvasSlot = Root->AddChildToCanvas(Frame); CanvasSlot->SetAnchors(FAnchors(.5f)); CanvasSlot->SetAlignment(FVector2D(.5f)); CanvasSlot->SetAutoSize(true);
         auto* Size = WidgetTree->ConstructWidget<USizeBox>(); Size->SetWidthOverride(700); Size->SetHeightOverride(520); Frame->SetContent(Size);
-        auto* List = WidgetTree->ConstructWidget<UVerticalBox>(); Size->SetContent(List);
+        auto* OuterScroll = WidgetTree->ConstructWidget<UScrollBox>(); Size->SetContent(OuterScroll);
+        auto* List = WidgetTree->ConstructWidget<UVerticalBox>(); OuterScroll->AddChild(List);
         auto Text = [&](const FText& Value) { auto* W = WidgetTree->ConstructWidget<UTextBlock>(); W->SetText(Value); W->SetAutoWrapText(true); List->AddChild(W); return W; };
         auto Button = [&](const TCHAR* Name, const FText& Value) { auto* W = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), FName(Name)); auto* Label = WidgetTree->ConstructWidget<UTextBlock>(); Label->SetText(Value); W->SetContent(Label); List->AddChild(W); return W; };
         Text(NSLOCTEXT("RidingCollection", "Title", "탈것 보관함"));
@@ -32,13 +33,36 @@ TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
         FavoritesOnly = WidgetTree->ConstructWidget<UCheckBox>(); auto* Label = WidgetTree->ConstructWidget<UTextBlock>();
         Label->SetText(NSLOCTEXT("RidingCollection", "FavoritesOnly", "즐겨찾기만 보기")); FavoritesOnly->SetContent(Label); List->AddChild(FavoritesOnly);
         Empty = Text(FText::GetEmpty());
-        auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>(); List->AddChildToVerticalBox(Scroll)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        auto* MountSize = WidgetTree->ConstructWidget<USizeBox>(); MountSize->SetHeightOverride(140); List->AddChild(MountSize);
+        auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>(); MountSize->SetContent(Scroll);
         Rows = WidgetTree->ConstructWidget<UVerticalBox>(); Scroll->AddChild(Rows);
+        auto* MainList = List; RegistrationGroup = WidgetTree->ConstructWidget<UVerticalBox>(); List->AddChild(RegistrationGroup); List = RegistrationGroup;
+        Text(NSLOCTEXT("RidingRegistration", "Title", "가방 물품으로 탈것 등록")); RegistrationStatus = Text(FText::GetEmpty());
+        RegistrationReload = Button(TEXT("RidingRegistrationReload"), NSLOCTEXT("RidingRegistration", "Reload", "등록할 최신 물품 불러오기"));
+        RegistrationRows = WidgetTree->ConstructWidget<UComboBoxString>(); List->AddChild(RegistrationRows);
+        RegistrationReviewButton = Button(TEXT("RidingRegistrationReview"), NSLOCTEXT("RidingRegistration", "ReviewButton", "등록 내용 확인"));
+        RegistrationConsent = Text(FText::GetEmpty());
+        RegistrationConfirm = Button(TEXT("RidingRegistrationConfirm"), NSLOCTEXT("RidingRegistration", "ConfirmButton", "물품 1개를 소비하고 등록"));
+        RegistrationDismiss = Button(TEXT("RidingRegistrationDismiss"), NSLOCTEXT("RidingRegistration", "Dismiss", "등록 확인 취소"));
+        RegistrationRecover = Button(TEXT("RidingRegistrationRecover"), NSLOCTEXT("RidingRegistration", "Recover", "원래 요청의 처리 결과 확인"));
+        RegistrationRetry = Button(TEXT("RidingRegistrationRetry"), NSLOCTEXT("RidingRegistration", "Retry", "같은 요청 다시 보내기"));
+        RegistrationStorage = Button(TEXT("RidingRegistrationStorage"), NSLOCTEXT("RidingRegistration", "StorageButton", "원래 요청의 저장 상태 재확인"));
+        RegistrationAssets = Button(TEXT("RidingRegistrationAssets"), NSLOCTEXT("RidingRegistration", "RefreshAssets", "최신 보유·가방 정보 다시 확인"));
+        RegistrationReload->OnClicked.AddUniqueDynamic(this, &ThisClass::ReloadRegistration);
+        RegistrationRows->OnSelectionChanged.AddUniqueDynamic(this, &ThisClass::RegistrationSelection);
+        RegistrationReviewButton->OnClicked.AddUniqueDynamic(this, &ThisClass::ReviewRegistration);
+        RegistrationConfirm->OnClicked.AddUniqueDynamic(this, &ThisClass::ConfirmRegistration);
+        RegistrationDismiss->OnClicked.AddUniqueDynamic(this, &ThisClass::DismissRegistration);
+        RegistrationRecover->OnClicked.AddUniqueDynamic(this, &ThisClass::RecoverRegistration);
+        RegistrationRetry->OnClicked.AddUniqueDynamic(this, &ThisClass::RetryRegistration);
+        RegistrationStorage->OnClicked.AddUniqueDynamic(this, &ThisClass::StorageRegistration);
+        RegistrationAssets->OnClicked.AddUniqueDynamic(this, &ThisClass::RefreshRegistrationAssets);
+        List = MainList;
         CloseButton = Button(TEXT("RidingCollectionClose"), NSLOCTEXT("RidingCollection", "Close", "닫기"));
         ReloadButton->OnClicked.AddUniqueDynamic(this, &ThisClass::Reload); CloseButton->OnClicked.AddUniqueDynamic(this, &ThisClass::CloseScreen);
         Search->OnTextChanged.AddUniqueDynamic(this, &ThisClass::SearchChanged); FavoritesOnly->OnCheckStateChanged.AddUniqueDynamic(this, &ThisClass::FavoritesChanged);
     }
-    SetIsFocusable(true); RowsKey.Reset(); RefreshView(); return Super::RebuildWidget();
+    SetIsFocusable(true); RowsKey.Reset(); RefreshView(); RefreshRegistration(); return Super::RebuildWidget();
 }
 void URPGRidingCollectionWidget::SetReadOwner(TSharedRef<FRPGRidingCollectionReader> InReader, FPresenter InPresenter)
 {
@@ -49,11 +73,13 @@ void URPGRidingCollectionWidget::Subscribe()
 {
     if (bClosing) return;
     if (const auto Owner = Reader.Pin()) { Owner->OnChanged.Remove(Changed); Changed = Owner->OnChanged.AddUObject(this, &ThisClass::RefreshView); }
+    if (const auto Owner = Registration.Pin()) { Owner->OnChanged.Remove(RegistrationChanged); RegistrationChanged = Owner->OnChanged.AddUObject(this, &ThisClass::RefreshRegistration); }
     if (!TickHandle.IsValid()) TickHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &ThisClass::TickView), .25f);
 }
 void URPGRidingCollectionWidget::Detach()
 {
     if (const auto Owner = Reader.Pin()) Owner->OnChanged.Remove(Changed); Changed.Reset();
+    if (const auto Owner = Registration.Pin()) { Owner->OnChanged.Remove(RegistrationChanged); Owner->Dismiss(); } RegistrationChanged.Reset();
     FTSTicker::RemoveTicker(TickHandle); TickHandle.Reset();
 }
 void URPGRidingCollectionWidget::NativeConstruct()
@@ -62,7 +88,7 @@ void URPGRidingCollectionWidget::NativeConstruct()
     if (CloseButton && GetOwningPlayer()) CloseButton->SetKeyboardFocus();
 }
 void URPGRidingCollectionWidget::NativeDestruct() { Detach(); Super::NativeDestruct(); }
-bool URPGRidingCollectionWidget::TickView(float) { if (bClosing) return false; RefreshView(); return !bClosing; }
+bool URPGRidingCollectionWidget::TickView(float) { if (bClosing) return false; RefreshView(); RefreshRegistration(); return !bClosing; }
 void URPGRidingCollectionWidget::Reload() { if (!bClosing) if (const auto Owner = Reader.Pin()) Owner->Read(); RefreshView(); }
 void URPGRidingCollectionWidget::SearchChanged(const FText&) { RowsKey.Reset(); RefreshView(); }
 void URPGRidingCollectionWidget::FavoritesChanged(bool) { RowsKey.Reset(); RefreshView(); }
@@ -120,7 +146,51 @@ void URPGRidingCollectionWidget::CloseScreen()
     if (bClosing) return; bClosing = true; Detach();
     if (Rows) Rows->ClearChildren(); if (Settings) Settings->SetText(FText::GetEmpty());
     Reader.Reset(); Presenter = {}; RowsKey.Reset(); SetVisibility(ESlateVisibility::Collapsed);
+    Registration.Reset(); RegistrationIds.Reset(); RegistrationSnapshot.Invalidate(); RegistrationReview.Invalidate(); SelectedRegistration.Invalidate();
     if (IsInViewport() || GetParent()) RemoveFromParent(); OnClosed.Broadcast();
 }
 FReply URPGRidingCollectionWidget::NativeOnKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)
 { if (Event.GetKey() == EKeys::Escape) { CloseScreen(); return FReply::Handled(); } return Super::NativeOnKeyDown(Geometry, Event); }
+
+void URPGRidingCollectionWidget::SetRegistrationOwner(TSharedRef<FRPGRidingRegistrationClient> InOwner)
+{
+    if (const auto Old = Registration.Pin()) { Old->OnChanged.Remove(RegistrationChanged); Old->Dismiss(); }
+    Registration = InOwner; RegistrationChanged = InOwner->OnChanged.AddUObject(this, &ThisClass::RefreshRegistration);
+    RegistrationSnapshot.Invalidate(); SelectedRegistration.Invalidate(); RefreshRegistration();
+}
+void URPGRidingCollectionWidget::RefreshRegistration()
+{
+    if (bClosing || bRegistrationUpdating || !RegistrationGroup) return; TGuardValue<bool> Guard(bRegistrationUpdating, true);
+    const auto Owner = Registration.Pin(); const auto V = Owner ? Owner->GetView() : FRPGRidingRegistrationView{};
+    RegistrationGroup->SetVisibility(V.bAvailable ? ESlateVisibility::Visible : ESlateVisibility::Collapsed); if (!V.bAvailable) return;
+    RegistrationStatus->SetText(V.Status); RegistrationReload->SetIsEnabled(V.bCanReload);
+    if (V.Snapshot != RegistrationSnapshot) { RegistrationSnapshot = V.Snapshot; SelectedRegistration.Invalidate(); if (Owner) Owner->Dismiss(); }
+    bool Rebuild = RegistrationIds.Num() != V.Rows.Num();
+    if (!Rebuild) for (int32 I = 0; I < V.Rows.Num(); ++I) if (RegistrationIds[I] != V.Rows[I].Item || RegistrationRows->GetOptionAtIndex(I) != V.Rows[I].Label.ToString()) { Rebuild = true; break; }
+    if (Rebuild)
+    {
+        RegistrationIds.Reset(); RegistrationRows->ClearOptions();
+        for (const auto& Row : V.Rows) { RegistrationIds.Add(Row.Item); RegistrationRows->AddOption(Row.Label.ToString()); }
+        const int32 Index = RegistrationIds.IndexOfByKey(SelectedRegistration); if (Index != INDEX_NONE) RegistrationRows->SetSelectedIndex(Index);
+    }
+    RegistrationRows->SetIsEnabled(V.bCanReview);
+    const auto* Selected = V.Rows.FindByPredicate([&](const auto& Row) { return Row.Item == SelectedRegistration && Row.bNamed; });
+    RegistrationReviewButton->SetIsEnabled(V.bCanReview && Selected);
+    RegistrationReview = V.Review; RegistrationConsent->SetText(V.ReviewText);
+    RegistrationConfirm->SetIsEnabled(V.bCanConfirm); RegistrationConfirm->SetVisibility(V.Review.IsValid() ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    RegistrationDismiss->SetVisibility(V.Review.IsValid() ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    RegistrationRecover->SetVisibility(V.bCanRecover ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    RegistrationRetry->SetVisibility(V.bCanRetry ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    RegistrationStorage->SetVisibility(V.bCanStorage ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    RegistrationAssets->SetVisibility(V.bCanRefreshAssets ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+}
+void URPGRidingCollectionWidget::RegistrationSelection(FString, ESelectInfo::Type)
+{ if (bClosing || bRegistrationUpdating) return; const int32 I = RegistrationRows->GetSelectedIndex(); SelectedRegistration = RegistrationIds.IsValidIndex(I) ? RegistrationIds[I] : FGuid(); DismissRegistration(); }
+void URPGRidingCollectionWidget::ReloadRegistration() { if (const auto C = Registration.Pin(); C && !bClosing) C->Reload(); RefreshRegistration(); }
+void URPGRidingCollectionWidget::ReviewRegistration() { if (const auto C = Registration.Pin(); C && !bClosing) C->Review(RegistrationSnapshot, SelectedRegistration); RefreshRegistration(); }
+void URPGRidingCollectionWidget::ConfirmRegistration() { if (const auto C = Registration.Pin(); C && !bClosing) C->Confirm(RegistrationReview); RefreshRegistration(); }
+void URPGRidingCollectionWidget::DismissRegistration() { if (const auto C = Registration.Pin()) C->Dismiss(); RefreshRegistration(); }
+void URPGRidingCollectionWidget::RecoverRegistration() { if (const auto C = Registration.Pin(); C && !bClosing) C->Recover(); RefreshRegistration(); }
+void URPGRidingCollectionWidget::RetryRegistration() { if (const auto C = Registration.Pin(); C && !bClosing) C->Retry(); RefreshRegistration(); }
+void URPGRidingCollectionWidget::StorageRegistration() { if (const auto C = Registration.Pin(); C && !bClosing) C->RetryStorage(); RefreshRegistration(); }
+void URPGRidingCollectionWidget::RefreshRegistrationAssets() { if (const auto C = Registration.Pin(); C && !bClosing) C->RefreshAssets(); RefreshRegistration(); }

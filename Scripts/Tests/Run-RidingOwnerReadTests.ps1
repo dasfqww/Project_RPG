@@ -5,6 +5,7 @@ $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if ($Screen -and $Registration) { throw 'Choose one screen or registration mode' }
 if ($InputRoot -and !$Registration) { throw 'InputRoot requires Registration mode' }
 $sourceRoot = if ($InputRoot) { [IO.Path]::GetFullPath($InputRoot) } else { $workspace }
+if ($Screen) { & (Join-Path $PSScriptRoot 'Run-RidingRegistrationUiTests.ps1') -EngineRoot $EngineRoot; return }
 $id = [Guid]::NewGuid().ToString('N')
 $proofRoot = Join-Path $workspace ('Saved/BuildChecks/RidingOwnerRead-20261114/' + $id)
 $reservation = 'riding-owner-read-20261114'

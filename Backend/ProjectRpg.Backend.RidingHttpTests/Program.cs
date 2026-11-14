@@ -262,6 +262,7 @@ static partial class Program
         if (args.Length == 2 && args[0] == "--command-host") return await CommandHost(args[1]);
         if (args.Length == 2 && args[0] == "--owner-read-host") return await OwnerReadHost(args[1]);
         if (args.Length == 2 && args[0] == "--registration-read-host") return await RegistrationReadHost(args[1]);
+        if (args.Length == 2 && args[0] == "--registration-ui-host") return await RegistrationUiHost(args[1]);
         try {
             if (args.Length == 1 && args[0] is "--registration-options" or "--registration-options-postgres")
             {

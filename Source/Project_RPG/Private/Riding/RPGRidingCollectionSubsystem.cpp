@@ -1,5 +1,6 @@
 #include "Riding/RPGRidingCollectionSubsystem.h"
 #include "Riding/RPGMountDefinition.h"
+#include "Item/Definition/RPGItemDefinition.h"
 #include "Engine/AssetManager.h"
 #include "Engine/StreamableManager.h"
 #include "Engine/GameInstance.h"
@@ -64,6 +65,26 @@ TSharedPtr<FRPGRidingRegistrationReader> URPGRidingCollectionSubsystem::GetRegis
     }
     RegistrationReader->RefreshContext(); return RegistrationReader;
 }
+TSharedPtr<FRPGRidingRegistrationClient> URPGRidingCollectionSubsystem::GetRegistrationClient()
+{
+    const auto Read = GetReader(); const auto Metadata = GetRegistrationReader(); const auto Write = GetCommands();
+    if (!Read || !Metadata || !Write) return nullptr;
+    if (!RegistrationClient)
+    {
+        auto* Web = GetLocalPlayer()->GetGameInstance()->GetSubsystem<UHttpWebManager>(); const TWeakObjectPtr<ThisClass> Weak(this);
+        RegistrationClient = MakeShared<FRPGRidingRegistrationClient>(Read.ToSharedRef(), Metadata.ToSharedRef(), Web->CreatePlayerRidingOwnerTransport(), Write.ToSharedRef(),
+            [Weak] { const auto* S = Weak.Get(); return S ? S->ReadContext() : FRPGRidingCollectionContext{}; },
+            [](const FRPGItemRecord& R, const FRPGRidingRegistrationOption& O, FText& Item, FText& Mount)
+            {
+                if (!UAssetManager::IsInitialized()) return false; auto& A = UAssetManager::Get();
+                const auto* I = Cast<URPGItemDefinition>(A.GetPrimaryAssetObject(R.GetDefinitionId()));
+                const auto* M = Cast<URPGMountDefinition>(A.GetPrimaryAssetObject(FPrimaryAssetId(URPGMountDefinition::PrimaryAssetType, FName(*O.MountId))));
+                if (!I || !M || I->GetDefinitionVersion() != R.GetDefinitionVersion() || M->MountId != O.MountId || M->DefinitionVersion != O.MountDefinitionVersion) return false;
+                Item = I->DisplayName; Mount = M->DisplayName; return !Item.IsEmpty() && !Mount.IsEmpty();
+            }, [Weak] { auto* S = Weak.Get(); return S && S->RefreshFreshAssets(); });
+    }
+    RegistrationClient->RefreshContext(); return RegistrationClient;
+}
 FRPGRidingCommandContext URPGRidingCollectionSubsystem::ReadCommandContext() const
 {
     FRPGRidingCommandContext C;
@@ -124,6 +145,7 @@ bool URPGRidingCollectionSubsystem::RefreshFreshAssets()
 { const auto Fresh = GetFreshReads(); return Fresh && Fresh->Refresh(); }
 void URPGRidingCollectionSubsystem::ReleaseReader()
 {
+    if (RegistrationClient) RegistrationClient->Shutdown(); RegistrationClient.Reset();
     if (Reader) Reader->Shutdown(); Reader.Reset();
     if (RegistrationReader) RegistrationReader->Shutdown(); RegistrationReader.Reset();
     if (PresentationLoad) PresentationLoad->CancelHandle(); PresentationLoad.Reset(); PresentationKey.Reset();
@@ -135,14 +157,18 @@ bool URPGRidingCollectionSubsystem::TickCollection(float)
         Fresh->Refresh(); // One initial GET sequence after a verified receipt; failures require explicit refresh.
     if (Reader) { Reader->RefreshContext(); RefreshPresentationAssets(); }
     if (RegistrationReader) RegistrationReader->RefreshContext();
+    if (RegistrationClient) RegistrationClient->RefreshContext();
     return true; // Never sends a mutation or retries a failed read here.
 }
 void URPGRidingCollectionSubsystem::RefreshPresentationAssets()
 {
     const auto Context = Reader ? Reader->GetContext() : FRPGRidingCollectionContext{};
     const auto* C = Reader ? Reader->GetCollection() : nullptr;
+    const auto* D = RegistrationReader ? RegistrationReader->GetOptions() : nullptr;
     FString Key = C ? Context.Endpoint + TEXT("|") + Context.Account + TEXT("|") + C->CharacterId.ToString() + TEXT("/") + LexToString(C->RosterRevision) : FString();
     if (C) for (const auto& Mount : C->Mounts) Key += TEXT("/") + Mount.MountId;
+    if (D) for (const auto& O : D->Options) Key += TEXT("/") + O.MountId + TEXT(":") + LexToString(O.MountDefinitionVersion)
+        + TEXT("/") + O.DefinitionType + TEXT(":") + O.DefinitionName + TEXT(":") + LexToString(O.DefinitionVersion);
     if (Key == PresentationKey) return;
     PresentationKey = Key;
     if (PresentationLoad) PresentationLoad->CancelHandle(); PresentationLoad.Reset();
@@ -152,6 +178,12 @@ void URPGRidingCollectionSubsystem::RefreshPresentationAssets()
     {
         const auto Path = Assets.GetPrimaryAssetPath(FPrimaryAssetId(URPGMountDefinition::PrimaryAssetType, FName(*Mount.MountId)));
         if (Path.IsValid()) Paths.AddUnique(Path);
+    }
+    if (D) for (const auto& O : D->Options)
+    {
+        const auto Mount = Assets.GetPrimaryAssetPath(FPrimaryAssetId(URPGMountDefinition::PrimaryAssetType, FName(*O.MountId)));
+        const auto Item = Assets.GetPrimaryAssetPath(FPrimaryAssetId(FPrimaryAssetType(FName(*O.DefinitionType)), FName(*O.DefinitionName)));
+        if (Mount.IsValid()) Paths.AddUnique(Mount); if (Item.IsValid()) Paths.AddUnique(Item);
     }
     // Load metadata only; mesh, animation and icon fields are soft references. Release only this handle.
     if (!Paths.IsEmpty()) PresentationLoad = Assets.GetStreamableManager().RequestAsyncLoad(Paths);
