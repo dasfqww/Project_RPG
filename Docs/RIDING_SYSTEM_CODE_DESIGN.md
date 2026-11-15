@@ -979,3 +979,35 @@ GET riding은 같은 잠금 안의 보유와 현재 설정을 반환하며 prefe
 보유 대상/없음·세 호출 모드·지정 미선택·빈 무작위·전체 해제·32/33 즐겨찾기 경계·중복 확인/원래 저널·닫기/복원·현재 이름/관측 만료·문맥 변경/재조회/비활성/Retry-After를 검사했다. Backend Release0오류/0경고·최종 전체 UHT/실제 **CPP7 컴파일0**·입력/native 러너 SHA·PS3문법을 확인했다. 초기 전체 CPP 성공 후 이름 adapter가 해금 당시 버전 동일성을 요구하지 않도록 보완하고 최종 CPP7을 다시 통과했다. 이 adapter는 최소 native 모듈 입력에 없으며 native23의 고정 입력은 바뀌지 않았다. 실제 LocalPlayer/AssetManager metadata/Equipment sink를 결합한 실행·정상 게임 DLL 재링크·GPU/물리 입력/PG/Steam과 콘텐츠/운영 활성화는 별도다. 적격 문맥/이름/마지막 projection sink는 모의이며 제품 feature flag·원본 콘텐츠/DB는 변경0이다.
 
 다른 담당의 `solo-raid-workbench-20261115` 원본 입력 고정 해제·`12becc78=origin/main`과 담당 경로의 변경 없음을 확인한 뒤 원본14개 파일을 같은 raw SHA로 반영했다. 다른 담당자의 `RPGRidingRegistrationUiTests.cpp` 로컬 이름 보정은 덮어쓰거나 스테이징하지 않았으며 회귀는 게시 사본을 사용했다. 자기 native1/전체 Source2/반영 전 Implementation 사본을 합쳐 **3,308,344,250 bytes(3.081GiB)** 폐기했고 Temp/PID/정리 예외0이다. 작은 결과/실행 명령·소스/모듈 hash는 `Saved/BuildChecks/RidingPreferencesUI-20261115/Completion.json`에 보존했으며 폐기한 DLL hash는 당시 근거다. 원본 정상 Binaries/Intermediate/DDC·사용자 저널·타 담당 변경은 보존했다.
+
+## 49. M4a UE 저작 카탈로그 내보내기 — 2026-11-16
+
+담당 `riding-manifest-export-20261116`. [Editor exporter](../Scripts/Editor/ExportRidingCatalog.py)가 `URPGRidingPolicy`·`URPGMountDefinition`·기존 `URPGItemDefinition`을 읽고 [순수 wire compiler](../Scripts/Editor/RidingCatalogManifest.py)로 서버 후보를 만든다. 기존 `RidingOptions`/`RidingCatalog`를 사용하며 별도 게임 카탈로그나 해금 경로를 만들지 않는다.
+
+authoring spec은 아래 형식이다. 경로와 ID는 예시이며 해당 에셋이 저장소에 생성됐음을 뜻하지 않는다. 등록은 fragment를 새로 만들지 않고 실제 아이템 PrimaryAsset identity/type/name/version·스택 한도와 명시 mountId를 연결한다.
+
+```json
+{
+  "format": "ProjectRPG.Riding.Authoring/v1",
+  "policy": "/Game/Blueprints/Riding/DA_RidingPolicy",
+  "mounts": [
+    { "asset": "/Game/Blueprints/Riding/DA_Mount_Horse", "enabled": true },
+    { "asset": "/Game/Blueprints/Riding/DA_Mount_Wolf", "enabled": true }
+  ],
+  "registrationItems": [
+    { "asset": "/Game/Blueprints/Riding/DA_Item_Horse", "mountId": "horse" }
+  ]
+}
+```
+
+1. 현재 게임 모듈을 로드한 UE Editor에서 에셋/외형 참조와 PrimaryAsset 스캔을 준비하고 저장한다. 실행은 PIE 밖에서 한다. spec과 새 export 디렉터리의 절대 경로를 각각 `RPG_RIDING_AUTHORING_SPEC`/`RPG_RIDING_EXPORT_DIR`로 지정한 환경에서 `Scripts/Editor/ExportRidingCatalog.py`를 실행한다.
+2. exporter는 알 수 없는/중복 JSON 필드·중복 에셋·저장 안 된/dirty 에셋·잘못된 클래스/identity를 거절한다. mount/정책 native DataValidation의 Valid와 오류/경고0을 요구하고 mount의 참조/socket 해석은 기존 native validator가 수행한다. 아이템 validator는 성공해도 상위 NotValidated를 유지할 수 있으므로 Invalid/오류/경고를 거절하고 정확한 상태를 출처에 기록한다. NotValidated를 Valid로 바꿔 보고하지 않는다. 소비 효과/장착 fragment와 등록의 혼합도 거절한다.
+3. 정책의10개 수치를 float32로 정규화하고 현행 v1 경계·기간/쿨타임 관계, 탈것1~512·등록0~512·tag64/정의·안정 ID·정의 triple/스택 한도를 검사한다. ordinal 정렬과 float32 bit의8자리 소문자 hex를 사용하며 UTF-8/LF canonical SHA256이 backend와 같아야 한다. 외형 경로/표시 이름은 gameplay hash에 포함하지 않는다.
+4. 계산 결과가 저장된 `Values.GameplayHash`와 다르면 예상 hash를 안내하고 실패한다. 저작자가 정책 hash를 명시 저장한 뒤 다시 실행한다. exporter는 속성/hash를 설정하거나 에셋을 저장하지 않으며 읽는 동안 파일 SHA·dirty 상태·spec 변경도 검사한다.
+5. 성공하면 `Riding.Candidate.json`(`Riding.Enabled=false`), `Gameplay.canonical.txt`, `Sources.json`(입력 에셋 SHA·실제 validation 결과)을 기록한다. 같은 내용 재실행은 허용하지만 다른 기존 출력은 덮어쓰지 않고 redirect된 출력 경로를 거절한다. config 적용/운영 활성화·물품 지급은 실행하지 않는다.
+
+실제 정책/탈것/등록 에셋의 저작·기존 session/component 설정 연결과 cook 포함, 두 모델의 애니메이션/라이더 위치·게임 입장/Ready/전체 LocalPlayer 통합 실행은 후속이다. 현재 exporter의 UE reflection adapter 검사는 모의 경계이며 실제 에셋의 positive Editor 실행을 대신하지 않는다. 데이터 검증이 통과해도 skeleton/AnimLayer 호환성 전체나 게임 준비 완료를 보증하지 않는다.
+
+[Run-RidingManifestExportTests.ps1](../Scripts/Tests/Run-RidingManifestExportTests.ps1)은 게시 `749401a1` Backend와 본인5입력의 고정 사본을 사용한다. 최종 Python **14개**와 생산 config binder/카탈로그·Memory HTTP **20개/332 assertion**(신규5/48·기존 등록7/156·설정8/128), 합계 **34개**가 통과했다. 최소/최대 정책·int32 경계·512개 탈것/등록·정의 버전1/2/10 정렬·float32 bit·비영문 culture의 Python/C# canonical bytes/hash 일치, private fixture에서만 명시 활성화한 실제 등록1개 소비·보유 조회/등록 옵션/hash·설정 저장과 원본 비활성 구성의 등록 차단을 확인했다. Release **0오류/0경고**·고정 소스/러너 SHA·PS 문법을 확인했다. adapter의 모의 검사는 dirty/미저장·클래스/identity·native 오류/경고·혼합 fragment·tag·hash/파일 변경·출력 보존을 검증한다. 실제 UE Editor 에셋 실행·전체 게임 빌드·PG/Steam/cook은 수행하지 않았다.
+
+자기3회 사설 Backend/SDK/fixture/bin/obj 합계 **130,522,126 bytes(124.476MiB)**를 폐기했고 Temp/PID/정리 예외0이다. 중간 정렬 fixture 확장 때 단일 모의 아이템의 예상 hash를 기존3개 매핑으로 계산한 검사 실패는 fixture를 일치시킨 뒤 최종34개로 재검증했다. 작은 결과/명령·소스/모듈 hash는 로컬 `Saved/BuildChecks/RidingManifestExport-20261116/Completion.json`에 남기며 폐기한 바이너리 hash는 당시 근거다. 원본 Source/Config/Plugins·Binaries/Intermediate/DDC·콘텐츠/서버 설정/사용자 데이터와 다른 담당 변경은 보존했다.

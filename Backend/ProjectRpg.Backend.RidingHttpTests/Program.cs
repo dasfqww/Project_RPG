@@ -265,6 +265,12 @@ static partial class Program
         if (args.Length == 2 && args[0] == "--registration-ui-host") return await RegistrationUiHost(args[1]);
         if (args.Length == 2 && args[0] == "--preferences-ui-host") return await PreferencesUiHost(args[1]);
         try {
+            if (args.Length == 2 && args[0] == "--manifest-exports")
+            {
+                await ManifestExportCases(args[1]);
+                Console.WriteLine(JsonSerializer.Serialize(new { Passed = true, Mode = "ManifestMemory", CaseCount = cases.Count, Assertions = assertions, Cases = cases }));
+                return 0;
+            }
             if (args.Length == 1 && args[0] is "--registration-options" or "--registration-options-postgres")
             {
                 bool postgres = args[0].EndsWith("-postgres", StringComparison.Ordinal);

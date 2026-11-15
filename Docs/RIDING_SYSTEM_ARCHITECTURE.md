@@ -328,7 +328,7 @@ M3b9는 보관함 안에서 선택 탈것·즐겨찾기·빠른 호출의 로컬
 Source/Project_RPG/{Public,Private}/
   Riding/
     RPGRidingTypes, RPGRidingStatePolicy, RPGRidingPolicy
-    RPGMountDefinition, RPGMountUnlockFragment
+    RPGMountDefinition
     RPGRidingSessionComponent, RPGRidingComponent
     RPGRidingWorldPolicy, RPGNoRidingVolume
     RPGRidingMovementPrediction, RPGRidingPresentationComponent
@@ -353,7 +353,7 @@ Scripts/Tests/Run-RidingTests.ps1
 
 UE 타입은 원칙적으로 h/cpp 쌍이며 순수 값 헤더 등은 필요에 맞춘다. 공통 Player/PlayerState/CMC/ASC/입력 dispatch/HUD에는 연결 코드만 추가한다.
 공통 HUD/입력 연결 파일은 좌측 퀵슬롯 담당의 인계 후 순차 수정한다. `RPGRidingQuickSlotAdapter`는 해당 공용 계약의 구현 예정 어댑터다. 별도 ActionBar/Shortcut 위젯을 필수 신규 산출물로 두지 않으며, 공용 호스트가 기능 콘텐츠 위젯을 요구할 때만 Riding 전용 자식 표현을 제공한다.
-`RPGMountUnlockFragment`는 게임 모듈에 둔다. [RPGInventoryRuntime](INVENTORY_PLUGIN.md)에서 Project_RPG/GAS/Riding을 역참조하지 않는다.
+M4a exporter는 명시 authoring spec으로 기존 아이템 정의와 MountId를 연결한다. 초기 설계의 `RPGMountUnlockFragment`는 아직 구현하지 않았으며 현재 export의 필수 타입이 아니다. [RPGInventoryRuntime](INVENTORY_PLUGIN.md)에서 Project_RPG/GAS/Riding을 역참조하지 않는다.
 에셋의 PrimaryAsset cook 포함·Saddle/AnimLayer·서버 정책 manifest hash를 함께 검사한다. 두 번째 탈것은 같은 실행 타입의 정의/표현 에셋 추가로 연결한다.
 
 ## 8. 구현 분할과 완료 기준
@@ -374,6 +374,8 @@ UE 타입은 원칙적으로 h/cpp 쌍이며 순수 값 헤더 등은 필요에 
 M1의 개발용 보유 fixture는 개발 검사에만 주입하고 Shipping/제품 서버에서 사용할 수 없게 한다. M2 서버 전투/피격/구역 가드와 M3 영속 권한이 연결되기 전에 제품 feature flag를 켜지 않는다.
 구역 데이터의 본격 배치는 M4지만, M1 이동부터 기본 Deny/경로 판정 포트를 구현한다. 나중에 가드를 붙일 것을 전제로 무제한 탑승 이동을 공개하지 않는다.
 공통 소스 변경마다 [로드맵 작업 조율](Online_RPG_Development_Roadmap.md)의 실제 경로/빌드 자원을 새로 예약한다. 단계별 필요한 검증·자기 임시 정리·기능별 커밋/푸시·원격 확인을 수행한다.
+
+M4a의 [ExportRidingCatalog.py](../Scripts/Editor/ExportRidingCatalog.py)는 저장된 UE 정책·탈것·등록 물품을 읽어 기존 backend 구성의 비활성 후보와 canonical gameplay bytes·출처를 만든다. float32 bit/정렬/hash는 생산 `RidingCatalog`와 교차 검사한다. 정책 hash 불일치·잘못된 외형 참조/socket·등록 역할 혼합을 거절하며 원본 에셋 저장/서버 활성화/지급을 수행하지 않는다. 현재 실제 탈것 에셋은 미연결이므로 exporter 구현 완료를 두 외형/구역 저작·게임 Ready/cook 검증 완료로 취급하지 않는다. [저작 방법과 검증 경계](RIDING_SYSTEM_CODE_DESIGN.md#49-m4a-ue-저작-카탈로그-내보내기--2026-11-16).
 
 ## 9. 이번 문서 검토 범위
 
