@@ -182,6 +182,7 @@ void URPGOnlineLobbyWidget::OpenRidingCollection()
 		Panel->SetReadOwner(Reader.ToSharedRef(), [Weak](const FString& Id)
 			{ const auto* Subsystem = Weak.Get(); return Subsystem ? Subsystem->DescribeMount(Id) : FText::GetEmpty(); });
 		if (const auto Registration = Owner->GetRegistrationClient()) Panel->SetRegistrationOwner(Registration.ToSharedRef());
+		if (const auto Preferences = Owner->GetPreferencesClient()) Panel->SetPreferencesOwner(Preferences.ToSharedRef());
 		if (RidingCollectionPanel == Panel && Panel->GetVisibility() != ESlateVisibility::Collapsed) Panel->AddToViewport(146);
 	}
 }

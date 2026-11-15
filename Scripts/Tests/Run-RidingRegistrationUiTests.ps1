@@ -47,6 +47,7 @@ try {
         'Source/Project_RPG/Public/UI/Riding/RPGRidingCollectionWidget.h','Source/Project_RPG/Private/UI/Riding/RPGRidingCollectionWidget.cpp',
         'Source/Project_RPG/Public/Online/RPGBackendPlayerAuthState.h','Source/Project_RPG/Private/Online/RPGBackendPlayerAuthState.cpp',
         'Source/Project_RPG/Private/Tests/RPGRidingCollectionWidgetTests.cpp','Source/Project_RPG/Private/Tests/RPGRidingCollectionTests.cpp')
+    $files+=@('Source/Project_RPG/Public/Riding/RPGRidingPreferencesClient.h','Source/Project_RPG/Private/Riding/RPGRidingPreferencesClient.cpp','Source/Project_RPG/Public/UI/Riding/RPGRidingPreferencesWidget.h','Source/Project_RPG/Private/UI/Riding/RPGRidingPreferencesWidget.cpp')
     foreach ($relative in $files) {
         $source = Join-Path $workspace $relative
         $destination = Join-Path $project $relative

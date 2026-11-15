@@ -85,6 +85,23 @@ TSharedPtr<FRPGRidingRegistrationClient> URPGRidingCollectionSubsystem::GetRegis
     }
     RegistrationClient->RefreshContext(); return RegistrationClient;
 }
+TSharedPtr<FRPGRidingPreferencesClient> URPGRidingCollectionSubsystem::GetPreferencesClient()
+{
+    const auto Read = GetReader(); const auto Write = GetCommands(); if (!Read || !Write) return nullptr;
+    if (!PreferencesClient)
+    {
+        const TWeakObjectPtr<ThisClass> Weak(this);
+        PreferencesClient = MakeShared<FRPGRidingPreferencesClient>(Read.ToSharedRef(), Write.ToSharedRef(),
+            [Weak] { const auto* S = Weak.Get(); return S ? S->ReadContext() : FRPGRidingCollectionContext{}; },
+            [](const FRPGRidingOwnedMount& M)
+            {
+                if (!UAssetManager::IsInitialized()) return FText::GetEmpty();
+                const auto* D = Cast<URPGMountDefinition>(UAssetManager::Get().GetPrimaryAssetObject(FPrimaryAssetId(URPGMountDefinition::PrimaryAssetType, FName(*M.MountId))));
+                return D && D->MountId == M.MountId && D->DefinitionVersion > 0 ? D->DisplayName : FText::GetEmpty();
+            }, [Weak] { auto* S = Weak.Get(); return S && S->RefreshFreshAssets(); });
+    }
+    PreferencesClient->RefreshContext(); return PreferencesClient;
+}
 FRPGRidingCommandContext URPGRidingCollectionSubsystem::ReadCommandContext() const
 {
     FRPGRidingCommandContext C;
@@ -145,6 +162,7 @@ bool URPGRidingCollectionSubsystem::RefreshFreshAssets()
 { const auto Fresh = GetFreshReads(); return Fresh && Fresh->Refresh(); }
 void URPGRidingCollectionSubsystem::ReleaseReader()
 {
+    if (PreferencesClient) PreferencesClient->Shutdown(); PreferencesClient.Reset();
     if (RegistrationClient) RegistrationClient->Shutdown(); RegistrationClient.Reset();
     if (Reader) Reader->Shutdown(); Reader.Reset();
     if (RegistrationReader) RegistrationReader->Shutdown(); RegistrationReader.Reset();
@@ -158,6 +176,7 @@ bool URPGRidingCollectionSubsystem::TickCollection(float)
     if (Reader) { Reader->RefreshContext(); RefreshPresentationAssets(); }
     if (RegistrationReader) RegistrationReader->RefreshContext();
     if (RegistrationClient) RegistrationClient->RefreshContext();
+    if (PreferencesClient) PreferencesClient->RefreshContext();
     return true; // Never sends a mutation or retries a failed read here.
 }
 void URPGRidingCollectionSubsystem::RefreshPresentationAssets()

@@ -1,4 +1,5 @@
 #include "UI/Riding/RPGRidingCollectionWidget.h"
+#include "UI/Riding/RPGRidingPreferencesWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -36,6 +37,8 @@ TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
         auto* MountSize = WidgetTree->ConstructWidget<USizeBox>(); MountSize->SetHeightOverride(140); List->AddChild(MountSize);
         auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>(); MountSize->SetContent(Scroll);
         Rows = WidgetTree->ConstructWidget<UVerticalBox>(); Scroll->AddChild(Rows);
+        PreferencesPanel = WidgetTree->ConstructWidget<URPGRidingPreferencesWidget>(); List->AddChild(PreferencesPanel);
+        if (const auto P = PreferencesOwner.Pin()) PreferencesPanel->SetOwner(P.ToSharedRef());
         auto* MainList = List; RegistrationGroup = WidgetTree->ConstructWidget<UVerticalBox>(); List->AddChild(RegistrationGroup); List = RegistrationGroup;
         Text(NSLOCTEXT("RidingRegistration", "Title", "가방 물품으로 탈것 등록")); RegistrationStatus = Text(FText::GetEmpty());
         RegistrationReload = Button(TEXT("RidingRegistrationReload"), NSLOCTEXT("RidingRegistration", "Reload", "등록할 최신 물품 불러오기"));
@@ -74,12 +77,14 @@ void URPGRidingCollectionWidget::Subscribe()
     if (bClosing) return;
     if (const auto Owner = Reader.Pin()) { Owner->OnChanged.Remove(Changed); Changed = Owner->OnChanged.AddUObject(this, &ThisClass::RefreshView); }
     if (const auto Owner = Registration.Pin()) { Owner->OnChanged.Remove(RegistrationChanged); RegistrationChanged = Owner->OnChanged.AddUObject(this, &ThisClass::RefreshRegistration); }
+    if (PreferencesPanel) if (const auto P = PreferencesOwner.Pin()) PreferencesPanel->SetOwner(P.ToSharedRef());
     if (!TickHandle.IsValid()) TickHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &ThisClass::TickView), .25f);
 }
 void URPGRidingCollectionWidget::Detach()
 {
     if (const auto Owner = Reader.Pin()) Owner->OnChanged.Remove(Changed); Changed.Reset();
     if (const auto Owner = Registration.Pin()) { Owner->OnChanged.Remove(RegistrationChanged); Owner->Dismiss(); } RegistrationChanged.Reset();
+    if (PreferencesPanel) PreferencesPanel->DetachOwner();
     FTSTicker::RemoveTicker(TickHandle); TickHandle.Reset();
 }
 void URPGRidingCollectionWidget::NativeConstruct()
@@ -146,12 +151,14 @@ void URPGRidingCollectionWidget::CloseScreen()
     if (bClosing) return; bClosing = true; Detach();
     if (Rows) Rows->ClearChildren(); if (Settings) Settings->SetText(FText::GetEmpty());
     Reader.Reset(); Presenter = {}; RowsKey.Reset(); SetVisibility(ESlateVisibility::Collapsed);
-    Registration.Reset(); RegistrationIds.Reset(); RegistrationSnapshot.Invalidate(); RegistrationReview.Invalidate(); SelectedRegistration.Invalidate();
+    PreferencesOwner.Reset(); Registration.Reset(); RegistrationIds.Reset(); RegistrationSnapshot.Invalidate(); RegistrationReview.Invalidate(); SelectedRegistration.Invalidate();
     if (IsInViewport() || GetParent()) RemoveFromParent(); OnClosed.Broadcast();
 }
 FReply URPGRidingCollectionWidget::NativeOnKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)
 { if (Event.GetKey() == EKeys::Escape) { CloseScreen(); return FReply::Handled(); } return Super::NativeOnKeyDown(Geometry, Event); }
 
+void URPGRidingCollectionWidget::SetPreferencesOwner(TSharedRef<FRPGRidingPreferencesClient> InOwner)
+{ PreferencesOwner = InOwner; if (PreferencesPanel) PreferencesPanel->SetOwner(InOwner); }
 void URPGRidingCollectionWidget::SetRegistrationOwner(TSharedRef<FRPGRidingRegistrationClient> InOwner)
 {
     if (const auto Old = Registration.Pin()) { Old->OnChanged.Remove(RegistrationChanged); Old->Dismiss(); }

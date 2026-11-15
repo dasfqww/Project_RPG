@@ -144,13 +144,13 @@ FRPGRidingRegistrationView FRPGRidingRegistrationClient::GetView()
         V.bCanReview = V.Rows.ContainsByPredicate([](const auto& Row) { return Row.bNamed; });
     }
     V.Review = Consent; V.ReviewText = ConsentText; V.bCanConfirm = IsReady && Consent.IsValid();
-    if (State == ERPGRidingCommandState::AwaitingServer) V.Status = NSLOCTEXT("RidingRegistration", "Sending", "등록 요청의 처리 결과를 확인하고 있습니다.");
+    if (State == ERPGRidingCommandState::AwaitingServer) V.Status = NSLOCTEXT("RidingRegistration", "Sending", "탈것 요청의 처리 결과를 확인하고 있습니다.");
     else if (V.bCanRecover) V.Status = NSLOCTEXT("RidingRegistration", "Pending", "아직 결과가 확정되지 않은 요청이 있습니다. 처리 결과 확인 또는 같은 요청 재전송을 선택해 주세요.");
     else if (V.bCanStorage) V.Status = NSLOCTEXT("RidingRegistration", "Storage", "원래 요청의 저장 상태를 확인해야 합니다. 새 등록은 보류됩니다.");
     else if (V.bCanRefreshAssets) V.Status = NSLOCTEXT("RidingRegistration", "Refreshing", "요청은 완료됐습니다. 최신 보유·가방 정보 확인이 끝나야 새 등록을 시작할 수 있습니다.");
     else if (V.bLoading) V.Status = NSLOCTEXT("RidingRegistration", "Loading", "보유 탈것·등록 조건·최신 가방을 확인하고 있습니다.");
-    else if (State == ERPGRidingCommandState::Committed) V.Status = NSLOCTEXT("RidingRegistration", "Done", "등록 요청이 완료됐습니다. 물품을 다시 불러오면 현재 보유 상태를 확인할 수 있습니다.");
-    else if (State == ERPGRidingCommandState::Rejected) V.Status = NSLOCTEXT("RidingRegistration", "Rejected", "서버가 등록을 허용하지 않았습니다. 최신 물품을 다시 확인해 주세요.");
+    else if (State == ERPGRidingCommandState::Committed) V.Status = NSLOCTEXT("RidingRegistration", "Done", "탈것 요청이 완료됐습니다. 다시 불러오면 현재 보유 상태를 확인할 수 있습니다.");
+    else if (State == ERPGRidingCommandState::Rejected) V.Status = NSLOCTEXT("RidingRegistration", "Rejected", "서버가 탈것 변경을 허용하지 않았습니다. 최신 정보를 다시 확인해 주세요.");
     else if (Phase == EPhase::Failed) V.Status = NSLOCTEXT("RidingRegistration", "Failed", "등록 정보를 확인하지 못했습니다. 잠시 후 다시 불러와 주세요.");
     else if (IsReady && !Options.bRegistrationEnabled) V.Status = NSLOCTEXT("RidingRegistration", "Disabled", "현재 서버에서는 탈것 등록을 제공하지 않습니다.");
     else if (IsReady && V.Rows.IsEmpty()) V.Status = NSLOCTEXT("RidingRegistration", "Empty", "등록할 수 있는 물품이 없거나 이미 보유한 탈것입니다.");

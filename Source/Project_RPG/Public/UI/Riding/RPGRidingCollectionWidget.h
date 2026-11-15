@@ -6,6 +6,8 @@
 #include "Riding/RPGRidingRegistrationClient.h"
 #include "RPGRidingCollectionWidget.generated.h"
 
+class FRPGRidingPreferencesClient;
+class URPGRidingPreferencesWidget;
 class UButton;
 class UCheckBox;
 class UEditableTextBox;
@@ -22,6 +24,7 @@ public:
     using FPresenter = TFunction<FText(const FString&)>;
     void SetReadOwner(TSharedRef<FRPGRidingCollectionReader> InReader, FPresenter InPresenter);
     void SetRegistrationOwner(TSharedRef<FRPGRidingRegistrationClient> InOwner);
+    void SetPreferencesOwner(TSharedRef<FRPGRidingPreferencesClient> InOwner);
     UFUNCTION() void CloseScreen();
     FSimpleMulticastDelegate OnClosed;
 protected:
@@ -32,6 +35,7 @@ protected:
 private:
     friend struct FRPGRidingCollectionWidgetTestAccess;
     friend struct FRPGRidingRegistrationUiTestAccess;
+    friend struct FRPGRidingPreferencesUiTestAccess;
     void RefreshRegistration();
     UFUNCTION() void ReloadRegistration();
     UFUNCTION() void RegistrationSelection(FString Value, ESelectInfo::Type Type);
@@ -43,6 +47,8 @@ private:
     UFUNCTION() void StorageRegistration();
     UFUNCTION() void RefreshRegistrationAssets();
     TWeakPtr<FRPGRidingRegistrationClient> Registration;
+    TWeakPtr<FRPGRidingPreferencesClient> PreferencesOwner;
+    UPROPERTY(Transient) TObjectPtr<URPGRidingPreferencesWidget> PreferencesPanel;
     FDelegateHandle RegistrationChanged;
     TArray<FGuid> RegistrationIds;
     FGuid RegistrationSnapshot, RegistrationReview, SelectedRegistration;

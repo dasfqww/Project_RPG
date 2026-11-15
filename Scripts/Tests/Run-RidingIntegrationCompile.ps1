@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [switch]$IncludeCollection, [switch]$IncludeCollectionScreen, [switch]$IncludeIntent, [switch]$IncludeCommand, [switch]$IncludeLobbyCommand, [switch]$IncludeFreshAssets, [switch]$IncludeRegistrationClient, [switch]$IncludeRegistrationUI, [string]$InputRoot, [switch]$EmotePresentationOnly, [ValidateRange(1,4)][int]$MaxParallelActions=1)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [switch]$IncludeCollection, [switch]$IncludeCollectionScreen, [switch]$IncludeIntent, [switch]$IncludeCommand, [switch]$IncludeLobbyCommand, [switch]$IncludeFreshAssets, [switch]$IncludeRegistrationClient, [switch]$IncludeRegistrationUI, [switch]$IncludePreferencesUI, [string]$InputRoot, [switch]$EmotePresentationOnly, [ValidateRange(1,4)][int]$MaxParallelActions=1)
 $ErrorActionPreference='Stop'
 if ($IncludeFreshAssets) { $IncludeLobbyCommand=$true }
 if ($IncludeLobbyCommand) { $IncludeCommand=$true }
@@ -7,7 +7,7 @@ if ($IncludeCommand) { $IncludeIntent=$true; $IncludeCollection=$true }
 if ($IncludeCollectionScreen) { $IncludeCollection=$true }
 if ($EmotePresentationOnly -and !$IncludeEmote) { throw 'EmotePresentationOnly requires IncludeEmote' }
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-if ($InputRoot -and !$IncludeRegistrationClient) { throw 'InputRoot requires IncludeRegistrationClient' }
+if ($InputRoot -and !$IncludeRegistrationClient -and !$IncludePreferencesUI) { throw 'InputRoot requires IncludeRegistrationClient' }
 $sourceRoot=if($InputRoot){[IO.Path]::GetFullPath($InputRoot)}else{$workspace}
 $run=[Guid]::NewGuid().ToString('N')
 if ($IncludeControl) { $IncludeDamage = $true }
@@ -51,6 +51,7 @@ if ($IncludeLobbyCommand) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/
 if ($IncludeFreshAssets) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingFreshAssets-20261114/Integration-'+$run); $reservation='riding-fresh-assets-20261114' }
 if ($IncludeRegistrationClient) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingRegistrationClient-20261114/Integration-'+$run); $reservation='riding-registration-client-20261114' }
 if ($IncludeRegistrationUI) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingRegistrationUI-20261114/Integration-'+$run); $reservation='riding-registration-ui-20261114' }
+if ($IncludePreferencesUI) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingPreferencesUI-20261115/Integration-'+$run); $reservation='riding-preferences-ui-20261115' }
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Save-Proof { [IO.File]::WriteAllText((Join-Path $proofRoot 'Result.json'),($proof|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false)) }
 function Assert-Reservation {
@@ -151,6 +152,15 @@ try {
             'Source/Project_RPG/Public/Riding/RPGRidingCollectionSubsystem.h','Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp',
             'Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyMenu.cpp','Source/Project_RPG/Private/Tests/RPGRidingRegistrationUiTests.cpp')
     }
+    if ($IncludePreferencesUI) {
+        $files=@('Source/Project_RPG/Public/Riding/RPGRidingPreferencesClient.h','Source/Project_RPG/Private/Riding/RPGRidingPreferencesClient.cpp',
+            'Source/Project_RPG/Public/UI/Riding/RPGRidingPreferencesWidget.h','Source/Project_RPG/Private/UI/Riding/RPGRidingPreferencesWidget.cpp',
+            'Source/Project_RPG/Public/UI/Riding/RPGRidingCollectionWidget.h','Source/Project_RPG/Private/UI/Riding/RPGRidingCollectionWidget.cpp',
+            'Source/Project_RPG/Public/Riding/RPGRidingCollectionSubsystem.h','Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp',
+            'Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyMenu.cpp','Source/Project_RPG/Private/Riding/RPGRidingRegistrationClient.cpp',
+            'Source/Project_RPG/Private/Tests/RPGRidingPreferencesUiTests.cpp')
+        $proof.SourceRoot=$sourceRoot
+    }
     foreach($relative in @($files|Select-Object -Unique)) {
         $source=Join-Path $sourceRoot $relative
         $destination=Join-Path $project $relative
@@ -199,6 +209,12 @@ try {
         $compile=@('Source/Project_RPG/Private/Riding/RPGRidingRegistrationClient.cpp','Source/Project_RPG/Private/UI/Riding/RPGRidingCollectionWidget.cpp',
             'Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp','Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyMenu.cpp',
             'Source/Project_RPG/Private/Tests/RPGRidingRegistrationUiTests.cpp')
+    }
+    if ($IncludePreferencesUI) {
+        $compile=@('Source/Project_RPG/Private/Riding/RPGRidingPreferencesClient.cpp','Source/Project_RPG/Private/UI/Riding/RPGRidingPreferencesWidget.cpp',
+            'Source/Project_RPG/Private/UI/Riding/RPGRidingCollectionWidget.cpp','Source/Project_RPG/Private/Riding/RPGRidingCollectionSubsystem.cpp',
+            'Source/Project_RPG/Private/UI/Lobby/RPGOnlineLobbyMenu.cpp','Source/Project_RPG/Private/Riding/RPGRidingRegistrationClient.cpp',
+            'Source/Project_RPG/Private/Tests/RPGRidingPreferencesUiTests.cpp')
     }
     $proof.CompileFiles=@($compile|Select-Object -Unique)
     [IO.File]::WriteAllLines($fileList,@($compile|Select-Object -Unique|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))

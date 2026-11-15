@@ -6,6 +6,7 @@
 #include "Riding/RPGRidingFreshRead.h"
 #include "Riding/RPGRidingRegistrationReader.h"
 #include "Riding/RPGRidingRegistrationClient.h"
+#include "Riding/RPGRidingPreferencesClient.h"
 #include "Progression/RPGEquipmentMutationSubsystem.h"
 #include "RPGRidingCollectionSubsystem.generated.h"
 
@@ -23,6 +24,7 @@ public:
     void ReleaseReader();
     TSharedPtr<FRPGRidingRegistrationReader> GetRegistrationReader();
     TSharedPtr<FRPGRidingRegistrationClient> GetRegistrationClient();
+    TSharedPtr<FRPGRidingPreferencesClient> GetPreferencesClient();
     TSharedPtr<FRPGRidingCommandCoordinator> GetCommands();
     bool BlocksTransitions();
     TSharedPtr<FRPGRidingFreshRead> GetFreshReads();
@@ -37,6 +39,7 @@ private:
     TSharedPtr<FRPGRidingCollectionReader> Reader;
     TSharedPtr<FRPGRidingRegistrationReader> RegistrationReader;
     TSharedPtr<FRPGRidingRegistrationClient> RegistrationClient;
+    TSharedPtr<FRPGRidingPreferencesClient> PreferencesClient;
     TSharedPtr<FRPGRidingCommandCoordinator> Commands;
     TSharedPtr<FRPGRidingFreshRead> FreshReads;
     FRPGEquipmentReadTicket InventoryTicket;
