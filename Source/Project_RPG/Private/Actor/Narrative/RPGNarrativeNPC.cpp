@@ -37,7 +37,8 @@ ARPGNarrativeNPC::ARPGNarrativeNPC()
 }
 void ARPGNarrativeNPC::BeginPlay()
 {
-    Super::BeginPlay(); InteractableData.Name = DisplayName; Nameplate->SetText(DisplayName);
+    Super::BeginPlay(); InteractableData.Name = DisplayName;
+    if (Nameplate) Nameplate->SetText(DisplayName);
     if (GetNetMode() == NM_DedicatedServer) SetActorTickEnabled(false);
     else RefreshPersonalMarkers();
 }
@@ -88,8 +89,8 @@ void ARPGNarrativeNPC::RefreshPersonalMarkers()
         Component->RegisterComponent(); PersonalMarkers.Add(Player, Component);
     }
 }
-void ARPGNarrativeNPC::BeginFocus() { Nameplate->SetTextRenderColor(FColor::Cyan); }
-void ARPGNarrativeNPC::EndFocus() { Nameplate->SetTextRenderColor(FColor::White); }
+void ARPGNarrativeNPC::BeginFocus() { if (Nameplate) Nameplate->SetTextRenderColor(FColor::Cyan); }
+void ARPGNarrativeNPC::EndFocus() { if (Nameplate) Nameplate->SetTextRenderColor(FColor::White); }
 bool ARPGNarrativeNPC::HasValidEntries() const
 {
     if (DialogueEntryIds.IsEmpty() || DialogueEntryIds.Num() > 256) return false;

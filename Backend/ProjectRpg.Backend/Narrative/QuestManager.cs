@@ -44,7 +44,7 @@ public sealed class QuestManager
                     throw new NarrativeConflictException("objective_prerequisite_not_met");
                 ImmutableArray<string> objectives = current.CompletedObjectives.Add(choice.ObjectiveId);
                 updated = current with { CompletedObjectives = objectives,
-                    Status = objectives.Length == definition.Objectives.Length ? QuestStatus.ReadyToReport : QuestStatus.Active };
+                    Status = objectives.Length == definition.Objectives.Length ? (definition.AutoComplete ? QuestStatus.Completed : QuestStatus.ReadyToReport) : QuestStatus.Active };
                 break;
             case DialogueEffect.ReportQuest:
                 if (current is null || current.Status != QuestStatus.ReadyToReport)
@@ -71,13 +71,13 @@ public sealed class QuestManager
         var objectiveProgress = current!.DungeonObjectives!;
         if (objectiveProgress.Values.Any(p => p.DungeonSessionId == evidence.DungeonSessionId))
             throw new NarrativeConflictException("dungeon_objective_evidence_already_used");
-        if (evidence.OccurredAt < activated.ActivatedAt || evidence.OccurredAt > now)
+        if ((!requirement.AllowPriorCompletion && evidence.OccurredAt < activated.ActivatedAt) || evidence.OccurredAt > now)
             throw new NarrativeConflictException("dungeon_objective_event_out_of_window");
         ImmutableArray<string> objectives = current.CompletedObjectives.Add(objectiveId);
         QuestProgress updated = current with
         {
             CompletedObjectives = objectives,
-            Status = objectives.Length == definition.Objectives.Length ? QuestStatus.ReadyToReport : QuestStatus.Active,
+            Status = objectives.Length == definition.Objectives.Length ? (definition.AutoComplete ? QuestStatus.Completed : QuestStatus.ReadyToReport) : QuestStatus.Active,
             DungeonObjectives = objectiveProgress.SetItem(objectiveId,
                 activated with { DungeonSessionId = evidence.DungeonSessionId })
         };
@@ -132,7 +132,7 @@ public sealed class QuestManager
             var evidence = current.InteractionObjectives;
             foreach (string id in matches) evidence = evidence.SetItem(id, evidence[id] with { EventId = command.EventId });
             var progress = current with { CompletedObjectives = completed, InteractionObjectives = evidence,
-                Status = completed.Length == definition.Objectives.Length ? QuestStatus.ReadyToReport : QuestStatus.Active };
+                Status = completed.Length == definition.Objectives.Length ? (definition.AutoComplete ? QuestStatus.Completed : QuestStatus.ReadyToReport) : QuestStatus.Active };
             updated = updated with { Quests = updated.Quests.Replace(current, ActivateDungeonObjectives(progress, definition, context.ReceivedAt)) };
         }
         return updated;
@@ -161,7 +161,7 @@ public sealed class QuestManager
                 if (count == definition.KillObjectives[id].RequiredCount) completed = completed.Add(id);
             }
             var progress = current with { KillObjectives = counts, CompletedObjectives = completed,
-                Status = completed.Length == definition.Objectives.Length ? QuestStatus.ReadyToReport : QuestStatus.Active };
+                Status = completed.Length == definition.Objectives.Length ? (definition.AutoComplete ? QuestStatus.Completed : QuestStatus.ReadyToReport) : QuestStatus.Active };
             updated = updated with { Quests = updated.Quests.Replace(current, ActivateDungeonObjectives(progress, definition, context.ReceivedAt)) };
         }
         return updated;

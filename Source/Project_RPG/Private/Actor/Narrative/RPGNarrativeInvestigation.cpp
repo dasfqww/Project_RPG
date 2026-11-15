@@ -29,16 +29,18 @@ ARPGNarrativeInvestigation::ARPGNarrativeInvestigation()
 }
 void ARPGNarrativeInvestigation::BeginPlay()
 {
-    Super::BeginPlay(); InteractableData.Name = DisplayName; Nameplate->SetText(DisplayName);
+    Super::BeginPlay(); InteractableData.Name = DisplayName;
+    // Rendering components can be omitted when a placed actor loads on a dedicated server.
+    if (Nameplate) Nameplate->SetText(DisplayName);
     // This actor always uses immediate server approval, regardless of a Blueprint's legacy duration setting.
     InteractableData.InteractionDuration = 0.f;
 }
-void ARPGNarrativeInvestigation::BeginFocus() { Nameplate->SetTextRenderColor(FColor::Cyan); }
-void ARPGNarrativeInvestigation::EndFocus() { Nameplate->SetTextRenderColor(FColor::White); }
+void ARPGNarrativeInvestigation::BeginFocus() { if (Nameplate) Nameplate->SetTextRenderColor(FColor::Cyan); }
+void ARPGNarrativeInvestigation::EndFocus() { if (Nameplate) Nameplate->SetTextRenderColor(FColor::White); }
 void ARPGNarrativeInvestigation::SetLocalStatus(const FText& Status, const bool bRetry)
 {
     if (GetNetMode() == NM_DedicatedServer) return;
-    Nameplate->SetText(Status.IsEmpty() ? DisplayName : FText::Format(NSLOCTEXT("RPGNarrative", "InvestigationStatus", "{0}\n{1}"), DisplayName, Status));
+    if (Nameplate) Nameplate->SetText(Status.IsEmpty() ? DisplayName : FText::Format(NSLOCTEXT("RPGNarrative", "InvestigationStatus", "{0}\n{1}"), DisplayName, Status));
     InteractableData.Action = bRetry ? NSLOCTEXT("RPGNarrative", "RetryInvestigation", "진행 결과 다시 확인")
         : NSLOCTEXT("RPGNarrative", "Investigate", "조사하기");
 }

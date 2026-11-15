@@ -22,7 +22,8 @@ public sealed class DungeonObjectiveCoordinator(INarrativeRepository repository,
             foreach (var pair in definition.DungeonObjectives.OrderBy(p => p.Key, StringComparer.Ordinal))
                 if (!progress.CompletedObjectives.Contains(pair.Key)
                     && progress.DungeonObjectives.TryGetValue(pair.Key, out var activated))
-                    result.Add(new(progress.QuestId, pair.Key, pair.Value.DungeonId, pair.Value.Difficulty, activated.ActivatedAt,
+                    result.Add(new(progress.QuestId, pair.Key, pair.Value.DungeonId, pair.Value.Difficulty,
+                        pair.Value.AllowPriorCompletion ? DateTimeOffset.UnixEpoch : activated.ActivatedAt,
                         [.. progress.DungeonObjectives.Values.Where(p => p.DungeonSessionId.HasValue).Select(p => p.DungeonSessionId!.Value)]));
         }
         return result;

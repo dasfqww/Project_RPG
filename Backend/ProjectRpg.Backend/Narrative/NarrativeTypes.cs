@@ -15,12 +15,12 @@ public sealed record QuestDefinition(string Id, int Version, ImmutableArray<stri
     ImmutableDictionary<string, DungeonClearObjective>? DungeonObjectives = null,
     ImmutableDictionary<string, InteractionObjective>? InteractionObjectives = null,
     ImmutableDictionary<string, KillObjective>? KillObjectives = null,
-    QuestCategory Category = QuestCategory.Unspecified)
+    QuestCategory Category = QuestCategory.Unspecified, bool AutoComplete = false)
 {
     internal ImmutableArray<string> RequiredObjectives(string objectiveId) =>
         ObjectivePrerequisites?.GetValueOrDefault(objectiveId, []) ?? [];
 }
-public sealed record DungeonClearObjective(string DungeonId, string Difficulty);
+public sealed record DungeonClearObjective(string DungeonId, string Difficulty, bool AllowPriorCompletion = false);
 public sealed record DungeonObjectiveProgress(DateTimeOffset ActivatedAt, Guid? DungeonSessionId = null);
 public sealed record InteractionObjective(string DungeonId, string Difficulty, string TargetId);
 public sealed record InteractionObjectiveProgress(DateTimeOffset ActivatedAt, Guid? EventId = null);

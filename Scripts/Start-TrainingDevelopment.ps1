@@ -2,6 +2,7 @@
 param(
     [string]$EngineRoot='D:\UE_5.8',
     [ValidateSet('Training','Intro1')][string]$DungeonProfile='Training',
+    [switch]$ChapterOne,
     [ValidateRange(1024,65535)][int]$BackendPort=3076,
     [ValidateRange(1024,65535)][int]$GamePort=18896,
     [ValidateRange(60,600)][int]$StartupTimeoutSeconds=240,
@@ -15,6 +16,7 @@ param(
 # Disposable local training sessions. The normal mode opens an interactive
 # lobby; SmokeTest drives existing client ability input, not lobby button clicks.
 $ErrorActionPreference='Stop'
+if($ChapterOne -and $DungeonProfile -cne 'Intro1'){throw 'ChapterOne requires -DungeonProfile Intro1'}
 . (Join-Path $PSScriptRoot 'Tests/TrainingDevelopmentContent.ps1')
 $contentMaps=Get-RPGTrainingDevelopmentContent $DungeonProfile
 if($DungeonProfile -ceq 'Intro1' -and ($SmokeTest -or $SessionLoopSmoke -or $LobbyUISmoke)){throw 'Intro1 requires interactive mode; existing smoke drivers cover Training only'}
@@ -166,7 +168,7 @@ try{
         Copy-Fixed (Join-Path $workspace ('Backend/Tools/'+$name)) (Join-Path $temp ('Tools/'+$name))
     }
     $backendSource=Join-Path $temp 'Backend'
-    foreach($part in @('ProjectRpg.Backend','Database')){
+    foreach($part in @('ProjectRpg.Backend','ProjectRpg.Operations.Core','Database')){
         foreach($file in Get-ChildItem -LiteralPath (Join-Path $workspace ('Backend/'+$part)) -File -Recurse | Where-Object FullName -notmatch '\\(bin|obj|artifacts)\\'){
             Copy-Fixed $file.FullName (Join-Path $backendSource $file.FullName.Substring((Join-Path $workspace 'Backend').Length+1))
         }
@@ -185,6 +187,8 @@ try{
         POSTGRES_CONNECTION_STRING=$null;ConnectionStrings__Postgres=$null;ASPNETCORE_CONTENTROOT=$null
         PROJECT_RPG_BACKEND_ADMIN_TOKEN=$admin;Steam__AllowDevelopmentAuthentication='true'
         Kestrel__Endpoints__Http__Url=$url;DungeonContent__DevelopmentProfile=$DungeonProfile
+        Narrative__EnableDevelopmentContent=$(if($ChapterOne){'false'}else{[Environment]::GetEnvironmentVariable('Narrative__EnableDevelopmentContent','Process')})
+        Narrative__CatalogPath=$(if($ChapterOne){Join-Path $backendSource 'ProjectRpg.Backend/Narrative/Content/chapter01.json'}else{[Environment]::GetEnvironmentVariable('Narrative__CatalogPath','Process')})
         PROJECT_RPG_GAME_SERVER_ID=$null;PROJECT_RPG_DUNGEON_SESSION_ID=$null;PROJECT_RPG_BACKEND_GAME_SERVER_TOKEN=$null
     } (Join-Path $temp 'backend.log')
     $ready=$false;$until=[DateTime]::UtcNow.AddSeconds(45)

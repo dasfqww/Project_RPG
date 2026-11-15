@@ -155,7 +155,7 @@ public sealed class NarrativeCatalog
         {
             DialogueChoice[] actions = [.. Dialogues.Values.Where(d => d.QuestId == q.Id).SelectMany(d => d.Choices)];
             Require(actions.Any(c => c.Effect == DialogueEffect.AcceptQuest)
-                && actions.Any(c => c.Effect == DialogueEffect.ReportQuest)
+                && (q.AutoComplete || actions.Any(c => c.Effect == DialogueEffect.ReportQuest))
                 && q.Objectives.All(id => q.DungeonObjectives?.ContainsKey(id) == true
                     || q.InteractionObjectives?.ContainsKey(id) == true
                     || q.KillObjectives?.ContainsKey(id) == true

@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": 1,
+  "quests": [
+    {
+      "id": "CH01.M01",
+      "version": 1,
+      "title": "끊긴 연락",
+      "category": "Main",
+      "autoComplete": true,
+      "prerequisites": [],
+      "objectives": [
+        "contact",
+        "preparation"
+      ],
+      "objectiveTexts": {
+        "contact": "미라의 연락 두절 설명 확인",
+        "preparation": "로엔의 현장 준비 설명 확인"
+      },
+      "objectivePrerequisites": {
+        "preparation": [
+          "contact"
+        ]
+      }
+    },
+    {
+      "id": "CH01.M02",
+      "version": 1,
+      "title": "현장에 설 자격",
+      "category": "Main",
+      "autoComplete": true,
+      "prerequisites": [
+        "CH01.M01"
+      ],
+      "objectives": [
+        "training"
+      ],
+      "objectiveTexts": {
+        "training": "기존 훈련을 실제로 성공 (승인된 실적은 인정)"
+      },
+      "dungeonObjectives": {
+        "training": {
+          "dungeonId": "Progression.Training",
+          "difficulty": "Normal",
+          "allowPriorCompletion": true
+        }
+      }
+    },
+    {
+      "id": "CH01.M03",
+      "version": 1,
+      "title": "안쪽에서 남긴 흔적",
+      "category": "Main",
+      "autoComplete": true,
+      "prerequisites": [
+        "CH01.M02"
+      ],
+      "objectives": [
+        "cart",
+        "brace",
+        "signal"
+      ],
+      "objectiveTexts": {
+        "cart": "화물이 남은 수레 조사",
+        "brace": "안쪽 버팀대 조사",
+        "signal": "점검 통로의 생존 신호 확인"
+      },
+      "objectivePrerequisites": {
+        "brace": [
+          "cart"
+        ],
+        "signal": [
+          "brace"
+        ]
+      },
+      "interactionObjectives": {
+        "cart": {
+          "dungeonId": "Progression.Intro1",
+          "difficulty": "Normal",
+          "targetId": "CH01.CL01"
+        },
+        "brace": {
+          "dungeonId": "Progression.Intro1",
+          "difficulty": "Normal",
+          "targetId": "CH01.CL02"
+        },
+        "signal": {
+          "dungeonId": "Progression.Intro1",
+          "difficulty": "Normal",
+          "targetId": "CH01.CL03"
+        }
+      }
+    },
+    {
+      "id": "CH01.M04",
+      "version": 1,
+      "title": "접근로 확보",
+      "category": "Main",
+      "autoComplete": true,
+      "prerequisites": [
+        "CH01.M03"
+      ],
+      "objectives": [
+        "approach"
+      ],
+      "objectiveTexts": {
+        "approach": "봉쇄를 유지한 채 기존 입문 1 접근·회전 실습 성공"
+      },
+      "dungeonObjectives": {
+        "approach": {
+          "dungeonId": "Progression.Intro1",
+          "difficulty": "Normal",
+          "allowPriorCompletion": true
+        }
+      }
+    }
+  ],
+  "chapters": [],
+  "dialogues": [
+    {
+      "id": "CH01.M01.Offer",
+      "speaker": "미라",
+      "text": "폐광으로 간 수레에서 연락이 끊겼어요. 사람들이 어디 있는지 확인해 주세요.",
+      "questId": "CH01.M01",
+      "requiredStatus": null,
+      "choices": [
+        {
+          "id": "accept",
+          "text": "의뢰 수락",
+          "effect": "AcceptQuest"
+        }
+      ]
+    },
+    {
+      "id": "CH01.D01",
+      "speaker": "미라",
+      "text": "일거리를 찾고 있나요? 폐광으로 간 수레에서 연락이 끊겼어요. 짐보다 먼저, 사람들이 어디 있는지 확인해 주세요.",
+      "questId": "CH01.M01",
+      "requiredStatus": "Active",
+      "choices": [
+        {
+          "id": "confirm",
+          "text": "수레가 멈춘 곳부터 확인하겠습니다.",
+          "effect": "RecordObjective",
+          "objectiveId": "contact"
+        }
+      ]
+    },
+    {
+      "id": "CH01.D02",
+      "speaker": "로엔",
+      "text": "들어가는 것보다 돌아오는 게 어렵지. 현장에 나가기 전에 네 움직임부터 보자.",
+      "questId": "CH01.M01",
+      "requiredStatus": "Active",
+      "choices": [
+        {
+          "id": "confirm",
+          "text": "현장 준비를 확인했습니다.",
+          "effect": "RecordObjective",
+          "objectiveId": "preparation"
+        }
+      ]
+    },
+    {
+      "id": "CH01.M02.Offer",
+      "speaker": "로엔",
+      "text": "현장에 설 자격을 보여줘. 기존 훈련에서 기본 움직임을 확인하자.",
+      "questId": "CH01.M02",
+      "requiredStatus": null,
+      "choices": [
+        {
+          "id": "accept",
+          "text": "의뢰 수락",
+          "effect": "AcceptQuest"
+        }
+      ]
+    },
+    {
+      "id": "CH01.M03.Offer",
+      "speaker": "미라",
+      "text": "마지막 수레는 갱도 앞에서 멈췄다고 해요. 약탈이라는 말도 있지만, 확인한 사람은 없어요.",
+      "questId": "CH01.M03",
+      "requiredStatus": null,
+      "choices": [
+        {
+          "id": "accept",
+          "text": "의뢰 수락",
+          "effect": "AcceptQuest"
+        }
+      ]
+    },
+    {
+      "id": "CH01.M04.Offer",
+      "speaker": "현장 목표",
+      "text": "안쪽에서 응답이 돌아왔다. 봉쇄를 건드리지 않고 점검 통로로 접근하자.",
+      "questId": "CH01.M04",
+      "requiredStatus": null,
+      "choices": [
+        {
+          "id": "accept",
+          "text": "의뢰 수락",
+          "effect": "AcceptQuest"
+        }
+      ]
+    }
+  ]
+}
