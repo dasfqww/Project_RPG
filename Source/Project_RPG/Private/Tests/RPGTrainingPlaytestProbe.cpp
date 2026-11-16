@@ -27,6 +27,9 @@
 #include "Online/RPGSteamAuthSubsystem.h"
 #include "Player/RPGPlayerState.h"
 #include "Progression/RPGCharacterProgressionComponent.h"
+#include "Skill/RPGGameplayAbility_SkillContainer.h"
+#include "Skill/RPGSkillExecutionPolicy.h"
+#include "Skill/RPGSkillExecutionTypes.h"
 #include "RPGGameplayTags.h"
 #include "UI/Content/RPGDungeonResultActionsWidget.h"
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
@@ -48,6 +51,8 @@ struct FProbe
 	bool bProgressionLobby = false, bProgressionChecked = false, bUnknownBlocked = false;
 	int32 ProgressionLobbyStage = 0;
 	bool bEquipNewSkill = false;
+	bool bObserveMaximumCharge = false;
+	double MaximumChargeObservedAt = -1;
 	int64 ConfigurationRevisionBeforeSave = 0, ConfigurationRevisionAfterSave = 0;
 	TArray<FGameplayTag> ConfigurationSlotsBeforeSave;
 	TWeakObjectPtr<ARPGPlayer> InputPawn;
@@ -282,6 +287,24 @@ struct FProbe
 		if (Action >= 4 || Now < NextAction) return true;
 		if (bHeld)
 		{
+			if (Action == 3 && bObserveMaximumCharge)
+			{
+				// Loaded machines can advance less game time than wall time. Observe the
+				// real policy before release; never set its level or the practice goal.
+				bool bMaximum = false;
+				for (const auto& Spec : ASC->GetActivatableAbilities())
+					if (const auto* Skill = Cast<URPGGameplayAbility_SkillContainer>(Spec.GetPrimaryInstance());
+						Skill && Skill->IsActive() && Skill->GetActiveSkillSpec().SkillTag == RPGGameplayTags::Player_Ability_Skill_Charge)
+					{
+						const auto* Config = Skill->GetActiveSkillSpec().ExecutionConfig.GetPtr<FRPGSkillChargeExecutionConfig>();
+						const auto* Policy = Cast<URPGSkillExecutionPolicy_Charge>(Skill->GetActiveExecutionPolicy());
+						bMaximum = Config && Policy && Policy->GetCurrentChargeLevel() >= Config->MaxChargeLevel;
+					}
+				if (!bMaximum) return true;
+				if (MaximumChargeObservedAt < 0) MaximumChargeObservedAt = World->GetTimeSeconds();
+				if (World->GetTimeSeconds() - MaximumChargeObservedAt < .5) return true;
+				UE_LOG(LogTemp, Display, TEXT("RPG_TRAINING_PLAYTEST MAXIMUM_CHARGE_OBSERVED BeforeRelease=1"));
+			}
 			if (Action < 2) ASC->OnAbilityInputReleased(Action == 0 ? RPGGameplayTags::InputTag_LightAttack_GreatSword : RPGGameplayTags::InputTag_Roll);
 			else Slots->EndUseSkillSlot(Slot);
 			bHeld = false; ReleasedAt = Now;
@@ -324,6 +347,7 @@ static const FDelegateHandle Registration = FCoreDelegates::GetOnPostEngineInit(
 	Probe->bCompletionUI = FParse::Param(FCommandLine::Get(), TEXT("RPGTrainingCompletionUI"));
 	Probe->bProgressionLobby = FParse::Param(FCommandLine::Get(), TEXT("RPGTrainingProgressionLobby"));
 	Probe->bEquipNewSkill = FParse::Param(FCommandLine::Get(), TEXT("RPGTrainingEquipNewSkill"));
+	Probe->bObserveMaximumCharge = FParse::Param(FCommandLine::Get(), TEXT("RPGTrainingObserveMaximumCharge"));
 	FParse::Value(FCommandLine::Get(), TEXT("RPGTrainingGates="), Probe->Gates);
 	FParse::Value(FCommandLine::Get(), TEXT("RPGTrainingCharacter="), Probe->Character);
 	FParse::Value(FCommandLine::Get(), TEXT("RPGTrainingSteam="), Probe->Steam);

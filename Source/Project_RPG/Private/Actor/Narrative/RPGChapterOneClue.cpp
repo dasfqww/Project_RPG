@@ -3,6 +3,7 @@
 #include "Components/TextBlock.h"
 #include "Components/TextRenderComponent.h"
 #include "Components/WidgetComponent.h"
+#include "Component/Progression/RPGIntroApproachObjectiveComponent.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -97,7 +98,28 @@ void ARPGChapterOneClue::Tick(float DeltaSeconds)
             Text += TEXT("\n") + NSLOCTEXT("ChapterOne", "CurrentClue", "[현재 목표] 가까이에서 조사하기").ToString();
         else Text += TEXT("\n") + NSLOCTEXT("ChapterOne", "NotActive", "수락한 의뢰와 앞선 단서를 확인하세요").ToString();
         if (Quest && Quest->Status == ERPGQuestStatus::Completed && ClueNumber == 3)
-            Text += TEXT("\n") + NSLOCTEXT("ChapterOne", "NextQuest", "접근로 확보 — 옆의 현장 목표에서 다음 의뢰 수락").ToString();
+        {
+            const auto* Approach = Quests.FindByPredicate([](const auto& Q){return Q.QuestId == TEXT("CH01.M04");});
+            if (!Approach)
+                Text += TEXT("\n") + NSLOCTEXT("ChapterOne", "NextQuest", "접근로 확보 — 옆의 현장 목표에서 다음 의뢰 수락").ToString();
+            else if (Approach->Status == ERPGQuestStatus::Completed)
+                Text += TEXT("\n") + NSLOCTEXT("ChapterOne", "ApproachSaved", "[의뢰 완료] 접근로 확보 — 입문 1 실적 저장 확인").ToString();
+            else if (Approach->Status == ERPGQuestStatus::Active)
+            {
+                const auto* Objectives = Pawn ? Pawn->FindComponentByClass<URPGIntroApproachObjectiveComponent>() : nullptr;
+                const auto Progress = Objectives ? Objectives->GetApproachProgress() : FRPGIntroApproachProgress{};
+                Text += TEXT("\n") + (Progress.IsComplete()
+                    ? NSLOCTEXT("ChapterOne", "ApproachPending", "[접근로 확보] 개인 실습 완료 · 파티 완료와 정산 저장 확인 중")
+                    : NSLOCTEXT("ChapterOne", "ApproachPractice", "[접근로 확보] 북쪽 실습장 01 출발 → 02 돌진 접근 → 03 회전 베기\n회전 베기는 로비에서 편성·저장하세요. 현재 입력과 실습 진도는 화면의 접근 실습 안내를 확인하세요.")).ToString();
+                if (ApproachTrackingOfferedFor != Character)
+                {
+                    ApproachTrackingOfferedFor = Character;
+                    FRPGQuestProgress Tracked;
+                    auto Tracking = Flow->GetQuestTracking();
+                    if (Tracking && !Tracking->Read(Tracked)) Tracking->Track(Character, TEXT("CH01.M04"));
+                }
+            }
+        }
         if (Quest && Quest->Status == ERPGQuestStatus::Active && TrackingOfferedFor != Character)
         {
             TrackingOfferedFor = Character;

@@ -35,6 +35,7 @@ protected:
 private:
     void ConfigureClue();
     FGuid TrackingOfferedFor;
+    FGuid ApproachTrackingOfferedFor;
     UPROPERTY(VisibleAnywhere) TObjectPtr<UWidgetComponent> Label;
     UPROPERTY(Transient) TObjectPtr<URPGChapterOneClueLabel> PersonalLabel;
 };

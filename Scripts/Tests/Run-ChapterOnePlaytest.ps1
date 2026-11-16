@@ -1,12 +1,15 @@
 [CmdletBinding()]
 param([string]$RuntimeProjectRoot='', [string]$BackendRoot='', [int]$BackendPort=3092, [int]$GamePort=18912,
+    [switch]$ApproachPractice,
     [string]$EngineRoot='D:/UE_5.8')
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if(!$RuntimeProjectRoot){$RuntimeProjectRoot=$workspace}
 if(!$BackendRoot){$BackendRoot=Join-Path $workspace 'Backend'}
-$id=[Guid]::NewGuid().ToString('N');$temp=Join-Path $workspace ('Saved/M03/play-'+$id)
-$proof=Join-Path $workspace ('Saved/BuildChecks/ChapterM03-20261115/play-'+$id)
+$ownerRoot=if($ApproachPractice){'M04'}else{'M03'}
+$proofFolder=if($ApproachPractice){'ChapterM04-20261116'}else{'ChapterM03-20261115'}
+$id=[Guid]::NewGuid().ToString('N');$temp=Join-Path $workspace ('Saved/'+$ownerRoot+'/play-'+$id)
+$proof=Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/play-'+$id)
 $null=[IO.Directory]::CreateDirectory($temp);$null=[IO.Directory]::CreateDirectory($proof)
 $owned=[Collections.Generic.List[Diagnostics.Process]]::new()
 $result=[ordered]@{Passed=$false;Scope='Real Training input/settlement then network M03 movement/interactions, client process restart, M04 offer; private Memory HTTP, not PostgreSQL or Steam';Failure=$null;DeletedBytes=0}
@@ -48,10 +51,15 @@ function Peer([string]$Name,[string]$Map,[bool]$Server,[bool]$Training,[bool]$Co
         $args+=@("-RPGTrainingCharacter=$characterId","-RPGTrainingSteam=$steam","-RPGTrainingSession=$sessionId",('-RPGTrainingGates="'+$temp+'"'))
         $args+=$(if($Training){'-RPGTrainingPlaytest'}else{'-RPGChapterOnePlaytest'})
         if($Continue){$args+='-RPGChapterOneContinue'}
+        if($Continue -and $ApproachPractice){$args+='-RPGChapterOneApproach'}
+        if($Training -and $ApproachPractice){$args+='-RPGTrainingObserveMaximumCharge'}
     }
     return Start-Owned $editor $args $envs
 }
-function Heartbeat { $null=Api "dungeon-sessions/$sessionId/heartbeat" 'Post' $serverHeaders @{serverId=$serverId} }
+function Heartbeat {
+    if((Api "dungeon-sessions/$sessionId" 'Get' $player).state -in @('Cleared','Failed','Abandoned')){return}
+    $null=Api "dungeon-sessions/$sessionId/heartbeat" 'Post' $serverHeaders @{serverId=$serverId}
+}
 function Begin-Session([string]$Dungeon,[string]$Name,[string]$Map,[bool]$Training){
     $s=Api 'dungeon-sessions' 'Post' $player @{characterId=$characterId;dungeonId=$Dungeon;difficulty='Normal'}
     $script:sessionId=[string]$s.dungeonSessionId;$script:serverId=$Name+'-'+$id
@@ -101,6 +109,16 @@ try{
     Stop-Owned $client;Stop-Owned $server
     $growth=Api "characters/$characterId/progression" 'Get' $player
     if($growth.experience-ne100){throw 'Training settlement not persisted'}
+    if($ApproachPractice){
+        # Save an acquired skill through the ordinary player configuration API while outside a live session.
+        # No acquired skills, levels, SP or milestone values are authored by this driver.
+        $slots=@($growth.skillSlots);$whirl='Player.Ability.Skill.WhirlWind'
+        if($slots -notcontains $whirl){
+            $empty=[Array]::IndexOf($slots,'');if($empty-lt0){throw 'No empty skill slot'};$slots[$empty]=$whirl
+            $growth=Api "characters/$characterId/skill-configuration" 'Put' $player @{requestId=[Guid]::NewGuid().ToString('D');expectedRevision=[string]$growth.revision;skills=@($growth.skills);skillSlots=$slots}
+        }
+        if($growth.experience-ne100){throw 'Skill configuration changed experience'}
+    }
     $v=Api "characters/$characterId/narrative" 'Get' $player
     if(@($v.quests|Where-Object {$_.questId-eq'CH01.M02'-and$_.status-eq'Completed'}).Count-eq0){
         $null=Api "characters/$characterId/narrative/dungeon-objectives" 'Post' $player @{requestId=[Guid]::NewGuid().ToString('D');expectedRevision=[string]$v.revision;catalogVersion=$v.catalogVersion;dungeonSessionId=$trainingSession;questId='CH01.M02';objectiveId='training'}
@@ -113,7 +131,7 @@ try{
         while(!$client.HasExited-and[DateTime]::UtcNow-lt$until){if([DateTime]::UtcNow-ge$next){Heartbeat;$next=[DateTime]::UtcNow.AddSeconds(10)};Start-Sleep -Milliseconds 250}
         if(!$client.HasExited){throw 'M03 client timed out'};$client.WaitForExit()
         if($client.ExitCode-ne0){throw "M03 client failed phase $phase"}
-        $expected=if($phase-eq1){'M03_PLAY CART_SAVED'}else{'M03_PLAY COMPLETE M04_OFFERED'}
+        $expected=if($phase-eq1){'M03_PLAY CART_SAVED'}elseif($ApproachPractice){'M04_PLAY COMPLETE Saved=1 ConfirmedCaption=1'}else{'M03_PLAY COMPLETE M04_OFFERED'}
         if((Log $name)-notmatch$expected){throw "Missing M03 proof phase $phase"}
         Write-Output "PASS actual M03 phase $phase"
         Start-Sleep -Seconds 2
@@ -121,16 +139,27 @@ try{
     $v=Api "characters/$characterId/narrative" 'Get' $player
     if(@($v.quests|Where-Object {$_.questId-eq'CH01.M03'-and$_.status-eq'Completed'}).Count-ne1){throw 'M03 commit missing'}
     $after=Api "characters/$characterId/progression" 'Get' $player
-    if(($growth|ConvertTo-Json -Depth 12 -Compress)-cne($after|ConvertTo-Json -Depth 12 -Compress)){throw 'Investigation altered growth'}
+    if($ApproachPractice){
+        if($after.experience-ne200 -or ($after.milestones-band 2)-ne2 -or $after.totalSP-ne6 -or
+            @($after.skills|Where-Object skillTag -eq 'Player.Ability.Skill.JumpSmash').Count-ne1 -or
+            $after.skillSlots -contains 'Player.Ability.Skill.JumpSmash'){throw 'Actual Intro1 growth or explicit skill-slot policy mismatch'}
+        if(@($v.quests|Where-Object {$_.questId-eq'CH01.M04'-and$_.status-eq'Completed'}).Count-ne1){throw 'M04 saved completion missing'}
+        if((Log 'M03Client2')-notmatch'M04_PLAY INPUT_PASS Steps=3 ActualSkills=2'){throw 'Actual Intro1 actions missing'}
+        $repeat=Api "characters/$characterId/narrative" 'Get' $player
+        $growthAgain=Api "characters/$characterId/progression" 'Get' $player
+        if(($after|ConvertTo-Json -Depth 12 -Compress)-cne($growthAgain|ConvertTo-Json -Depth 12 -Compress)){throw 'M04 refresh duplicated growth'}
+        $result.Scope='Real Training, M03 reconnect, M04 UMG acceptance, actual Intro1 skills, settlement and saved quest; Memory HTTP/Iris, not PostgreSQL or Steam'
+    }elseif(($growth|ConvertTo-Json -Depth 12 -Compress)-cne($after|ConvertTo-Json -Depth 12 -Compress)){throw 'Investigation altered growth'}
     $result.FinalNarrative=$v;$result.Experience=$after.experience;$result.Passed=$true
 }catch{$result.Failure=$_.Exception.Message}
 finally{
     foreach($p in $owned){Stop-Owned $p}
     foreach($name in @('TrainingServer','TrainingClient','M03Server','M03Client1','M03Client2')){
-        $text=Log $name;if($text){$text -split "`n"|Where-Object {$_-match'M03_PLAY|RPG_TRAINING_PLAYTEST|Fatal error|Assertion failed|Error:'}|Set-Content "$proof/$name.log" -Encoding UTF8}
+        $text=Log $name;if($text){$text -split "`n"|Where-Object {$_-match'M03_PLAY|M04_PLAY|RPG_TRAINING_PLAYTEST|Fatal error|Assertion failed|Error:'}|Set-Content "$proof/$name.log" -Encoding UTF8}
+        if($result.Failure -and $text){$text -split "`n"|Select-Object -Last 160|Set-Content "$proof/$name.FailureTail.log" -Encoding UTF8}
     }
     if(Test-Path "$temp/backend.log"){Copy-Item "$temp/backend.log" "$proof/Backend.log"}
-    $resolved=[IO.Path]::GetFullPath($temp);$parent=[IO.Path]::GetFullPath((Join-Path $workspace 'Saved/M03'))+'\'
+    $resolved=[IO.Path]::GetFullPath($temp);$parent=[IO.Path]::GetFullPath((Join-Path $workspace ('Saved/'+$ownerRoot)))+'\'
     if(!$resolved.StartsWith($parent,[StringComparison]::OrdinalIgnoreCase)){throw 'Unsafe cleanup target'}
     $entries=@(Get-ChildItem -LiteralPath $temp -Recurse -Force)
     if(@($entries|Where-Object {$_.Attributes-band[IO.FileAttributes]::ReparsePoint}).Count){throw 'Unexpected link in owned run'}

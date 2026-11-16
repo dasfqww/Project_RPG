@@ -88,5 +88,22 @@ Check((await Flow().LoadAsync(alt.CharacterId,owner,default)).State.Quests.IsEmp
 Check(growth==JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(character.CharacterId,clock.Now,default)),"Narrative investigations do not grant growth or duplicate settlement");
 await Choose("CH01.M04.Offer");
 Check((await View()).State.Quests.Single(q=>q.QuestId=="CH01.M04").Status==QuestStatus.Active,"M04 still requires actual Intro1 evidence");
+view=await View();
+await Reject(()=>Goals().RecordAsync(character.CharacterId,owner,new(Guid.NewGuid(),view.State.Revision,catalog.Version,
+    session.DungeonSessionId,"CH01.M04","approach"),default),"dungeon_clear_evidence_not_authorized");
+await game.EnqueueDungeonRewardSettlementAsync(session.DungeonSessionId,server,"chapter-m04-test",new string('b',64),[],[],clock.Now,default);
+await game.ClaimNextDungeonRewardSettlementAsync(server,clock.Now,clock.Now.AddMinutes(1),default);
+await game.CompleteDungeonRewardSettlementAsync(session.DungeonSessionId,server,clock.Now,default);
+clock.Advance();view=await View();
+Check(view.DungeonObjectiveCandidates.Any(c=>c.QuestId=="CH01.M04"&&c.DungeonSessionId==session.DungeonSessionId),
+    "Only settled Intro1 is a candidate for M04");
+var m04Command=new DungeonObjectiveCommand(Guid.NewGuid(),view.State.Revision,catalog.Version,session.DungeonSessionId,"CH01.M04","approach");
+var m04=await Goals().RecordAsync(character.CharacterId,owner,m04Command,default);
+Check(m04.State.Quests.Single(q=>q.QuestId=="CH01.M04").Status==QuestStatus.Completed,"Settled Intro1 auto-completes accepted M04");
+Check((await Goals().RecordAsync(character.CharacterId,owner,m04Command,default)).State.Revision==m04.State.Revision,
+    "Lost M04 response replays the original revision");
+Check((await View()).DungeonObjectiveCandidates.All(c=>c.QuestId!="CH01.M04"),"Completed M04 has no repeat candidate");
+Check(growth==JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(character.CharacterId,clock.Now,default)),
+    "Recording M04 never repeats the settlement growth grant");
 Console.WriteLine("PASS Chapter One M01-M04 integration");
 sealed class Clock(DateTimeOffset now):TimeProvider { public DateTimeOffset Now=now; public override DateTimeOffset GetUtcNow()=>Now; public void Advance()=>Now=Now.AddSeconds(2); }
