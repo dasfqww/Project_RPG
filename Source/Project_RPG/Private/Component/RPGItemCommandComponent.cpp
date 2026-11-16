@@ -1,4 +1,5 @@
 #include "Component/RPGItemCommandComponent.h"
+#include "Item/PickUp/RPGCurrencyPickup.h"
 
 #include "Async/Async.h"
 #include "Attribute/RPGAttributeSet.h"
@@ -517,7 +518,7 @@ void URPGItemCommandComponent::ServerPickupItem_Implementation(ARPGPickUpBase* P
 	APlayerController* Controller = Cast<APlayerController>(GetOwner());
 	APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
 	if (!IsValid(Pickup) || !Pickup->HasAuthority() || Pickup->GetWorld() != GetWorld() ||
-		!Pickup->IsAvailableForPickup() || Pickup->IsHidden() || !IsValid(Pawn) ||
+		Pickup->IsA<ARPGCurrencyPickup>() || !Pickup->IsAvailableForPickup() || Pickup->IsHidden() || !IsValid(Pawn) ||
 		!FMath::IsFinite(MaximumPickupDistance) || MaximumPickupDistance <= 0.f ||
 		!(FVector::DistSquared(Pawn->GetActorLocation(), Pickup->GetActorLocation()) <=
 			FMath::Square(MaximumPickupDistance)))

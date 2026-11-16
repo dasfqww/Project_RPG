@@ -43,7 +43,8 @@ public:
 
 	void InitializeDrop(URPGItemBase* ItemToDrop, const int32 InQuantity);
 	/** Initializes a fresh server drop without reviving the retired mutable item path. */
-	bool InitializeServerDropQuantity(int32 Quantity);
+	virtual bool CanInitializeServerDropQuantity(int32 Quantity) const;
+	virtual bool InitializeServerDropQuantity(int32 Quantity);
 	void InitializeDropPresentation(const FVector& Origin, int32 Seed);
 
 	void PickedUp();
@@ -111,7 +112,7 @@ protected:
 
 	void UpdateInteractableData();
 
-	void TakePickup(APlayerController* PlayerController);
+	virtual void TakePickup(APlayerController* PlayerController);
 
 	FName OwningPoolName = NAME_None;
 

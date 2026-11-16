@@ -195,11 +195,19 @@ void ARPGPickUpBase::BeginFocus()
     }
 }
 
+bool ARPGPickUpBase::CanInitializeServerDropQuantity(const int32 Quantity) const
+{
+    const FStackableFragment* Stack = ItemManifest.GetFragmentOfType<FStackableFragment>();
+    return Quantity > 0 && Quantity <= MAX_int8 && ItemManifest.GetItemTag().IsValid() &&
+        ItemManifest.GetItemCategory() != EItemCategory::None &&
+        (Stack ? Stack->GetMaxQuantity() >= 1 && Quantity <= Stack->GetMaxQuantity() : Quantity == 1);
+}
+
 bool ARPGPickUpBase::InitializeServerDropQuantity(const int32 Quantity)
 {
     if (!HasAuthority() || IsActorBeingDestroyed() || !bIsAvailableForPickup || IsHidden() ||
         (PickupGrantComponent && PickupGrantComponent->IsPending()) || Quantity <= 0 || Quantity > MAX_int8 ||
-        !ItemManifest.GetItemTag().IsValid() || ItemManifest.GetItemCategory() == EItemCategory::None)
+        !CanInitializeServerDropQuantity(Quantity))
     {
         return false;
     }

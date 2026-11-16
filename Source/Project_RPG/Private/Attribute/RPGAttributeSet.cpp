@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Attribute/RPGAttributeSet.h"
+#include "Item/Loot/RPGLootSourceComponent.h"
 #include "Component/Combat/RPGShieldComponent.h"
 #include "Riding/RPGRidingDamageScope.h"
 #include "AI/RPGBossAIComponent.h"
@@ -231,6 +232,10 @@ void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 
 		SetCurrentHealth(NewCurrentHealth);
 	
+		if (auto* Avatar = Data.Target.GetAvatarActor(); IsValid(Avatar) && Avatar->HasAuthority())
+			if (auto* Loot = Avatar->FindComponentByClass<URPGLootSourceComponent>())
+				Loot->NotifyDamage(Data, prevHealth, NewCurrentHealth);
+
 		if (takeDamage > 0 && FMath::IsFinite(prevHealth) && prevHealth > 0.f)
 			RidingDamage.Complete(FMath::Max(0.f, prevHealth - NewCurrentHealth),
 				FMath::Max(0.f, static_cast<float>(takeDamage) - HealthDamage));
