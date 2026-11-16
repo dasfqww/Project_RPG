@@ -44,7 +44,7 @@ class Asset:
     def get_editor_property(self, name):
         return self.properties[name]
     def get_path_name(self):
-        return self.identity
+        return getattr(self, "path", self.identity)
 
 
 class FakeUE:
@@ -58,6 +58,8 @@ class FakeUE:
     class RPGItemConsumableDefinitionFragment:
         pass
     class RPGItemEquipmentDefinitionFragment:
+        pass
+    class RPGRidingContentSettings(Asset):
         pass
     EditorAssetSubsystem, EditorValidatorSubsystem = "assets", "validation"
     DataValidationUsecase = types.SimpleNamespace(SCRIPT="script")
@@ -80,13 +82,17 @@ class FakeUE:
         self.Paths = types.SimpleNamespace(project_content_dir=lambda: str(root))
         self.EditorLoadingAndSavingUtils = types.SimpleNamespace(get_dirty_content_packages=lambda: [types.SimpleNamespace(get_name=lambda p=p: p) for p in self.dirty], get_dirty_map_packages=lambda: [])
         self.SystemLibrary = types.SimpleNamespace(get_primary_asset_id_from_object=lambda a: a.identity, conv_primary_asset_id_to_string=lambda value: value)
-        for path in self.assets:
+        self.settings = self.RPGRidingContentSettings(policy=self.assets["/Game/Riding/Policy"], mount_definitions=[self.assets["/Game/Riding/Horse"]])
+        for path, asset in self.assets.items():
+            asset.path = path + "." + path.rsplit("/", 1)[-1]
             target = root / (path[6:] + ".uasset")
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(b"fake saved asset")
 
     def get_editor_subsystem(self, _):
         return self
+    def get_default_object(self, _):
+        return self.settings
     def does_asset_exist(self, path):
         return path in self.assets
     def load_asset(self, path):
@@ -253,6 +259,70 @@ class AdapterTests(unittest.TestCase):
         self.assertFalse((output / "extra.json").exists())
         with self.assertRaises(ValueError):
             export.write_bundle(output, {"../escape": "bad"})
+
+
+class BindingTests(unittest.TestCase):
+    def setUp(self):
+        self.root = ROOT / self._testMethodName
+        self.ue = FakeUE(self.root)
+
+    def test_matching_defaults_report_scope_without_changing_hash(self):
+        result, observations = export.inspect_assets(self.ue, spec())
+        self.assertEqual(result["contentBinding"], dict(scope="LoadedProjectDefaults", componentOverridesVerified=False,
+                         policy="/Game/Riding/Policy.Policy", mountDefinitions=["/Game/Riding/Horse.Horse"]))
+        self.assertEqual(result["gameplayHash"], self.ue.assets["/Game/Riding/Policy"].properties["values"].properties["gameplay_hash"])
+        self.assertEqual(len(observations), 3)
+        self.assertFalse(result["configuration"]["Riding"]["Enabled"])
+
+    def test_missing_or_different_policy(self):
+        other = self.ue.RPGRidingPolicy()
+        other.path = "/Game/Riding/OtherPolicy.OtherPolicy"
+        for value in (None, Asset(), other):
+            self.ue.settings.properties["policy"] = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                export.inspect_assets(self.ue, spec())
+
+    def test_mount_set_must_match_without_duplicates(self):
+        horse = self.ue.assets["/Game/Riding/Horse"]
+        extra = self.ue.RPGMountDefinition()
+        extra.path = "/Game/Riding/Extra.Extra"
+        for values in ([], [horse, horse], [None], [Asset()], [extra], [horse, extra], [horse] * 513):
+            self.ue.settings.properties["mount_definitions"] = values
+            with self.subTest(count=len(values)), self.assertRaises(ValueError):
+                export.inspect_assets(self.ue, spec())
+
+    def test_binding_ignores_order_and_rejects_redirector_path(self):
+        extra = self.ue.RPGMountDefinition()
+        extra.path = "/Game/Riding/Extra.Extra"
+        value = spec()
+        value["mounts"].append(dict(asset="/Game/Riding/Extra", enabled=False))
+        self.ue.settings.properties["mount_definitions"] = [extra, self.ue.assets["/Game/Riding/Horse"]]
+        binding = export.check_content_binding(self.ue, value)
+        self.assertEqual(binding["mountDefinitions"], ["/Game/Riding/Extra.Extra", "/Game/Riding/Horse.Horse"])
+        extra.path = "/Game/Riding/Extra.OtherObject"
+        with self.assertRaises(ValueError):
+            export.check_content_binding(self.ue, value)
+
+    def test_settings_drift_during_native_validation_is_rejected(self):
+        other = self.ue.RPGRidingPolicy()
+        other.path = "/Game/Riding/OtherPolicy.OtherPolicy"
+        def mutate(_):
+            self.ue.settings.properties["policy"] = other
+        self.ue.after = mutate
+        with self.assertRaisesRegex(ValueError, "settings changed while reading"):
+            export.inspect_assets(self.ue, spec())
+
+    def test_current_module_and_saved_references_required(self):
+        self.ue.RPGRidingContentSettings = None
+        with self.assertRaisesRegex(ValueError, "current game module"):
+            export.inspect_assets(self.ue, spec())
+        self.ue.RPGRidingContentSettings = FakeUE.RPGRidingContentSettings
+        self.ue.settings = None
+        with self.assertRaises(ValueError):
+            export.inspect_assets(self.ue, spec())
+        self.ue.settings = FakeUE.RPGRidingContentSettings(policy=FakeUE.RPGRidingPolicy(), mount_definitions=[])
+        with self.assertRaises(ValueError):
+            export.inspect_assets(self.ue, spec())
 
 
 def fixtures(root):

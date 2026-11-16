@@ -1,9 +1,11 @@
 [CmdletBinding()]
-param([string]$Python = 'D:/UE_5.8/Engine/Binaries/ThirdParty/Python3/Win64/python.exe')
+param([string]$Python = 'D:/UE_5.8/Engine/Binaries/ThirdParty/Python3/Win64/python.exe',
+    [ValidateSet('riding-manifest-export-20261116','riding-export-binding-20261116')][string]$Reservation='riding-manifest-export-20261116')
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$id=[Guid]::NewGuid().ToString('N');$task='riding-manifest-export-20261116'
-$root=Join-Path $workspace ('Saved/BuildChecks/RidingManifestExport-20261116/'+$id)
+$id=[Guid]::NewGuid().ToString('N');$task=$Reservation
+$suite=if($task-eq'riding-export-binding-20261116'){'RidingExportBinding-20261116'}else{'RidingManifestExport-20261116'}
+$root=Join-Path $workspace ('Saved/BuildChecks/'+$suite+'/'+$id)
 $tempRoot=Join-Path $workspace 'Saved/ME';$temp=Join-Path $tempRoot $id.Substring(0,8);$repo=Join-Path $temp 'Repo'
 $ownsTemp=$false
 $proof=[ordered]@{Passed=$false;Base='749401a135d8217948ca29324816cc97abb1f7f5';Inputs=@();RunnerSHA256=(Get-FileHash -LiteralPath $PSCommandPath).Hash;Commands=@();Tests=@();Modules=@{};Cleanup=$null;Failure=$null}
@@ -12,7 +14,7 @@ $files=@('Scripts/Editor/RidingCatalogManifest.py','Scripts/Editor/ExportRidingC
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Save-Proof {if(Test-Path -LiteralPath $root){[IO.File]::WriteAllText((Join-Path $root 'Result.json'),($proof|ConvertTo-Json -Depth 16),[Text.UTF8Encoding]::new($false))}}
 function Assert-Reservation {
-    if(@(Get-Content -LiteralPath (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8|Where-Object{$_-match'^\|[^|]* / riding-manifest-export-20261116 \|'}).Count-ne1){throw 'Own reservation missing'}
+    if(@(Get-Content -LiteralPath (Join-Path $workspace 'Docs/Online_RPG_Development_Roadmap.md') -Encoding UTF8|Where-Object{$_-match('^\|[^|]* / '+[regex]::Escape($task)+' \|')}).Count-ne1){throw 'Own reservation missing'}
 }
 function Run-Private([string]$Executable,[string]$Arguments,[string]$Label,[switch]$JsonResult) {
     $start=[Diagnostics.ProcessStartInfo]::new();$start.FileName=$Executable;$start.Arguments=$Arguments
@@ -67,7 +69,7 @@ try {
     Run-Private $dotnet ('"'+$dll+'" --manifest-exports "'+(Join-Path $fixtures 'Contract')+'"') 'ManifestMemory' -JsonResult
     Run-Private $dotnet ('"'+$dll+'"') 'ExistingRegistrationMemory' -JsonResult
     Run-Private $dotnet ('"'+$dll+'" --preferences') 'ExistingPreferencesMemory' -JsonResult
-    $expected=@{Python=14;ManifestMemory=5;ExistingRegistrationMemory=7;ExistingPreferencesMemory=8}
+    $expected=@{Python=20;ManifestMemory=5;ExistingRegistrationMemory=7;ExistingPreferencesMemory=8}
     if($proof.Tests.Count-ne$expected.Count){throw 'Missing expected suites'}
     foreach($test in $proof.Tests){if($test.Result.CaseCount-ne$expected[$test.Label]){throw ('Missing cases: '+$test.Label)}}
     foreach($entry in $proof.Inputs){if((Get-FileHash -LiteralPath (Join-Path $workspace $entry.Path)).Hash-ne$entry.SHA256){throw 'Input changed during validation'}}

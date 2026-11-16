@@ -1035,3 +1035,13 @@ authoring spec은 아래 형식이다. 경로와 ID는 예시이며 해당 에�
 게시 `28476961`과 고정64입력의 사설 모듈 **40단계 빌드/링크0·D196CA01…2302DB8**에서 새 설정6+기존 foundation5/session6/actor4, **native21 Success·검사 오류/경고0·UE 종료0**을 확인했다. Game config selector·정책 검증·목록 전체 설치/중복·null/무효/513개 거절·외형 로드0·실제 Actor BeginPlay/개별 지정 보존·Ready/탑승 주입0을 검사했다. 같은 게시 기반 전체 프로젝트 **UHT/관련 CPP4 컴파일0**, 최종 소스/러너 SHA·PS2문법을 확인했다. 초기 검사 코드의 reflection 함수/AnimInstance include 오류를 보완한 뒤 최종 컴파일과 native를 통과했으며 제품 코드 판정 완화는 없다.
 
 자기 native 사본3회(초기2회는 확인된 검사 컴파일 오류 뒤 자기 UBT tree만 중단), 전체 Source 컴파일 사본3회 합계 **8,424,127,956 bytes(7.846GiB)**를 폐기했다. 자기 Temp/PID/정리 예외0이며 작은 명령/결과·소스/모듈 hash는 로컬 `Saved/BuildChecks/RidingContentSettings-20261116/Completion.json`에 남긴다. 폐기한 모듈 hash는 당시 근거이며 원본 Binaries/Intermediate/DDC·콘텐츠/저널/DB·다른 담당자의 기존 등록 테스트 이름 보정과 후속 Source/도구 변경은 보존했다.
+
+## 52. M4d 내보내기와 공통 콘텐츠 설정의 일치 — 2026-11-16
+
+담당 `riding-export-binding-20261116`. [ExportRidingCatalog.py](../Scripts/Editor/ExportRidingCatalog.py)는 수동 authoring spec만으로 export하지 않고, 현재 게임 모듈의 `RPGRidingContentSettings` 기본 객체가 가리키는 Policy/정의 목록과 먼저 대조한다. 기존에는 spec의 정책·목록이 유효해도 게임의 공통 설정이 비었거나 다른 에셋을 가리킬 수 있었다.
+
+- Policy는 같은 저장된 canonical 에셋이어야 하며, 정의는 순서와 무관하게 spec과 정확히 같은 집합이어야 한다. 비활성 mount도 spec에 포함됐다면 공통 목록에 있어야 한다. 빈/누락/다른 클래스·중복/513개 이상·spec과 다른 정책/누락/추가 정의를 거절한다. redirector나 다른 object 이름을 통해 현재 정의를 잘못 관측하지 않도록 실제 로드 경로도 확인한다.
+- UE5.8의 Python soft object property 조회는 `PyConversion.cpp`의 `LoadObjectPropertyValue`를 통해 metadata 객체를 돌려준다. 이를 경로 wrapper로 가정하지 않고 실제 클래스/경로를 확인한다. 기존 native metadata/외형/socket 검증·파일 SHA·dirty/spec 변경 확인 이후 공통 설정도 다시 읽어 드리프트 시 출력을 중단한다. 설정·에셋 저장이나 hash 갱신은 수행하지 않는다.
+- `Sources.json.contentBinding`에는 `scope=LoadedProjectDefaults`, 실제 policy/정의 경로, `componentOverridesVerified=false`를 기록한다. 이 관측은 현재 로드된 CDO 기준이며 디스크에 저장된 설정과의 동일성이나 재시작/패키징·실제 Pawn/PlayerState의 개별 override를 증명하지 않는다. 공통 설정 변경은 저장·재시작한 뒤 내보내고, 개별 지정과 최종 배포는 따로 확인한다. backend 구성은 계속 비활성이며 canonical gameplay bytes/hash에는 이 보고 필드를 포함하지 않는다.
+
+`Run-RidingManifestExportTests.ps1 -Reservation riding-export-binding-20261116`의 고정5입력/러너에서 Python **20개**(신규 binding6/기존14)와 실제 생산 config binder/카탈로그·Memory HTTP **20개/332 assertion**(manifest5/48·등록7/156·설정8/128), 합계 **40개**가 통과했다. Release0오류/0경고·고정 SHA/PS 문법을 확인했다. Python의 UE adapter는 모의이며 실제 에셋/Editor 실행을 대신하지 않는다. 원본 Source/Config/콘텐츠·공유 게임 빌드/실행/서버 설정은 변경0이다. 자기 사본/SDK/fixture/bin/obj **61,171,904 bytes**를 폐기했고 Temp/PID/정리 예외0이다. 작은 증거는 로컬 `Saved/BuildChecks/RidingExportBinding-20261116/Completion.json`에 보존하며 폐기한 바이너리 hash는 당시 근거다.

@@ -44,6 +44,40 @@ def json_text(value):
     return json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2) + "\n"
 
 
+def read_content_binding(unreal):
+    settings_type = getattr(unreal, "RPGRidingContentSettings", None)
+    manifest.require(settings_type is not None, "Load the current game module with RPGRidingContentSettings")
+    settings = unreal.get_default_object(settings_type)
+    manifest.require(settings is not None, "Project Riding content settings unavailable")
+
+    def path(asset, expected):
+        manifest.require(isinstance(asset, expected), "Project Riding content reference is empty, missing or has the wrong class")
+        value = str(asset.get_path_name())
+        source, separator, name = value.partition(".")
+        package(source)
+        manifest.require(separator and name == source.rsplit("/", 1)[-1], "Use a canonical saved Riding asset reference")
+        return value
+
+    # UE 5.8 PythonizeProperty calls LoadObjectPropertyValue for soft object
+    # properties too. These are loaded metadata objects, not path wrapper structs.
+    policy = path(settings.get_editor_property("policy"), unreal.RPGRidingPolicy)
+    definitions = settings.get_editor_property("mount_definitions")
+    manifest.require(1 <= len(definitions) <= 512, "Project mount definitions must contain 1..512 assets")
+    mounts = [path(asset, unreal.RPGMountDefinition) for asset in definitions]
+    manifest.require(len(set(mounts)) == len(mounts), "Project mount definitions contain duplicate asset references")
+    return dict(policy=policy, mountDefinitions=sorted(mounts))
+
+
+def check_content_binding(unreal, spec):
+    binding = read_content_binding(unreal)
+    def object_path(value):
+        return value + "." + value.rsplit("/", 1)[-1]
+    manifest.require(binding["policy"] == object_path(spec["policy"]), "Project policy differs from the authoring specification")
+    manifest.require(binding["mountDefinitions"] == sorted(object_path(row["asset"]) for row in spec["mounts"]),
+                     "Project mount definitions differ from the authoring specification")
+    return binding
+
+
 def write_bundle(output, files):
     output = Path(output)
     manifest.require(output.is_absolute(), "Absolute output directory required")
@@ -65,6 +99,7 @@ def write_bundle(output, files):
 
 
 def inspect_assets(unreal, spec):
+    binding = check_content_binding(unreal, spec)
     editor = unreal.get_editor_subsystem(unreal.EditorAssetSubsystem)
     validator = unreal.get_editor_subsystem(unreal.EditorValidatorSubsystem)
     dirty = {str(p.get_name()) for p in list(unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()) + list(unreal.EditorLoadingAndSavingUtils.get_dirty_map_packages())}
@@ -77,6 +112,7 @@ def inspect_assets(unreal, spec):
         before = hashlib.sha256(disk.read_bytes()).hexdigest()
         asset = editor.load_asset(path)
         manifest.require(isinstance(asset, expected), "Wrong asset class: " + path)
+        manifest.require(str(asset.get_path_name()) == path + "." + path.rsplit("/", 1)[-1], "Use the current canonical asset path, not a redirector: " + path)
         observations.append(dict(package=path, file=str(disk), sha256=before))
         return asset
     def valid(asset, item=False):
@@ -127,6 +163,8 @@ def inspect_assets(unreal, spec):
         manifest.require(hashlib.sha256(Path(entry["file"]).read_bytes()).hexdigest() == entry["sha256"], "Source asset changed while reading")
     dirty_after = {str(p.get_name()) for p in list(unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()) + list(unreal.EditorLoadingAndSavingUtils.get_dirty_map_packages())}
     manifest.require(not dirty_after.intersection(entry["package"] for entry in observations), "Source became dirty while reading")
+    manifest.require(read_content_binding(unreal) == binding, "Project content settings changed while reading")
+    result["contentBinding"] = dict(scope="LoadedProjectDefaults", componentOverridesVerified=False, **binding)
     return result, observations
 
 
@@ -139,7 +177,8 @@ def main():
     text = source.read_text(encoding="utf-8-sig")
     result, observations = inspect_assets(unreal, parse_spec(text))
     manifest.require(source.read_text(encoding="utf-8-sig") == text, "Authoring specification changed while reading")
-    report = dict(format=result["format"], gameplayHash=result["gameplayHash"], sources=observations, activation="Disabled candidate; no deployment, policy changes or grants")
+    report = dict(format=result["format"], gameplayHash=result["gameplayHash"], sources=observations, contentBinding=result["contentBinding"],
+                  activation="Disabled candidate; no deployment, policy changes or grants")
     write_bundle(output, {"Riding.Candidate.json": json_text(result["configuration"]), "Gameplay.canonical.txt": result["canonical"], "Sources.json": json_text(report)})
     unreal.log("Riding candidate exported with activation disabled: " + str(output))
 
