@@ -148,6 +148,22 @@ bool FRPGBossProfileRoutingTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGBossExecutorOwnershipTest, "ProjectRPG.Boss.Profiles.BlueprintExecutorOwnership",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGBossExecutorOwnershipTest::RunTest(const FString&)
+{
+    const auto* BossClass = LoadClass<AActor>(nullptr, TEXT("/Game/Blueprints/Character/NPC/Raid/SwordManCombo/BP_RaidSwordManCombo.BP_RaidSwordManCombo_C"));
+    if (!TestNotNull(TEXT("Current authored raid boss"), BossClass)) return false;
+    const auto* Template = BossClass->GetDefaultObject<AActor>()->FindComponentByClass<URPGBossAIComponent>();
+    if (!TestNotNull(TEXT("Blueprint boss component template"), Template)) return false;
+    auto* First = NewObject<URPGBossAIComponent>(GetTransientPackage(), NAME_None, RF_Transient, const_cast<URPGBossAIComponent*>(Template));
+    auto* Second = NewObject<URPGBossAIComponent>(GetTransientPackage(), NAME_None, RF_Transient, const_cast<URPGBossAIComponent*>(Template));
+    TestTrue(TEXT("First executor belongs to its live component"), First->GetPatternExecutor()->GetOuter() == First);
+    TestTrue(TEXT("Second executor belongs to its live component"), Second->GetPatternExecutor()->GetOuter() == Second);
+    TestTrue(TEXT("Bosses do not share mutable pattern orchestration"), First->GetPatternExecutor() != Second->GetPatternExecutor());
+    TestTrue(TEXT("Runtime does not use the Blueprint template executor"), First->GetPatternExecutor() != Template->GetPatternExecutor());
+    return true;
+}
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGBossProfileSequenceTest, "ProjectRPG.Boss.Profiles.PatternIdentityAndSequence",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FRPGBossProfileSequenceTest::RunTest(const FString&)

@@ -186,7 +186,7 @@ private:
 		const FRPGBossPatternExecution& Execution, const FTransform* QueryTransform, const FRPGHitQueryShape* Shape);
 	int32 BeginTelegraphInternal(FGameplayTag ActionTag, FVector AimLocation, float WindupSeconds,
 		const FRPGBossTelegraphGeometry& Geometry, const FRPGBossPatternExecution& Execution);
-	UPROPERTY(Transient) TObjectPtr<URPGBossPatternExecutor> PatternExecutor;
+	UPROPERTY(Transient, Instanced) TObjectPtr<URPGBossPatternExecutor> PatternExecutor;
 	UPROPERTY(ReplicatedUsing = OnRep_State)
 	FRPGBossState State;
 	UPROPERTY(ReplicatedUsing = OnRep_Telegraph)
