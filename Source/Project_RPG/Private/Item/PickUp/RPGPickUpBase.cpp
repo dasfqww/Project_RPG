@@ -2,6 +2,7 @@
 
 
 #include "Item/PickUp/RPGPickUpBase.h"
+#include "Item/PickUp/RPGLootPresentationComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/GameInstance.h"
 #include "LatentActions.h"
@@ -29,6 +30,7 @@ ARPGPickUpBase::ARPGPickUpBase()
 {
     PrimaryActorTick.bCanEverTick = false;
     PickupGrantComponent = CreateDefaultSubobject<URPGPickupGrantComponent>(TEXT("PickupGrant"));
+    LootPresentation = CreateDefaultSubobject<URPGLootPresentationComponent>(TEXT("LootPresentation"));
 
     PickupMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PickupMesh"));
     PickupMesh->SetSimulatePhysics(true);
@@ -53,6 +55,7 @@ void ARPGPickUpBase::BeginPlay()
 
     //InitializePickUp(URPGItemBase::StaticClass(), ItemQuantity);
     InteractableData = InstanceInteractableData;
+    LootPresentation->InitializeRestingDrop(PickupDropId);
 }
 
 void ARPGPickUpBase::PostInitializeComponents()
@@ -82,6 +85,22 @@ void ARPGPickUpBase::InitItemManifest(FItemManifest CopyOfManifest, FName InPool
     SetActorHiddenInGame(false);
     SetActorEnableCollision(true);
     ForceNetUpdate();
+    LootPresentation->InitializeRestingDrop(PickupDropId);
+    LootPresentation->SetPickupAvailable(true);
+}
+
+void ARPGPickUpBase::InitializeDropPresentation(const FVector& Origin, const int32 Seed)
+{
+    if (!HasAuthority() || IsActorBeingDestroyed() || !bIsAvailableForPickup ||
+        (PickupGrantComponent && PickupGrantComponent->IsPending())) return;
+    if (!PickupDropId.IsValid()) PickupDropId = FGuid::NewGuid();
+    if (LootPresentation->BeginDropFlight(PickupDropId, Origin, Seed))
+        PickupMesh->SetSimulatePhysics(false);
+}
+
+bool ARPGPickUpBase::IsAvailableForPickup() const
+{
+    return bIsAvailableForPickup && (!LootPresentation || !LootPresentation->IsInFlight());
 }
 
 //void ARPGPickUpBase::InitializePickUp(const TSubclassOf<URPGItemBase> BaseClass, const int32 InQuantity)
@@ -169,6 +188,7 @@ void ARPGPickUpBase::InitializeDrop(URPGItemBase* ItemToDrop, const int32 InQuan
 
 void ARPGPickUpBase::BeginFocus()
 {
+    LootPresentation->SetFocused(true);
     if (PickupMesh)
     {
         PickupMesh->SetRenderCustomDepth(true);
@@ -199,6 +219,7 @@ bool ARPGPickUpBase::InitializeServerDropQuantity(const int32 Quantity)
 
 void ARPGPickUpBase::EndFocus()
 {
+    LootPresentation->SetFocused(false);
     if (PickupMesh)
     {
         PickupMesh->SetRenderCustomDepth(false);
@@ -260,6 +281,7 @@ void ARPGPickUpBase::PickedUp()
 {
     if (!HasAuthority() || (PickupGrantComponent && PickupGrantComponent->IsPending())) return;
 
+    LootPresentation->NotifyCollected();
     bIsAvailableForPickup = false;
     ForceNetUpdate();
 
@@ -276,12 +298,13 @@ void ARPGPickUpBase::PickedUp()
 
 bool ARPGPickUpBase::TryClaimPickup()
 {
-    if (!HasAuthority() || !bIsAvailableForPickup || IsHidden())
+    if (!HasAuthority() || !IsAvailableForPickup() || IsHidden())
     {
         return false;
     }
 
     bIsAvailableForPickup = false;
+    LootPresentation->SetPickupAvailable(false);
     ForceNetUpdate();
     return true;
 }
@@ -295,6 +318,7 @@ void ARPGPickUpBase::ReleasePickupClaim()
     }
 
     bIsAvailableForPickup = true;
+    LootPresentation->SetPickupAvailable(true);
     ForceNetUpdate();
 }
 
@@ -316,6 +340,7 @@ void ARPGPickUpBase::SetPickupQuantity(int32 Quantity)
 void ARPGPickUpBase::OnRep_PickupAvailability()
 {
     SetActorEnableCollision(bIsAvailableForPickup && !IsHidden());
+    LootPresentation->SetPickupAvailable(bIsAvailableForPickup);
 }
 
 //#if WITH_EDITOR

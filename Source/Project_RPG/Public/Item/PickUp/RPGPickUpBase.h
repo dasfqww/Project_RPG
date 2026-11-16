@@ -16,6 +16,7 @@ class URPGItemBase;
 class URPGItemNameWidget;
 class UWidgetComponent;
 class URPGPickupGrantComponent;
+class URPGLootPresentationComponent;
 
 UCLASS()
 class PROJECT_RPG_API ARPGPickUpBase : public AActor, public IInteractionInterface
@@ -43,12 +44,13 @@ public:
 	void InitializeDrop(URPGItemBase* ItemToDrop, const int32 InQuantity);
 	/** Initializes a fresh server drop without reviving the retired mutable item path. */
 	bool InitializeServerDropQuantity(int32 Quantity);
+	void InitializeDropPresentation(const FVector& Origin, int32 Seed);
 
 	void PickedUp();
 	bool TryClaimPickup();
 	void ReleasePickupClaim();
 	void SetPickupQuantity(int32 Quantity);
-	bool IsAvailableForPickup() const { return bIsAvailableForPickup; }
+	bool IsAvailableForPickup() const;
 
 protected:
 	UPROPERTY(Transient, Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category = "Pickup | Authority")
@@ -56,6 +58,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Pickup | Authority")
 	TObjectPtr<URPGPickupGrantComponent> PickupGrantComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Pickup | Presentation")
+	TObjectPtr<URPGLootPresentationComponent> LootPresentation;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Pickup | Components")
 	TObjectPtr<UStaticMeshComponent> PickupMesh;
