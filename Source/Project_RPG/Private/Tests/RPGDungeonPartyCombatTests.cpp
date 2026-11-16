@@ -117,7 +117,7 @@ bool FRPGDungeonPartyCombatWidgetTest::RunTest(const FString&)
 	const auto Slate = Widget->TakeWidget();
 	auto* Rows = Cast<UVerticalBox>(Widget->GetWidgetFromName(TEXT("DungeonPartyCombatRows")));
 	if (!TestNotNull(TEXT("Party health rows"), Rows)) return false;
-	TestEqual(TEXT("HUD does not intercept gameplay input"), Widget->GetVisibility(), ESlateVisibility::HitTestInvisible);
+	TestEqual(TEXT("HUD root passes gameplay input while its bounded card scrolls"), Widget->GetVisibility(), ESlateVisibility::SelfHitTestInvisible);
 	if (!TestEqual(TEXT("Each member has a label and health wrapper"), Rows->GetChildrenCount(), 4)) return false;
 	TestTrue(TEXT("Known health has a visible bar"), Rows->GetChildAt(1)->IsVisible());
 	TestEqual(TEXT("Unknown health collapses the wrapper, not a fake empty bar"), Rows->GetChildAt(3)->GetVisibility(), ESlateVisibility::Collapsed);
@@ -236,14 +236,14 @@ bool FRPGDungeonPartyDesignerPresentationTest::RunTest(const FString&)
 	const auto Slate = Widget->TakeWidget();
 	TestTrue(TEXT("Native fallback does not replace a designer-owned root"), Widget->WidgetTree->RootWidget == Root);
 	TestEqual(TEXT("Native refresh does not insert controls into the designer layout"), Root->GetChildrenCount(), 1);
-	TestEqual(TEXT("Designer root remains passive"), Widget->GetVisibility(), ESlateVisibility::HitTestInvisible);
+	TestEqual(TEXT("Designer root remains self-hit-test-invisible"), Widget->GetVisibility(), ESlateVisibility::SelfHitTestInvisible);
 	Widget->SetIsFocusable(true); Widget->SetVisibility(ESlateVisibility::Visible);
 	Snapshot.bRosterStale = true;
 	Widget->SetPartySnapshot(Snapshot, 108.0);
 	TestTrue(TEXT("Stale roster flag also reaches custom layouts"), Widget->IsLastKnownPartyRoster());
 	TestTrue(TEXT("WBP notices expire on the same server timeline"), Widget->GetActivePartyNotices().IsEmpty());
 	TestTrue(TEXT("An expired notice has no display text"), Widget->GetPartyNoticeText(Snapshot.Notices[0]).IsEmpty());
-	TestEqual(TEXT("A presentation refresh restores passive hit testing"), Widget->GetVisibility(), ESlateVisibility::HitTestInvisible);
+	TestEqual(TEXT("A presentation refresh restores root input passthrough"), Widget->GetVisibility(), ESlateVisibility::SelfHitTestInvisible);
 	TestFalse(TEXT("A presentation refresh restores nonfocusable state"), Widget->IsFocusable());
 	Snapshot = {}; Widget->SetPartySnapshot(Snapshot, 109.0);
 	TestTrue(TEXT("Cleared presentation exposes no old rows"), Widget->GetPartyMembers().IsEmpty());

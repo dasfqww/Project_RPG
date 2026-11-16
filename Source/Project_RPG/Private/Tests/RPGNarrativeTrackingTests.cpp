@@ -107,7 +107,7 @@ bool FRPGTrackingWidgetTest::RunTest(const FString&)
         TestTrue(TEXT("HUD initially empty"),Hud->GetDisplayedTracking().IsEmpty());
         Click(Panel.Get(),TEXT("TrackQuest"));
         TestTrue(TEXT("HUD receives local pin"),Hud->GetDisplayedTracking().ToString().Contains(TEXT("(1/3)")));
-        TestTrue(TEXT("HUD cannot intercept input"),Hud->GetVisibility()==ESlateVisibility::HitTestInvisible);
+        TestTrue(TEXT("HUD root passes input through while its bounded card supports scrolling"),Hud->GetVisibility()==ESlateVisibility::SelfHitTestInvisible);
         TestNull(TEXT("HUD has no buttons"),Hud->GetWidgetFromName(TEXT("TrackQuest")));
         FRPGNarrativeTrackingTestAccess::Destruct(Panel.Get());
         F.Current.Quests[0].Objectives[0].CurrentCount=2;

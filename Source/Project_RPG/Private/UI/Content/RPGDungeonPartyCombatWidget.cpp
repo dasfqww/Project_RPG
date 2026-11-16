@@ -9,30 +9,35 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "UI/HUD/RPGHUDLayout.h"
+#include "Components/ScrollBox.h"
 
 TSharedRef<SWidget> URPGDungeonPartyCombatWidget::RebuildWidget()
 {
 	SetIsFocusable(false);
-	SetVisibility(ESlateVisibility::HitTestInvisible);
+	SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	if (WidgetTree && !WidgetTree->RootWidget)
 	{
 		auto* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>();
 		WidgetTree->RootWidget = Canvas;
 		auto* Width = WidgetTree->ConstructWidget<USizeBox>();
-		Width->SetWidthOverride(300.f);
+		Width->SetWidthOverride(RPGHUDLayout::SideWidth);
+		Width->SetMaxDesiredHeight(360.f);
 		auto* Position = Canvas->AddChildToCanvas(Width);
-		Position->SetAnchors(FAnchors(0.f, .18f));
-		Position->SetOffsets(FMargin(24.f, 0.f, 0.f, 0.f));
+		Position->SetAnchors(FAnchors(0.f, 0.f));
+		Position->SetOffsets(FMargin(RPGHUDLayout::Edge, RPGHUDLayout::QuestTop, 0.f, 0.f));
 		Position->SetAutoSize(true);
 		auto* Card = WidgetTree->ConstructWidget<UBorder>();
-		Card->SetBrushColor(FLinearColor(.025f, .04f, .06f, .88f));
+		Card->SetBrushColor(RPGHUDLayout::PanelColor());
 		Card->SetPadding(FMargin(12.f));
 		Width->SetContent(Card);
 		auto* Content = WidgetTree->ConstructWidget<UVerticalBox>();
-		Card->SetContent(Content);
+		auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>();
+		Scroll->AddChild(Content); Card->SetContent(Scroll);
 		Header = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("DungeonPartyCombatHeader"));
 		Header->SetAutoWrapText(true);
-		auto HeaderFont = Header->GetFont(); HeaderFont.Size = 16; Header->SetFont(HeaderFont);
+		auto HeaderFont = Header->GetFont(); HeaderFont.Size = 14; Header->SetFont(HeaderFont);
+		Header->SetColorAndOpacity(RPGHUDLayout::HeadingColor());
 		Content->AddChildToVerticalBox(Header)->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
 		Rows = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("DungeonPartyCombatRows"));
 		Content->AddChildToVerticalBox(Rows);
@@ -58,7 +63,7 @@ void URPGDungeonPartyCombatWidget::NativeConstruct()
 	RefreshMembers();
 	OnPartyPresentationUpdated();
 	SetIsFocusable(false);
-	SetVisibility(ESlateVisibility::HitTestInvisible);
+	SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 }
 
 void URPGDungeonPartyCombatWidget::NativeDestruct()
@@ -79,7 +84,7 @@ void URPGDungeonPartyCombatWidget::SetPartySnapshot(const FRPGDungeonPartyCombat
 	{
 		OnPartyPresentationUpdated();
 		SetIsFocusable(false);
-		SetVisibility(ESlateVisibility::HitTestInvisible);
+		SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	}
 }
 

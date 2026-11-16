@@ -9,6 +9,8 @@
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/SizeBox.h"
+#include "Components/ScrollBox.h"
+#include "UI/HUD/RPGHUDLayout.h"
 
 void URPGNarrativeQuestTrackerWidget::Configure(TSharedPtr<FRPGNarrativeQuestTracking> InModel, FGuid InCharacter, bool bInControls)
 { Model = MoveTemp(InModel); Character = InCharacter; bControls = bInControls; OptionsKey.Reset(); Render(); }
@@ -34,15 +36,22 @@ TSharedRef<SWidget> URPGNarrativeQuestTrackerWidget::RebuildWidget()
         else
         {
             auto* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>(); WidgetTree->RootWidget = Canvas;
-            auto* Width = WidgetTree->ConstructWidget<USizeBox>(); Width->SetWidthOverride(320.f);
-            auto* Border = WidgetTree->ConstructWidget<UBorder>(); Border->SetPadding(FMargin(8.f));
-            Border->SetBrushColor(FLinearColor(.025f, .035f, .055f, .7f)); Border->SetContent(Page); Width->SetContent(Border);
-            auto* CanvasSlot = Canvas->AddChildToCanvas(Width); CanvasSlot->SetAnchors(FAnchors(1, 0)); CanvasSlot->SetAlignment(FVector2D(1, 0));
-            CanvasSlot->SetPosition(FVector2D(-24, 140)); CanvasSlot->SetAutoSize(true);
-            SetVisibility(ESlateVisibility::HitTestInvisible); SetIsFocusable(false);
+            auto* Width = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("TrackedQuestCard"));
+            auto* Border = WidgetTree->ConstructWidget<UBorder>(); Border->SetPadding(FMargin(12.f));
+            auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>();
+            Scroll->AddChild(Page); Border->SetContent(Scroll);
+            Border->SetBrushColor(RPGHUDLayout::PanelColor()); Width->SetContent(Border);
+            auto* CanvasSlot = Canvas->AddChildToCanvas(Width);
+            RPGHUDLayout::PlaceRightCard(*Width, *CanvasSlot, false);
+            SetVisibility(ESlateVisibility::SelfHitTestInvisible); SetIsFocusable(false);
         }
         Summary = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TrackedQuestSummary"));
         Summary->SetAutoWrapText(true); Page->AddChildToVerticalBox(Summary);
+        if (!bControls)
+        {
+            auto Font = Summary->GetFont(); Font.Size = 12; Summary->SetFont(Font);
+            Summary->SetColorAndOpacity(RPGHUDLayout::HeadingColor());
+        }
     }
     Render(); return Super::RebuildWidget();
 }
@@ -87,6 +96,9 @@ void URPGNarrativeQuestTrackerWidget::Render()
     else if (bControls) Text = Readable ? NSLOCTEXT("RPGNarrative", "TrackerEmpty", "추적할 진행 중 의뢰를 선택해 주세요.")
         : NSLOCTEXT("RPGNarrative", "TrackerUnreadable", "현재 캐릭터의 이야기 진도를 확인해 주세요.");
     Summary->SetText(Text);
+    if (!bControls && WidgetTree)
+        if (auto* Card = WidgetTree->FindWidget(TEXT("TrackedQuestCard")))
+            Card->SetVisibility(Tracked ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 }
 void URPGNarrativeQuestTrackerWidget::TrackSelected()
 {

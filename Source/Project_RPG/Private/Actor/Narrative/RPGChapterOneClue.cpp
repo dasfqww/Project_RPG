@@ -12,13 +12,18 @@
 #include "Narrative/RPGNarrativeQuestTracking.h"
 #include "Narrative/RPGQuestManager.h"
 #include "Player/RPGPlayerState.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
+#include "EngineUtils.h"
+#include "UI/HUD/RPGHUDLayout.h"
+#include "Component/UI/PlayerUIComponent.h"
 
 TSharedRef<SWidget> URPGChapterOneClueLabel::RebuildWidget()
 {
     if (!WidgetTree->RootWidget)
     {
         Caption = WidgetTree->ConstructWidget<UTextBlock>();
-        Caption->SetWrapTextAt(360.f);
+        Caption->SetWrapTextAt(260.f);
+        auto Font = Caption->GetFont(); Font.Size = 12; Caption->SetFont(Font);
         Caption->SetJustification(ETextJustify::Center);
         Caption->SetColorAndOpacity(FSlateColor(FLinearColor::White));
         Caption->SetShadowOffset(FVector2D(2,2));
@@ -78,7 +83,29 @@ void ARPGChapterOneClue::Tick(float DeltaSeconds)
     }
     if (!PersonalLabel) return;
     const APawn* Pawn = PC->GetPawn();
-    Label->SetVisibility(Pawn && FVector::DistSquared(Pawn->GetActorLocation(), GetActorLocation()) < FMath::Square(1800.f));
+    // Only the nearest nearby clue owns a world caption. Never clamp several
+    // long screen-space captions onto a HUD edge or over the fixed side cards.
+    bool bShowCaption = Pawn && FVector::DistSquared(Pawn->GetActorLocation(), GetActorLocation()) < FMath::Square(600.f);
+    const auto* UI = Pawn ? Pawn->FindComponentByClass<UPlayerUIComponent>() : nullptr;
+    bShowCaption = bShowCaption && (!UI || !UI->GetActionProgressSnapshot().bActive);
+    if (bShowCaption)
+    {
+        const double Distance = FVector::DistSquared(Pawn->GetActorLocation(), GetActorLocation());
+        for (TActorIterator<ARPGChapterOneClue> It(GetWorld()); It; ++It)
+            if (*It != this && !It->IsActorBeingDestroyed() && It->ClueNumber >= 1 && It->ClueNumber <= 3)
+            {
+                const double OtherDistance = FVector::DistSquared(Pawn->GetActorLocation(), It->GetActorLocation());
+                if (OtherDistance < Distance || (OtherDistance == Distance && It->GetUniqueID() < GetUniqueID()))
+                    { bShowCaption = false; break; }
+            }
+        FVector2D Point;
+        int32 X = 0, Y = 0; PC->GetViewportSize(X, Y);
+        const float Scale = UWidgetLayoutLibrary::GetViewportScale(this);
+        bShowCaption = bShowCaption && Scale > 0.f
+            && PC->ProjectWorldLocationToScreen(Label->GetComponentLocation(), Point, true)
+            && RPGHUDLayout::IsWorldLabelInSafeArea(Point / Scale, FVector2D(X * Local->Size.X, Y * Local->Size.Y) / Scale);
+    }
+    Label->SetVisibility(bShowCaption);
     FString Text = DisplayName.ToString();
     auto* Flow = Local->GetSubsystem<URPGNarrativeCoordinator>();
     auto* State = PC->GetPlayerState<ARPGPlayerState>(); FGuid Character;

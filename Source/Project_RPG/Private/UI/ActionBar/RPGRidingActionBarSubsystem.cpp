@@ -31,7 +31,7 @@ public:
         Profile->bOverrideCenterLayout = true;
         Profile->CenterLayout.Anchors = FAnchors(.5f, 1.f);
         Profile->CenterLayout.Alignment = FVector2D(.5f, 1.f);
-        Profile->CenterLayout.Offsets = FMargin(0.f, -88.f, 240.f, 88.f);
+        Profile->CenterLayout.Offsets = FMargin(0.f, -192.f, 240.f, 64.f);
         FRPGActionBarEntry Dash;
         Dash.ActionId = TEXT("Dash"); Dash.Label = LOCTEXT("Dash", "질주"); Dash.DisplaySlot = 0;
         // The existing dodge action owns the physical key, including player remaps.

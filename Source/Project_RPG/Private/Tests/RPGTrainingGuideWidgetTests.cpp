@@ -111,7 +111,7 @@ bool FRPGTrainingGuideProgressTest::RunTest(const FString&)
 	FFixture F;
 	if (!TestTrue(TEXT("Local widget fixture ready"), F.Initialize())) return false;
 	TestFalse(TEXT("No active server progress starts hidden"), Access::Visible(*F.Widget));
-	TestEqual(TEXT("Hidden card keeps the root available for late replication"), F.Widget->GetVisibility(), ESlateVisibility::HitTestInvisible);
+	TestEqual(TEXT("Hidden card keeps the root available for late replication and child scrolling"), F.Widget->GetVisibility(), ESlateVisibility::SelfHitTestInvisible);
 	TestFalse(TEXT("Guide does not take input focus"), F.Widget->IsFocusable());
 	FRPGTrainingObjectiveProgress Progress; Progress.bActive = true;
 	SetReplica(*F.Objectives, Progress); Access::Refresh(*F.Widget);

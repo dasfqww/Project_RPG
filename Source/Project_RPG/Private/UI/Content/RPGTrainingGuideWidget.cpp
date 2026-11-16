@@ -24,6 +24,8 @@
 #include "UObject/StrongObjectPtr.h"
 #include "RPGGameplayTags.h"
 #include "Skill/QuickSlot/RPGQuickSlotInputBindings.h"
+#include "UI/HUD/RPGHUDLayout.h"
+#include "Components/ScrollBox.h"
 
 #define LOCTEXT_NAMESPACE "RPGTrainingGuideWidget"
 
@@ -80,36 +82,39 @@ TSharedRef<SWidget> URPGTrainingGuideWidget::RebuildWidget()
 {
 	SetIsFocusable(false);
 	// Hide only the card: the root must keep detecting late replication and possession.
-	SetVisibility(ESlateVisibility::HitTestInvisible);
+	SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	if (WidgetTree && !WidgetTree->RootWidget)
 	{
 		auto* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>();
 		WidgetTree->RootWidget = Canvas;
 		auto* Width = WidgetTree->ConstructWidget<USizeBox>();
-		Width->SetWidthOverride(360.f);
 		auto* Position = Canvas->AddChildToCanvas(Width);
-		Position->SetPosition(FVector2D(32.f, 220.f));
-		Position->SetAutoSize(true);
+		RPGHUDLayout::PlaceRightCard(*Width, *Position, true);
 		Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("TrainingGuideCard"));
-		Card->SetBrushColor(FLinearColor(.025f, .04f, .06f, .9f));
-		Card->SetPadding(FMargin(14.f));
-		Width->SetContent(Card);
+		Card->SetBrushColor(RPGHUDLayout::PanelColor());
+		Card->SetPadding(FMargin(12.f));
+		auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>();
+		Scroll->SetConsumeMouseWheel(EConsumeMouseWheel::WhenScrollingPossible);
+		Width->SetContent(Scroll);
+		Scroll->AddChild(Card);
 		auto* Content = WidgetTree->ConstructWidget<UVerticalBox>();
 		Card->SetContent(Content);
 		Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TrainingGuideTitle"));
-		auto Font = Title->GetFont(); Font.Size = 17; Title->SetFont(Font);
+		auto Font = Title->GetFont(); Font.Size = 15; Title->SetFont(Font);
+		Title->SetColorAndOpacity(RPGHUDLayout::HeadingColor());
 		Title->SetAutoWrapText(true);
 		Content->AddChildToVerticalBox(Title)->SetPadding(FMargin(0.f, 0.f, 0.f, 10.f));
 		for (int32 Index = 0; Index < GetGoalCount(); ++Index)
 		{
 			auto* Row = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(),
 				FName(*FString::Printf(TEXT("TrainingGoal%d"), Index)));
-			Font.Size = 14; Row->SetFont(Font); Row->SetAutoWrapText(true);
+			Font.Size = 12; Row->SetFont(Font); Row->SetAutoWrapText(true);
 			Content->AddChildToVerticalBox(Row)->SetPadding(FMargin(0.f, 3.f));
 			Goals.Add(Row);
 		}
 		Hint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TrainingGuideHint"));
-		Font.Size = 13; Hint->SetFont(Font); Hint->SetAutoWrapText(true);
+		Font.Size = 12; Hint->SetFont(Font); Hint->SetAutoWrapText(true);
+		Hint->SetColorAndOpacity(RPGHUDLayout::BodyColor());
 		Content->AddChildToVerticalBox(Hint)->SetPadding(FMargin(0.f, 12.f, 0.f, 0.f));
 		ClearPresentation();
 	}
