@@ -14,6 +14,9 @@
 #include "Misc/Parse.h"
 #include "Online/RPGDungeonSessionSubsystem.h"
 #include "Online/RPGSteamAuthSubsystem.h"
+#include "Engine/LocalPlayer.h"
+#include "Narrative/RPGNarrativeCoordinator.h"
+#include "Narrative/RPGQuestManager.h"
 #include "Player/RPGPlayerState.h"
 #include "RPGGameplayTags.h"
 #include "UnrealClient.h"
@@ -23,7 +26,7 @@ namespace IntroOpportunityPlaytest
 struct FProbe
 {
     FString Character,Steam,Session,Screenshot;
-    bool bContinue=false,bPressed=false,bWestApproach=false;
+    bool bContinue=false,bPressed=false,bWestApproach=false,bSurvivor=false,bStorySelected=false;
     int32 Stage=0; uint32 FirstRound=0;
     double Until=FPlatformTime::Seconds()+240,Next=0,Release=0;
     bool Fail(const TCHAR* Why) { UE_LOG(LogTemp,Error,TEXT("INTRO2_PLAY FAIL %s Stage=%d"),Why,Stage);FPlatformMisc::RequestExitWithStatus(false,1);return false; }
@@ -52,6 +55,14 @@ struct FProbe
             if(S.DungeonSessionId!=Session)return Fail(TEXT("SettlementScope"));
             if(S.State==TEXT("Cleared"))
             {
+                if(bSurvivor)
+                {
+                    auto* Story=W->GetFirstPlayerController()->GetLocalPlayer()->GetSubsystem<URPGNarrativeCoordinator>();FGuid Id;FGuid::Parse(Character,Id);
+                    const auto Quests=Story->GetQuestManager()->GetQuests(Id);
+                    const auto* Q=Quests.FindByPredicate([](const auto& V){return V.QuestId==TEXT("CH01.M05");});
+                    if(!Q||Q->Status!=ERPGQuestStatus::Completed){if(!Story->IsBusy()&&!Story->HasPendingChoice())Story->Refresh();Next=Now+.5;return true;}
+                    UE_LOG(LogTemp,Display,TEXT("M05_PLAY COMPLETE Saved=1"));
+                }
                 UE_LOG(LogTemp,Display,TEXT("INTRO2_PLAY SETTLED State=Cleared"));
                 if(!Screenshot.IsEmpty())FScreenshotRequest::RequestScreenshot(Screenshot,true,false);
                 Stage=13;Next=Now+1;return true;
@@ -63,6 +74,8 @@ struct FProbe
         auto* PC=W->GetFirstPlayerController();auto* Pawn=PC?Cast<ARPGPlayer>(PC->GetPawn()):nullptr;
         auto* State=PC?PC->GetPlayerState<ARPGPlayerState>():nullptr;
         if(!Pawn||!State||!State->HasAuthenticatedCharacter()||State->GetBackendCharacterId()!=Character)return true;
+        if(bSurvivor&&!bStorySelected)
+        {auto* Story=PC->GetLocalPlayer()->GetSubsystem<URPGNarrativeCoordinator>();FGuid Id;FGuid::Parse(Character,Id);if(!Story->SelectCharacter(Id)||!Story->Refresh())return true;bStorySelected=true;}
         auto* C=Pawn->FindComponentByClass<URPGIntroOpportunityObjectiveComponent>();auto* ASC=Pawn->GetRPGAbilitySystemComponent();
         if(!C||!ASC)return Fail(TEXT("Components"));const auto P=C->GetProgress();if(!P.bActive)return true;
         ARPGIntroOpportunityTarget* Target=nullptr;for(TActorIterator<ARPGIntroOpportunityTarget> It(W);It;++It){Target=*It;break;}if(!Target)return true;
@@ -126,6 +139,7 @@ static const FDelegateHandle Registration=FCoreDelegates::GetOnPostEngineInit().
     auto P=MakeShared<FProbe>();FParse::Value(FCommandLine::Get(),TEXT("RPGTrainingCharacter="),P->Character);
     FParse::Value(FCommandLine::Get(),TEXT("RPGTrainingSteam="),P->Steam);FParse::Value(FCommandLine::Get(),TEXT("RPGTrainingSession="),P->Session);
     FParse::Value(FCommandLine::Get(),TEXT("Intro2Screenshot="),P->Screenshot);P->bContinue=FParse::Param(FCommandLine::Get(),TEXT("RPGIntroOpportunityContinue"));
+    P->bSurvivor=FParse::Param(FCommandLine::Get(),TEXT("RPGChapterFiveCombat"));
     FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([P](float D){return P->Tick(D);}),.025f);
 });
 }

@@ -1,10 +1,10 @@
 # 입문2: 공격 기회 실습
 
-첫 챕터 M05의 전투 기반이다. M05의 다온 발견·증언·개인 의뢰 카탈로그는 후속 작업이다. 상위 기준은 [첫 챕터 기획](SCENARIO_FIRST_CHAPTER_PROPOSAL.md), [확정 정책 C1~C9](SCENARIO_QUEST_DIALOGUE_DESIGN.md)이며 기존 훈련·입문1과 실제 정산 조건을 보존한다.
+첫 챕터 M05의 전투 기반이다. 다온 발견·증언·개인 의뢰 연결은 [M05 실행 계약](CHAPTER_ONE_PLAYABLE.md#m05-생존자의-증언)을 따른다. 상위 기준은 [첫 챕터 기획](SCENARIO_FIRST_CHAPTER_PROPOSAL.md), [확정 정책 C1~C9](SCENARIO_QUEST_DIALOGUE_DESIGN.md)이며 기존 훈련·입문1과 실제 정산 조건을 보존한다.
 
 ## 플레이
 
-`Scripts/Start-TrainingDevelopment.ps1 -DungeonProfile Intro2`로 실행한다. Development/Testing의 명시 개발 프로필만 Training/Intro1/Intro2 Normal을 제공한다. 기존 Training/Intro1 프로필의 범위는 유지된다. 캐릭터 자신의 확정 훈련 기록으로 입문1, 확정 입문1 기록으로 입문2를 선택한다. 클라이언트 표시와 별도로 백엔드가 입장 조건을 재검사한다. 챕터 의뢰 개발 옵션 `-ChapterOne`은 현재 M01~M04용 Intro1 프로필을 유지한다.
+`Scripts/Start-TrainingDevelopment.ps1 -DungeonProfile Intro2`로 실행한다. Development/Testing의 명시 개발 프로필만 Training/Intro1/Intro2 Normal을 제공한다. 기존 Training/Intro1 프로필의 범위는 유지된다. 캐릭터 자신의 확정 훈련 기록으로 입문1, 확정 입문1 기록으로 입문2를 선택한다. 클라이언트 표시와 별도로 백엔드가 입장 조건을 재검사한다. 챕터 의뢰 개발 옵션 `-ChapterOne`은 Intro1/Intro2에서 선택할 수 있다. M05의 현장 발견을 진행하려면 Intro2 프로필을 사용한다.
 
 전용 맵 `/Game/Maps/Progression/L_ProgressionIntro2`에서 정면의 고정 실습 표적에 접근한다. 안내 카드의 **예고·대기 → 공격 기회 → 대기**를 확인하고 열린 기회에 기본 공격 또는 기존 피해 스킬을 적중한다. 예고 2초, 기회 3초, 회복 3초이며 서버 시각을 따른다. 서로 다른 기회에서 총 2회 인정하면 기존 파티 완료 gate와 정산·결과·로비 귀환 UI로 이어진다. 이 실습 표적은 이동·공격 AI와 사망 드롭을 사용하지 않는다.
 

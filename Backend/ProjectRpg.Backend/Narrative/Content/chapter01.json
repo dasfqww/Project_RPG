@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": 1,
+  "catalogVersion": 2,
   "quests": [
     {
       "id": "CH01.M01",
@@ -113,6 +113,45 @@
           "allowPriorCompletion": true
         }
       }
+    },
+    {
+      "id": "CH01.M05",
+      "version": 1,
+      "title": "생존자의 증언",
+      "category": "Main",
+      "autoComplete": true,
+      "prerequisites": [
+        "CH01.M04"
+      ],
+      "objectives": [
+        "opportunity",
+        "discovery",
+        "testimony"
+      ],
+      "objectiveTexts": {
+        "opportunity": "서로 다른 공격 기회에 2회 적중하고 입문 2 성공 (승인된 실적은 인정)",
+        "discovery": "점검실에서 응답을 남긴 다온 확인",
+        "testimony": "다온의 봉쇄 이유와 구조 요청 확인"
+      },
+      "objectivePrerequisites": {
+        "testimony": [
+          "discovery"
+        ]
+      },
+      "dungeonObjectives": {
+        "opportunity": {
+          "dungeonId": "Progression.Intro2",
+          "difficulty": "Normal",
+          "allowPriorCompletion": true
+        }
+      },
+      "interactionObjectives": {
+        "discovery": {
+          "dungeonId": "Progression.Intro2",
+          "difficulty": "Normal",
+          "targetId": "CH01.Daon"
+        }
+      }
     }
   ],
   "chapters": [],
@@ -200,6 +239,53 @@
           "id": "accept",
           "text": "의뢰 수락",
           "effect": "AcceptQuest"
+        }
+      ]
+    },
+    {
+      "id": "CH01.M05.Offer",
+      "speaker": "현장 목표",
+      "text": "접근로를 확보했다. 안쪽의 공격 기회를 확인하고, 응답을 남긴 사람을 찾자.",
+      "questId": "CH01.M05",
+      "requiredStatus": null,
+      "choices": [
+        {
+          "id": "accept",
+          "text": "생존자의 증언 수락",
+          "effect": "AcceptQuest"
+        }
+      ]
+    },
+    {
+      "id": "CH01.D05",
+      "speaker": "다온",
+      "text": "버팀목은 제가 걸었습니다. 저것이 밖으로 나가면 마을까지 갈 테니까요. 동료들은 안쪽 대피실로 옮겨야 합니다.",
+      "questId": "CH01.M05",
+      "requiredStatus": "Active",
+      "choices": [
+        {
+          "id": "confirm",
+          "text": "남은 사람들을 데리고 나갈 길을 찾겠습니다.",
+          "effect": "RecordObjective",
+          "objectiveId": "testimony"
+        }
+      ]
+    },
+    {
+      "id": "CH01.D06.Preview",
+      "speaker": "다온",
+      "text": "걷지 못하는 사람부터 옮깁시다. 저 문 안쪽까지 가면 잠깐은 버틸 수 있어요.",
+      "questId": null,
+      "requiredStatus": null,
+      "informational": true,
+      "requiredCompletedQuests": [
+        "CH01.M05"
+      ],
+      "choices": [
+        {
+          "id": "close",
+          "text": "안쪽 대피실로 갈 길을 확인한다.",
+          "effect": "None"
         }
       ]
     }

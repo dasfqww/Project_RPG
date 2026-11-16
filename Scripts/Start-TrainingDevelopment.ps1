@@ -16,7 +16,7 @@ param(
 # Disposable local training sessions. The normal mode opens an interactive
 # lobby; SmokeTest drives existing client ability input, not lobby button clicks.
 $ErrorActionPreference='Stop'
-if($ChapterOne -and $DungeonProfile -cne 'Intro1'){throw 'ChapterOne requires -DungeonProfile Intro1'}
+if($ChapterOne -and $DungeonProfile -cnotin @('Intro1','Intro2')){throw 'ChapterOne requires -DungeonProfile Intro1 or Intro2'}
 . (Join-Path $PSScriptRoot 'Tests/TrainingDevelopmentContent.ps1')
 $contentMaps=Get-RPGTrainingDevelopmentContent $DungeonProfile
 if($DungeonProfile -cne 'Training' -and ($SmokeTest -or $SessionLoopSmoke -or $LobbyUISmoke)){throw 'Progression profiles require interactive mode; existing smoke drivers cover Training only'}

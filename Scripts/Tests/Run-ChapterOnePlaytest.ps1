@@ -1,14 +1,15 @@
 [CmdletBinding()]
 param([string]$RuntimeProjectRoot='', [string]$BackendRoot='', [int]$BackendPort=3092, [int]$GamePort=18912,
-    [switch]$ApproachPractice, [switch]$OpportunityPractice,
+    [switch]$ApproachPractice, [switch]$OpportunityPractice, [switch]$ChapterFive,
     [string]$EngineRoot='D:/UE_5.8')
 $ErrorActionPreference='Stop'
+if($ChapterFive){$OpportunityPractice=$true}
 if($OpportunityPractice){$ApproachPractice=$true}
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if(!$RuntimeProjectRoot){$RuntimeProjectRoot=$workspace}
 if(!$BackendRoot){$BackendRoot=Join-Path $workspace 'Backend'}
-$ownerRoot=if($OpportunityPractice){'Intro2'}elseif($ApproachPractice){'M04'}else{'M03'}
-$proofFolder=if($OpportunityPractice){'Intro2Opportunity-20261117'}elseif($ApproachPractice){'ChapterM04-20261116'}else{'ChapterM03-20261115'}
+$ownerRoot=if($ChapterFive){'M05'}elseif($OpportunityPractice){'Intro2'}elseif($ApproachPractice){'M04'}else{'M03'}
+$proofFolder=if($ChapterFive){'ChapterM05-20261117'}elseif($OpportunityPractice){'Intro2Opportunity-20261117'}elseif($ApproachPractice){'ChapterM04-20261116'}else{'ChapterM03-20261115'}
 $profile=if($OpportunityPractice){'Intro2'}else{'Intro1'}
 $id=[Guid]::NewGuid().ToString('N');$temp=Join-Path $workspace ('Saved/'+$ownerRoot+'/play-'+$id)
 $proof=Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/play-'+$id)
@@ -38,7 +39,7 @@ function Log([string]$Name){
     $s=[IO.File]::Open($path,'Open','Read','ReadWrite');$r=[IO.StreamReader]::new($s)
     try{return $r.ReadToEnd()}finally{$r.Dispose()}
 }
-function Peer([string]$Name,[string]$Map,[bool]$Server,[bool]$Training,[bool]$Continue=$false,[int]$OpportunityPhase=0){
+function Peer([string]$Name,[string]$Map,[bool]$Server,[bool]$Training,[bool]$Continue=$false,[int]$OpportunityPhase=0,[int]$SurvivorPhase=0){
     $args=@(('"'+$project+'"'),$Map,'-nosteam','-unattended','-nosound','-nop4','-NoLiveCoding','-NoLoadingScreen','-DisablePython',
         '-UseIrisReplication=1','-RPGRequireIris','-DDC=(InstalledEnginePak,Local)','-ExecCmds="t.MaxFPS 30"',
         ('-UserDir="'+$temp+'/'+$Name+'"'),('-abslog="'+$temp+'/'+$Name+'.log"'),
@@ -51,7 +52,9 @@ function Peer([string]$Name,[string]$Map,[bool]$Server,[bool]$Training,[bool]$Co
     else{$args+=@('-game','-RPGDevelopmentLogin',('-RPGDungeonProfile='+$profile));if($Training){$args+='-nullrhi'}else{$args+=@('-RenderOffscreen','-d3d12','-Windowed','-ResX=1280','-ResY=900',('-M03Screenshot="'+$proof+'/M03.png"'),('-Intro2Screenshot="'+$proof+'/Intro2.png"'))}}
     if($Training -or !$Server){
         $args+=@("-RPGTrainingCharacter=$characterId","-RPGTrainingSteam=$steam","-RPGTrainingSession=$sessionId",('-RPGTrainingGates="'+$temp+'"'))
-        $args+=$(if($Training){'-RPGTrainingPlaytest'}elseif($OpportunityPhase){'-RPGIntroOpportunityPlaytest'}else{'-RPGChapterOnePlaytest'})
+        $args+=$(if($Training){'-RPGTrainingPlaytest'}elseif($SurvivorPhase){'-RPGChapterFivePlaytest'}elseif($OpportunityPhase){'-RPGIntroOpportunityPlaytest'}else{'-RPGChapterOnePlaytest'})
+        if($SurvivorPhase-eq2){$args+='-RPGChapterFiveContinue'}
+        if($OpportunityPhase -and $ChapterFive){$args+='-RPGChapterFiveCombat'}
         if($OpportunityPhase-eq2){$args+='-RPGIntroOpportunityContinue'}
         if($Continue -and !$OpportunityPhase){$args+='-RPGChapterOneContinue'}
         if($Continue -and $ApproachPractice -and !$OpportunityPhase){$args+='-RPGChapterOneApproach'}
@@ -156,6 +159,19 @@ try{
     if($OpportunityPractice){
         Stop-Owned $client;Stop-Owned $server
         Begin-Session 'Progression.Intro2' 'Intro2' '/Game/Maps/Progression/L_ProgressionIntro2' $false
+        if($ChapterFive){
+            Choice 'CH01.M05.Offer'
+            foreach($phase in @(1,2)){
+                $name='DaonClient'+$phase;$client=Peer $name '/Game/Maps/LobbyMap' $false $false $false 0 $phase
+                $until=[DateTime]::UtcNow.AddSeconds(240);$next=[DateTime]::MinValue
+                while(!$client.HasExited-and[DateTime]::UtcNow-lt$until){if([DateTime]::UtcNow-ge$next){Heartbeat;$next=[DateTime]::UtcNow.AddSeconds(10)};Start-Sleep -Milliseconds 250}
+                if(!$client.HasExited){throw 'Daon interaction timeout'};$client.WaitForExit()
+                $expected=if($phase-eq1){'M05_PLAY DISCOVERY_SAVED'}else{'M05_PLAY TESTIMONY_SAVED CombatPending=1'}
+                if($client.ExitCode-ne0 -or (Log $name)-notmatch$expected){throw "Daon interaction failed phase $phase"}
+                Start-Sleep -Seconds 2
+            }
+            if((Api "characters/$characterId/progression" 'Get' $player).experience-ne200){throw 'Daon interaction granted growth'}
+        }
         foreach($phase in @(1,2)){
             $name='Intro2Client'+$phase;$client=Peer $name '/Game/Maps/LobbyMap' $false $false $false $phase
             $until=[DateTime]::UtcNow.AddSeconds(240);$next=[DateTime]::MinValue
@@ -176,14 +192,19 @@ try{
         $again=Api "characters/$characterId/progression" 'Get' $player
         if(($after|ConvertTo-Json -Depth 12 -Compress)-cne($again|ConvertTo-Json -Depth 12 -Compress)){throw 'Intro2 repeat read changed growth'}
         $result.Scope='Actual Training/M03/M04/Intro1 then Intro2 closed-hit rejection, same-round rejection, client restart/reset, distinct-round hits2, settlement XP300/SP9. Memory HTTP/Iris; Steam/PostgreSQL not exercised.'
+        if($ChapterFive){
+            $v=Api "characters/$characterId/narrative" 'Get' $player
+            if(@($v.quests|Where-Object {$_.questId-eq'CH01.M05'-and$_.status-eq'Completed'}).Count-ne1 -or (Log 'Intro2Client2')-notmatch'M05_PLAY COMPLETE Saved=1'){throw 'M05 completion not persisted'}
+            $result.Scope+=' M05 server discovery, restarted-client restored discovery, actual testimony UMG, combat receipt auto recognition and saved quest completion.'
+        }
     }
     if((Get-FileHash "$RuntimeProjectRoot/Binaries/Win64/UnrealEditor-Project_RPG.dll").Hash-cne$result.ModuleSHA256){throw 'Runtime module changed during the playtest'}
     $result.FinalNarrative=$v;$result.Experience=$after.experience;$result.Passed=$true
 }catch{$result.Failure=$_.Exception.Message}
 finally{
     foreach($p in $owned){Stop-Owned $p}
-    foreach($name in @('TrainingServer','TrainingClient','M03Server','M03Client1','M03Client2','Intro2Server','Intro2Client1','Intro2Client2')){
-        $text=Log $name;if($text){$text -split "`n"|Where-Object {$_-match'INTRO2_|M03_PLAY|M04_PLAY|RPG_TRAINING_PLAYTEST|Fatal error|Assertion failed|Error:'}|Set-Content "$proof/$name.log" -Encoding UTF8}
+    foreach($name in @('TrainingServer','TrainingClient','M03Server','M03Client1','M03Client2','Intro2Server','Intro2Client1','Intro2Client2','DaonClient1','DaonClient2')){
+        $text=Log $name;if($text){$text -split "`n"|Where-Object {$_-match'INTRO2_|M03_PLAY|M04_PLAY|M05_PLAY|RPG_TRAINING_PLAYTEST|Fatal error|Assertion failed|Error:'}|Set-Content "$proof/$name.log" -Encoding UTF8}
         if($result.Failure -and $text){$text -split "`n"|Select-Object -Last 160|Set-Content "$proof/$name.FailureTail.log" -Encoding UTF8}
     }
     if(Test-Path "$temp/backend.log"){Copy-Item "$temp/backend.log" "$proof/Backend.log"}
