@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "AnimInstance/RPGCharacterAnimInstance.h"
 #include "Component/Equipment/RPGPlayerWeaponLoadoutComponent.h"
+#include "Riding/RPGRidingAnimFrame.h"
 #include "RPGPlayerAnimInstance.generated.h"
 
 class ARPGPlayer;
@@ -23,6 +24,10 @@ public:
 	virtual void NativeUninitializeAnimation() override;
 
 protected:
+	/** Read by the authored Riding graph; captured without changing weapon AnimLayers or mesh attachment. */
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Transient, Category = "AnimData|Riding")
+		FRPGRidingAnimFrame RidingFrame;
+
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|References")
 		TObjectPtr<ARPGPlayer> OwningPlayerCharacter;
 

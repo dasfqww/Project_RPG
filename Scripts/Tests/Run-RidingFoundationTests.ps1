@@ -1,8 +1,9 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [string]$SnapshotWireFixture="", [switch]$IncludeContentSettings, [ValidateRange(1,4)][int]$MaxParallelActions=1)
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation, [switch]$IncludeRiderPose, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [string]$SnapshotWireFixture="", [switch]$IncludeContentSettings, [ValidateRange(1,4)][int]$MaxParallelActions=1)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
+if ($IncludeRiderPose) { $IncludePresentation = $true }
 if ($IncludeEmote) { $IncludeDashPrediction = $true }
 if ($IncludeInteraction) { $IncludeDashMotion = $true }
 if ($IncludeDashPrediction) { $IncludeDashGrant = $true }
@@ -34,6 +35,7 @@ if ($IncludeLocalInteraction) { $suite='RidingLocalInteraction'; $reservation='r
 if ($IncludeTimedInteraction) { $suite='RidingTimedInteraction'; $reservation='riding-timed-interaction-20261113'; $proofDate='20261113' }
 if ($IncludeSnapshot) { $suite='RidingUEAdmission'; $reservation='riding-ue-admission-20261113'; $proofDate='20261113' }
 if ($IncludeContentSettings) { $suite='RidingContentSettings'; $reservation='riding-content-settings-20261116'; $proofDate='20261116' }
+if ($IncludeRiderPose) { $suite='RidingRiderPose'; $reservation='riding-rider-pose-20261117'; $proofDate='20261117' }
 $proofRoot = Join-Path $workspace ('Saved/BuildChecks/' + $suite + '-' + $proofDate + '/' + $id)
 $tempRoot = Join-Path $workspace 'Saved/RF'
 $temp = Join-Path $tempRoot $id.Substring(0,8)
@@ -103,7 +105,7 @@ try {
     if ($IncludeAbilities) { $files += @('Source/Project_RPG/Private/Tests/RPGRidingAbilityTests.h','Source/Project_RPG/Private/Tests/RPGRidingAbilityTests.cpp') }
     if ($IncludeWorld) { $files += 'Source/Project_RPG/Private/Tests/RPGRidingWorldTests.cpp' }
     if ($IncludePresentation) {
-        $files += @('Source/Project_RPG/Public/Riding/RPGRidingPresentationComponent.h','Source/Project_RPG/Private/Riding/RPGRidingPresentationComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingPresentationTests.cpp')
+        $files += @('Source/Project_RPG/Public/Riding/RPGRidingPresentationComponent.h','Source/Project_RPG/Private/Riding/RPGRidingPresentationComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingPresentationTests.cpp','Source/Project_RPG/Public/Riding/RPGRidingAnimFrame.h','Source/Project_RPG/Private/Riding/RPGRidingAnimFrame.cpp')
     }
     if ($IncludeTimedInteraction) { $files+=@('Source/Project_RPG/Public/Riding/RPGRidingTimedInteractionComponent.h','Source/Project_RPG/Private/Riding/RPGRidingTimedInteractionComponent.cpp','Source/Project_RPG/Public/Interface/InteractionInterface.h','Source/Project_RPG/Private/Interface/InteractionInterface.cpp','Source/Project_RPG/Private/Tests/RPGRidingTimedInteractionTests.h','Source/Project_RPG/Private/Tests/RPGRidingTimedInteractionTests.cpp','Source/Project_RPG/Private/Tests/RPGTestWorldCleanup.h') }
     if ($IncludeActors) { $files+=@('Source/Project_RPG/Public/Riding/RPGRidingContentSettings.h','Source/Project_RPG/Private/Riding/RPGRidingContentSettings.cpp') }
@@ -225,7 +227,7 @@ IRPGDungeonRecoveryHost* RPGRidingSnapshot::ResolveHost(UWorld*) { return nullpt
     }
     if ($IncludeContentSettings) { $expected += @('Defaults','Policy','Catalog','CatalogRejection','Components','Overrides') | ForEach-Object {'ProjectRPG.Riding.Content.'+$_} }
     if ($IncludePresentation) {
-        $expected += @('Async','Lifecycle','Replacement','Failure','Reentry','EmotePlayback','EmoteOwnership','EmoteRootMotion') | ForEach-Object {'ProjectRPG.Riding.Presentation.'+$_}
+        $expected += @('Async','Lifecycle','Replacement','Failure','Reentry','RiderPoseTransform','RiderPoseLifecycle','RiderPoseInvalidFrame','EmotePlayback','EmoteOwnership','EmoteRootMotion') | ForEach-Object {'ProjectRPG.Riding.Presentation.'+$_}
     }
     if ($IncludeWorld) {
         $expected += @('DefaultAndLifecycle','SweptPath','RestrictionIntersection','AuthorityTransitions') | ForEach-Object {'ProjectRPG.Riding.World.'+$_}

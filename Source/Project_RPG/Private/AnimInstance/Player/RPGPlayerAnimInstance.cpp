@@ -10,12 +10,14 @@ void URPGPlayerAnimInstance::NativeInitializeAnimation()
 	OwningPlayerCharacter = Cast<ARPGPlayer>(OwningCharacter);
 	ResetRelaxState();
 	ResetWeaponState();
+	RidingFrame = {};
 }
 
 void URPGPlayerAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
 	Super::NativeUpdateAnimation(DeltaSeconds);
 	OwningPlayerCharacter = Cast<ARPGPlayer>(OwningCharacter);
+	RidingFrame = IsValid(OwningPlayerCharacter) ? RPGRidingAnim::Capture(GetSkelMeshComponent()) : FRPGRidingAnimFrame{};
 	ResetWeaponState();
 	const auto* Loadout = IsValid(OwningPlayerCharacter)
 		? OwningPlayerCharacter->FindComponentByClass<URPGPlayerWeaponLoadoutComponent>() : nullptr;
@@ -42,6 +44,7 @@ void URPGPlayerAnimInstance::ResetRelaxState()
 
 void URPGPlayerAnimInstance::NativeUninitializeAnimation()
 {
+	RidingFrame = {};
 	OwningPlayerCharacter = nullptr;
 	ResetRelaxState();
 	ResetWeaponState();
@@ -52,7 +55,7 @@ void URPGPlayerAnimInstance::NativeThreadSafeUpdateAnimation(float DeltaSeconds)
 {
 	Super::NativeThreadSafeUpdateAnimation(DeltaSeconds);
 
-	if (!LocomotionFrame.bValid || bHasAcceleration)
+	if (!LocomotionFrame.bValid || bHasAcceleration || RidingFrame.bHasAnchor)
 	{
 		ResetRelaxState();
 	}

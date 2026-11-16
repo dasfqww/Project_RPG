@@ -1045,3 +1045,16 @@ authoring spec은 아래 형식이다. 경로와 ID는 예시이며 해당 에�
 - `Sources.json.contentBinding`에는 `scope=LoadedProjectDefaults`, 실제 policy/정의 경로, `componentOverridesVerified=false`를 기록한다. 이 관측은 현재 로드된 CDO 기준이며 디스크에 저장된 설정과의 동일성이나 재시작/패키징·실제 Pawn/PlayerState의 개별 override를 증명하지 않는다. 공통 설정 변경은 저장·재시작한 뒤 내보내고, 개별 지정과 최종 배포는 따로 확인한다. backend 구성은 계속 비활성이며 canonical gameplay bytes/hash에는 이 보고 필드를 포함하지 않는다.
 
 `Run-RidingManifestExportTests.ps1 -Reservation riding-export-binding-20261116`의 고정5입력/러너에서 Python **20개**(신규 binding6/기존14)와 실제 생산 config binder/카탈로그·Memory HTTP **20개/332 assertion**(manifest5/48·등록7/156·설정8/128), 합계 **40개**가 통과했다. Release0오류/0경고·고정 SHA/PS 문법을 확인했다. Python의 UE adapter는 모의이며 실제 에셋/Editor 실행을 대신하지 않는다. 원본 Source/Config/콘텐츠·공유 게임 빌드/실행/서버 설정은 변경0이다. 자기 사본/SDK/fixture/bin/obj **61,171,904 bytes**를 폐기했고 Temp/PID/정리 예외0이다. 작은 증거는 로컬 `Saved/BuildChecks/RidingExportBinding-20261116/Completion.json`에 보존하며 폐기한 바이너리 hash는 당시 근거다.
+
+## 53. M4e 플레이어 애니메이션의 승차 자세 입력 — 2026-11-17
+
+담당 `riding-rider-pose-20261117`. 기존 PresentationComponent의 `GetPoseView`는 안장 월드 좌표와 RiderPoseLayer를 제공했지만 플레이어 애니메이션 인스턴스에는 소비 경로가 없었다. [RPGRidingAnimFrame](../Source/Project_RPG/Public/Riding/RPGRidingAnimFrame.h)과 `URPGPlayerAnimInstance.RidingFrame`으로 저작할 Riding 그래프의 입력을 연결한다.
+
+- `NativeUpdateAnimation`에서 현재 플레이어의 **주 메시**만 읽는다. 현재 안장+RiderOffset 월드 변환을 메시 컴포넌트 좌표로 변환해 `bHasAnchor`, `RiderComponentTransform`, `PoseLayer`, `Key`를 함께 저장한다. 초기화/해제·로딩·하차·표시 실패/폐기·주 메시 불일치 때 프레임 전체가 기본값으로 돌아간다. preview/Dedicated Server와 작업 스레드에서의 live 캡처는 수행하지 않는다.
+- 현재 PresentationComponent의 세대/정의/스켈레톤 검사에 더해, 빈 Epoch/리비전/pose class와 유효하지 않거나 0·음수/역산 불가 scale인 변환을 거절한다. 평가 스레드는 캡처한 값만 읽고, 승차 자세가 준비된 동안 도보 Relax idle 진입을 억제한다. 무기 carry 상태와 기존 AnimLayer writer는 유지한다.
+- **애니메이션 저작 계약:** `RidingFrame.bHasAnchor`가 참일 때 별도 Riding 그래프/IK의 컴포넌트 공간 목표로 `RiderComponentTransform`을 사용한다. `PoseLayer`는 전용 승차 그래프의 클래스 입력이며, 이 변경은 `LinkAnimClassLayers` 호출이나 기존 AnimBP 재작성을 하지 않는다. 안장 변환을 actor/capsule/메시 컴포넌트에 직접 적용하거나 월드 공간 목표로 오인하지 않는다. 표시 root가 메시 컴포넌트의 smoothing을 따르는 구조와 빙의는 그대로다.
+- 실제 탈것 모델/모션·승차 그래프의 블렌딩/IK·시각적인 착석 결과는 아직 연결하지 않았다. 에셋 경로/저작이 필요하며, 이 snapshot 연결이나 cosmetic Ready는 보유권·서버 Riding Ready 또는 실제 콘텐츠 통합의 증거가 아니다.
+
+`Run-RidingFoundationTests.ps1 -IncludeRiderPose`는 실제 Mannequin을 검사 입력으로만 사용해 좌표 round-trip/actor·capsule·메시 보존, 로딩/하차/교체/폐기, 보조 메시/작업 스레드 접근 거절, 빈/퇴화 변환과 snapshot 보존을 기존 표시 회귀와 검사한다. `Run-RidingIntegrationCompile.ps1 -IncludeRiderPose`는 게시 원본 사본+명시 overlay의 전체 프로젝트 UHT와 실제 플레이어 AnimInstance/변환기/표시 검사 CPP3 컴파일이며, 전체 게임 DLL 링크나 실제 AnimBP/GPU·다인 검증과 구분한다. 작은 결과는 로컬 `Saved/BuildChecks/RidingRiderPose-20261117/Completion.json`에 남긴다.
+
+최종 입력에서 분리 모듈 UHT/42단계 빌드·링크와 **native26 Success(신규3 포함), 검사 오류/경고0·UE0**을 확인했다. 전체 프로젝트 **UHT/CPP3 개별 컴파일0**도 통과했다. 첫 개별 컴파일에서 찾은 직접 Templates/SubclassOf.h include 누락을 수정한 뒤 두 검증을 모두 다시 수행했으며 최종 소스 hash가 일치한다. 자기 네 사본/OBJ/DLL/PDB/cache **5,783,892,140 bytes(5.387GiB)**·읽기 링크2를 폐기했고 Temp/PID/정리 예외0이다. 원본 Editor/DLL·HUD/무기 layer·다른 담당 변경을 보존했으며 폐기한 DLL hash는 당시 근거다.

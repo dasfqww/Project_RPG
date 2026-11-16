@@ -2,6 +2,8 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Tests/RPGRidingActorTests.h"
+#include "Riding/RPGRidingAnimFrame.h"
+#include "Async/Async.h"
 #include "Riding/RPGRidingComponent.h"
 #include "Riding/RPGMountDefinition.h"
 #include "Animation/AnimInstance.h"
@@ -252,6 +254,93 @@ bool FRidingVisualReentry::RunTest(const FString&)
     TestTrue(TEXT("Reentrant end releases owned model/root"), !FRPGRidingPresentationTestAccess::Root(*F.Visual)
         && !FRPGRidingPresentationTestAccess::Mesh(*F.Visual));
     TestTrue(TEXT("Latest state remains on foot"), F.Riding->GetRidingState().Mode == ERPGRidingMode::OnFoot);
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingRiderPoseTransform, "ProjectRPG.Riding.Presentation.RiderPoseTransform", Flags)
+bool FRidingRiderPoseTransform::RunTest(const FString&)
+{
+    FVisualFixture F;
+    auto* Rider = F.Character->GetMesh();
+    Rider->SetSkeletalMeshAsset(LoadObject<USkeletalMesh>(nullptr, MeshPath));
+    F.Character->SetActorLocationAndRotation(FVector(350, -120, 50), FRotator(0, 75, 0));
+    Rider->SetRelativeTransform(FTransform(FRotator(0, -90, 0), FVector(5, 0, -80), FVector(1.25)));
+    F.Complete();
+    const auto ActorBefore = F.Character->GetActorTransform();
+    const auto MeshBefore = Rider->GetRelativeTransform();
+    const auto View = F.Visual->GetPoseView();
+    const auto Frame = RPGRidingAnim::Capture(Rider);
+    TestTrue(TEXT("Current saddle is captured for the actual primary rider mesh"), Frame.bHasAnchor);
+    TestTrue(TEXT("Component-space anchor reconstructs the full world saddle including offset, rotation and scale"),
+        (Frame.RiderComponentTransform * Rider->GetComponentTransform()).Equals(View.RiderWorldTransform, 0.001));
+    TestTrue(TEXT("Pose identity and class are captured together"), Frame.Key.RiderEpoch == F.State.Key.RiderEpoch
+        && Frame.Key.StateRevision == F.State.Key.StateRevision && Frame.PoseLayer == View.PoseLayer);
+    TestTrue(TEXT("Capture leaves actor and mesh transforms untouched"), F.Character->GetActorTransform().Equals(ActorBefore)
+        && Rider->GetRelativeTransform().Equals(MeshBefore));
+    TestEqual(TEXT("Capture leaves capsule radius untouched"), F.Character->GetCapsuleComponent()->GetUnscaledCapsuleRadius(), F.InitialRadius);
+    TestEqual(TEXT("Capture leaves capsule height untouched"), F.Character->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight(), F.InitialHeight);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingRiderPoseLifecycle, "ProjectRPG.Riding.Presentation.RiderPoseLifecycle", Flags)
+bool FRidingRiderPoseLifecycle::RunTest(const FString&)
+{
+    FVisualFixture F;
+    auto* Rider = F.Character->GetMesh();
+    Rider->SetSkeletalMeshAsset(LoadObject<USkeletalMesh>(nullptr, MeshPath));
+    TestFalse(TEXT("Loading cannot publish an anchor"), RPGRidingAnim::Capture(Rider).bHasAnchor);
+    F.Complete();
+    const auto Captured = RPGRidingAnim::Capture(Rider);
+    TestTrue(TEXT("Ready frame captured"), Captured.bHasAnchor);
+    auto* Auxiliary = NewObject<USkeletalMeshComponent>(F.Character);
+    Auxiliary->SetupAttachment(F.Character->GetRootComponent()); Auxiliary->RegisterComponent();
+    Auxiliary->SetSkeletalMeshAsset(Rider->GetSkeletalMeshAsset());
+    TestFalse(TEXT("Auxiliary meshes cannot consume the character's saddle"), RPGRidingAnim::Capture(Auxiliary).bHasAnchor);
+    TestFalse(TEXT("Worker-thread capture fails before accessing live objects"),
+        Async(EAsyncExecution::ThreadPool, [Rider] { return RPGRidingAnim::Capture(Rider).bHasAnchor; }).Get());
+    F.State.Mode = ERPGRidingMode::OnFoot; F.State.MountId.Reset(); F.State.DefinitionVersion = 0;
+    F.State.Movement = {}; ++F.State.Key.StateRevision; F.Set();
+    const auto Cleared = RPGRidingAnim::Capture(Rider);
+    TestTrue(TEXT("Dismount clears class, transform and identity together"), !Cleared.bHasAnchor && !Cleared.PoseLayer
+        && !Cleared.Key.RiderEpoch.IsValid() && Cleared.RiderComponentTransform.Equals(FTransform::Identity));
+    TestTrue(TEXT("Evaluation consumes its captured values, not a later live state"),
+        Async(EAsyncExecution::ThreadPool, [Captured] { return Captured.bHasAnchor && Captured.Key.RiderEpoch.IsValid(); }).Get());
+    F.State.Mode = ERPGRidingMode::Mounted; F.State.MountId = TEXT("wolf"); F.State.DefinitionVersion = 1;
+    F.State.Movement = {1, 600, 2048, 2000, 500}; ++F.State.Key.StateRevision; F.Set(); F.Complete();
+    const auto Replacement = RPGRidingAnim::Capture(Rider);
+    TestTrue(TEXT("Replacement publishes only the new revision"), Replacement.bHasAnchor
+        && Replacement.Key.StateRevision == F.State.Key.StateRevision && Replacement.Key.StateRevision != Captured.Key.StateRevision);
+    F.Visual->UnregisterComponent();
+    TestFalse(TEXT("Presentation teardown clears the next frame"), RPGRidingAnim::Capture(Rider).bHasAnchor);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingRiderPoseInvalidFrame, "ProjectRPG.Riding.Presentation.RiderPoseInvalidFrame", Flags)
+bool FRidingRiderPoseInvalidFrame::RunTest(const FString&)
+{
+    FRPGRidingPoseView View; View.bHasAnchor = true; View.Key = {FGuid::NewGuid(), 1, 0};
+    View.PoseLayer = UAnimInstance::StaticClass(); View.RiderWorldTransform.SetTranslation(FVector(0, 0, 40));
+    const auto Rejected = [&](const FRPGRidingPoseView& V, const FTransform& Mesh)
+    {
+        const auto Frame = RPGRidingAnim::MakeFrame(V, Mesh);
+        return !Frame.bHasAnchor && !Frame.PoseLayer && !Frame.Key.RiderEpoch.IsValid()
+            && Frame.RiderComponentTransform.Equals(FTransform::Identity);
+    };
+    TestTrue(TEXT("Valid values convert"), RPGRidingAnim::MakeFrame(View, FTransform::Identity).bHasAnchor);
+    auto Invalid = View; Invalid.bHasAnchor = false;
+    TestTrue(TEXT("Missing anchor resets whole frame"), Rejected(Invalid, FTransform::Identity));
+    Invalid = View; Invalid.Key.RiderEpoch.Invalidate();
+    TestTrue(TEXT("Missing epoch rejected"), Rejected(Invalid, FTransform::Identity));
+    Invalid = View; Invalid.Key.StateRevision = 0;
+    TestTrue(TEXT("Missing revision rejected"), Rejected(Invalid, FTransform::Identity));
+    Invalid = View; Invalid.PoseLayer = nullptr;
+    TestTrue(TEXT("Missing pose class rejected"), Rejected(Invalid, FTransform::Identity));
+    FTransform Mesh; Mesh.SetScale3D(FVector(0, 1, 1));
+    TestTrue(TEXT("Singular mesh transform rejected before inversion"), Rejected(View, Mesh));
+    Mesh.SetScale3D(FVector(-1, 1, 1));
+    TestTrue(TEXT("Mirrored mesh transform rejected"), Rejected(View, Mesh));
+    Invalid = View; Invalid.RiderWorldTransform.SetScale3D(FVector(0));
+    TestTrue(TEXT("Singular saddle transform rejected"), Rejected(Invalid, FTransform::Identity));
+    TestFalse(TEXT("No component has no frame"), RPGRidingAnim::Capture(nullptr).bHasAnchor);
     return true;
 }
 #endif
