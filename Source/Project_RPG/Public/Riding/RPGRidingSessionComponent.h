@@ -26,6 +26,7 @@ class PROJECT_RPG_API URPGRidingSessionComponent final : public UActorComponent
 public:
     URPGRidingSessionComponent();
     virtual ~URPGRidingSessionComponent() override;
+    virtual void BeginPlay() override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     UFUNCTION(BlueprintPure, Category="Riding") FRPGRidingOwnerState GetOwnerState() const { return OwnerState; }
@@ -43,6 +44,7 @@ private:
     void UpdateAuthenticatedContext(const FString& CharacterId, const FString& SteamId,
         const FString& SessionId, int64 Generation, bool bRevoked, bool bAdmissionConfirmed);
     bool IsContextCurrent() const;
+    void ResolveConfiguredPolicy();
     FGuid Bind(URPGRidingComponent& PawnComponent);
     void Unbind(URPGRidingComponent& PawnComponent, const FGuid& Epoch);
     void PublishOwnerState();
@@ -70,5 +72,6 @@ private:
     TSet<FGuid> PendingDamageScopes;
     TFunction<bool()> ValidateAdmission;
     UPROPERTY(EditDefaultsOnly, Category="Riding") TObjectPtr<URPGRidingPolicy> Policy;
+    bool bResolvedConfiguredPolicy = false;
     UPROPERTY(Replicated) FRPGRidingOwnerState OwnerState;
 };

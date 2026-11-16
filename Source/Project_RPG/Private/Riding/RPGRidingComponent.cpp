@@ -1,5 +1,6 @@
 #include "Riding/RPGRidingComponent.h"
 #include "Riding/RPGRidingSessionComponent.h"
+#include "Riding/RPGRidingContentSettings.h"
 #include "Riding/RPGRidingSession.h"
 #include "Riding/RPGRidingStatePolicy.h"
 #include "Riding/RPGMountDefinition.h"
@@ -67,6 +68,7 @@ void URPGRidingComponent::StopServerDashForControl()
 void URPGRidingComponent::BeginPlay()
 {
     Super::BeginPlay();
+    if (Definitions.IsEmpty()) GetDefault<URPGRidingContentSettings>()->LoadDefinitions(Definitions);
     if (auto* Pawn = Cast<APawn>(GetOwner()))
     {
         Pawn->ReceiveControllerChangedDelegate.AddDynamic(this, &ThisClass::HandleControllerChanged);

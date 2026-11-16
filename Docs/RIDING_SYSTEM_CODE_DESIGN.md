@@ -1021,3 +1021,17 @@ authoring spec은 아래 형식이다. 경로와 ID는 예시이며 해당 에�
 이 규칙은 정의의 검색과 cook 의도를 연결하며 에셋 생성·서버 카탈로그 적용·소유권 지급·Ready/탑승 허용을 수행하지 않는다. 정책은 `UDataAsset`이므로 이 Mount 스캔의 대상이 아니며 session 정책 참조/패키징 연결이 별도로 필요하다. Pawn의 Definitions·PlayerState session의 Policy 설정, 실제 mesh/애니메이션/socket·두 외형/구역 배치와 참조의 최종 cook 포함/게임 통합 검증도 후속이다.
 
 타입 규칙의 유일성·native 클래스/PrimaryAsset identity·실제 UI 호출·경로/재귀/AlwaysCook·기존 다른 타입/설정 불변·diff 공백을 정적으로 확인했다. 실제 탈것 에셋이 아직 없어 Editor의 positive 검색/패키징 실행은 수행하지 않았으며 게임 빌드/실행이나 테스트용 에셋을 추가하지 않았다. 대형 임시 생성/삭제0 bytes·정리 예외0, 작은 확인 결과는 로컬 `Saved/BuildChecks/RidingAssetScan-20261116/Completion.json`에 남겼다.
+
+## 51. M4c 프로젝트 콘텐츠 설정과 Pawn·PlayerState 연결 — 2026-11-16
+
+담당 `riding-content-settings-20261116`. [RPGRidingContentSettings](../Source/Project_RPG/Public/Riding/RPGRidingContentSettings.h)는 Project Settings의 **RPG Riding Content**에서 공통 `Policy`와 `MountDefinitions`를 지정하는 Game config다. 기본값은 빈 참조이며 게임플레이 활성화/기본 소유권을 추가하지 않는다. 변경 후 Editor/게임 재시작이 필요하다. 실제 정책·탈것 정의는 `/Game/Blueprints/Riding`, 등록 물품은 기존 `/Game/Blueprints/GameData/Item`에 저작한다.
+
+- Pawn의 기존 `Definitions`가 비어 있을 때만 BeginPlay에서 공통 목록 전체를 읽는다. 기존 개별 목록은 우선하며 공통 목록과 병합하거나 잘못된 개별 지정을 다른 탈것으로 대체하지 않는다. 정의1~512개와 전체 metadata/중복 ID를 확인하며 누락/실패 시 출력 전체를 비운다. 읽는 동안 강한 참조를 유지하고 완료한 전체 목록만 설치한다. metadata의 mesh/애니메이션 soft 참조는 이 로더가 로드하지 않는다.
+- 서버 PlayerState session은 개별 `Policy`가 없을 때만 공통 정책을 한 번 해석한다. BeginPlay와 그보다 먼저 전달될 수 있는 확정 입장 문맥이 같은 함수를 사용한다. 빈/무효 정책은 설치하지 않으며, 개별 정책이 잘못돼도 공통 값으로 감추지 않는다. 로드된 정책만으로 Ready가 되지 않고 기존 서버 인증·확정 입장·일치하는 backend snapshot/만료 검사를 통과해야 한다. Pawn 교체 시 기존 PlayerState의 정책/소유·쿨타임 수명은 유지한다.
+- `Policy`는 기존 수치·hash 검증을 사용하며 독립 카탈로그/서버 endpoint/클라이언트 권한 주입을 만들지 않는다. 정책은 PrimaryAsset이 아닌 UDataAsset이므로 `ProjectPackagingSettings`에 Riding 폴더의 `DirectoriesToAlwaysCook`를 추가했다. 기존 Mount 검색 규칙/등록 물품 범위·다른 cook 제외는 보존한다. 실제 최종 cook/참조/게임 연결 확인을 이 설정만으로 완료 처리하지 않는다.
+
+검증은 `Run-RidingFoundationTests.ps1 -IncludeContentSettings`의 사설 실제 UObject/Actor BeginPlay 검사와 기존 foundation/session/actor 회귀, `Run-RidingIntegrationCompile.ps1 -IncludeContentSettings`의 게시 전체 프로젝트 UHT/관련 CPP 컴파일로 수행한다. 전자는 생산 모듈의 최소 사본과 합성 World/정책/정의 metadata를 사용하고 backend host는 기존 모의 포트다. 실제 두 모델/전용 모션·서버 HTTP/전체 LocalPlayer·다인 네트워크/물리 입력/GPU/PG/Steam·정상 게임 DLL 재링크와 패키징은 별도다. 설정의 실 에셋 경로를 임의 지정하거나 콘텐츠/운영 서버를 변경하지 않는다.
+
+게시 `28476961`과 고정64입력의 사설 모듈 **40단계 빌드/링크0·D196CA01…2302DB8**에서 새 설정6+기존 foundation5/session6/actor4, **native21 Success·검사 오류/경고0·UE 종료0**을 확인했다. Game config selector·정책 검증·목록 전체 설치/중복·null/무효/513개 거절·외형 로드0·실제 Actor BeginPlay/개별 지정 보존·Ready/탑승 주입0을 검사했다. 같은 게시 기반 전체 프로젝트 **UHT/관련 CPP4 컴파일0**, 최종 소스/러너 SHA·PS2문법을 확인했다. 초기 검사 코드의 reflection 함수/AnimInstance include 오류를 보완한 뒤 최종 컴파일과 native를 통과했으며 제품 코드 판정 완화는 없다.
+
+자기 native 사본3회(초기2회는 확인된 검사 컴파일 오류 뒤 자기 UBT tree만 중단), 전체 Source 컴파일 사본3회 합계 **8,424,127,956 bytes(7.846GiB)**를 폐기했다. 자기 Temp/PID/정리 예외0이며 작은 명령/결과·소스/모듈 hash는 로컬 `Saved/BuildChecks/RidingContentSettings-20261116/Completion.json`에 남긴다. 폐기한 모듈 hash는 당시 근거이며 원본 Binaries/Intermediate/DDC·콘텐츠/저널/DB·다른 담당자의 기존 등록 테스트 이름 보정과 후속 Source/도구 변경은 보존했다.

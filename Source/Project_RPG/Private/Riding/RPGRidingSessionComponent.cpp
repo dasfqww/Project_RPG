@@ -1,4 +1,5 @@
 #include "Riding/RPGRidingSessionComponent.h"
+#include "Riding/RPGRidingContentSettings.h"
 #include "Riding/RPGRidingComponent.h"
 #include "Riding/RPGRidingSession.h"
 #include "Riding/RPGRidingSnapshot.h"
@@ -20,6 +21,19 @@ URPGRidingSessionComponent::URPGRidingSessionComponent()
     Runtime.Reset(new FRPGRidingSession());
 }
 URPGRidingSessionComponent::~URPGRidingSessionComponent() = default;
+
+void URPGRidingSessionComponent::ResolveConfiguredPolicy()
+{
+    if (Policy || bResolvedConfiguredPolicy) return;
+    bResolvedConfiguredPolicy = true;
+    Policy = GetDefault<URPGRidingContentSettings>()->LoadPolicy();
+}
+
+void URPGRidingSessionComponent::BeginPlay()
+{
+    Super::BeginPlay();
+    if (GetOwner() && GetOwner()->HasAuthority()) ResolveConfiguredPolicy();
+}
 
 void URPGRidingSessionComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
@@ -70,10 +84,14 @@ void URPGRidingSessionComponent::UpdateAuthenticatedContext(const FString& Chara
         BoundController = PC; BoundCharacter = CharacterId; BoundSteam = SteamId;
         BoundSession = SessionId; BoundGeneration = Generation;
     }
-    if (bAdmissionConfirmed && IsContextCurrent() && Policy)
+    if (bAdmissionConfirmed && IsContextCurrent())
     {
-        Runtime->ConfirmAdmission({AuthorityContext, CharacterGuid, SessionGuid, Generation}, Policy->Values);
-        RequestAdmissionSnapshot();
+        ResolveConfiguredPolicy(); // Also supports an authenticated context delivered before BeginPlay.
+        if (Policy)
+        {
+            Runtime->ConfirmAdmission({AuthorityContext, CharacterGuid, SessionGuid, Generation}, Policy->Values);
+            RequestAdmissionSnapshot();
+        }
     }
     PublishOwnerState();
 }
