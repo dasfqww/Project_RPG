@@ -1011,3 +1011,13 @@ authoring spec은 아래 형식이다. 경로와 ID는 예시이며 해당 에�
 [Run-RidingManifestExportTests.ps1](../Scripts/Tests/Run-RidingManifestExportTests.ps1)은 게시 `749401a1` Backend와 본인5입력의 고정 사본을 사용한다. 최종 Python **14개**와 생산 config binder/카탈로그·Memory HTTP **20개/332 assertion**(신규5/48·기존 등록7/156·설정8/128), 합계 **34개**가 통과했다. 최소/최대 정책·int32 경계·512개 탈것/등록·정의 버전1/2/10 정렬·float32 bit·비영문 culture의 Python/C# canonical bytes/hash 일치, private fixture에서만 명시 활성화한 실제 등록1개 소비·보유 조회/등록 옵션/hash·설정 저장과 원본 비활성 구성의 등록 차단을 확인했다. Release **0오류/0경고**·고정 소스/러너 SHA·PS 문법을 확인했다. adapter의 모의 검사는 dirty/미저장·클래스/identity·native 오류/경고·혼합 fragment·tag·hash/파일 변경·출력 보존을 검증한다. 실제 UE Editor 에셋 실행·전체 게임 빌드·PG/Steam/cook은 수행하지 않았다.
 
 자기3회 사설 Backend/SDK/fixture/bin/obj 합계 **130,522,126 bytes(124.476MiB)**를 폐기했고 Temp/PID/정리 예외0이다. 중간 정렬 fixture 확장 때 단일 모의 아이템의 예상 hash를 기존3개 매핑으로 계산한 검사 실패는 fixture를 일치시킨 뒤 최종34개로 재검증했다. 작은 결과/명령·소스/모듈 hash는 로컬 `Saved/BuildChecks/RidingManifestExport-20261116/Completion.json`에 남기며 폐기한 바이너리 hash는 당시 근거다. 원본 Source/Config/Plugins·Binaries/Intermediate/DDC·콘텐츠/서버 설정/사용자 데이터와 다른 담당 변경은 보존했다.
+
+## 50. M4b Mount PrimaryAsset 검색·cook 규칙 — 2026-11-16
+
+담당 `riding-asset-scan-20261116`. [DefaultGame.ini](../Config/DefaultGame.ini)의 `Engine.AssetManagerSettings`에 기존 native `URPGMountDefinition`의 `Mount` 타입을 등록했다. `/Game/Blueprints/Riding` 아래 저장된 정의를 재귀 검색하며 `bHasBlueprintClasses=false`, `bIsEditorOnly=false`, `CookRule=AlwaysCook`를 사용한다. 등록 물품은 기존 `/Game/Blueprints/GameData/Item`의 `RPGItemDefinition` 검색 범위를 유지한다.
+
+보관함/등록 UI의 실제 metadata 로더는 `Mount:<mountId>`의 PrimaryAssetPath를 조회한다. 기존에는 프로젝트 설정에 이 타입이 없어 올바른 정의를 저작해도 이 경로에서 찾지 못할 수 있었다. 새 규칙은 정의의 파일명이 아닌 `GetPrimaryAssetId()`의 안정된 소문자 MountId를 사용한다. 콘텐츠 연결 시 탈것 정의는 위 Riding 경로, 등록 물품은 기존 Item 경로에 저장하고 Editor/게임을 재시작해 스캔 결과를 확인한다.
+
+이 규칙은 정의의 검색과 cook 의도를 연결하며 에셋 생성·서버 카탈로그 적용·소유권 지급·Ready/탑승 허용을 수행하지 않는다. 정책은 `UDataAsset`이므로 이 Mount 스캔의 대상이 아니며 session 정책 참조/패키징 연결이 별도로 필요하다. Pawn의 Definitions·PlayerState session의 Policy 설정, 실제 mesh/애니메이션/socket·두 외형/구역 배치와 참조의 최종 cook 포함/게임 통합 검증도 후속이다.
+
+타입 규칙의 유일성·native 클래스/PrimaryAsset identity·실제 UI 호출·경로/재귀/AlwaysCook·기존 다른 타입/설정 불변·diff 공백을 정적으로 확인했다. 실제 탈것 에셋이 아직 없어 Editor의 positive 검색/패키징 실행은 수행하지 않았으며 게임 빌드/실행이나 테스트용 에셋을 추가하지 않았다. 대형 임시 생성/삭제0 bytes·정리 예외0, 작은 확인 결과는 로컬 `Saved/BuildChecks/RidingAssetScan-20261116/Completion.json`에 남겼다.
