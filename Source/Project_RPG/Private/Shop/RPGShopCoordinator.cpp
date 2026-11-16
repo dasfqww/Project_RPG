@@ -180,7 +180,7 @@ FRPGShopScreenView FRPGShopCoordinator::GetView()
     V.bCanTrade=NewCommandAllowed();V.bCanRefresh=Ready();V.bCanRecover=Ready()&&Pending.IsSet()&&!Receipt;V.bCanRetry=V.bCanRecover;
     V.bCanAssets=Ready()&&Pending.IsSet()&&Receipt.IsSet();V.bCanStorage=Valid&&bStorageBlocked&&!bBusy;
     V.bHasReview=SaleReview.IsSet();V.ReviewToken=ReviewToken;V.bCanConfirm=V.bCanTrade&&V.bHasReview;
-    if(SaleReview)V.ReviewText=FText::Format(NSLOCTEXT("RPGShop","Review","{0}개를 판매하고 {1} {2}을 받습니다. 판매한 물품은 재매입할 수 없습니다."),FText::AsNumber(SaleReview->Quantity),FText::AsNumber(SaleReview->UnitPrice*SaleReview->Quantity),CurrencyName(SaleReview->CurrencyCode));
+    if(SaleReview)V.ReviewText=FText::Format(NSLOCTEXT("RPGShop","Review","{0}개를 판매합니다. 받을 금액: {1} {2}. 판매한 물품은 재매입할 수 없습니다."),FText::AsNumber(SaleReview->Quantity),FText::AsNumber(SaleReview->UnitPrice*SaleReview->Quantity),CurrencyName(SaleReview->CurrencyCode));
     if(Pending)V.PendingText=FText::Format(NSLOCTEXT("RPGShop","Pending","{0} · {1} · {2}개 · {3} {4}\n{5}"),
         Pending->Action==TEXT("buy")?NSLOCTEXT("RPGShop","Buying","구매"):NSLOCTEXT("RPGShop","Selling","판매"),PendingName.IsEmpty()?NSLOCTEXT("RPGShop","OriginalItem","선택한 물품"):PendingName,FText::AsNumber(Pending->Quantity),FText::AsNumber(Pending->UnitPrice*Pending->Quantity),CurrencyName(Pending->CurrencyCode),
         Receipt?NSLOCTEXT("RPGShop","PendingAssets","거래 완료 · 가방 갱신 필요"):NSLOCTEXT("RPGShop","PendingResult","거래 결과 확인 중"));
