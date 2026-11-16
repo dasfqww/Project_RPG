@@ -228,6 +228,12 @@ TSharedRef<SWidget> URPGShopWidget::RebuildWidget()
         PlusButton = MakeButton(TEXT("ShopPlus"), FText::FromString(TEXT("+")));
         MaximumButton = MakeButton(TEXT("ShopMaximum"), NSLOCTEXT("RPGShop", "Maximum", "최대"));
         QuantityInput = WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(), TEXT("ShopQuantity"));
+        auto QuantityStyle = QuantityInput->GetWidgetStyle();
+        QuantityStyle.SetBackgroundColor(FSlateColor(FLinearColor(.055f, .04f, .025f)));
+        QuantityStyle.SetForegroundColor(FSlateColor(Ink));
+        QuantityStyle.SetFocusedForegroundColor(FSlateColor(Ink));
+        QuantityStyle.SetReadOnlyForegroundColor(FSlateColor(Ink));
+        QuantityInput->SetWidgetStyle(QuantityStyle);
         QuantityInput->SetText(FText::FromString(TEXT("1")));
         QuantityInput->SetSelectAllTextWhenFocused(true);
         QuantityInput->SetClearKeyboardFocusOnCommit(false);
