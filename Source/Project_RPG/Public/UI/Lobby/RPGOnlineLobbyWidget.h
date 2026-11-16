@@ -23,6 +23,7 @@ class URPGEquipmentGrowthWidget;
 class URPGNarrativeDialogueWidget;
 class URPGTradeWidget;
 class URPGAuctionWidget;
+class URPGShopWidget;
 class URPGRidingCollectionWidget;
 class URPGServiceStatusSubsystem;
 
@@ -153,6 +154,10 @@ private:
 	bool CanOpenAuctionMenu() const;
 	void HandleAuctionClosed();
 	UPROPERTY(Transient) TObjectPtr<URPGAuctionWidget> AuctionPanel;
+	UFUNCTION() void OpenShopMenu();
+	bool CanOpenShopMenu() const;
+	void HandleShopClosed();
+	UPROPERTY(Transient) TObjectPtr<URPGShopWidget> ShopPanel;
 	UFUNCTION() void OpenRidingCollection();
 	void HandleRidingCollectionClosed();
 	UPROPERTY(Transient) TObjectPtr<URPGRidingCollectionWidget> RidingCollectionPanel;

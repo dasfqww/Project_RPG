@@ -229,6 +229,7 @@ private:
 		const FString& ExpectedCharacterId, const FString& ExpectedSteamId);
 	bool RejectUnresolvedAbandonment();
     bool RejectRidingTransition();
+    bool RejectShopTransition();
 	void ClearAbandonmentIdentity();
 	bool CanQueueDungeonAbandonmentFromBattle(APlayerController* PlayerController, bool bFromResult) const;
 	bool QueueDungeonAbandonmentFromBattle(APlayerController* PlayerController, int32 ExpectedBattleRevision,

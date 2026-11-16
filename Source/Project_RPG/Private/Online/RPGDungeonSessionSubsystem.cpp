@@ -5,6 +5,7 @@
 #include "GameState/RPGBossBattleGameState.h"
 #include "Online/RPGSteamAuthSubsystem.h"
 #include "Riding/RPGRidingCollectionSubsystem.h"
+#include "Shop/RPGShopSubsystem.h"
 #include "Engine/LocalPlayer.h"
 #include "Player/RPGPlayerState.h"
 #include "Security/RPGDungeonGameplayAuthority.h"
@@ -128,7 +129,7 @@ bool URPGDungeonSessionSubsystem::SelectCharacter(
 {
 	if (RejectUnresolvedAbandonment()) return false;
 	const FString NormalizedCharacterId = CharacterId.TrimStartAndEnd();
-    if (NormalizedCharacterId != SelectedCharacterId && RejectRidingTransition()) return false;
+    if (NormalizedCharacterId != SelectedCharacterId && (RejectRidingTransition() || RejectShopTransition())) return false;
 	if (IsRequestInFlight())
 	{
 		RejectRequest(TEXT("request_in_flight"));
@@ -169,7 +170,7 @@ bool URPGDungeonSessionSubsystem::CreateDungeonSession(
 	const FString& DungeonId,
 	const FString& Difficulty)
 {
-    if (RejectRidingTransition()) return false;
+    if (RejectRidingTransition() || RejectShopTransition()) return false;
 	if (RejectUnresolvedAbandonment()) return false;
 	if (IsRequestInFlight())
 	{
@@ -213,7 +214,7 @@ bool URPGDungeonSessionSubsystem::CreateDungeonSession(
 bool URPGDungeonSessionSubsystem::JoinDungeonSession(
 	const FString& DungeonSessionId)
 {
-    if (RejectRidingTransition()) return false;
+    if (RejectRidingTransition() || RejectShopTransition()) return false;
 	if (RejectUnresolvedAbandonment()) return false;
 	if (IsRequestInFlight())
 	{
@@ -255,7 +256,7 @@ bool URPGDungeonSessionSubsystem::JoinDungeonSession(
 
 bool URPGDungeonSessionSubsystem::ResumeDungeonSession()
 {
-    if (RejectRidingTransition()) return false;
+    if (RejectRidingTransition() || RejectShopTransition()) return false;
 	if (RejectUnresolvedAbandonment()) return false;
 	if (IsRequestInFlight())
 	{
@@ -366,7 +367,7 @@ bool URPGDungeonSessionSubsystem::CanSetDeparture(bool bCancel) const
 
 bool URPGDungeonSessionSubsystem::SetDeparture(bool bCancel)
 {
-    if (!bCancel && RejectRidingTransition()) return false;
+    if (!bCancel && (RejectRidingTransition() || RejectShopTransition())) return false;
 	if (!RestoreDepartureCommand()) return false;
 	if (!CanSetDeparture(bCancel)) { RejectRequest(TEXT("dungeon_departure_not_available")); return false; }
 	if (PendingDepartureRequest.IsEmpty())
@@ -584,12 +585,19 @@ bool URPGDungeonSessionSubsystem::RejectRidingTransition()
     if (!Riding || !Riding->BlocksTransitions()) return false;
     RejectRequest(TEXT("riding_command_unresolved")); return true;
 }
+bool URPGDungeonSessionSubsystem::RejectShopTransition()
+{
+    auto* Player = GetGameInstance() ? GetGameInstance()->GetFirstGamePlayer() : nullptr;
+    auto* Shop = Player ? Player->GetSubsystem<URPGShopSubsystem>() : nullptr;
+    if (!Shop || !Shop->BlocksTransitions()) return false;
+    RejectRequest(TEXT("shop_command_unresolved")); return true;
+}
 
 bool URPGDungeonSessionSubsystem::ConnectToDungeon(
 	APlayerController* PlayerController,
 	const FString& ServerAddress)
 {
-    if (RejectRidingTransition()) return false;
+    if (RejectRidingTransition() || RejectShopTransition()) return false;
 	if (HasUnresolvedDeparture() || bDepartureRecoveryBlocked) { RejectRequest(TEXT("departure_result_unconfirmed")); return false; }
 	if (RejectUnresolvedAbandonment()) return false;
 	if (IsRequestInFlight())
@@ -916,7 +924,7 @@ void URPGDungeonSessionSubsystem::HandleLobbyTravelFailure(UWorld* World,
 void URPGDungeonSessionSubsystem::ResetDungeonFlow(
 	const bool bKeepSelectedCharacter)
 {
-    if (!bKeepSelectedCharacter && RejectRidingTransition()) return;
+    if (!bKeepSelectedCharacter && (RejectRidingTransition() || RejectShopTransition())) return;
 	if (RejectUnresolvedAbandonment()) return;
 	if (HasUnresolvedDeparture() || bDepartureRecoveryBlocked) { RejectRequest(TEXT("departure_result_unconfirmed")); return; }
 	if (IsRequestInFlight())
@@ -1106,6 +1114,7 @@ void URPGDungeonSessionSubsystem::HandleJoinTicketIssued(
 
 	// A successful ticket only authorizes its session/member. It cannot revive a
 	// completed/removed membership or redirect travel after a newer session read.
+    if (bSuccess && RejectShopTransition()) { SetFlowState(ERPGDungeonClientFlowState::Error, TEXT("shop_command_unresolved")); return; }
     if (bSuccess && RejectRidingTransition()) { SetFlowState(ERPGDungeonClientFlowState::Error, TEXT("riding_command_unresolved")); return; }
     if (bSuccess && (ServerAddress.IsEmpty()
 		|| !ServerAddress.Equals(CurrentDungeonSession.ServerAddress.TrimStartAndEnd(), ESearchCase::CaseSensitive)
@@ -1148,7 +1157,7 @@ bool URPGDungeonSessionSubsystem::BeginOperation(
 	const ERPGDungeonClientFlowState RequestState)
 {
     if ((Operation == EPendingOperation::Create || Operation == EPendingOperation::Join || Operation == EPendingOperation::Resume
-        || Operation == EPendingOperation::Connect) && RejectRidingTransition()) return false;
+        || Operation == EPendingOperation::Connect) && (RejectRidingTransition() || RejectShopTransition())) return false;
 	if (!WebManager)
 	{
 		FailOperation(TEXT("http_manager_unavailable"));

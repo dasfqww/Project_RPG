@@ -4,10 +4,12 @@
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
 #include "UI/Lobby/RPGTradeWidget.h"
 #include "UI/Lobby/RPGAuctionWidget.h"
+#include "UI/Shop/RPGShopWidget.h"
 #include "UI/Riding/RPGRidingCollectionWidget.h"
 #include "Riding/RPGRidingCollectionSubsystem.h"
 #include "Trading/RPGTradeSubsystem.h"
 #include "Auction/RPGAuctionSubsystem.h"
+#include "Shop/RPGShopSubsystem.h"
 #include "Narrative/RPGNarrativeCoordinator.h"
 #include "Engine/LocalPlayer.h"
 
@@ -350,6 +352,7 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 	BIND_ACTION("OpenEquipmentMenuButton", OpenEquipmentMenu);
 	BIND_ACTION("OpenTradeMenuButton", OpenTradeMenu);
 	BIND_ACTION("OpenAuctionMenuButton", OpenAuctionMenu);
+	BIND_ACTION("OpenShopMenuButton", OpenShopMenu);
 	BIND_ACTION("OpenRidingCollectionButton", OpenRidingCollection);
 	BIND_ACTION("OpenStoryMenuButton", OpenStoryMenu);
 	BIND_ACTION("OpenDungeonMenuButton", OpenDungeonMenu);
@@ -429,6 +432,8 @@ void URPGOnlineLobbyWidget::NativeDestruct()
 	TradePanel = nullptr;
 	if (AuctionPanel) { AuctionPanel->OnClosed.RemoveAll(this); AuctionPanel->CloseScreen(); }
 	AuctionPanel = nullptr;
+	if (ShopPanel) { ShopPanel->OnClosed.RemoveAll(this); ShopPanel->CloseScreen(); }
+	ShopPanel = nullptr;
 	if (RidingCollectionPanel) { RidingCollectionPanel->OnClosed.RemoveAll(this); RidingCollectionPanel->CloseScreen(); }
 	RidingCollectionPanel = nullptr;
 	if (auto* Owner = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGRidingCollectionSubsystem>() : nullptr) Owner->ReleaseReader();
@@ -483,10 +488,12 @@ bool URPGOnlineLobbyWidget::IsFrontendRequestInFlight() const
 	const auto* Narrative = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGNarrativeCoordinator>() : nullptr;
 	auto* Trades = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGTradeSubsystem>() : nullptr;
 	auto* Auctions = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGAuctionSubsystem>() : nullptr;
+	auto* Shop = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGShopSubsystem>() : nullptr;
 	return bLoadingCharacters || bCreatingCharacter || bLoggingIn || bLoggingOut || bAbandonmentConfirmationOpen
         || (Riding && Riding->BlocksTransitions())
 		|| (Trades && Trades->BlocksTransitions())
 		|| (Auctions && Auctions->BlocksTransitions())
+		|| (Shop && Shop->BlocksTransitions())
 		|| (Narrative && (Narrative->IsBusy() || Narrative->HasPendingChoice()))
 		|| (Web && Web->IsPlayerProgressionRequestInFlight())
 		|| (ConfigurationPanel && (ConfigurationPanel->IsRequestInFlight() || ConfigurationPanel->HasUnresolvedSave()))
@@ -586,6 +593,12 @@ FRPGOnlineLobbyPresentation URPGOnlineLobbyWidget::CurrentPresentation() const
         View.bCanSelectCharacter = View.bCanCreateCharacter = View.bCanCreateSession = View.bCanResume = View.bCanEnter = false;
         View.bBusy = true;
     }
+	if (auto* Shop = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGShopSubsystem>() : nullptr;
+		Shop && Shop->BlocksTransitions())
+	{
+		View.bCanSelectCharacter = View.bCanCreateCharacter = View.bCanCreateSession = View.bCanResume = View.bCanEnter = false;
+		View.bBusy = true;
+	}
     if (IsServiceAdmissionBlocked(TEXT("EnterDungeonButton"))) View.bCanLogin = View.bCanCreateSession = View.bCanEnter = false;
 	return View;
 }
@@ -791,6 +804,8 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 		Status = NSLOCTEXT("RPGOnlineLobby", "CharacterCreationFailed", "캐릭터 생성 결과를 확인하지 못했습니다. 목록을 새로고침해 생성 여부와 이름을 확인하세요.");
 	else if (Same(Error, TEXT("riding_command_unresolved")))
 		Status = NSLOCTEXT("RPGOnlineLobby", "RidingCommandUnconfirmed", "탈것 작업 결과를 확인한 뒤 다시 시도하세요.");
+	else if (Same(Error, TEXT("shop_command_unresolved")))
+		Status = NSLOCTEXT("RPGOnlineLobby", "ShopCommandUnconfirmed", "상점에서 거래 결과와 가방 갱신을 확인한 뒤 다시 시도하세요.");
 	else if (!Error.IsEmpty()) Status = FText::Format(NSLOCTEXT("RPGOnlineLobby", "Error", "요청 실패: {0} — 새로고침 또는 재시도하세요."), FText::FromString(Error));
 	else if (Web->HasAccessToken())
 	{

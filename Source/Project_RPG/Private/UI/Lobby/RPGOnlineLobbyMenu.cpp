@@ -14,6 +14,8 @@
 #include "Trading/RPGTradeSubsystem.h"
 #include "Auction/RPGAuctionSubsystem.h"
 #include "UI/Lobby/RPGAuctionWidget.h"
+#include "Shop/RPGShopSubsystem.h"
+#include "UI/Shop/RPGShopWidget.h"
 #include "UI/Riding/RPGRidingCollectionWidget.h"
 #include "Riding/RPGRidingCollectionSubsystem.h"
 #include "UI/Lobby/RPGOnlineLobbyLayout.h"
@@ -55,6 +57,7 @@ void URPGOnlineLobbyWidget::BuildMenuContent(UVerticalBox& Parent, bool bServerP
 	Add(TEXT("OpenSkillMenuButton"), NSLOCTEXT("RPGFrontend", "Skills", "스킬 구성"));
 	Add(TEXT("OpenEquipmentMenuButton"), NSLOCTEXT("RPGFrontend", "Equipment", "장비 성장 · 제작"));
 	Add(TEXT("OpenStoryMenuButton"), NSLOCTEXT("RPGFrontend", "Story", "인물과 이야기"));
+	Add(TEXT("OpenShopMenuButton"), NSLOCTEXT("RPGFrontend", "Shop", "상점"));
 	Add(TEXT("OpenTradeMenuButton"), NSLOCTEXT("RPGFrontend", "Trade", "거래 내역"));
 	Add(TEXT("OpenAuctionMenuButton"), NSLOCTEXT("RPGFrontend", "Auction", "경매 내역 · 처리 결과"));
 	Add(TEXT("OpenRidingCollectionButton"), NSLOCTEXT("RPGFrontend", "RidingCollection", "탈것 보관함"));
@@ -210,6 +213,41 @@ void URPGOnlineLobbyWidget::HandleAuctionClosed()
 		Button->SetUserFocus(GetOwningPlayer());
 }
 
+bool URPGOnlineLobbyWidget::CanOpenShopMenu() const
+{
+	// Recovery must stay reachable while this shop owns an unresolved command.
+	// Do not call CurrentPresentation/IsFrontendRequestInFlight from this context guard.
+	return bServerSelected && bPreparationOpen && !bTutorialEntryActive
+		&& CanUseCharacterConfiguration(false, false);
+}
+
+void URPGOnlineLobbyWidget::OpenShopMenu()
+{
+	if (!CanOpenShopMenu()) return;
+	auto* Shop = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGShopSubsystem>() : nullptr;
+	const auto Owner = Shop ? Shop->GetCoordinator() : nullptr;
+	if (!Owner || !Owner->GetView().bAvailable) return;
+	if (ShopPanel && ShopPanel->IsInViewport()) { ShopPanel->SetKeyboardFocus(); return; }
+	ShopPanel = CreateWidget<URPGShopWidget>(GetOwningPlayer(), URPGShopWidget::StaticClass());
+	if (ShopPanel)
+	{
+		auto* Panel = ShopPanel.Get();
+		Panel->OnClosed.AddUObject(this, &ThisClass::HandleShopClosed);
+		Panel->SetShopOwner(Owner.ToSharedRef());
+		if (ShopPanel == Panel) Panel->AddToViewport(150);
+	}
+}
+
+void URPGOnlineLobbyWidget::HandleShopClosed()
+{
+	ShopPanel = nullptr;
+	if (!IsInViewport()) return;
+	RefreshPresentation();
+	if (CanOpenShopMenu())
+		if (auto* Button = Buttons.FindRef(TEXT("OpenShopMenuButton")).Get(); Button && Button->GetIsEnabled() && Button->IsVisible())
+			Button->SetUserFocus(GetOwningPlayer());
+}
+
 bool URPGOnlineLobbyWidget::CanOpenNarrativeDialogues() const
 {
 	return bServerSelected && bPreparationOpen && !bTutorialEntryActive
@@ -346,6 +384,15 @@ void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 	auto* Auctions=GetOwningLocalPlayer()?GetOwningLocalPlayer()->GetSubsystem<URPGAuctionSubsystem>():nullptr;
 	const auto AuctionOwner=Auctions?Auctions->GetCoordinator():nullptr;
 	Control(TEXT("OpenAuctionMenuButton"),CanOpenAuctionMenu(),bHome && AuctionOwner && AuctionOwner->GetScreenView().bAvailable);
+	auto* Shop = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGShopSubsystem>() : nullptr;
+	const auto ShopOwner = Shop ? Shop->GetCoordinator() : nullptr;
+	const bool bShopAvailable = ShopOwner && ShopOwner->GetView().bAvailable;
+	Control(TEXT("OpenShopMenuButton"), CanOpenShopMenu() && bShopAvailable, bHome);
+	if (auto* Button = Buttons.FindRef(TEXT("OpenShopMenuButton")).Get())
+		if (auto* Label = Cast<UTextBlock>(Button->GetContent()))
+			Label->SetText(ShopOwner && ShopOwner->BlocksTransitions()
+				? NSLOCTEXT("RPGFrontend", "ShopRecovery", "상점 · 거래 결과 확인") : NSLOCTEXT("RPGFrontend", "Shop", "상점"));
+	if (ShopPanel && (!bHome || !bShopAvailable)) ShopPanel->CloseScreen();
 	Control(TEXT("OpenRidingCollectionButton"), CanUseRidingCollection(), bHome);
 	if (RidingCollectionPanel && !CanUseRidingCollection()) RidingCollectionPanel->CloseScreen();
 	if (NarrativePanel && NarrativePanel->IsInViewport()
