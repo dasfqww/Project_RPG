@@ -1,13 +1,15 @@
 [CmdletBinding()]
 param([string]$RuntimeProjectRoot='', [string]$BackendRoot='', [int]$BackendPort=3092, [int]$GamePort=18912,
-    [switch]$ApproachPractice,
+    [switch]$ApproachPractice, [switch]$OpportunityPractice,
     [string]$EngineRoot='D:/UE_5.8')
 $ErrorActionPreference='Stop'
+if($OpportunityPractice){$ApproachPractice=$true}
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if(!$RuntimeProjectRoot){$RuntimeProjectRoot=$workspace}
 if(!$BackendRoot){$BackendRoot=Join-Path $workspace 'Backend'}
-$ownerRoot=if($ApproachPractice){'M04'}else{'M03'}
-$proofFolder=if($ApproachPractice){'ChapterM04-20261116'}else{'ChapterM03-20261115'}
+$ownerRoot=if($OpportunityPractice){'Intro2'}elseif($ApproachPractice){'M04'}else{'M03'}
+$proofFolder=if($OpportunityPractice){'Intro2Opportunity-20261117'}elseif($ApproachPractice){'ChapterM04-20261116'}else{'ChapterM03-20261115'}
+$profile=if($OpportunityPractice){'Intro2'}else{'Intro1'}
 $id=[Guid]::NewGuid().ToString('N');$temp=Join-Path $workspace ('Saved/'+$ownerRoot+'/play-'+$id)
 $proof=Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/play-'+$id)
 $null=[IO.Directory]::CreateDirectory($temp);$null=[IO.Directory]::CreateDirectory($proof)
@@ -36,7 +38,7 @@ function Log([string]$Name){
     $s=[IO.File]::Open($path,'Open','Read','ReadWrite');$r=[IO.StreamReader]::new($s)
     try{return $r.ReadToEnd()}finally{$r.Dispose()}
 }
-function Peer([string]$Name,[string]$Map,[bool]$Server,[bool]$Training,[bool]$Continue=$false){
+function Peer([string]$Name,[string]$Map,[bool]$Server,[bool]$Training,[bool]$Continue=$false,[int]$OpportunityPhase=0){
     $args=@(('"'+$project+'"'),$Map,'-nosteam','-unattended','-nosound','-nop4','-NoLiveCoding','-NoLoadingScreen','-DisablePython',
         '-UseIrisReplication=1','-RPGRequireIris','-DDC=(InstalledEnginePak,Local)','-ExecCmds="t.MaxFPS 30"',
         ('-UserDir="'+$temp+'/'+$Name+'"'),('-abslog="'+$temp+'/'+$Name+'.log"'),
@@ -46,18 +48,19 @@ function Peer([string]$Name,[string]$Map,[bool]$Server,[bool]$Training,[bool]$Co
         "-ini:Game:[/Script/Project_RPG.RPGEconomyBackendSubsystem]:ApiUrl=$url/api")
     $envs=@{PROJECT_RPG_GAME_SERVER_ID=$null;PROJECT_RPG_DUNGEON_SESSION_ID=$null;PROJECT_RPG_BACKEND_GAME_SERVER_TOKEN=$null;PROJECT_RPG_BACKEND_ADMIN_TOKEN=$null}
     if($Server){$args+=@('-server',"-port=$GamePort",'-nullrhi','-RPGItemE2EServer','-RPGItemE2EAllowUnverifiedIdentity');$envs.PROJECT_RPG_GAME_SERVER_ID=$serverId;$envs.PROJECT_RPG_DUNGEON_SESSION_ID=$sessionId;$envs.PROJECT_RPG_BACKEND_GAME_SERVER_TOKEN=[string]$assignment.gameServerAccessToken}
-    else{$args+=@('-game','-RPGDevelopmentLogin','-RPGDungeonProfile=Intro1');if($Training){$args+='-nullrhi'}else{$args+=@('-RenderOffscreen','-d3d12','-Windowed','-ResX=1280','-ResY=900',('-M03Screenshot="'+$proof+'/M03.png"'))}}
+    else{$args+=@('-game','-RPGDevelopmentLogin',('-RPGDungeonProfile='+$profile));if($Training){$args+='-nullrhi'}else{$args+=@('-RenderOffscreen','-d3d12','-Windowed','-ResX=1280','-ResY=900',('-M03Screenshot="'+$proof+'/M03.png"'),('-Intro2Screenshot="'+$proof+'/Intro2.png"'))}}
     if($Training -or !$Server){
         $args+=@("-RPGTrainingCharacter=$characterId","-RPGTrainingSteam=$steam","-RPGTrainingSession=$sessionId",('-RPGTrainingGates="'+$temp+'"'))
-        $args+=$(if($Training){'-RPGTrainingPlaytest'}else{'-RPGChapterOnePlaytest'})
-        if($Continue){$args+='-RPGChapterOneContinue'}
-        if($Continue -and $ApproachPractice){$args+='-RPGChapterOneApproach'}
+        $args+=$(if($Training){'-RPGTrainingPlaytest'}elseif($OpportunityPhase){'-RPGIntroOpportunityPlaytest'}else{'-RPGChapterOnePlaytest'})
+        if($OpportunityPhase-eq2){$args+='-RPGIntroOpportunityContinue'}
+        if($Continue -and !$OpportunityPhase){$args+='-RPGChapterOneContinue'}
+        if($Continue -and $ApproachPractice -and !$OpportunityPhase){$args+='-RPGChapterOneApproach'}
         if($Training -and $ApproachPractice){$args+='-RPGTrainingObserveMaximumCharge'}
     }
     return Start-Owned $editor $args $envs
 }
 function Heartbeat {
-    if((Api "dungeon-sessions/$sessionId" 'Get' $player).state -in @('Cleared','Failed','Abandoned')){return}
+    if((Api "dungeon-sessions/$sessionId" 'Get' $player).state -in @('Cleared','Failed','Abandoned','SettlementPending')){return}
     $null=Api "dungeon-sessions/$sessionId/heartbeat" 'Post' $serverHeaders @{serverId=$serverId}
 }
 function Begin-Session([string]$Dungeon,[string]$Name,[string]$Map,[bool]$Training){
@@ -88,7 +91,7 @@ try{
     $backend=Start-Owned (Get-Command dotnet).Source @(('"'+$temp+'/backend/ProjectRpg.Backend.dll"')) @{
         ASPNETCORE_ENVIRONMENT='Development';DOTNET_ENVIRONMENT='Development';Storage__Provider='Memory';POSTGRES_CONNECTION_STRING=$null;ConnectionStrings__Postgres=$null
         ASPNETCORE_CONTENTROOT="$temp/backend";Kestrel__Endpoints__Http__Url=$url;PROJECT_RPG_BACKEND_ADMIN_TOKEN=$admin;Steam__AllowDevelopmentAuthentication='true'
-        DungeonContent__DevelopmentProfile='Intro1';Narrative__EnableDevelopmentContent='false';Narrative__CatalogPath=(Join-Path $workspace 'Backend/ProjectRpg.Backend/Narrative/Content/chapter01.json')
+        DungeonContent__DevelopmentProfile=$profile;Narrative__EnableDevelopmentContent='false';Narrative__CatalogPath=(Join-Path $workspace 'Backend/ProjectRpg.Backend/Narrative/Content/chapter01.json')
     } "$temp/backend.log"
     $ready=$false;for($n=0;$n-lt100;++$n){try{if((Invoke-RestMethod "$url/health/ready" -TimeoutSec 1).status-eq'ready'){$ready=$true;break}}catch{};if($backend.HasExited){throw 'Backend exited'};Start-Sleep -Milliseconds 250}
     if(!$ready){throw 'Backend readiness timeout'}
@@ -150,12 +153,37 @@ try{
         if(($after|ConvertTo-Json -Depth 12 -Compress)-cne($growthAgain|ConvertTo-Json -Depth 12 -Compress)){throw 'M04 refresh duplicated growth'}
         $result.Scope='Real Training, M03 reconnect, M04 UMG acceptance, actual Intro1 skills, settlement and saved quest; Memory HTTP/Iris, not PostgreSQL or Steam'
     }elseif(($growth|ConvertTo-Json -Depth 12 -Compress)-cne($after|ConvertTo-Json -Depth 12 -Compress)){throw 'Investigation altered growth'}
+    if($OpportunityPractice){
+        Stop-Owned $client;Stop-Owned $server
+        Begin-Session 'Progression.Intro2' 'Intro2' '/Game/Maps/Progression/L_ProgressionIntro2' $false
+        foreach($phase in @(1,2)){
+            $name='Intro2Client'+$phase;$client=Peer $name '/Game/Maps/LobbyMap' $false $false $false $phase
+            $until=[DateTime]::UtcNow.AddSeconds(240);$next=[DateTime]::MinValue
+            while(!$client.HasExited-and[DateTime]::UtcNow-lt$until){if([DateTime]::UtcNow-ge$next){Heartbeat;$next=[DateTime]::UtcNow.AddSeconds(10)};Start-Sleep -Milliseconds 250}
+            if(!$client.HasExited){throw 'Intro2 input timed out'};$client.WaitForExit()
+            if($client.ExitCode-ne0){throw "Intro2 client failed phase $phase"}
+            $expected=if($phase-eq1){'INTRO2_PLAY ONE_SAVED'}else{'INTRO2_PLAY COMPLETE Count=2 DistinctRounds=1'}
+            if((Log $name)-notmatch$expected -or (Log $name)-notmatch'INTRO2_PLAY SAME_ROUND Count=1'){throw "Missing Intro2 input proof phase $phase"}
+            if($phase-eq2 -and (Log $name)-notmatch'INTRO2_PLAY SETTLED State=Cleared'){throw 'Client left before authoritative settlement'}
+            if($phase-eq1 -and (Api "dungeon-sessions/$sessionId" 'Get' $player).state-ne'InProgress'){throw 'One opportunity settled early'}
+            Start-Sleep -Seconds 2
+        }
+        if((Log 'Intro2Server')-notmatch'INTRO2_REJECTED Closed'){throw 'No actual damage outside the window observed'}
+        if(@([regex]::Matches((Log 'Intro2Server'),'INTRO2_REJECTED SameRound')).Count-lt2){throw 'No actual same-round damage rejection for both lifetimes'}
+        $until=[DateTime]::UtcNow.AddSeconds(30)
+        do{$after=Api "characters/$characterId/progression" 'Get' $player;if($after.experience-eq300){break};Start-Sleep -Milliseconds 250}while([DateTime]::UtcNow-lt$until)
+        if($after.experience-ne300 -or $after.totalSP-ne9 -or $after.milestones-ne7){throw 'Intro2 actual settlement/growth mismatch'}
+        $again=Api "characters/$characterId/progression" 'Get' $player
+        if(($after|ConvertTo-Json -Depth 12 -Compress)-cne($again|ConvertTo-Json -Depth 12 -Compress)){throw 'Intro2 repeat read changed growth'}
+        $result.Scope='Actual Training/M03/M04/Intro1 then Intro2 closed-hit rejection, same-round rejection, client restart/reset, distinct-round hits2, settlement XP300/SP9. Memory HTTP/Iris; Steam/PostgreSQL not exercised.'
+    }
+    if((Get-FileHash "$RuntimeProjectRoot/Binaries/Win64/UnrealEditor-Project_RPG.dll").Hash-cne$result.ModuleSHA256){throw 'Runtime module changed during the playtest'}
     $result.FinalNarrative=$v;$result.Experience=$after.experience;$result.Passed=$true
 }catch{$result.Failure=$_.Exception.Message}
 finally{
     foreach($p in $owned){Stop-Owned $p}
-    foreach($name in @('TrainingServer','TrainingClient','M03Server','M03Client1','M03Client2')){
-        $text=Log $name;if($text){$text -split "`n"|Where-Object {$_-match'M03_PLAY|M04_PLAY|RPG_TRAINING_PLAYTEST|Fatal error|Assertion failed|Error:'}|Set-Content "$proof/$name.log" -Encoding UTF8}
+    foreach($name in @('TrainingServer','TrainingClient','M03Server','M03Client1','M03Client2','Intro2Server','Intro2Client1','Intro2Client2')){
+        $text=Log $name;if($text){$text -split "`n"|Where-Object {$_-match'INTRO2_|M03_PLAY|M04_PLAY|RPG_TRAINING_PLAYTEST|Fatal error|Assertion failed|Error:'}|Set-Content "$proof/$name.log" -Encoding UTF8}
         if($result.Failure -and $text){$text -split "`n"|Select-Object -Last 160|Set-Content "$proof/$name.FailureTail.log" -Encoding UTF8}
     }
     if(Test-Path "$temp/backend.log"){Copy-Item "$temp/backend.log" "$proof/Backend.log"}

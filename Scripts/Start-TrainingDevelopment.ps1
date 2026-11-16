@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$EngineRoot='D:\UE_5.8',
-    [ValidateSet('Training','Intro1')][string]$DungeonProfile='Training',
+    [ValidateSet('Training','Intro1','Intro2')][string]$DungeonProfile='Training',
     [switch]$ChapterOne,
     [ValidateRange(1024,65535)][int]$BackendPort=3076,
     [ValidateRange(1024,65535)][int]$GamePort=18896,
@@ -19,7 +19,7 @@ $ErrorActionPreference='Stop'
 if($ChapterOne -and $DungeonProfile -cne 'Intro1'){throw 'ChapterOne requires -DungeonProfile Intro1'}
 . (Join-Path $PSScriptRoot 'Tests/TrainingDevelopmentContent.ps1')
 $contentMaps=Get-RPGTrainingDevelopmentContent $DungeonProfile
-if($DungeonProfile -ceq 'Intro1' -and ($SmokeTest -or $SessionLoopSmoke -or $LobbyUISmoke)){throw 'Intro1 requires interactive mode; existing smoke drivers cover Training only'}
+if($DungeonProfile -cne 'Training' -and ($SmokeTest -or $SessionLoopSmoke -or $LobbyUISmoke)){throw 'Progression profiles require interactive mode; existing smoke drivers cover Training only'}
 if($SessionLoopSmoke -and ($SmokeTest -or $LobbyUISmoke -or $RecoverOnly)){throw 'SessionLoopSmoke is a separate smoke mode'}
 if($SessionLoopSmoke){$SmokeTest=[switch]$true}
 if($SmokeTest -and $LobbyUISmoke){throw 'Choose gameplay smoke or lobby UI smoke'}

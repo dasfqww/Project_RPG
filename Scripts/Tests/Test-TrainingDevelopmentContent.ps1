@@ -8,6 +8,9 @@ $train=Get-RPGTrainingDevelopmentContent
 $both=Get-RPGTrainingDevelopmentContent Intro1
 Check ($train.Count -eq 1 -and $train['Progression.Training'] -ceq $training) 'Default training plan changed'
 Check ($both.Count -eq 2 -and $both['Progression.Training'] -ceq $training -and $both['Progression.Intro1'] -ceq $intro) 'Intro1 plan must contain exactly both maps'
+$three=Get-RPGTrainingDevelopmentContent Intro2
+Check ($three.Count -eq 3 -and $three['Progression.Intro2'] -ceq '/Game/Maps/Progression/L_ProgressionIntro2' -and $three['Progression.Training'] -ceq $training -and $three['Progression.Intro1'] -ceq $intro) 'Intro2 must preserve the three exact stages'
+Assert-RPGTrainingDevelopmentAllocation @{DungeonSessionId='three';ServerId='owned';DungeonId='Progression.Intro2';Difficulty='Normal';MapPackage=$three['Progression.Intro2']} Intro2
 foreach($bad in @('intro1','Intro1 ','../Intro1','Training.json','')){
     $rejected=$false;try{$null=Get-RPGTrainingDevelopmentContent $bad}catch{$rejected=$true}
     Check $rejected ('Unknown plan accepted: '+$bad)
@@ -68,6 +71,8 @@ param($ServerExecutable,$EditorProject,[switch]$DevelopmentIdentityTesting,$Runt
     Check ($record.mapSpecified -and $record.map -ceq $training) 'Training map assertion changed'
     $DungeonProfile='Intro1';$record=Poll-Allocator
     Check (!$record.mapSpecified) 'Intro1 dispatch incorrectly pinned its map to Training'
+    $DungeonProfile='Intro2';$record=Poll-Allocator
+    Check (!$record.mapSpecified) 'Intro2 dispatch incorrectly pinned its map to Training'
 }finally{
     $cleanup=Remove-GuardianProbeArtifact $temp $fixtureRoot
     [pscustomobject]@{cases=$cases;cleanup=$cleanup;tempAbsent=!(Test-Path -LiteralPath $temp)}|ConvertTo-Json -Depth 5|Set-Content -Encoding UTF8 -LiteralPath (Join-Path $fixtureRoot 'Result.json')

@@ -327,13 +327,15 @@ void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 		&& (!Flow || !Flow->HasUnresolvedDeparture()) && (!Steam || !Steam->IsInPartyLobby()), bAuth && bServerSelected && !bPreparationOpen);
 	Control(TEXT("StartTutorialButton"), CanStartTutorial() && !bTutorialEntryActive, bHome && Profile.bTraining);
 	const auto* Progress = ConfigurationPanel ? ConfigurationPanel->GetConfirmedProgression() : nullptr;
+	const bool bIntro2Entry = Profile.bIntro2 && Progress && (Progress->Milestones & 2) != 0;
 	const bool bIntro1Entry = Profile.bIntro1 && Progress && (Progress->Milestones & 1) != 0;
 	Control(TEXT("ReloadTutorialProgressButton"), bHome && !bTutorialEntryActive && ConfigurationPanel
 		&& !ConfigurationPanel->IsRequestInFlight() && !ConfigurationPanel->HasUnsavedChanges()
 		&& !ConfigurationPanel->HasUnresolvedSave() && CanUseCharacterConfiguration(false, false), bHome && Profile.bTraining && !Progress);
 	if (auto* Button = Buttons.FindRef(TEXT("StartTutorialButton")).Get())
 		if (auto* Label = Cast<UTextBlock>(Button->GetContent()))
-			Label->SetText(bIntro1Entry ? NSLOCTEXT("RPGFrontend", "Intro1Entry", "입문 1 입장")
+			Label->SetText(bIntro2Entry ? NSLOCTEXT("RPGFrontend", "Intro2Entry", "입문 2 입장")
+				: bIntro1Entry ? NSLOCTEXT("RPGFrontend", "Intro1Entry", "입문 1 입장")
 				: HasCompletedTutorial() ? NSLOCTEXT("RPGFrontend", "TutorialDone", "튜토리얼 완료")
 				: NSLOCTEXT("RPGFrontend", "Tutorial", "튜토리얼 입장"));
 	Control(TEXT("OpenSkillMenuButton"), bHome && !bTutorialEntryActive, bHome);
@@ -361,11 +363,13 @@ void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 		if (StatusText) StatusText->SetText(bTutorialEntryActive
 			? NSLOCTEXT("RPGFrontend", "Preparing", "튜토리얼 입장 준비 중")
 			: !TutorialEntryFailure.IsEmpty() ? TutorialEntryFailure
+			: bIntro2Entry ? NSLOCTEXT("RPGFrontend", "Intro2Ready", "공격 기회 실습에 입장할 수 있습니다. 예고 뒤 열린 기회를 확인하세요.")
 			: bIntro1Entry ? NSLOCTEXT("RPGFrontend", "Intro1Ready", "접근 실습에 입장할 수 있습니다. 새 스킬은 스킬 구성에서 편성·저장해 주세요.")
 			: HasCompletedTutorial() ? NSLOCTEXT("RPGFrontend", "TrainingFinished", "튜토리얼을 완료했습니다. 로비에서 캐릭터와 스킬을 확인해 보세요.")
 			: !Progress ? NSLOCTEXT("RPGFrontend", "CheckProgress", "캐릭터의 진행 정보를 확인하고 있습니다. 연결을 확인하거나 진행 정보를 다시 읽어 주세요.")
 			: NSLOCTEXT("RPGFrontend", "LobbyReady", "캐릭터 준비가 끝났습니다. 튜토리얼을 시작해 보세요."));
 		if (NextStepText) NextStepText->SetText(bTutorialEntryActive ? FText::GetEmpty()
+			: bIntro2Entry ? NSLOCTEXT("RPGFrontend", "BeforeIntro2", "다음 단계: 입문 2 입장을 누르고 서로 다른 공격 기회에 두 번 적중하세요.")
 			: bIntro1Entry ? NSLOCTEXT("RPGFrontend", "BeforeIntro1", "다음 단계: 회전 베기를 편성·저장하고 입문 1 입장을 누르세요.")
 			: HasCompletedTutorial() ? NSLOCTEXT("RPGFrontend", "AfterTutorial", "다음 단계: 스킬 구성에서 새로 얻은 SP와 습득한 스킬을 확인하세요.")
 			: !Progress ? NSLOCTEXT("RPGFrontend", "ProgressRequired", "진행 정보가 확인되면 튜토리얼에 입장할 수 있습니다.")

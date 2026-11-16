@@ -10,9 +10,10 @@ struct FSelection
 	bool bTraining = false;
 	FString Error;
 	bool bIntro1 = false;
+	bool bIntro2 = false;
 	FString EntryDungeonId(int32 Milestones) const
 	{
-		return bTraining && Error.IsEmpty() ? (bIntro1 && (Milestones & 1) != 0
+		return bTraining && Error.IsEmpty() ? (bIntro2 && (Milestones & 2) != 0 ? TEXT("Progression.Intro2") : bIntro1 && (Milestones & 1) != 0
 			? TEXT("Progression.Intro1") : TEXT("Progression.Training")) : FString();
 	}
 };

@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Attribute/RPGAttributeSet.h"
+#include "Progression/RPGIntroOpportunity.h"
 #include "Item/Loot/RPGLootSourceComponent.h"
 #include "Component/Combat/RPGShieldComponent.h"
 #include "Riding/RPGRidingDamageScope.h"
@@ -232,6 +233,9 @@ void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 
 		SetCurrentHealth(NewCurrentHealth);
 	
+		if (auto* Opportunity = Cast<ARPGIntroOpportunityTarget>(Data.Target.GetAvatarActor()))
+			Opportunity->ObserveDamage(Data, prevHealth, NewCurrentHealth);
+
 		if (auto* Avatar = Data.Target.GetAvatarActor(); IsValid(Avatar) && Avatar->HasAuthority())
 			if (auto* Loot = Avatar->FindComponentByClass<URPGLootSourceComponent>())
 				Loot->NotifyDamage(Data, prevHealth, NewCurrentHealth);

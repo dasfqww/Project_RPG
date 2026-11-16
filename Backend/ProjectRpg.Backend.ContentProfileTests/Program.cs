@@ -11,6 +11,11 @@ using ProjectRpg.Backend.Configuration;
 
 try
 {
+    if (args is ["--intro2-only"])
+    {
+        await Intro2DevelopmentProfileTests.Run();
+        return 0;
+    }
     if (args is ["--intro1-only"])
     {
         await Intro1DevelopmentProfileTests.Run();
@@ -55,6 +60,7 @@ try
     RunConfigurationChecks();
     await RunHttpChecksAsync();
     await Intro1DevelopmentProfileTests.Run();
+    await Intro2DevelopmentProfileTests.Run();
     return 0;
 }
 catch (Exception exception)

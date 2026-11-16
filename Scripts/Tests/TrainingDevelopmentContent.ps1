@@ -5,7 +5,11 @@ function Get-RPGTrainingDevelopmentContent {
     switch -CaseSensitive ($Profile) {
         'Training' { }
         'Intro1' { $maps['Progression.Intro1']='/Game/Maps/Progression/L_ProgressionIntro1' }
-        default { throw 'Unknown development content profile; expected Training or Intro1' }
+        'Intro2' {
+            $maps['Progression.Intro1']='/Game/Maps/Progression/L_ProgressionIntro1'
+            $maps['Progression.Intro2']='/Game/Maps/Progression/L_ProgressionIntro2'
+        }
+        default { throw 'Unknown development content profile; expected Training, Intro1 or Intro2' }
     }
     return $maps
 }
