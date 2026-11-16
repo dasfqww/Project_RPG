@@ -14,6 +14,7 @@ public sealed class InMemoryTransactionGate(TimeProvider? clock = null)
     internal Dictionary<Guid, string> AuctionListings { get; } = [];
     internal Dictionary<Guid, string> AuctionPayables { get; } = [];
     internal Dictionary<Guid, (string Kind, string Fingerprint, string Result)> AuctionReceipts { get; } = [];
+    internal Dictionary<Guid, (string Fingerprint, string Command, string Result)> ShopReceipts { get; } = [];
 
     // All callers hold SyncRoot, the same gate used by every item/currency mutation.
     internal bool IsItemReserved(Guid itemId) => TradeReservations.Values.Any(value =>

@@ -12,6 +12,7 @@ using ProjectRpg.Backend.Contracts;
 using ProjectRpg.Backend.Data;
 using ProjectRpg.Backend.Domain;
 using ProjectRpg.Backend.Validation;
+using ProjectRpg.Backend.Shop;
 
 const string migrateSchemaArgument = "--migrate-schema";
 const string validateNarrativeArgument = "--validate-narrative-catalog";
@@ -181,6 +182,7 @@ builder.Services.AddHostedService<TradeExpiryWorker>();
 builder.Services.AddAuctionServices(builder.Configuration.GetSection("Auctions").Get<AuctionOptions>() ?? new(),
     string.Equals(storageProvider, "Postgres", StringComparison.OrdinalIgnoreCase));
 builder.Services.AddSingleton<ItemTransactionService>();
+builder.Services.AddShopServices(builder.Configuration);
 builder.Services.AddSingleton(narrativeCatalog);
 builder.Services.AddSingleton<INarrativeRepository>(provider =>
     (INarrativeRepository)provider.GetRequiredService<IGameRepository>());
@@ -1257,6 +1259,7 @@ app.MapEquipmentProgressionApi();
 app.MapRidingApi();
 app.MapTradeApi();
 app.MapAuctionApi();
+app.MapShopApi();
 app.MapDungeonAbandonmentApi();
 app.MapDungeonMembershipSnapshotApi();
 app.MapDungeonAdmissionApi();
