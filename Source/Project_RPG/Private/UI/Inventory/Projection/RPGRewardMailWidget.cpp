@@ -224,6 +224,14 @@ void URPGRewardMailWidget::RefreshFromViewModel()
 	{
 		UTextBlock* Empty = WidgetTree->ConstructWidget<UTextBlock>();
 		Empty->SetText(RPGRewardMailUI::GetEmptyText(*InventoryViewModel));
+		if (WidgetTree->FindWidget(TEXT("InventoryActionButtonStyle")))
+		{
+			FSlateFontInfo Font = Empty->GetFont();
+			Font.Size = 12;
+			Empty->SetFont(Font);
+			Empty->SetColorAndOpacity(FSlateColor(FLinearColor(0.65f, 0.6f, 0.52f)));
+			Empty->SetAutoWrapText(true);
+		}
 		MailRows->AddChildToVerticalBox(Empty);
 	}
 	for (const FRPGInventoryProjectionEntry& Entry : InventoryViewModel->MailItems)

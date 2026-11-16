@@ -168,6 +168,7 @@ void FillEquipmentColumn(
 		auto* ItemCell = Tree->ConstructWidget<URPGInventoryProjectionItemSlotWidget>();
 		ItemCell->SetItem(Entry ? Entry->GetItemId() : FGuid(), Label, ViewModel, true,
 			static_cast<int32>(EquipmentSlot));
+		RPGInventoryArt::ApplyBagSlotArt(Tree, ItemCell);
 		Cell->SetContent(ItemCell);
 		UVerticalBoxSlot* Slot = Column->AddChildToVerticalBox(Cell);
 		Slot->SetPadding(FMargin(2.f));
@@ -329,13 +330,14 @@ void URPGInventoryProjectionWidget::NativeConstruct()
 	EnsureBagTabControls();
 	EnsureSplitQuantityControls();
 	CancelSplitQuantitySelection();
-	if (InventoryGrid)
-	{
-		RPGInventoryArt::ApplyBagButtonArt(WidgetTree, RetryLoadButton);
-		RPGInventoryArt::ApplyBagButtonArt(WidgetTree, InventoryRecoveryButton);
-		RPGInventoryArt::ApplyBagButtonArt(WidgetTree, ConfirmSplitQuantityButton);
-		RPGInventoryArt::ApplyBagButtonArt(WidgetTree, CancelSplitQuantityButton);
-	}
+	// Authored style templates opt each window in, including equipment and mail.
+	RPGInventoryArt::ApplyBagButtonArt(WidgetTree, InventoryTabButton);
+	RPGInventoryArt::ApplyBagButtonArt(WidgetTree, EquipmentTabButton);
+	RPGInventoryArt::ApplyBagButtonArt(WidgetTree, MailTabButton);
+	RPGInventoryArt::ApplyBagButtonArt(WidgetTree, RetryLoadButton);
+	RPGInventoryArt::ApplyBagButtonArt(WidgetTree, InventoryRecoveryButton);
+	RPGInventoryArt::ApplyBagButtonArt(WidgetTree, ConfirmSplitQuantityButton);
+	RPGInventoryArt::ApplyBagButtonArt(WidgetTree, CancelSplitQuantityButton);
 
 	BindViewModel();
 	RefreshFromViewModel();
