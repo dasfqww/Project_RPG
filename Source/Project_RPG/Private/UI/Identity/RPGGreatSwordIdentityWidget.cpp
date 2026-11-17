@@ -1,166 +1,159 @@
 #include "UI/Identity/RPGGreatSwordIdentityWidget.h"
 
-#include "Ability/Skill/RPGGreatSwordResolveAbility.h"
-#include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
-#include "Attribute/RPGAttributeSet.h"
-#include "Component/Skill/RPGPlayerSkillComponent.h"
+#include "Blueprint/WidgetTree.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
-#include "GameFramework/Pawn.h"
+#include "Controller/RPGPlayerController.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Fonts/FontMeasure.h"
 #include "GameFramework/PlayerController.h"
-#include "PlayerClass/RPGPlayerClassComponent.h"
-#include "RPGGameplayTags.h"
+#include "Rendering/DrawElements.h"
+#include "Styling/CoreStyle.h"
 
-void URPGGreatSwordIdentityWidget::SetIdentitySource(UAbilitySystemComponent* Next)
+URPGGreatSwordIdentityViewModel& URPGGreatSwordIdentityWidget::EnsureViewModel()
 {
-    UnbindSource();
-    Source = Next;
-    BindSource();
-    Refresh();
+    if (!ViewModel) ViewModel = NewObject<URPGGreatSwordIdentityViewModel>(this);
+    return *ViewModel;
 }
-
-void URPGGreatSwordIdentityWidget::BindSource()
+void URPGGreatSwordIdentityWidget::SetIdentitySource(UAbilitySystemComponent* Next) { EnsureViewModel().SetSource(Next); }
+FRPGGreatSwordIdentityPresentation URPGGreatSwordIdentityWidget::GetDisplayedIdentity() const
 {
-    auto* ASC = Source.Get();
-    auto* Actor = ASC ? (ASC->GetAvatarActor() ? ASC->GetAvatarActor() : ASC->GetOwner()) : nullptr;
-    if (!bConstructed || !ASC || !ASC->IsRegistered() || !IsValid(Actor) || Actor->IsActorBeingDestroyed()) return;
-    SourceActor = Actor;
-    Actor->OnEndPlay.AddUniqueDynamic(this, &ThisClass::OnSourceEndPlay);
-    GaugeChanged = ASC->GetGameplayAttributeValueChangeDelegate(URPGAttributeSet::GetCurrentIdentityGaugeAttribute()).AddUObject(this, &ThisClass::OnAttributeChanged);
-    MaximumChanged = ASC->GetGameplayAttributeValueChangeDelegate(URPGAttributeSet::GetMaxIdentityGaugeAttribute()).AddUObject(this, &ThisClass::OnAttributeChanged);
-    HealthChanged = ASC->GetGameplayAttributeValueChangeDelegate(URPGAttributeSet::GetCurrentHealthAttribute()).AddUObject(this, &ThisClass::OnAttributeChanged);
-    ModeChanged = ASC->RegisterGameplayTagEvent(RPGGameplayTags::Player_Status_Identity_GreatSword_Ready, EGameplayTagEventType::NewOrRemoved).AddUObject(this, &ThisClass::OnModeChanged);
-    Growth = Actor->FindComponentByClass<URPGPlayerSkillComponent>();
-    if (auto* Skills = Growth.Get()) Skills->OnSkillDataChanged.AddUniqueDynamic(this, &ThisClass::OnSkillDataChanged);
-    ClassOwner = Actor->FindComponentByClass<URPGPlayerClassComponent>();
-    if (auto* Class = ClassOwner.Get()) ClassChanged = Class->OnApplicationChanged.AddUObject(this, &ThisClass::Refresh);
+    return ViewModel ? ViewModel->Displayed : FRPGGreatSwordIdentityPresentation();
 }
-
-void URPGGreatSwordIdentityWidget::UnbindSource()
-{
-    if (auto* ASC = Source.Get())
-    {
-        ASC->GetGameplayAttributeValueChangeDelegate(URPGAttributeSet::GetCurrentIdentityGaugeAttribute()).Remove(GaugeChanged);
-        ASC->GetGameplayAttributeValueChangeDelegate(URPGAttributeSet::GetMaxIdentityGaugeAttribute()).Remove(MaximumChanged);
-        ASC->GetGameplayAttributeValueChangeDelegate(URPGAttributeSet::GetCurrentHealthAttribute()).Remove(HealthChanged);
-        ASC->RegisterGameplayTagEvent(RPGGameplayTags::Player_Status_Identity_GreatSword_Ready, EGameplayTagEventType::NewOrRemoved).Remove(ModeChanged);
-    }
-    if (auto* Actor = SourceActor.Get()) Actor->OnEndPlay.RemoveDynamic(this, &ThisClass::OnSourceEndPlay);
-    if (auto* Skills = Growth.Get()) Skills->OnSkillDataChanged.RemoveDynamic(this, &ThisClass::OnSkillDataChanged);
-    if (auto* Class = ClassOwner.Get()) Class->OnApplicationChanged.Remove(ClassChanged);
-    SourceActor.Reset(); Growth.Reset(); ClassOwner.Reset();
-    GaugeChanged.Reset(); MaximumChanged.Reset(); HealthChanged.Reset(); ModeChanged.Reset(); ClassChanged.Reset();
-}
-
+FText URPGGreatSwordIdentityWidget::GetIdentityText() const { return ViewModel ? ViewModel->GetIdentityText() : FText::GetEmpty(); }
 void URPGGreatSwordIdentityWidget::UnbindController()
 {
     if (auto* PC = Controller.Get()) PC->OnPossessedPawnChanged.RemoveDynamic(this, &ThisClass::OnOwningPawnChanged);
     Controller.Reset();
 }
-
 void URPGGreatSwordIdentityWidget::NativeConstruct()
 {
     Super::NativeConstruct();
-    UnbindController(); UnbindSource(); bConstructed = true;
+    UnbindController(); bConstructed = true;
+    SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+    auto& VM = EnsureViewModel();
+    VM.OnPresentationChanged.Remove(PresentationChanged);
+    PresentationChanged = VM.OnPresentationChanged.AddUObject(this, &ThisClass::Present);
+    VM.Activate();
     if (auto* PC = GetOwningPlayer(); bAutoBindOwningPawn && PC && PC->IsLocalController())
     {
         Controller = PC;
         PC->OnPossessedPawnChanged.AddUniqueDynamic(this, &ThisClass::OnOwningPawnChanged);
         OnOwningPawnChanged(nullptr, PC->GetPawn());
     }
-    else { BindSource(); Refresh(); }
+    Present();
 }
-
 void URPGGreatSwordIdentityWidget::NativeDestruct()
 {
-    bConstructed = false;
-    UnbindController(); UnbindSource(); Source.Reset(); Refresh();
+    bConstructed = false; UnbindController();
+    if (ViewModel) { ViewModel->OnPresentationChanged.Remove(PresentationChanged); ViewModel->Deactivate(); }
+    PresentationChanged.Reset(); bLastBerserk = false; SetVisibility(ESlateVisibility::Collapsed);
     Super::NativeDestruct();
 }
-
 void URPGGreatSwordIdentityWidget::BeginDestroy()
 {
-    bConstructed = false;
-    UnbindController(); UnbindSource(); Source.Reset();
+    bConstructed = false; UnbindController();
+    if (ViewModel) { ViewModel->OnPresentationChanged.Remove(PresentationChanged); ViewModel->Deactivate(); }
     Super::BeginDestroy();
 }
-
 void URPGGreatSwordIdentityWidget::OnOwningPawnChanged(APawn*, APawn*)
 {
-    auto* PC = Controller.Get();
-    if (PC != GetOwningPlayer()) return;
-    SetIdentitySource(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(PC ? PC->GetPawn() : nullptr, true));
+    const auto* PC = Controller.Get();
+    if (PC == GetOwningPlayer())
+        SetIdentitySource(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(PC ? PC->GetPawn() : nullptr, true));
 }
-void URPGGreatSwordIdentityWidget::OnSourceEndPlay(AActor* Actor, EEndPlayReason::Type)
+void URPGGreatSwordIdentityWidget::Present()
 {
-    if (Actor == SourceActor.Get()) SetIdentitySource(nullptr);
-}
-void URPGGreatSwordIdentityWidget::OnAttributeChanged(const FOnAttributeChangeData&) { Refresh(); }
-void URPGGreatSwordIdentityWidget::OnModeChanged(FGameplayTag, int32) { Refresh(); }
-void URPGGreatSwordIdentityWidget::OnSkillDataChanged(FGameplayTag) { Refresh(); }
-
-void URPGGreatSwordIdentityWidget::Refresh()
-{
-    FRPGGreatSwordIdentityPresentation Next;
-    const auto* ASC = Source.Get();
-    const auto* Actor = SourceActor.Get();
-    const auto* Stats = ASC ? ASC->GetSet<URPGAttributeSet>() : nullptr;
-    if (bConstructed && ASC && ASC->IsRegistered() && IsValid(Actor) && !Actor->IsActorBeingDestroyed()
-        && ASC->GetAvatarActor() == Actor && URPGGreatSwordResolveAbility::IsConfiguredFor(Actor) && Stats
-        && FMath::IsFinite(Stats->GetCurrentIdentityGauge()) && FMath::IsFinite(Stats->GetMaxIdentityGauge())
-        && Stats->GetMaxIdentityGauge() > 0.f && FMath::IsFinite(Stats->GetCurrentHealth()) && Stats->GetCurrentHealth() > 0.f)
-    {
-        Next.bHasSource = true;
-        Next.bUnlocked = Growth.IsValid() && Growth->IsClassIdentityUnlocked();
-        Next.Maximum = Stats->GetMaxIdentityGauge();
-        Next.Gauge = FMath::Clamp(Stats->GetCurrentIdentityGauge(), 0.f, Next.Maximum);
-        Next.Fraction = Next.Gauge / Next.Maximum;
-        Next.bBerserk = Next.bUnlocked && URPGGreatSwordResolveAbility::IsBerserk(Actor);
-    }
-    const bool bModeChanged = Displayed.bBerserk != Next.bBerserk;
-    Displayed = Next;
-    Present(bModeChanged);
-}
-
-FText URPGGreatSwordIdentityWidget::GetIdentityText() const
-{
-    if (!Displayed.bHasSource) return FText::GetEmpty();
-    if (!Displayed.bUnlocked) return NSLOCTEXT("GreatSwordIdentityHUD", "Locked", "고유 능력 미해금");
-    const FText State = Displayed.bBerserk ? NSLOCTEXT("GreatSwordIdentityHUD", "Berserk", "폭주")
-        : Displayed.Fraction >= 1.f ? NSLOCTEXT("GreatSwordIdentityHUD", "Full", "투지 충전 완료")
-        : NSLOCTEXT("GreatSwordIdentityHUD", "Gather", "투지");
-    FNumberFormattingOptions Format;
-    Format.SetUseGrouping(false).SetMinimumFractionalDigits(0).SetMaximumFractionalDigits(0);
-    return FText::Format(NSLOCTEXT("GreatSwordIdentityHUD", "StateGauge", "{0}  {1}/{2}"), State,
-        FText::AsNumber(Displayed.Gauge, &Format), FText::AsNumber(Displayed.Maximum, &Format));
-}
-
-void URPGGreatSwordIdentityWidget::Present(bool bModeChanged)
-{
-    SetVisibility(Displayed.bHasSource ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+    const auto State = GetDisplayedIdentity();
+    // The action-bar presenter owns external hiding (e.g. mounting). State
+    // updates must never uncollapse its hidden base widget. Missing state paints nothing.
+    // Keep original bindings/primitive values for authored module compatibility,
+    // but only the ring paints. No obsolete rage icon can cover the new meter.
     if (WBP_IdentityGaugeBar)
     {
-        // These exact primitive names are validated by ConfigureGreatSwordIdentityHUD.
-        const FLinearColor Color = Displayed.bBerserk ? FLinearColor(1.f, .08f, .015f)
-            : Displayed.Fraction >= 1.f ? FLinearColor(1.f, .65f, .08f) : FLinearColor(.65f, .25f, .08f);
+        WBP_IdentityGaugeBar->SetRenderOpacity(0.f);
+        WBP_IdentityGaugeBar->SetVisibility(ESlateVisibility::HitTestInvisible);
         if (auto* Bar = Cast<UProgressBar>(WBP_IdentityGaugeBar->GetWidgetFromName(TEXT("ProgressBar_Main"))))
+            Bar->SetPercent(ViewModel ? ViewModel->GaugePercent : 0.f);
+        if (auto* Text = Cast<UTextBlock>(WBP_IdentityGaugeBar->GetWidgetFromName(TEXT("ProgressText"))))
         {
-            Bar->SetPercent(Displayed.bUnlocked ? Displayed.Fraction : 0.f);
-            Bar->SetFillColorAndOpacity(Color);
-        }
-        if (auto* Label = Cast<UTextBlock>(WBP_IdentityGaugeBar->GetWidgetFromName(TEXT("ProgressText"))))
-        {
-            Label->SetText(GetIdentityText());
-            Label->SetVisibility(ESlateVisibility::HitTestInvisible);
-            auto Font = Label->GetFont();
-            Font.Size = 16; // The authored identity bar is narrower than the HP/MP bars.
-            Label->SetFont(Font);
-            // The authored rage icon starts below the bar's centre; keep the label above it.
-            Label->SetRenderTranslation(FVector2D(0.f, -32.f));
+            Text->SetText(GetIdentityText()); Text->SetVisibility(ESlateVisibility::HitTestInvisible);
         }
         if (auto* Timer = WBP_IdentityGaugeBar->GetWidgetFromName(TEXT("ProgressTimeText"))) Timer->SetVisibility(ESlateVisibility::Collapsed);
     }
-    if (bConstructed && bModeChanged && InterpUp)
-        PlayAnimation(InterpUp, 0.f, 1, Displayed.bBerserk ? EUMGSequencePlayMode::Forward : EUMGSequencePlayMode::Reverse);
+    if (WidgetTree)
+        if (auto* Icon = WidgetTree->FindWidget(TEXT("WBP_AbilityIconSlot_RageSkill")))
+        { Icon->SetRenderOpacity(0.f); Icon->SetVisibility(ESlateVisibility::HitTestInvisible); }
+    if (bConstructed && bLastBerserk != State.bBerserk && InterpUp)
+        PlayAnimation(InterpUp, 0.f, 1, State.bBerserk ? EUMGSequencePlayMode::Forward : EUMGSequencePlayMode::Reverse);
+    bLastBerserk = State.bBerserk;
+    InvalidateLayoutAndVolatility();
+}
+
+int32 URPGGreatSwordIdentityWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Geometry,
+    const FSlateRect& Cull, FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle& Style, bool bEnabled) const
+{
+    const int32 ChildLayer = Super::NativePaint(Args, Geometry, Cull, Elements, Layer, Style, bEnabled);
+    if (!ViewModel || !ViewModel->Displayed.bHasSource) return ChildLayer;
+    // Authored module stays 144x144, host scales it to 96x96. Draw vectors in
+    // that module's local square so no new texture/material or viewport tick is needed.
+    const FVector2D Size = Geometry.GetLocalSize();
+    const float Side = FMath::Min(Size.X, Size.Y);
+    if (Side <= 0.f) return ChildLayer;
+    const float Scale = Side / 144.f;
+    const FVector2D Origin((Size.X - Side) / 2.f, Size.Y - Side);
+    const FVector2D Center = Origin + FVector2D(Side / 2.f);
+    const float Radius = 65.f * Scale;
+    const auto& State = ViewModel->Displayed;
+    const FLinearColor Accent = !State.bUnlocked ? FLinearColor(.28f,.25f,.21f)
+        : State.bBerserk ? FLinearColor(1.f,.18f,.055f)
+        : State.Fraction >= 1.f ? FLinearColor(1.f,.72f,.24f) : FLinearColor(.85f,.43f,.13f);
+    const FLinearColor Tint = Style.GetColorAndOpacityTint() * GetRenderOpacity();
+    const int32 PaintLayer = ChildLayer + 1;
+    static const FSlateRoundedBoxBrush Disc(FLinearColor(.035f,.025f,.018f,.98f),72.f);
+    FSlateDrawElement::MakeBox(Elements, PaintLayer, Geometry.ToPaintGeometry(FVector2D(Side),FSlateLayoutTransform(Origin)), &Disc,
+        ESlateDrawEffect::None, Disc.GetTint(Style) * Tint);
+    auto Arc = [&](float From, float To, float R, float Width, FLinearColor Color)
+    {
+        TArray<FVector2D> Points;
+        const int32 Steps = FMath::Max(1,FMath::CeilToInt((To-From)*96.f));
+        for (int32 I=0;I<=Steps;++I)
+        {
+            const float Angle = -HALF_PI + 2.f*PI*FMath::Lerp(From,To,float(I)/Steps);
+            Points.Add(Center + FVector2D(FMath::Cos(Angle),FMath::Sin(Angle))*R);
+        }
+        FSlateDrawElement::MakeLines(Elements,PaintLayer+1,Geometry.ToPaintGeometry(),Points,ESlateDrawEffect::None,Color*Tint,true,Width*Scale);
+    };
+    Arc(0,1,Radius,7.f,FLinearColor(.16f,.12f,.085f));
+    Arc(0,1,Radius+6.f*Scale,1.f,FLinearColor(.45f,.34f,.22f,.8f));
+    if (ViewModel->GaugePercent > 0.f) Arc(0,ViewModel->GaugePercent,Radius,7.f,Accent);
+    // Twelve quiet calibration marks retain a readable empty/partial circle.
+    for (int32 I=0;I<12;++I)
+    {
+        const float Angle=-HALF_PI+I*2.f*PI/12.f;
+        const FVector2D Direction(FMath::Cos(Angle),FMath::Sin(Angle));
+        TArray<FVector2D> Points{Center+Direction*(Radius-7.f*Scale),Center+Direction*(Radius-3.f*Scale)};
+        FSlateDrawElement::MakeLines(Elements,PaintLayer+2,Geometry.ToPaintGeometry(),Points,ESlateDrawEffect::None,FLinearColor(.62f,.48f,.29f)*Tint,true,Scale);
+    }
+    auto Text = [&](const FText& Value,float Y,int32 FontSize,FLinearColor Color)
+    {
+        if (Value.IsEmpty()) return;
+        const auto Font=FCoreStyle::GetDefaultFontStyle("Bold",FMath::Max(1,FMath::RoundToInt(FontSize*Scale)));
+        const auto Measure=FSlateApplication::Get().GetRenderer()->GetFontMeasureService()->Measure(Value,Font);
+        const FVector2D Position(Center.X-Measure.X/2.f,Origin.Y+Y*Scale-Measure.Y/2.f);
+        FSlateDrawElement::MakeText(Elements,PaintLayer+3,Geometry.ToPaintGeometry(FVector2D(Side),FSlateLayoutTransform(Position)),Value,Font,ESlateDrawEffect::None,Color*Tint);
+    };
+    Text(ViewModel->ModeText,42.f,18,State.bUnlocked ? FLinearColor(.93f,.79f,.57f) : FLinearColor(.55f,.51f,.44f));
+    Text(ViewModel->PercentText,73.f,28,Accent);
+    FText KeyText;
+    if (const auto* PC=Cast<ARPGPlayerController>(GetOwningPlayer()); PC && State.bUnlocked)
+    {
+        const FGameplayTag Tag=ViewModel->GetActivationInputTag();
+        const FKey Key=Tag.IsValid() ? PC->GetCurrentKeyForTag(Tag) : FKey();
+        if (Key.IsValid()) KeyText=Key.GetDisplayName(false);
+    }
+    Text(KeyText,106.f,18,FLinearColor(.86f,.80f,.69f));
+    return PaintLayer+3;
 }
