@@ -6,7 +6,7 @@
 class APlayerController;
 class URPGSkillDefinition;
 
-/** Read-only authored-asset verification, after the transient tripod scenario. */
+/** Read-only authored-asset verification, after the transient refinement scenario. */
 class FRPGSkillAssetCooldownProbe
 {
 public:

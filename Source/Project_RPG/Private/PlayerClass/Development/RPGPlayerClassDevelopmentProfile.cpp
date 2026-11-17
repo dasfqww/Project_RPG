@@ -32,9 +32,9 @@ bool URPGPlayerClassDevelopmentProfile::BuildRestoreData(FRPGPlayerSkillRestoreD
 		if (!Binding || Acquired.Contains(Input.SkillTag) || Input.SaveData.SkillLevel < 1
 			|| Input.SaveData.SkillLevel > Binding->Definition->MaxSkillLevel)
 			return Fail(TEXT("Development acquisition records must name unique class skills with valid levels."));
-		for (int32 Tier = 0; Tier < Input.SaveData.SelectedTripodIndices.Num(); ++Tier)
-			if (Input.SaveData.SelectedTripodIndices[Tier] != INDEX_NONE && !Binding->Definition->IsTripodSelectionAllowed(
-				Input.SaveData.SkillLevel, Tier, Input.SaveData.SelectedTripodIndices[Tier]))
+		for (int32 Tier = 0; Tier < Input.SaveData.SelectedRefinementIndices.Num(); ++Tier)
+			if (Input.SaveData.SelectedRefinementIndices[Tier] != INDEX_NONE && !Binding->Definition->IsRefinementSelectionAllowed(
+				Input.SaveData.SkillLevel, Tier, Input.SaveData.SelectedRefinementIndices[Tier]))
 				return Fail(TEXT("Development tripod selections are invalid."));
 		Acquired.Add(Input.SkillTag);
 		auto& Entry = Record.AcquiredSkills.AddDefaulted_GetRef();

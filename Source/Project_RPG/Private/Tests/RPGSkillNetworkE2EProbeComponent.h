@@ -9,7 +9,7 @@ class UEnhancedInputLocalPlayerSubsystem;
 class UInputAction;
 struct FAbilityEndedData;
 struct FGameplayAbilityTargetDataHandle;
-class FRPGSkillTripodNetworkProbe;
+class FRPGSkillRefinementNetworkProbe;
 class FRPGSkillDamageNetworkProbe;
 class FRPGSkillFinalCapNetworkProbe;
 class FRPGNPCDeathNetworkProbe;
@@ -19,10 +19,10 @@ struct FRPGHitQueryResult;
 
 /**
  * Development-only network probe for the authored Enhanced Input charge action.
- * The fixture grants ChargeSlash and Rage; normal loadout/tripod acquisition and
+ * The fixture grants ChargeSlash and Rage; normal loadout/refinement acquisition and
  * physical key hardware are outside this probe. Disabled without -RPGSkillNetE2E.
  * -RPGSkillProgressionE2E additionally exercises UI view-model level commands,
- * owner replication, the activation snapshot and full SP refund (not tripods).
+ * owner replication, the activation snapshot and full SP refund (not refinements).
  */
 UCLASS(Transient, NotBlueprintable)
 class URPGSkillNetworkE2EProbeComponent final : public UActorComponent
@@ -92,8 +92,8 @@ private:
 	bool bServerProvisionedRage = false;
 	bool bLoggedMissingClientSpec = false;
 	bool bFinished = false;
-	// Opt-in -RPGSkillTripodE2E: transient choices, rejection and SP rollback.
-	TSharedPtr<FRPGSkillTripodNetworkProbe> TripodProbe;
+	// Opt-in -RPGSkillRefinementE2E: transient choices, rejection and SP rollback.
+	TSharedPtr<FRPGSkillRefinementNetworkProbe> RefinementProbe;
 	TSharedPtr<FRPGSkillDamageNetworkProbe> DamageProbe;
 	TSharedPtr<FRPGSkillFinalCapNetworkProbe> FinalCapProbe;
 	TSharedPtr<FRPGNPCDeathNetworkProbe> NPCDeathProbe;

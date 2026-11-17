@@ -10,7 +10,7 @@ import math
 
 
 ASSET = "/Game/Blueprints/GameData/Skill/DA_Skill_JumpSmash"
-FIELDS = ["SkillTag", "TripodTiers", "TargetingProfile", "SecurityProfile", "DefaultExecutionPolicyClass"]
+FIELDS = ["SkillTag", "RefinementTiers", "TargetingProfile", "SecurityProfile", "DefaultExecutionPolicyClass"]
 
 
 def require(condition, message):
@@ -40,7 +40,7 @@ def build_configuration(properties):
     limit = properties["SecurityProfile"]["maximumServerHitDistance"]
     require(math.isfinite(radius) and radius > 0 and math.isfinite(limit) and limit > 0
             and radius * 1.2 * 1.1 <= limit, "Prepared area exceeds the authored server distance limit")
-    tiers = copy.deepcopy(properties["TripodTiers"])
+    tiers = copy.deepcopy(properties["RefinementTiers"])
     recipes = [
         (4, "WideArea", "범위 확대", 1.2, "공격 반경이 20% 증가한다. 조준 거리와 공격 높이는 유지한다."),
         (7, "ExtraArea", "추가 범위 확대", 1.1,
@@ -58,7 +58,7 @@ def build_configuration(properties):
             "cooldownReductionSeconds": 0.0,
             "persistenceId": identity, "optionName": label, "description": description, "optionIcon": "None",
             "statModifiers": [{"statTag": {"tagName": "Shared.Stat.Radius"}, "scalarValue": scalar}],
-            "tripodTag": {"tagName": "None"}, "overrideActionClass": "None",
+            "refinementTag": {"tagName": "None"}, "overrideActionClass": "None",
             "overrideExecutionPolicyClass": "None", "overrideExecutionConfig": {},
             "overrideTargetingPolicyClass": "None", "overrideTargetingConfig": {},
             "overrideMontage": "None", "overrideVFX": "None",
@@ -71,7 +71,7 @@ def build_configuration(properties):
         else:
             options.append(expected)
             changed = True
-    return {"TripodTiers": tiers}, changed
+    return {"RefinementTiers": tiers}, changed
 
 
 def main():

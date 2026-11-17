@@ -135,7 +135,7 @@ public:
 
 	/** 연마 효과 선택 (레벨 제한 체크 포함) */
 	UFUNCTION(BlueprintCallable, Category = "RPG|Skill", meta = (DisplayName = "연마 효과 선택"))
-	bool SelectTripod(FGameplayTag SkillTag, int32 TierIndex, int32 OptionIndex);
+	bool SelectRefinement(FGameplayTag SkillTag, int32 TierIndex, int32 OptionIndex);
 
 	/** 특정 스킬의 저장된 데이터 가져오기 */
 	UFUNCTION(BlueprintPure, Category = "RPG|Skill")
@@ -178,7 +178,7 @@ protected:
 	void ServerResetSkillLevel(FGameplayTag SkillTag);
 
 	UFUNCTION(Server, Reliable)
-	void ServerSelectTripod(
+	void ServerSelectRefinement(
 		FGameplayTag SkillTag,
 		int32 TierIndex,
 		int32 OptionIndex);
@@ -196,7 +196,7 @@ private:
 	bool ApplyLevelDownSkill(FGameplayTag SkillTag);
 	void ApplyLevelUpToMax(FGameplayTag SkillTag, int32 TargetGoalLevel);
 	void ApplyResetSkillLevel(FGameplayTag SkillTag);
-	bool ApplySelectTripod(
+	bool ApplySelectRefinement(
 		FGameplayTag SkillTag,
 		int32 TierIndex,
 		int32 OptionIndex);

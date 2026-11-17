@@ -97,7 +97,7 @@ def check_profile(asset, class_asset):
         require(entry.get_editor_property("skill_tag").export_text() == make_tag(row[0]).export_text()
                 and save.get_editor_property("skill_level") == 1,
                 "Preserving customized profile acquisition/levels")
-        require(all(value == -1 for value in save.get_editor_property("selected_tripod_indices")),
+        require(all(value == -1 for value in save.get_editor_property("selected_refinement_indices")),
                 "Preserving customized profile tripods")
     require(tag_values(asset.get_editor_property("skill_slots")) == tag_values([make_tag(row[0]) for row in SKILLS]),
             "Preserving customized development slots")
@@ -146,7 +146,7 @@ def main():
         profile.set_editor_property("total_sp", 50)
         entries = []
         for tag_name, _, _ in SKILLS:
-            save = unreal.RPGSkillSaveData(skill_level=1, selected_tripod_indices=[-1, -1, -1])
+            save = unreal.RPGSkillSaveData(skill_level=1, selected_refinement_indices=[-1, -1, -1])
             entry = unreal.RPGPlayerClassDevelopmentSkill(skill_tag=make_tag(tag_name), save_data=save)
             entries.append(entry)
         profile.set_editor_property("acquired_skills", entries)

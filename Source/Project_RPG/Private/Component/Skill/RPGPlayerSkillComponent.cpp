@@ -115,10 +115,10 @@ bool URPGPlayerSkillComponent::CompleteClassSkillRestore(const uint32 RequestId,
 			|| Input.SaveData.SkillLevel > Skill->MaxSkillLevel)
 			return Fail(TEXT("Acquired skills must be unique class members with valid levels."));
 		// Unknown content/invalid selections need an explicit migration, never silent refund/defaulting.
-		for (int32 Tier = 0; Tier < Input.SaveData.SelectedTripodIndices.Num(); ++Tier)
+		for (int32 Tier = 0; Tier < Input.SaveData.SelectedRefinementIndices.Num(); ++Tier)
 		{
-			const int32 Option = Input.SaveData.SelectedTripodIndices[Tier];
-			if (Option != INDEX_NONE && !Skill->IsTripodSelectionAllowed(Input.SaveData.SkillLevel, Tier, Option))
+			const int32 Option = Input.SaveData.SelectedRefinementIndices[Tier];
+			if (Option != INDEX_NONE && !Skill->IsRefinementSelectionAllowed(Input.SaveData.SkillLevel, Tier, Option))
 				return Fail(TEXT("Saved tripod selections require content migration."));
 		}
 		for (int32 Level = 2; Level <= Input.SaveData.SkillLevel; ++Level)
@@ -352,23 +352,23 @@ void URPGPlayerSkillComponent::ApplyResetSkillLevel(
 	}
 }
 
-bool URPGPlayerSkillComponent::SelectTripod(
+bool URPGPlayerSkillComponent::SelectRefinement(
 	const FGameplayTag SkillTag,
 	const int32 TierIndex,
 	const int32 OptionIndex)
 {
-	const bool bSucceeded = ApplySelectTripod(
+	const bool bSucceeded = ApplySelectRefinement(
 		SkillTag,
 		TierIndex,
 		OptionIndex);
 	if (!IsAuthorityOwner() && bSucceeded)
 	{
-		ServerSelectTripod(SkillTag, TierIndex, OptionIndex);
+		ServerSelectRefinement(SkillTag, TierIndex, OptionIndex);
 	}
 	return bSucceeded;
 }
 
-bool URPGPlayerSkillComponent::ApplySelectTripod(
+bool URPGPlayerSkillComponent::ApplySelectRefinement(
 	const FGameplayTag SkillTag,
 	const int32 TierIndex,
 	const int32 OptionIndex)
@@ -389,7 +389,7 @@ bool URPGPlayerSkillComponent::ApplySelectTripod(
 		return false;
 	}
 	Definition->NormalizeSaveData(*Data);
-	if (!Definition->IsTripodSelectionAllowed(
+	if (!Definition->IsRefinementSelectionAllowed(
 		Data->SkillLevel,
 		TierIndex,
 		OptionIndex))
@@ -398,11 +398,11 @@ bool URPGPlayerSkillComponent::ApplySelectTripod(
 		return false;
 	}
 
-	if (Data->SelectedTripodIndices[TierIndex] == OptionIndex)
+	if (Data->SelectedRefinementIndices[TierIndex] == OptionIndex)
 	{
 		return false;
 	}
-	Data->SelectedTripodIndices[TierIndex] = OptionIndex;
+	Data->SelectedRefinementIndices[TierIndex] = OptionIndex;
 	PublishAuthoritativeSkillData(SkillTag);
 	OnSkillDataChanged.Broadcast(SkillTag);
 	Debug::Print(TEXT("Tripod Selected! Tier: "), TierIndex + 1);
@@ -508,13 +508,13 @@ void URPGPlayerSkillComponent::ServerResetSkillLevel_Implementation(
 	TouchAuthoritativeRevision();
 }
 
-void URPGPlayerSkillComponent::ServerSelectTripod_Implementation(
+void URPGPlayerSkillComponent::ServerSelectRefinement_Implementation(
 	const FGameplayTag SkillTag,
 	const int32 TierIndex,
 	const int32 OptionIndex)
 {
 	if (!AdmitConfigurationRequest()) return;
-	ApplySelectTripod(SkillTag, TierIndex, OptionIndex);
+	ApplySelectRefinement(SkillTag, TierIndex, OptionIndex);
 	TouchAuthoritativeRevision();
 }
 
@@ -538,8 +538,8 @@ void URPGPlayerSkillComponent::OnRep_ReplicatedSkillData()
 	{
 		const FRPGSkillSaveData* Previous = PreviousData.Find(Entry.Key);
 		if (!Previous || Previous->SkillLevel != Entry.Value.SkillLevel ||
-			Previous->SelectedTripodIndices !=
-				Entry.Value.SelectedTripodIndices)
+			Previous->SelectedRefinementIndices !=
+				Entry.Value.SelectedRefinementIndices)
 		{
 			OnSkillDataChanged.Broadcast(Entry.Key);
 		}

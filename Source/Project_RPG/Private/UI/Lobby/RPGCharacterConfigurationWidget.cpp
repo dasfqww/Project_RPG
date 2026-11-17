@@ -58,10 +58,10 @@ namespace
 		for (const auto& Skill : Record.Skills)
 		{
 			const auto* Info = Presentation(Skill.SkillTag);
-			if (!Info || Skill.Level < 1 || Skill.Level > 7 || Skill.TripodIds.Num() != 2) return false;
+			if (!Info || Skill.Level < 1 || Skill.Level > 7 || Skill.RefinementIds.Num() != 2) return false;
 			for (int32 Tier = 0; Tier < 2; ++Tier)
-				if (ChoiceIndex(*Info, Tier, Skill.TripodIds[Tier]) == INDEX_NONE
-					|| (!Skill.TripodIds[Tier].IsEmpty() && Skill.Level < UnlockLevel(Tier))) return false;
+				if (ChoiceIndex(*Info, Tier, Skill.RefinementIds[Tier]) == INDEX_NONE
+					|| (!Skill.RefinementIds[Tier].IsEmpty() && Skill.Level < UnlockLevel(Tier))) return false;
 			UsedSP += Cost(Skill.Level);
 		}
 		return UsedSP == Record.UsedSP && UsedSP <= Record.TotalSP;
@@ -297,7 +297,7 @@ bool URPGCharacterConfigurationWidget::HasUnsavedChanges() const
 	if (!bLoaded || DraftSlots != Saved.SkillSlots || DraftSkills.Num() != Saved.Skills.Num()) return bLoaded;
 	for (int32 Index = 0; Index < DraftSkills.Num(); ++Index)
 		if (DraftSkills[Index].SkillTag != Saved.Skills[Index].SkillTag || DraftSkills[Index].Level != Saved.Skills[Index].Level
-			|| DraftSkills[Index].TripodIds != Saved.Skills[Index].TripodIds) return true;
+			|| DraftSkills[Index].RefinementIds != Saved.Skills[Index].RefinementIds) return true;
 	return false;
 }
 
@@ -321,19 +321,19 @@ bool URPGCharacterConfigurationWidget::SetSkillLevel(FGameplayTag Tag, int32 Lev
 		RefreshControls(); return false;
 	}
 	Skill->Level = Level;
-	for (int32 Tier = 0; Tier < 2; ++Tier) if (Level < UnlockLevel(Tier)) Skill->TripodIds[Tier].Reset();
+	for (int32 Tier = 0; Tier < 2; ++Tier) if (Level < UnlockLevel(Tier)) Skill->RefinementIds[Tier].Reset();
 	Message = LOCTEXT("DraftChanged", "변경 내용은 저장 후 적용됩니다.");
 	RefreshLobby(); return true;
 }
 
-bool URPGCharacterConfigurationWidget::SetTripodChoice(FGameplayTag Tag, int32 Tier, const FString& PersistenceId)
+bool URPGCharacterConfigurationWidget::SetRefinementChoice(FGameplayTag Tag, int32 Tier, const FString& PersistenceId)
 {
 	if (!CanEdit() || Tier < 0 || Tier > 1) return false;
 	auto* Skill = DraftSkills.FindByPredicate([Tag](const auto& Entry) { return Entry.SkillTag == Tag; });
 	const auto* Info = Presentation(Tag);
 	if (!Skill || !Info || ChoiceIndex(*Info, Tier, PersistenceId) == INDEX_NONE
 		|| (!PersistenceId.IsEmpty() && Skill->Level < UnlockLevel(Tier))) return false;
-	Skill->TripodIds[Tier] = PersistenceId;
+	Skill->RefinementIds[Tier] = PersistenceId;
 	Message = LOCTEXT("DraftChanged", "변경 내용은 저장 후 적용됩니다.");
 	RefreshLobby(); return true;
 }
@@ -486,7 +486,7 @@ void URPGCharacterConfigurationWidget::RefreshControls()
 			if (Binding->Kind == 0) Selected = Skill.Level - 1;
 			else if (const auto* Info = Presentation(Skill.SkillTag))
 			{
-				Selected = ChoiceIndex(*Info, Binding->Tier, Skill.TripodIds[Binding->Tier]);
+				Selected = ChoiceIndex(*Info, Binding->Tier, Skill.RefinementIds[Binding->Tier]);
 				bUnlocked = Skill.Level >= UnlockLevel(Binding->Tier);
 			}
 		}
@@ -506,7 +506,7 @@ void URPGCharacterConfigurationWidget::HandleChoice(const URPGCharacterConfigura
 		if (Binding.Kind == 0) SetSkillLevel(Tag, Choice + 1);
 		else if (Binding.Tier >= 0 && Binding.Tier < 2 && Choice >= 0 && Choice <= 2)
 			if (const auto* Info = Presentation(Tag))
-				SetTripodChoice(Tag, Binding.Tier, Choice == 0 ? FString() : FString(Info->Tiers[Binding.Tier][Choice - 1].Id));
+				SetRefinementChoice(Tag, Binding.Tier, Choice == 0 ? FString() : FString(Info->Tiers[Binding.Tier][Choice - 1].Id));
 	}
 	RefreshControls();
 }

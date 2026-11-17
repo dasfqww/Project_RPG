@@ -19,12 +19,12 @@ bool FRPGSkillCooldownReductionTest::RunTest(const FString& Parameters)
 	Definition->BaseCooldown = 8.f;
 	for (int32 Level : {4, 7})
 	{
-		auto& Tier = Definition->TripodTiers.AddDefaulted_GetRef();
+		auto& Tier = Definition->RefinementTiers.AddDefaulted_GetRef();
 		Tier.RequiredSkillLevel = Level;
 		Tier.Options.AddDefaulted_GetRef().CooldownReductionSeconds = Level == 4 ? 2.f : 1.f;
 	}
 	FRPGSkillSaveData Save;
-	Save.SelectedTripodIndices = {0, 0};
+	Save.SelectedRefinementIndices = {0, 0};
 	FRPGSkillRuntimeSpec Runtime;
 	Definition->BuildRuntimeSpec(nullptr, Save, Runtime);
 	TestEqual(TEXT("Locked tiers provide no reduction"), Runtime.GetCooldownDuration(), 8.f);
@@ -37,11 +37,11 @@ bool FRPGSkillCooldownReductionTest::RunTest(const FString& Parameters)
 	const auto ScalarTag = FGameplayTag::RequestGameplayTag(TEXT("Shared.Stat.Cooldown"));
 	Runtime.StatScalars.Add(ScalarTag, 0.5f);
 	TestEqual(TEXT("Flat reduction precedes the existing scalar"), Runtime.GetCooldownDuration(), 2.5f);
-	Definition->TripodTiers[0].Options[0].CooldownReductionSeconds = 30.f;
+	Definition->RefinementTiers[0].Options[0].CooldownReductionSeconds = 30.f;
 	TestEqual(TEXT("Definition edits cannot change a built activation"), Runtime.GetCooldownDuration(), 2.5f);
 	Definition->BuildRuntimeSpec(nullptr, Save, Runtime);
 	TestEqual(TEXT("Excessive reductions retain the minimum repeat guard"), Runtime.GetCooldownDuration(), 1.f);
-	Definition->TripodTiers[0].Options[0].CooldownReductionSeconds = -2.f;
+	Definition->RefinementTiers[0].Options[0].CooldownReductionSeconds = -2.f;
 	Definition->BuildRuntimeSpec(nullptr, Save, Runtime);
 	TestEqual(TEXT("Malformed negative data gives no reduction"), Runtime.GetCooldownDuration(), 7.f);
 	Runtime.CooldownReductionSeconds = std::numeric_limits<float>::quiet_NaN();
@@ -55,10 +55,10 @@ bool FRPGSkillCooldownReductionTest::RunTest(const FString& Parameters)
 	FDataValidationContext Valid;
 	TestEqual(TEXT("Authored flat reductions pass editor validation"), Authored->IsDataValid(Valid), EDataValidationResult::Valid);
 	auto* Invalid = DuplicateObject<URPGSkillDefinition>(Authored, GetTransientPackage());
-	Invalid->TripodTiers[0].Options[0].CooldownReductionSeconds = -1.f;
+	Invalid->RefinementTiers[0].Options[0].CooldownReductionSeconds = -1.f;
 	FDataValidationContext Negative;
 	TestEqual(TEXT("Editor validation rejects negative seconds"), Invalid->IsDataValid(Negative), EDataValidationResult::Invalid);
-	Invalid->TripodTiers[0].Options[0].CooldownReductionSeconds = std::numeric_limits<float>::quiet_NaN();
+	Invalid->RefinementTiers[0].Options[0].CooldownReductionSeconds = std::numeric_limits<float>::quiet_NaN();
 	FDataValidationContext Nonfinite;
 	TestEqual(TEXT("Editor validation rejects nonfinite seconds"), Invalid->IsDataValid(Nonfinite), EDataValidationResult::Invalid);
 #endif
@@ -98,13 +98,13 @@ bool FRPGGreatSwordCooldownContentTest::RunTest(const FString& Parameters)
 			{
 				FRPGSkillSaveData Save;
 				Save.SkillLevel = 7;
-				Save.SelectedTripodIndices.Init(INDEX_NONE, Definition->TripodTiers.Num());
+				Save.SelectedRefinementIndices.Init(INDEX_NONE, Definition->RefinementTiers.Num());
 				for (const auto& Choice : {TPair<int32, FName>(4, First), TPair<int32, FName>(7, Second)})
 				{
 					int32 Tier, Option;
 					if (!TestTrue(TEXT("Saved choice resolves independently of its index"),
-						Definition->ResolveSavedTripod(Choice.Key, Choice.Value, Tier, Option))) return false;
-					Save.SelectedTripodIndices[Tier] = Option;
+						Definition->ResolveSavedRefinement(Choice.Key, Choice.Value, Tier, Option))) return false;
+					Save.SelectedRefinementIndices[Tier] = Option;
 				}
 				Definition->BuildRuntimeSpec(nullptr, Save, Runtime);
 				const float Expected = 8.f - (First == TEXT("QuickApproach") ? 2.f : 0.f) - (Second == TEXT("ExtraRecovery") ? 1.f : 0.f);

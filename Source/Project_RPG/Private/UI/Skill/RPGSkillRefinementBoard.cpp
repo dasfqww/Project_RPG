@@ -1,38 +1,38 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-#include "UI/Skill/RPGTripodBoard.h"
-#include "UI/Skill/RPGTripodButton.h"
+#include "UI/Skill/RPGSkillRefinementBoard.h"
+#include "UI/Skill/RPGSkillRefinementButton.h"
 #include "UI/ViewModel/RPGSkillSlotViewModel.h"
 #include "Skill/RPGSkillDefinition.h"
 
-void URPGTripodBoard::NativeOnInitialized()
+void URPGSkillRefinementBoard::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
 	// 버튼들을 티어별 배열로 정리
-	TripodTiers.Empty();
-	TripodTiers.Add({ Btn_1_1, Btn_1_2, Btn_1_3 }); // Tier 0
-	TripodTiers.Add({ Btn_2_1, Btn_2_2, Btn_2_3 }); // Tier 1
-	TripodTiers.Add({ Btn_3_1, Btn_3_2 });          // Tier 2
+	RefinementTiers.Empty();
+	RefinementTiers.Add({ Btn_1_1, Btn_1_2, Btn_1_3 }); // Tier 0
+	RefinementTiers.Add({ Btn_2_1, Btn_2_2, Btn_2_3 }); // Tier 1
+	RefinementTiers.Add({ Btn_3_1, Btn_3_2 });          // Tier 2
 
 	// 모든 버튼에 클릭 이벤트 연결
-	for (int32 TierIdx = 0; TierIdx < TripodTiers.Num(); ++TierIdx)
+	for (int32 TierIdx = 0; TierIdx < RefinementTiers.Num(); ++TierIdx)
 	{
-		for (int32 OptIdx = 0; OptIdx < TripodTiers[TierIdx].Num(); ++OptIdx)
+		for (int32 OptIdx = 0; OptIdx < RefinementTiers[TierIdx].Num(); ++OptIdx)
 		{
-			if (URPGTripodButton* Btn = TripodTiers[TierIdx][OptIdx])
+			if (URPGSkillRefinementButton* Btn = RefinementTiers[TierIdx][OptIdx])
 			{
-				Btn->OnTripodClicked.AddUObject(this, &ThisClass::OnTripodBtnClicked);
+				Btn->OnRefinementClicked.AddUObject(this, &ThisClass::OnRefinementBtnClicked);
 			}
 		}
 	}
 }
 
-void URPGTripodBoard::InitializeBoard(URPGSkillSlotViewModel* InSlotVM)
+void URPGSkillRefinementBoard::InitializeBoard(URPGSkillSlotViewModel* InSlotVM)
 {
 	if (CurrentSlotVM.IsValid())
 	{
-		CurrentSlotVM->OnTripodIndicesChanged.RemoveAll(this);
+		CurrentSlotVM->OnRefinementIndicesChanged.RemoveAll(this);
 		CurrentSlotVM->RemoveAllFieldValueChangedDelegates(this);
 	}
 
@@ -40,7 +40,7 @@ void URPGTripodBoard::InitializeBoard(URPGSkillSlotViewModel* InSlotVM)
 
 	if (CurrentSlotVM.IsValid())
 	{
-		CurrentSlotVM->OnTripodIndicesChanged.AddUObject(this, &URPGTripodBoard::UpdateTripodSelection);
+		CurrentSlotVM->OnRefinementIndicesChanged.AddUObject(this, &URPGSkillRefinementBoard::UpdateRefinementSelection);
 		CurrentSlotVM->AddFieldValueChangedDelegate(
 			URPGSkillSlotViewModel::FFieldNotificationClassDescriptor::SkillLevel,
 			INotifyFieldValueChanged::FFieldValueChangedDelegate::CreateWeakLambda(
@@ -50,14 +50,14 @@ void URPGTripodBoard::InitializeBoard(URPGSkillSlotViewModel* InSlotVM)
 	RefreshSelection();
 }
 
-void URPGTripodBoard::NativePreConstruct()
+void URPGSkillRefinementBoard::NativePreConstruct()
 {
 	Super::NativePreConstruct();
 
 	if (IsDesignTime())
 	{
 		// 디자인 모드에서 더미 데이터 세팅 (레이아웃 확인용)
-		TArray<TArray<URPGTripodButton*>> DesignTiers;
+		TArray<TArray<URPGSkillRefinementButton*>> DesignTiers;
 		DesignTiers.Add({ Btn_1_1, Btn_1_2, Btn_1_3 });
 		DesignTiers.Add({ Btn_2_1, Btn_2_2, Btn_2_3 });
 		DesignTiers.Add({ Btn_3_1, Btn_3_2 });
@@ -66,11 +66,11 @@ void URPGTripodBoard::NativePreConstruct()
 		{
 			for (int32 j = 0; j < DesignTiers[i].Num(); ++j)
 			{
-				if (URPGTripodButton* Btn = DesignTiers[i][j])
+				if (URPGSkillRefinementButton* Btn = DesignTiers[i][j])
 				{
-					FRPGSkillTripodOption DummyOption;
+					FRPGSkillRefinementOption DummyOption;
 					DummyOption.OptionName = FText::FromString(FString::Printf(TEXT("Tier %d Opt %d"), i + 1, j + 1));
-					Btn->InitializeTripod(i, j, DummyOption);
+					Btn->InitializeRefinement(i, j, DummyOption);
 					Btn->SetVisibility(ESlateVisibility::Visible);
 				}
 			}
@@ -78,42 +78,42 @@ void URPGTripodBoard::NativePreConstruct()
 	}
 }
 
-void URPGTripodBoard::NativeDestruct()
+void URPGSkillRefinementBoard::NativeDestruct()
 {
 	if (CurrentSlotVM.IsValid())
 	{
-		CurrentSlotVM->OnTripodIndicesChanged.RemoveAll(this);
+		CurrentSlotVM->OnRefinementIndicesChanged.RemoveAll(this);
 		CurrentSlotVM->RemoveAllFieldValueChangedDelegates(this);
 	}
 	CurrentSlotVM.Reset();
 	Super::NativeDestruct();
 }
 
-void URPGTripodBoard::UpdateButtons()
+void URPGSkillRefinementBoard::UpdateButtons()
 {
 	const URPGSkillDefinition* SkillDef = CurrentSlotVM.IsValid()
 		? CurrentSlotVM->GetSkillDefinition() : nullptr;
-	const TArray<FRPGSkillTripodTier>* DataTiers = SkillDef ? &SkillDef->TripodTiers : nullptr;
+	const TArray<FRPGSkillRefinementTier>* DataTiers = SkillDef ? &SkillDef->RefinementTiers : nullptr;
 
-	for (int32 TierIdx = 0; TierIdx < TripodTiers.Num(); ++TierIdx)
+	for (int32 TierIdx = 0; TierIdx < RefinementTiers.Num(); ++TierIdx)
 	{
-		const TArray<URPGTripodButton*>& UIButtons = TripodTiers[TierIdx];
+		const TArray<URPGSkillRefinementButton*>& UIButtons = RefinementTiers[TierIdx];
 		
 		// 데이터가 있는 티어인지 확인
 		if (DataTiers && DataTiers->IsValidIndex(TierIdx))
 		{
-			const FRPGSkillTripodTier& TierData = (*DataTiers)[TierIdx];
+			const FRPGSkillRefinementTier& TierData = (*DataTiers)[TierIdx];
 			
 			for (int32 OptIdx = 0; OptIdx < UIButtons.Num(); ++OptIdx)
 			{
-				URPGTripodButton* Btn = UIButtons[OptIdx];
+				URPGSkillRefinementButton* Btn = UIButtons[OptIdx];
 				if (!Btn) continue;
 
 				// 해당 옵션 데이터가 있으면 활성화 및 초기화
 				if (TierData.Options.IsValidIndex(OptIdx))
 				{
 					Btn->SetVisibility(ESlateVisibility::Visible);
-					Btn->InitializeTripod(TierIdx, OptIdx, TierData.Options[OptIdx]);
+					Btn->InitializeRefinement(TierIdx, OptIdx, TierData.Options[OptIdx]);
 				}
 				else
 				{
@@ -125,7 +125,7 @@ void URPGTripodBoard::UpdateButtons()
 		else
 		{
 			// 티어 자체가 데이터에 없으면 해당 티어 버튼 모두 숨김
-			for (URPGTripodButton* Btn : UIButtons)
+			for (URPGSkillRefinementButton* Btn : UIButtons)
 			{
 				if (Btn) Btn->SetVisibility(ESlateVisibility::Collapsed);
 			}
@@ -133,39 +133,39 @@ void URPGTripodBoard::UpdateButtons()
 	}
 }
 
-void URPGTripodBoard::RefreshSelection()
+void URPGSkillRefinementBoard::RefreshSelection()
 {
 	if (!CurrentSlotVM.IsValid()) return;
 
-	for (int32 TierIdx = 0; TierIdx < TripodTiers.Num(); ++TierIdx)
+	for (int32 TierIdx = 0; TierIdx < RefinementTiers.Num(); ++TierIdx)
 	{
-		for (URPGTripodButton* Btn : TripodTiers[TierIdx])
+		for (URPGSkillRefinementButton* Btn : RefinementTiers[TierIdx])
 		{
 			if (Btn && Btn->GetVisibility() == ESlateVisibility::Visible)
 			{
-				bool bSelected = CurrentSlotVM->IsTripodSelected(TierIdx, Btn->GetOptionIndex());
-				Btn->SetIsTripodSelected(bSelected);
+				bool bSelected = CurrentSlotVM->IsRefinementSelected(TierIdx, Btn->GetOptionIndex());
+				Btn->SetIsRefinementSelected(bSelected);
 				const URPGSkillDefinition* Definition = CurrentSlotVM->GetSkillDefinition();
-				Btn->SetIsEnabled(Definition && Definition->IsTripodSelectionAllowed(
+				Btn->SetIsEnabled(Definition && Definition->IsRefinementSelectionAllowed(
 					CurrentSlotVM->SkillLevel, TierIdx, Btn->GetOptionIndex()));
 			}
 		}
 	}
 }
 
-void URPGTripodBoard::OnTripodBtnClicked(int32 Tier, int32 Index)
+void URPGSkillRefinementBoard::OnRefinementBtnClicked(int32 Tier, int32 Index)
 {
 	if (CurrentSlotVM.IsValid())
 	{
 		// Resolve the UI toggle here; the model/server still receive an explicit
 		// selection so repeated commands cannot accidentally toggle it again.
-		const int32 RequestedIndex = CurrentSlotVM->IsTripodSelected(Tier, Index)
+		const int32 RequestedIndex = CurrentSlotVM->IsRefinementSelected(Tier, Index)
 			? INDEX_NONE : Index;
-		CurrentSlotVM->RequestTripodSelection(Tier, RequestedIndex);
+		CurrentSlotVM->RequestRefinementSelection(Tier, RequestedIndex);
 	}
 }
 
-void URPGTripodBoard::UpdateTripodSelection(const TArray<int32>& NewIndices)
+void URPGSkillRefinementBoard::UpdateRefinementSelection(const TArray<int32>& NewIndices)
 {
 	RefreshSelection();
 }

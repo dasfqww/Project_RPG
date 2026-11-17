@@ -10,8 +10,8 @@ void FRPGSkillRuntimeSpec::Reset()
 	GreatSwordRageDamageMultiplier = 1.15f;
 	DisplayName = FText::GetEmpty();
 	SkillLevel = 1;
-	SelectedTripodIndices.Reset();
-	TripodTags.Reset();
+	SelectedRefinementIndices.Reset();
+	RefinementTags.Reset();
 	StatScalars.Reset();
 	Icon = nullptr;
 	Montage = nullptr;
@@ -50,9 +50,9 @@ float FRPGSkillRuntimeSpec::GetStatScalar(
 	return DefaultValue;
 }
 
-bool FRPGSkillRuntimeSpec::HasTripodTag(const FGameplayTag& TripodTag) const
+bool FRPGSkillRuntimeSpec::HasRefinementTag(const FGameplayTag& RefinementTag) const
 {
-	return TripodTag.IsValid() && TripodTags.HasTagExact(TripodTag);
+	return RefinementTag.IsValid() && RefinementTags.HasTagExact(RefinementTag);
 }
 
 bool FRPGSkillRuntimeSpec::TryGetHitQueryProfile(FRPGHitQueryProfile& OutProfile) const

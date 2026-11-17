@@ -12,7 +12,7 @@ struct FRPGSavedProgressionSkill
 {
 	FGameplayTag SkillTag;
 	int32 Level = 0;
-	TArray<FString> TripodIds;
+	TArray<FString> RefinementIds;
 };
 
 /** Validated backend record; never a client command or a replacement for the skill state owner. */

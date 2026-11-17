@@ -25,7 +25,7 @@ def build_configuration(before, skill):
     desired = {"stagger": 20.0, "partBreak": 20.0}
     require(equivalent(before["Contributions"], {"stagger": 0.0, "partBreak": 0.0}) or
             equivalent(before["Contributions"], desired), "Preserving customized base contributions")
-    tiers = copy.deepcopy(before["TripodTiers"])
+    tiers = copy.deepcopy(before["RefinementTiers"])
     for level, identity, tag, label in [
         (7, "Stagger", "Shared.Stat.StaggerContribution", "무력화 기여 강화"),
         (7 if skill == "Charge" else 4, "PartBreak", "Shared.Stat.PartBreakContribution", "부위 파괴 기여 강화"),
@@ -40,7 +40,7 @@ def build_configuration(before, skill):
             "description": "서버가 승인한 적중의 해당 기여가 25% 증가한다. 같은 시전은 대상마다 한 번만 기여한다.",
             "optionIcon": "None", "statModifiers": [{"statTag": {"tagName": tag}, "scalarValue": 1.25}],
             "cooldownReductionSeconds": 0.0,
-            "tripodTag": {"tagName": "None"}, "overrideActionClass": "None",
+            "refinementTag": {"tagName": "None"}, "overrideActionClass": "None",
             "overrideExecutionPolicyClass": "None", "overrideExecutionConfig": {},
             "overrideTargetingPolicyClass": "None", "overrideTargetingConfig": {},
             "overrideMontage": "None", "overrideVFX": "None",
@@ -51,7 +51,7 @@ def build_configuration(before, skill):
             require(equivalent(existing[0], expected), "Preserving a customized contribution choice")
         else:
             matches[0]["options"].append(expected)
-    return {"Contributions": desired, "TripodTiers": tiers}
+    return {"Contributions": desired, "RefinementTiers": tiers}
 
 
 def main():
@@ -104,11 +104,11 @@ def main():
         if apply and changed:
             require(hashlib.sha256(disk.read_bytes()).hexdigest() == digest, "Target changed during authoring")
             # Preserve exact serialized outer prefix while appending a new tier.
-            if skill and len(update["TripodTiers"]) > len(before["TripodTiers"]):
-                prefix = {"TripodTiers": update["TripodTiers"][:len(before["TripodTiers"])]}
+            if skill and len(update["RefinementTiers"]) > len(before["RefinementTiers"]):
+                prefix = {"RefinementTiers": update["RefinementTiers"][:len(before["RefinementTiers"])]}
                 require(unreal.ToolsetLibrary.set_object_properties(target, json.dumps(prefix, ensure_ascii=False)), "Could not prepare existing tiers")
-                current = json.loads(unreal.ToolsetLibrary.get_object_properties(target, ["TripodTiers"]))
-                update["TripodTiers"][:len(before["TripodTiers"])] = current["TripodTiers"]
+                current = json.loads(unreal.ToolsetLibrary.get_object_properties(target, ["RefinementTiers"]))
+                update["RefinementTiers"][:len(before["RefinementTiers"])] = current["RefinementTiers"]
             require(unreal.ToolsetLibrary.set_object_properties(target, json.dumps(update, ensure_ascii=False)), "Could not set contribution content")
             current = json.loads(unreal.ToolsetLibrary.get_object_properties(target, fields))
             require(equivalent(current, expected), "Unrelated or intended data differs; not saved")

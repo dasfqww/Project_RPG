@@ -12,7 +12,7 @@ class URPGSkillDefinition;
 class URPGPlayerSkillComponent;
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnNextLevelCostChanged, int32 /*NewCost*/);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnTripodIndicesChanged, const TArray<int32>& /*NewIndices*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnRefinementIndicesChanged, const TArray<int32>& /*NewIndices*/);
 
 /**
  * URPGSkillSlotViewModel
@@ -32,7 +32,7 @@ public:
 	URPGSkillDefinition* GetSkillDefinition() const { return SkillDefinition; }
 
 	FOnNextLevelCostChanged OnNextLevelCostChanged;
-	FOnTripodIndicesChanged OnTripodIndicesChanged;
+	FOnRefinementIndicesChanged OnRefinementIndicesChanged;
 
 	// UI에서 바인딩할 필드들
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "Settings")
@@ -51,16 +51,16 @@ public:
 	bool bIsLocked = false;
 
 	UPROPERTY(BlueprintReadOnly, FieldNotify, Category = "Settings")
-	TArray<int32> CurrentTripodIndices;
+	TArray<int32> CurrentRefinementIndices;
 
 	void SetOwnerComponent(URPGPlayerSkillComponent* InComp);
 	URPGPlayerSkillComponent* GetOwnerComponent() const { return OwnerSkillComponent.Get(); }
 
 	UFUNCTION(BlueprintCallable, Category = "RPG|Skill")
-	void RequestTripodSelection(int32 Tier, int32 OptionIndex);
+	void RequestRefinementSelection(int32 Tier, int32 OptionIndex);
 
 	UFUNCTION(BlueprintPure, Category = "RPG|Skill")
-	bool IsTripodSelected(int32 Tier, int32 OptionIndex) const;
+	bool IsRefinementSelected(int32 Tier, int32 OptionIndex) const;
 
 private:
 	UPROPERTY()

@@ -1,4 +1,4 @@
-#include "Tests/RPGSkillTripodNetworkProbe.h"
+#include "Tests/RPGSkillRefinementNetworkProbe.h"
 #include "Tests/RPGSkillAssetCooldownProbe.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
@@ -26,8 +26,8 @@
 #include "Skill/RPGSkillExecutionTypes.h"
 #include "UI/MVVM/RPGSkillViewModel.h"
 #include "UI/ViewModel/RPGSkillSlotViewModel.h"
-#include "UI/Skill/RPGTripodBoard.h"
-#include "UI/Skill/RPGTripodButton.h"
+#include "UI/Skill/RPGSkillRefinementBoard.h"
+#include "UI/Skill/RPGSkillRefinementButton.h"
 #include "UObject/UnrealType.h"
 #include "Widgets/SWidget.h"
 
@@ -71,7 +71,7 @@ namespace
 	bool SnapshotMatches(const FRPGSkillRuntimeSpec& Runtime, const bool bCharge)
 	{
 		return Runtime.SkillTag == RPGGameplayTags::Player_Ability_Skill_Charge && Runtime.SkillLevel == 4 &&
-			Runtime.SelectedTripodIndices.IsValidIndex(0) && Runtime.SelectedTripodIndices[0] == (bCharge ? 1 : 0) &&
+			Runtime.SelectedRefinementIndices.IsValidIndex(0) && Runtime.SelectedRefinementIndices[0] == (bCharge ? 1 : 0) &&
 			Runtime.GetStatScalar(FGameplayTag::RequestGameplayTag(TEXT("Shared.Stat.Damage"))) == (bCharge ? 3.0f : 2.0f) &&
 			Runtime.ExecutionPolicyClass == (bCharge ? URPGSkillExecutionPolicy_Charge::StaticClass() :
 				URPGSkillExecutionPolicy_Instant::StaticClass());
@@ -120,14 +120,14 @@ namespace
 	}
 }
 
-FRPGSkillTripodNetworkProbe::~FRPGSkillTripodNetworkProbe()
+FRPGSkillRefinementNetworkProbe::~FRPGSkillRefinementNetworkProbe()
 {
 	if (auto* ASC = InputAbilitySystem.Get()) ASC->OnAbilityEnded.Remove(AbilityEndedHandle);
 	ReleaseInput();
 	if (Board.IsValid()) Board->InitializeBoard(nullptr);
 }
 
-void FRPGSkillTripodNetworkProbe::ObserveAbilityEnd(APlayerController& Controller, URPGAbilitySystemComponent& ASC)
+void FRPGSkillRefinementNetworkProbe::ObserveAbilityEnd(APlayerController& Controller, URPGAbilitySystemComponent& ASC)
 {
 	if (InputAbilitySystem.Get() == &ASC && AbilityEndedHandle.IsValid()) return;
 	if (auto* Previous = InputAbilitySystem.Get()) Previous->OnAbilityEnded.Remove(AbilityEndedHandle);
@@ -143,21 +143,21 @@ void FRPGSkillTripodNetworkProbe::ObserveAbilityEnd(APlayerController& Controlle
 	});
 }
 
-void FRPGSkillTripodNetworkProbe::ReleaseInput()
+void FRPGSkillRefinementNetworkProbe::ReleaseInput()
 {
 	if (bInputHeld)
 		if (auto* ASC = InputAbilitySystem.Get()) ASC->OnAbilitySpecInputReleased(SkillHandle);
 	bInputHeld = false;
 }
 
-FRPGSkillTripodNetworkProbe::EResult FRPGSkillTripodNetworkProbe::Fail(const TCHAR* Reason)
+FRPGSkillRefinementNetworkProbe::EResult FRPGSkillRefinementNetworkProbe::Fail(const TCHAR* Reason)
 {
 	ReleaseInput();
 	Failure = Reason;
 	return EResult::Failed;
 }
 
-bool FRPGSkillTripodNetworkProbe::Initialize(APlayerController& Controller,
+bool FRPGSkillRefinementNetworkProbe::Initialize(APlayerController& Controller,
 	URPGPlayerSkillComponent& Component, URPGSkillCatalogSubsystem& Catalog)
 {
 	FParse::Value(FCommandLine::Get(), TEXT("RPGExpectedClients="), ExpectedClients);
@@ -182,8 +182,8 @@ bool FRPGSkillTripodNetworkProbe::Initialize(APlayerController& Controller,
 		Original->ModeOverrides.Reset();
 		Original->SkillVFX = nullptr;
 		Original->BaseCooldown = 1.0f;
-		Original->TripodTiers.Reset();
-		FRPGSkillTripodTier& FirstTier = Original->TripodTiers.AddDefaulted_GetRef();
+		Original->RefinementTiers.Reset();
+		FRPGSkillRefinementTier& FirstTier = Original->RefinementTiers.AddDefaulted_GetRef();
 		FirstTier.RequiredSkillLevel = 4;
 		for (const float Scalar : {2.0f, 3.0f})
 		{
@@ -202,7 +202,7 @@ bool FRPGSkillTripodNetworkProbe::Initialize(APlayerController& Controller,
 		Charge.MaxChargeHoldTime = 10.0f;
 		FirstTier.Options[1].OverrideExecutionPolicyClass = URPGSkillExecutionPolicy_Charge::StaticClass();
 		FirstTier.Options[1].OverrideExecutionConfig.InitializeAs<FRPGSkillChargeExecutionConfig>(Charge);
-		FRPGSkillTripodTier& LockedTier = Original->TripodTiers.AddDefaulted_GetRef();
+		FRPGSkillRefinementTier& LockedTier = Original->RefinementTiers.AddDefaulted_GetRef();
 		// Deliberately simulate a stale client catalog so UI prediction succeeds
 		// but the authority must reject and restore its locked-tier selection.
 		LockedTier.RequiredSkillLevel = bAuthority ? 7 : 4;
@@ -231,7 +231,7 @@ bool FRPGSkillTripodNetworkProbe::Initialize(APlayerController& Controller,
 		Budget->SetFlags(RF_Transient);
 		Budget->SkillTag = RPGGameplayTags::Player_Ability_Rage;
 		Budget->MaxSkillLevel = 10;
-		Budget->TripodTiers.Reset();
+		Budget->RefinementTiers.Reset();
 		const auto* Property = FindFProperty<FArrayProperty>(
 			URPGSkillCatalogSubsystem::StaticClass(), TEXT("CachedDefinitions"));
 		check(Property);
@@ -273,9 +273,9 @@ bool FRPGSkillTripodNetworkProbe::Initialize(APlayerController& Controller,
 	{
 		ViewModel.Reset(NewObject<URPGSkillViewModel>(&Controller));
 		ViewModel->InitializeSkillData(&Component, {Original, Budget});
-		UClass* BoardClass = LoadClass<URPGTripodBoard>(nullptr,
+		UClass* BoardClass = LoadClass<URPGSkillRefinementBoard>(nullptr,
 			TEXT("/Game/Blueprints/UI/Skill/WBP_TripodBoard.WBP_TripodBoard_C"));
-		Board.Reset(BoardClass ? CreateWidget<URPGTripodBoard>(&Controller, BoardClass) : nullptr);
+		Board.Reset(BoardClass ? CreateWidget<URPGSkillRefinementBoard>(&Controller, BoardClass) : nullptr);
 		if (!Board.IsValid()) { Failure = TEXT("AuthoredTripodBoardMissing"); return false; }
 		SlateBoard = Board->TakeWidget();
 		Board->InitializeBoard(ViewModel->SkillSlots[0]);
@@ -284,57 +284,57 @@ bool FRPGSkillTripodNetworkProbe::Initialize(APlayerController& Controller,
 	return true;
 }
 
-void FRPGSkillTripodNetworkProbe::BeginReplyWait(const URPGPlayerSkillComponent& Component, const uint32 Replies)
+void FRPGSkillRefinementNetworkProbe::BeginReplyWait(const URPGPlayerSkillComponent& Component, const uint32 Replies)
 {
 	RevisionBefore = ReadRevision(Component);
 	ExpectedReplies = Replies;
 }
 
-bool FRPGSkillTripodNetworkProbe::RepliesArrived(const URPGPlayerSkillComponent& Component) const
+bool FRPGSkillRefinementNetworkProbe::RepliesArrived(const URPGPlayerSkillComponent& Component) const
 {
 	return static_cast<uint32>(ReadRevision(Component) - RevisionBefore) >= ExpectedReplies;
 }
 
-bool FRPGSkillTripodNetworkProbe::CheckState(const URPGPlayerSkillComponent& Component,
+bool FRPGSkillRefinementNetworkProbe::CheckState(const URPGPlayerSkillComponent& Component,
 	const int32 Level, const int32 Option, const int32 RemainingSP) const
 {
 	const auto* Replicated = ReadReplicatedSelection(Component);
 	const FRPGSkillSaveData Local = Component.GetSkillSaveData(Definition->SkillTag);
 	const auto Matches = [=](const FRPGSkillSaveData& Data)
 	{
-		return Data.SkillLevel == Level && Data.SelectedTripodIndices.Num() == 2 &&
-			Data.SelectedTripodIndices[0] == Option && Data.SelectedTripodIndices[1] == INDEX_NONE;
+		return Data.SkillLevel == Level && Data.SelectedRefinementIndices.Num() == 2 &&
+			Data.SelectedRefinementIndices[0] == Option && Data.SelectedRefinementIndices[1] == INDEX_NONE;
 	};
 	return Replicated && Matches(Replicated->SaveData) && Matches(Local) &&
 		Component.GetRemainingSP() == RemainingSP && ViewModel->RemainingSP == RemainingSP &&
 		ViewModel->SkillSlots.Num() == 2 && ViewModel->SkillSlots[0]->SkillLevel == Level &&
-		ViewModel->SkillSlots[0]->CurrentTripodIndices == Local.SelectedTripodIndices && CheckButtons(Level, Option);
+		ViewModel->SkillSlots[0]->CurrentRefinementIndices == Local.SelectedRefinementIndices && CheckButtons(Level, Option);
 }
 
-bool FRPGSkillTripodNetworkProbe::ClickTripod(const int32 Tier, const int32 Option)
+bool FRPGSkillRefinementNetworkProbe::ClickRefinement(const int32 Tier, const int32 Option)
 {
 	const FName Name(*FString::Printf(TEXT("Btn_%d_%d"), Tier + 1, Option + 1));
-	auto* Button = Board.IsValid() ? Cast<URPGTripodButton>(Board->GetWidgetFromName(Name)) : nullptr;
+	auto* Button = Board.IsValid() ? Cast<URPGSkillRefinementButton>(Board->GetWidgetFromName(Name)) : nullptr;
 	if (!Button || !Button->GetIsEnabled() || Button->GetVisibility() != ESlateVisibility::Visible) return false;
 	// Real CommonUI handler and ViewModel command, not a delegate-only shortcut.
 	// No rendered mouse routing is asserted by this native network fixture.
 	Button->ProcessEvent(Button->FindFunctionChecked(TEXT("HandleButtonClicked")), nullptr);
-	return ViewModel->SkillSlots[0]->IsTripodSelected(Tier, Option) && Button->GetSelected();
+	return ViewModel->SkillSlots[0]->IsRefinementSelected(Tier, Option) && Button->GetSelected();
 }
 
-bool FRPGSkillTripodNetworkProbe::CheckButtons(const int32 Level, const int32 Option) const
+bool FRPGSkillRefinementNetworkProbe::CheckButtons(const int32 Level, const int32 Option) const
 {
 	if (!Board.IsValid()) return false;
 	for (int32 Index = 0; Index < 2; ++Index)
 	{
-		auto* Button = Cast<URPGTripodButton>(Board->GetWidgetFromName(Index == 0 ? TEXT("Btn_1_1") : TEXT("Btn_1_2")));
+		auto* Button = Cast<URPGSkillRefinementButton>(Board->GetWidgetFromName(Index == 0 ? TEXT("Btn_1_1") : TEXT("Btn_1_2")));
 		if (!Button || Button->GetSelected() != (Option == Index) || Button->GetIsEnabled() != (Level >= 4)) return false;
 	}
-	const auto* Locked = Cast<URPGTripodButton>(Board->GetWidgetFromName(TEXT("Btn_2_1")));
+	const auto* Locked = Cast<URPGSkillRefinementButton>(Board->GetWidgetFromName(TEXT("Btn_2_1")));
 	return Locked && !Locked->GetSelected();
 }
 
-FRPGSkillTripodNetworkProbe::EResult FRPGSkillTripodNetworkProbe::TickClientActivation(
+FRPGSkillRefinementNetworkProbe::EResult FRPGSkillRefinementNetworkProbe::TickClientActivation(
 	APlayerController& Controller, const bool bCharge)
 {
 	auto* ASC = GetASC(Controller);
@@ -401,7 +401,7 @@ FRPGSkillTripodNetworkProbe::EResult FRPGSkillTripodNetworkProbe::TickClientActi
 	return EResult::Waiting;
 }
 
-bool FRPGSkillTripodNetworkProbe::ObserveServerActivation(APlayerController& Controller)
+bool FRPGSkillRefinementNetworkProbe::ObserveServerActivation(APlayerController& Controller)
 {
 	auto* ASC = GetASC(Controller);
 	auto* Spec = ASC ? FindChargeSpec(*ASC) : nullptr;
@@ -428,18 +428,18 @@ bool FRPGSkillTripodNetworkProbe::ObserveServerActivation(APlayerController& Con
 	return true;
 }
 
-bool FRPGSkillTripodNetworkProbe::CheckBudgetState(const URPGPlayerSkillComponent& Component,
+bool FRPGSkillRefinementNetworkProbe::CheckBudgetState(const URPGPlayerSkillComponent& Component,
 	const int32 Level) const
 {
 	const auto* Replicated = ReadReplicatedSelection(Component, BudgetDefinition->SkillTag);
 	const auto Local = Component.GetSkillSaveData(BudgetDefinition->SkillTag);
 	return Replicated && Replicated->SaveData.SkillLevel == Level &&
-		Replicated->SaveData.SelectedTripodIndices.IsEmpty() && Local.SkillLevel == Level &&
-		Local.SelectedTripodIndices.IsEmpty() && ViewModel->SkillSlots[1]->SkillLevel == Level &&
-		ViewModel->SkillSlots[1]->CurrentTripodIndices.IsEmpty();
+		Replicated->SaveData.SelectedRefinementIndices.IsEmpty() && Local.SkillLevel == Level &&
+		Local.SelectedRefinementIndices.IsEmpty() && ViewModel->SkillSlots[1]->SkillLevel == Level &&
+		ViewModel->SkillSlots[1]->CurrentRefinementIndices.IsEmpty();
 }
 
-bool FRPGSkillTripodNetworkProbe::CheckRemotePrivacy(APlayerController& Controller,
+bool FRPGSkillRefinementNetworkProbe::CheckRemotePrivacy(APlayerController& Controller,
 	int32& VisiblePeers, bool& AllPeersReady) const
 {
 	VisiblePeers = 0;
@@ -470,15 +470,15 @@ bool FRPGSkillTripodNetworkProbe::CheckRemotePrivacy(APlayerController& Controll
 			Peer->GetTotalSP() != Defaults->GetTotalSP() || ReadUsedSP(*Peer) != 0 ||
 			Peer->GetRemainingSP() != Defaults->GetTotalSP() ||
 			ChargeData.SkillLevel != DefaultSaveData.SkillLevel ||
-			ChargeData.SelectedTripodIndices != DefaultSaveData.SelectedTripodIndices ||
+			ChargeData.SelectedRefinementIndices != DefaultSaveData.SelectedRefinementIndices ||
 			BudgetData.SkillLevel != DefaultSaveData.SkillLevel ||
-			BudgetData.SelectedTripodIndices != DefaultSaveData.SelectedTripodIndices)
+			BudgetData.SelectedRefinementIndices != DefaultSaveData.SelectedRefinementIndices)
 		{
 			UE_LOG(LogTemp, Display, TEXT("RPG_SKILL_TRIPOD_NETTEST PRIVACY_MISMATCH Peer=%s Entries=%d Revision=%u TotalSP=%d DefaultSP=%d UsedSP=%d RemainingSP=%d ChargeLevel=%d ChargeIndices=%d BudgetLevel=%d BudgetIndices=%d"),
 				*It->GetName(), ReadReplicatedEntries(*Peer).Num(), ReadRevision(*Peer),
 				Peer->GetTotalSP(), Defaults->GetTotalSP(), ReadUsedSP(*Peer), Peer->GetRemainingSP(),
-				ChargeData.SkillLevel, ChargeData.SelectedTripodIndices.Num(),
-				BudgetData.SkillLevel, BudgetData.SelectedTripodIndices.Num());
+				ChargeData.SkillLevel, ChargeData.SelectedRefinementIndices.Num(),
+				BudgetData.SkillLevel, BudgetData.SelectedRefinementIndices.Num());
 			return false;
 		}
 	}
@@ -486,12 +486,12 @@ bool FRPGSkillTripodNetworkProbe::CheckRemotePrivacy(APlayerController& Controll
 	return true;
 }
 
-bool FRPGSkillTripodNetworkProbe::RequestRejection(URPGPlayerSkillComponent& Component)
+bool FRPGSkillRefinementNetworkProbe::RequestRejection(URPGPlayerSkillComponent& Component)
 {
 	BeginReplyWait(Component);
 	if (RejectionIndex == 4)
 	{
-		return ClickTripod(1, 0);
+		return ClickRefinement(1, 0);
 	}
 	if (RejectionIndex == 6)
 	{
@@ -513,13 +513,13 @@ bool FRPGSkillTripodNetworkProbe::RequestRejection(URPGPlayerSkillComponent& Com
 	case 5: Parameters.SkillTag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Skill1")); break;
 	default: return false;
 	}
-	UFunction* Function = Component.FindFunctionChecked(TEXT("ServerSelectTripod"));
+	UFunction* Function = Component.FindFunctionChecked(TEXT("ServerSelectRefinement"));
 	check(Function->ParmsSize == sizeof(Parameters));
 	Component.ProcessEvent(Function, &Parameters);
 	return true;
 }
 
-FRPGSkillTripodNetworkProbe::EResult FRPGSkillTripodNetworkProbe::TickClient(
+FRPGSkillRefinementNetworkProbe::EResult FRPGSkillRefinementNetworkProbe::TickClient(
 	APlayerController& Controller, URPGPlayerSkillComponent& Component)
 {
 	int32 VisiblePeers = 0;
@@ -569,7 +569,7 @@ FRPGSkillTripodNetworkProbe::EResult FRPGSkillTripodNetworkProbe::TickClient(
 	case EPhase::Level:
 		if (!CheckState(Component, 4, INDEX_NONE, 2)) return Fail(TEXT("LevelConfirmationMismatch"));
 		BeginReplyWait(Component);
-		if (!ClickTripod(0, 0)) return Fail(TEXT("FirstNativeTripodButtonDidNotSelect"));
+		if (!ClickRefinement(0, 0)) return Fail(TEXT("FirstNativeTripodButtonDidNotSelect"));
 		Phase = EPhase::Select;
 		break;
 	case EPhase::Select:
@@ -593,7 +593,7 @@ FRPGSkillTripodNetworkProbe::EResult FRPGSkillTripodNetworkProbe::TickClient(
 		else
 		{
 			BeginReplyWait(Component);
-			if (!ClickTripod(0, 1)) return Fail(TEXT("SecondNativeTripodButtonDidNotSelect"));
+			if (!ClickRefinement(0, 1)) return Fail(TEXT("SecondNativeTripodButtonDidNotSelect"));
 			Phase = EPhase::Switch;
 		}
 		break;
@@ -679,15 +679,15 @@ FRPGSkillTripodNetworkProbe::EResult FRPGSkillTripodNetworkProbe::TickClient(
 	return EResult::Waiting;
 }
 
-FRPGSkillTripodNetworkProbe::EResult FRPGSkillTripodNetworkProbe::TickServer(
+FRPGSkillRefinementNetworkProbe::EResult FRPGSkillRefinementNetworkProbe::TickServer(
 	APlayerController& Controller, URPGPlayerSkillComponent& Component)
 {
 	const FRPGSkillSaveData Data = Component.GetSkillSaveData(Definition->SkillTag);
 	const FRPGSkillSaveData Budget = Component.GetSkillSaveData(BudgetDefinition->SkillTag);
-	const int32 Option = Data.SelectedTripodIndices.IsValidIndex(0) ? Data.SelectedTripodIndices[0] : INDEX_NONE;
+	const int32 Option = Data.SelectedRefinementIndices.IsValidIndex(0) ? Data.SelectedRefinementIndices[0] : INDEX_NONE;
 	if (!AssetCooldownProbe && !ObserveServerActivation(Controller)) return Fail(TEXT("ServerSelectedTripodActivationSnapshotMismatch"));
 	if (Data.SkillLevel > 4 || Budget.SkillLevel > 3 || Component.GetRemainingSP() < 0 ||
-		(Data.SelectedTripodIndices.IsValidIndex(1) && Data.SelectedTripodIndices[1] != INDEX_NONE))
+		(Data.SelectedRefinementIndices.IsValidIndex(1) && Data.SelectedRefinementIndices[1] != INDEX_NONE))
 		return Fail(TEXT("AuthorityAcceptedLockedSelectionOrOverLevel"));
 	bSawFirstSelection |= Data.SkillLevel == 4 && Option == 0;
 	if (Data.SkillLevel == 4 && Option == 1)
@@ -750,7 +750,7 @@ FRPGSkillTripodNetworkProbe::EResult FRPGSkillTripodNetworkProbe::TickServer(
 	return EResult::Waiting;
 }
 
-FRPGSkillTripodNetworkProbe::EResult FRPGSkillTripodNetworkProbe::Tick(APlayerController& Controller)
+FRPGSkillRefinementNetworkProbe::EResult FRPGSkillRefinementNetworkProbe::Tick(APlayerController& Controller)
 {
 	APawn* Pawn = Controller.GetPawn();
 	URPGPlayerSkillComponent* Component = Pawn ? Pawn->FindComponentByClass<URPGPlayerSkillComponent>() : nullptr;

@@ -70,7 +70,7 @@ void URPGPlayerClassComponent::UnbindProgression()
 
 void URPGPlayerClassComponent::HandleProgressionChanged(FGameplayTag SkillTag)
 {
-	RefreshAppliedClass(); // No regrant for a new level, SP revision or tripod selection.
+	RefreshAppliedClass(); // No regrant for a new level, SP revision or refinement selection.
 }
 
 void URPGPlayerClassComponent::ReserveStartupIdentity(TSubclassOf<URPGGameplayAbility> AbilityClass)

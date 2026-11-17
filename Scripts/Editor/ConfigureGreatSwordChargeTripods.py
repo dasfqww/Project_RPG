@@ -12,7 +12,7 @@ import math
 ASSET = "/Game/Blueprints/GameData/Skill/DA_Skill_ChargeSlash"
 CHARGE_POLICY = "/Script/Project_RPG.RPGSkillExecutionPolicy_Charge"
 CHARGE_CONFIG = "/Script/Project_RPG.RPGSkillChargeExecutionConfig"
-FIELDS = ["SkillTag", "TripodTiers", "DefaultExecutionPolicyClass", "DefaultExecutionConfig"]
+FIELDS = ["SkillTag", "RefinementTiers", "DefaultExecutionPolicyClass", "DefaultExecutionConfig"]
 
 
 def require(condition, message):
@@ -41,7 +41,7 @@ def build_configuration(properties):
     require(base.get("_structType") == CHARGE_CONFIG, "Missing typed native charge config")
     levels = base.get("maxChargeLevel", 0)
     require(type(levels) is int and 1 <= levels <= 32, "Invalid charge stage count")
-    tiers = copy.deepcopy(properties["TripodTiers"])
+    tiers = copy.deepcopy(properties["RefinementTiers"])
     matching = [tier for tier in tiers if tier.get("requiredSkillLevel") == 4]
     require(len(matching) == 1, "Expected exactly one existing level-4 tier")
     options = matching[0]["options"]
@@ -61,7 +61,7 @@ def build_configuration(properties):
             "persistenceId": identity, "optionName": label, "description": description,
             "optionIcon": "None", "statModifiers": [
                 {"statTag": {"tagName": "Shared.Stat.Damage"}, "scalarValue": damage_ratio}],
-            "tripodTag": {"tagName": "None"}, "overrideActionClass": "None",
+            "refinementTag": {"tagName": "None"}, "overrideActionClass": "None",
             "overrideExecutionPolicyClass": {"refPath": CHARGE_POLICY}, "overrideExecutionConfig": config,
             "overrideTargetingPolicyClass": "None", "overrideTargetingConfig": {},
             "overrideMontage": "None", "overrideVFX": "None",
@@ -73,7 +73,7 @@ def build_configuration(properties):
         else:
             options.append(expected)
             changed = True
-    return {"TripodTiers": tiers}, changed
+    return {"RefinementTiers": tiers}, changed
 
 
 def main():

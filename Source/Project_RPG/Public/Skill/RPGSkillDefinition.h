@@ -60,12 +60,12 @@ struct FSkillModeOverride
  * 스킬 연마 티어 그룹 (3-3-2 구조)
  */
 USTRUCT(BlueprintType, meta = (DisplayName = "스킬 연마 단계"))
-struct FRPGSkillTripodTier
+struct FRPGSkillRefinementTier
 {
 	GENERATED_BODY()
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	TArray<FRPGSkillTripodOption> Options;
+	TArray<FRPGSkillRefinementOption> Options;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	int32 RequiredSkillLevel = 4;
@@ -106,16 +106,16 @@ public:
 
 	/** Progression rules authored by this definition, shared by UI and server. */
 	int32 ClampSkillLevel(int32 RequestedLevel) const;
-	bool ResolveSavedTripod(int32 RequiredSkillLevel, FName PersistenceId,
+	bool ResolveSavedRefinement(int32 RequiredSkillLevel, FName PersistenceId,
 		int32& OutTierIndex, int32& OutOptionIndex) const;
-	bool IsTripodSelectionAllowed(
+	bool IsRefinementSelectionAllowed(
 		int32 SkillLevel,
 		int32 TierIndex,
 		int32 OptionIndex) const;
 	void NormalizeSaveData(FRPGSkillSaveData& InOutSaveData) const;
 
 	// 현재 캐릭터 상태와 선택된 스킬 연마에 맞는 데이터를 반환
-	void GetSkillDataForContext(AActor* InActor, const TArray<int32>& SelectedTripods, UTexture2D*& OutIcon, UAnimMontage*& OutMontage, TSubclassOf<URPGSkillAction>& OutActionClass) const;
+	void GetSkillDataForContext(AActor* InActor, const TArray<int32>& SelectedRefinements, UTexture2D*& OutIcon, UAnimMontage*& OutMontage, TSubclassOf<URPGSkillAction>& OutActionClass) const;
 
 	// ---------------------------------------------------
 	// 1. 기본 설정 및 데이터 테이블 연동
@@ -220,7 +220,7 @@ public:
 	TArray<FSkillModeOverride> ModeOverrides;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "스킬 연마", meta = (DisplayName = "연마 단계"))
-	TArray<FRPGSkillTripodTier> TripodTiers;
+	TArray<FRPGSkillRefinementTier> RefinementTiers;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Config")
 	int32 MaxSkillLevel = 12;

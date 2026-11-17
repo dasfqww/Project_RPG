@@ -172,7 +172,7 @@ UProject_RPGEditorValidator_SkillDefinition::ValidateLoadedAsset_Implementation(
 	{
 		Fail(LOCTEXT("IconMissing", "Assign a Skill Icon or a Skill Data row."));
 	}
-	if (Definition->TripodTiers.Num() > 3)
+	if (Definition->RefinementTiers.Num() > 3)
 	{
 		Fail(LOCTEXT("TooManyTiers", "The current tripod UI supports at most three tiers."));
 	}
@@ -221,9 +221,9 @@ UProject_RPGEditorValidator_SkillDefinition::ValidateLoadedAsset_Implementation(
 		}
 	}
 
-	for (int32 TierIndex = 0; TierIndex < Definition->TripodTiers.Num(); ++TierIndex)
+	for (int32 TierIndex = 0; TierIndex < Definition->RefinementTiers.Num(); ++TierIndex)
 	{
-		const FRPGSkillTripodTier& Tier = Definition->TripodTiers[TierIndex];
+		const FRPGSkillRefinementTier& Tier = Definition->RefinementTiers[TierIndex];
 		const int32 MaxOptions = TierIndex < 2 ? 3 : 2;
 		if (Tier.RequiredSkillLevel < 1 ||
 			Tier.RequiredSkillLevel > Definition->MaxSkillLevel)
@@ -242,7 +242,7 @@ UProject_RPGEditorValidator_SkillDefinition::ValidateLoadedAsset_Implementation(
 
 		for (int32 OptionIndex = 0; OptionIndex < Tier.Options.Num(); ++OptionIndex)
 		{
-			const FRPGSkillTripodOption& Option = Tier.Options[OptionIndex];
+			const FRPGSkillRefinementOption& Option = Tier.Options[OptionIndex];
 			if (Option.OptionName.IsEmpty())
 			{
 				Fail(FText::Format(
@@ -251,7 +251,7 @@ UProject_RPGEditorValidator_SkillDefinition::ValidateLoadedAsset_Implementation(
 			}
 
 			const bool bHasBehavior = !Option.StatModifiers.IsEmpty() ||
-				Option.TripodTag.IsValid() || Option.OverrideActionClass ||
+				Option.RefinementTag.IsValid() || Option.OverrideActionClass ||
 				Option.OverrideExecutionPolicyClass ||
 				Option.OverrideExecutionConfig.IsValid() ||
 				Option.OverrideTargetingPolicyClass ||

@@ -3,7 +3,7 @@
 #include "Validation/Project_RPGEditorValidator.h"
 #include "Project_RPGEditorValidator_SkillDefinition.generated.h"
 
-/** Validates the canonical modular skill definition and its tripod structure. */
+/** Validates the canonical modular skill definition and its refinement structure. */
 UCLASS()
 class PROJECT_RPGEDITOR_API UProject_RPGEditorValidator_SkillDefinition
 	: public UProject_RPGEditorValidator

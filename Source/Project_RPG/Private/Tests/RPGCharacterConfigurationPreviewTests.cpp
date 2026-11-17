@@ -27,7 +27,7 @@ bool FRPGConfigurationPreviewChoicesTest::RunTest(const FString&)
 	for (const FString First : {FString(TEXT("LongReach")), FString(TEXT("QuickApproach"))})
 		for (const FString Second : {FString(TEXT("ExtraReach")), FString(TEXT("ExtraRecovery"))})
 		{
-			Draft.TripodIds = {First, Second};
+			Draft.RefinementIds = {First, Second};
 			const auto Before = Draft;
 			FRPGSkillRuntimeSpec Preview;
 			if (!TestTrue(TEXT("Current authored Assault choice resolves by stable ID"),
@@ -38,13 +38,13 @@ bool FRPGConfigurationPreviewChoicesTest::RunTest(const FString&)
 			Preview.TryGetMontageMovementScale(Scale);
 			TestTrue(TEXT("Distance tradeoff accompanies the cooldown choice"), FMath::IsNearlyEqual(Scale,
 				(First == TEXT("QuickApproach") ? .8f : 1.2f) * (Second == TEXT("ExtraReach") ? 1.1f : 1.f)));
-			TestTrue(TEXT("Preview never normalizes or rewrites the UI draft"), Draft.TripodIds == Before.TripodIds && Draft.Level == Before.Level);
+			TestTrue(TEXT("Preview never normalizes or rewrites the UI draft"), Draft.RefinementIds == Before.RefinementIds && Draft.Level == Before.Level);
 		}
 	Draft.SkillTag = Charge->SkillTag;
 	Draft.Level = 4;
 	for (const FString Choice : {FString(TEXT("FullCharge")), FString(TEXT("QuickCharge"))})
 	{
-		Draft.TripodIds = {Choice, FString()};
+		Draft.RefinementIds = {Choice, FString()};
 		FRPGSkillRuntimeSpec Preview;
 		if (!RPGCharacterConfigurationPreview::Resolve(*Charge, Draft, Preview)) return false;
 		const auto* Config = Preview.ExecutionConfig.GetPtr<FRPGSkillChargeExecutionConfig>();
@@ -54,7 +54,7 @@ bool FRPGConfigurationPreviewChoicesTest::RunTest(const FString&)
 	}
 	Draft.SkillTag = Jump->SkillTag;
 	Draft.Level = 7;
-	Draft.TripodIds = {TEXT("PartBreak"), TEXT("Stagger")};
+	Draft.RefinementIds = {TEXT("PartBreak"), TEXT("Stagger")};
 	FRPGSkillRuntimeSpec Preview;
 	if (!TestTrue(TEXT("Both Jump contribution choices resolve"), RPGCharacterConfigurationPreview::Resolve(*Jump, Draft, Preview))) return false;
 	FRPGCombatContributionAmounts Amounts;
@@ -62,7 +62,7 @@ bool FRPGConfigurationPreviewChoicesTest::RunTest(const FString&)
 	TestEqual(TEXT("Stagger preview includes its selected enhancement"), Amounts.Stagger, 25.f);
 	TestEqual(TEXT("Part-break preview includes its selected enhancement"), Amounts.PartBreak, 25.f);
 	Draft.SkillTag = Whirl->SkillTag;
-	Draft.TripodIds = {TEXT("Mobile"), TEXT("FinalStagger")};
+	Draft.RefinementIds = {TEXT("Mobile"), TEXT("FinalStagger")};
 	if (!TestTrue(TEXT("Existing finisher content is read without changing it"), RPGCharacterConfigurationPreview::Resolve(*Whirl, Draft, Preview))) return false;
 	TestEqual(TEXT("Finisher timing restriction is preserved in the preview"), Preview.ContributionHitSection, FName(TEXT("End")));
 	TestFalse(TEXT("A valid authored choice has a readable summary"), RPGCharacterConfigurationPreview::Describe(Whirl, Draft).IsEmpty());
@@ -81,16 +81,16 @@ bool FRPGConfigurationPreviewInvalidTest::RunTest(const FString&)
 	FRPGSavedProgressionSkill Draft;
 	Draft.SkillTag = Definition->SkillTag;
 	Draft.Level = 7;
-	Draft.TripodIds = {TEXT("FullCharge"), TEXT("Stagger")};
+	Draft.RefinementIds = {TEXT("FullCharge"), TEXT("Stagger")};
 	FRPGSkillRuntimeSpec Preview;
 	if (!RPGCharacterConfigurationPreview::Resolve(*Definition, Draft, Preview)) return false;
-	Draft.TripodIds[1] = TEXT("UnknownChoice");
+	Draft.RefinementIds[1] = TEXT("UnknownChoice");
 	TestFalse(TEXT("Unknown saved IDs cannot silently display base values"), RPGCharacterConfigurationPreview::Resolve(*Definition, Draft, Preview));
 	TestFalse(TEXT("Failure clears previous skill identity"), Preview.SkillTag.IsValid());
-	Draft.TripodIds = {TEXT("FullCharge"), FString()};
+	Draft.RefinementIds = {TEXT("FullCharge"), FString()};
 	Draft.Level = 1;
 	TestFalse(TEXT("Locked choices are not normalized into misleading base previews"), RPGCharacterConfigurationPreview::Resolve(*Definition, Draft, Preview));
-	Draft.TripodIds = {FString(), FString()};
+	Draft.RefinementIds = {FString(), FString()};
 	Draft.Level = 99;
 	TestFalse(TEXT("Out-of-range levels are not silently clamped"), RPGCharacterConfigurationPreview::Resolve(*Definition, Draft, Preview));
 	Draft.Level = 1;

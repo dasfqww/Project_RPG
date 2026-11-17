@@ -36,7 +36,7 @@ struct FRPGRpcIngressTestAccess
 		case 1: Skills.ServerTryLevelDownSkill_Implementation(FGameplayTag()); break;
 		case 2: Skills.ServerLevelUpToMax_Implementation(FGameplayTag(), MAX_int32); break;
 		case 3: Skills.ServerResetSkillLevel_Implementation(FGameplayTag()); break;
-		default: Skills.ServerSelectTripod_Implementation(FGameplayTag(), MAX_int32, MIN_int32); break;
+		default: Skills.ServerSelectRefinement_Implementation(FGameplayTag(), MAX_int32, MIN_int32); break;
 		}
 	}
 	static void SlotRequest(UQuickSlotComponent& Slots, int32 Kind)

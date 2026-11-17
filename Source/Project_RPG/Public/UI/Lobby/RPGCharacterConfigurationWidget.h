@@ -41,7 +41,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RPG|Progression|Lobby") bool SaveConfiguration();
 	UFUNCTION(BlueprintCallable, Category = "RPG|Progression|Lobby") bool ResetDraft();
 	UFUNCTION(BlueprintCallable, Category = "RPG|Progression|Lobby") bool SetSkillLevel(FGameplayTag Skill, int32 Level);
-	UFUNCTION(BlueprintCallable, Category = "RPG|Progression|Lobby") bool SetTripodChoice(FGameplayTag Skill, int32 Tier, const FString& PersistenceId);
+	UFUNCTION(BlueprintCallable, Category = "RPG|Progression|Lobby") bool SetRefinementChoice(FGameplayTag Skill, int32 Tier, const FString& PersistenceId);
 	/** Selecting an already slotted skill moves/swaps it; empty slots stay empty. */
 	UFUNCTION(BlueprintCallable, Category = "RPG|Progression|Lobby") bool SetCombatSlot(int32 Index, FGameplayTag Skill);
 	/** Explicit local draft action. Keeps occupied slots, skill levels and SP unchanged. */

@@ -26,11 +26,11 @@ bool FRPGContributionContentTest::RunTest(const FString&)
 			const int32 Level = Definition == Jump && Choice == TEXT("PartBreak") ? 4 : 7;
 			FRPGSkillSaveData Save;
 			Save.SkillLevel = Level;
-			Save.SelectedTripodIndices.Init(INDEX_NONE, Definition->TripodTiers.Num());
+			Save.SelectedRefinementIndices.Init(INDEX_NONE, Definition->RefinementTiers.Num());
 			int32 Tier, Option;
 			if (!TestTrue(TEXT("Stable saved contribution choice resolves at its authored tier"),
-				Definition->ResolveSavedTripod(Level, Choice, Tier, Option))) return false;
-			Save.SelectedTripodIndices[Tier] = Option;
+				Definition->ResolveSavedRefinement(Level, Choice, Tier, Option))) return false;
+			Save.SelectedRefinementIndices[Tier] = Option;
 			FRPGSkillRuntimeSpec Runtime;
 			Definition->BuildRuntimeSpec(nullptr, Save, Runtime);
 			FRPGCombatContributionAmounts Amounts;

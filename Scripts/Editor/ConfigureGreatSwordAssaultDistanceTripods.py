@@ -10,7 +10,7 @@ import math
 
 
 ASSET = "/Game/Blueprints/GameData/Skill/DA_Skill_AssultBlade"
-FIELDS = ["SkillTag", "TripodTiers", "DefaultExecutionPolicyClass", "DefaultExecutionConfig",
+FIELDS = ["SkillTag", "RefinementTiers", "DefaultExecutionPolicyClass", "DefaultExecutionConfig",
           "DefaultTargetingPolicyClass", "DefaultTargetingConfig", "SecurityProfile",
           "SkillMontage", "BaseCooldown", "MaxSkillLevel"]
 
@@ -52,7 +52,7 @@ def build_configuration(properties):
             equivalent(security["authorizedMovement"], desired), "Preserving a customized movement authorization")
     changed = not equivalent(security["authorizedMovement"], desired)
     security["authorizedMovement"] = desired
-    tiers = copy.deepcopy(properties["TripodTiers"])
+    tiers = copy.deepcopy(properties["RefinementTiers"])
     for level, identity, scalar, label, description in [
         (4, "LongReach", 1.2, "긴 돌진", "몽타주 루트 이동 거리가 20% 증가한다."),
         (7, "ExtraReach", 1.1, "추가 돌진 거리",
@@ -70,7 +70,7 @@ def build_configuration(properties):
             "cooldownReductionSeconds": 0.0,
             "persistenceId": identity, "optionName": label, "description": description, "optionIcon": "None",
             "statModifiers": [{"statTag": {"tagName": "Shared.Stat.MovementDistance"}, "scalarValue": scalar}],
-            "tripodTag": {"tagName": "None"}, "overrideActionClass": "None",
+            "refinementTag": {"tagName": "None"}, "overrideActionClass": "None",
             "overrideExecutionPolicyClass": "None", "overrideExecutionConfig": {},
             "overrideTargetingPolicyClass": "None", "overrideTargetingConfig": aim,
             "overrideMontage": "None", "overrideVFX": "None",
@@ -82,7 +82,7 @@ def build_configuration(properties):
         else:
             matches[0]["options"].append(expected)
             changed = True
-    return {"TripodTiers": tiers, "SecurityProfile": security}, changed
+    return {"RefinementTiers": tiers, "SecurityProfile": security}, changed
 
 
 def main():
@@ -106,16 +106,16 @@ def main():
         require_editable(asset)
         # ArrayAdd requires the existing outer elements to stay identical while
         # adding a tier. Append options to existing tiers in a separate step.
-        existing_count = len(properties["TripodTiers"])
-        if existing_count and len(update["TripodTiers"]) > existing_count:
-            intermediate = {"TripodTiers": update["TripodTiers"][:existing_count],
+        existing_count = len(properties["RefinementTiers"])
+        if existing_count and len(update["RefinementTiers"]) > existing_count:
+            intermediate = {"RefinementTiers": update["RefinementTiers"][:existing_count],
                             "SecurityProfile": update["SecurityProfile"]}
             require(unreal.ToolsetLibrary.set_object_properties(asset, json.dumps(intermediate, ensure_ascii=False)),
                     "Could not update existing Assault tiers before appending a new tier")
             # Preserve the engine's exact serialized prefix (including float32
             # values) so ArrayAdd sees only the intended new outer element.
-            current = json.loads(unreal.ToolsetLibrary.get_object_properties(asset, ["TripodTiers"]))
-            update["TripodTiers"][:existing_count] = current["TripodTiers"]
+            current = json.loads(unreal.ToolsetLibrary.get_object_properties(asset, ["RefinementTiers"]))
+            update["RefinementTiers"][:existing_count] = current["RefinementTiers"]
         require(unreal.ToolsetLibrary.set_object_properties(asset, json.dumps(update, ensure_ascii=False)),
                 "Could not set Assault distance choices")
         readback = json.loads(unreal.ToolsetLibrary.get_object_properties(asset, FIELDS))

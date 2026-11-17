@@ -3,12 +3,12 @@
 
 #include "UI/Skill/RPGSkillDetailModule.h"
 #include "UI/ViewModel/RPGSkillSlotViewModel.h"
-#include "UI/Skill/RPGTripodBoard.h"
+#include "UI/Skill/RPGSkillRefinementBoard.h"
 
 void URPGSkillDetailModule::SetSelectedSkill(URPGSkillSlotViewModel* InSkillSlotVM)
 {
 	CurrentSkillVM = InSkillSlotVM;
-	if (URPGTripodBoard* Board = Cast<URPGTripodBoard>(GetRootWidget()))
+	if (URPGSkillRefinementBoard* Board = Cast<URPGSkillRefinementBoard>(GetRootWidget()))
 	{
 		Board->InitializeBoard(CurrentSkillVM);
 	}

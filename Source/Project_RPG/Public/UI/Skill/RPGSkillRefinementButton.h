@@ -5,23 +5,23 @@
 #include "CoreMinimal.h"
 #include "CommonButtonBase.h"
 #include "Type/RPGStructTypes.h"
-#include "RPGTripodButton.generated.h"
+#include "RPGSkillRefinementButton.generated.h"
 
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnTripodButtonClicked, int32 /*Tier*/, int32 /*Index*/);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnRefinementButtonClicked, int32 /*Tier*/, int32 /*Index*/);
 
 /**
  * 연마 효과 개별 버튼
  */
 UCLASS(meta = (DisplayName = "연마 효과 버튼"))
-class PROJECT_RPG_API URPGTripodButton : public UCommonButtonBase
+class PROJECT_RPG_API URPGSkillRefinementButton : public UCommonButtonBase
 {
 	GENERATED_BODY()
 	
 public:
-	void InitializeTripod(int32 InTier, int32 InIndex, const FRPGSkillTripodOption& InOption);
-	void SetIsTripodSelected(bool bInSelected);
+	void InitializeRefinement(int32 InTier, int32 InIndex, const FRPGSkillRefinementOption& InOption);
+	void SetIsRefinementSelected(bool bInSelected);
 
-	FOnTripodButtonClicked OnTripodClicked;
+	FOnRefinementButtonClicked OnRefinementClicked;
 
 protected:
 	virtual void NativeOnInitialized() override;
@@ -34,17 +34,17 @@ protected:
 	int32 OptionIndex = -1;
 
 	UPROPERTY(BlueprintReadOnly, Category = "스킬 연마", meta = (DisplayName = "연마 효과"))
-	FRPGSkillTripodOption TripodOption;
+	FRPGSkillRefinementOption RefinementOption;
 
 	// UI 바인딩용 (아이콘, 텍스트 설정)
 	UFUNCTION(BlueprintImplementableEvent, Category = "스킬 연마", meta = (DisplayName = "연마 효과 초기화"))
-	void BP_OnTripodInitialized(const FRPGSkillTripodOption& Option, bool bIsSelected);
+	void BP_OnRefinementInitialized(const FRPGSkillRefinementOption& Option, bool bIsSelected);
 	
 	UFUNCTION(BlueprintImplementableEvent, Category = "스킬 연마")
 	void BP_OnSelectionChanged(bool bIsSelected);
 
 private:
-	void HandleTripodButtonClicked();
+	void HandleRefinementButtonClicked();
 
 public:
 	FORCEINLINE int32 GetOptionIndex() { return OptionIndex; }

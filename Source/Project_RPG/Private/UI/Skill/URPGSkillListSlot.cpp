@@ -39,7 +39,7 @@ void UURPGSkillListSlot::NativeOnListItemObjectSet(UObject* ListItemObject)
 		ViewModel->AddFieldValueChangedDelegate(
 			URPGSkillSlotViewModel::FFieldNotificationClassDescriptor::SkillLevel, Refresh);
 		ViewModel->AddFieldValueChangedDelegate(
-			URPGSkillSlotViewModel::FFieldNotificationClassDescriptor::CurrentTripodIndices, Refresh);
+			URPGSkillSlotViewModel::FFieldNotificationClassDescriptor::CurrentRefinementIndices, Refresh);
 	}
 
 	if (WidgetTree)
@@ -103,7 +103,7 @@ void UURPGSkillListSlot::RefreshSkillPresentation()
 		{
 			FRPGSkillSaveData Selection;
 			Selection.SkillLevel = ViewModel->SkillLevel;
-			Selection.SelectedTripodIndices = ViewModel->CurrentTripodIndices;
+			Selection.SelectedRefinementIndices = ViewModel->CurrentRefinementIndices;
 			ViewModel->GetSkillDefinition()->BuildRuntimeSpec(GetOwningPlayerPawn(), Selection, Spec);
 		}
 		const URPGSkillExecutionPolicy* Policy = Spec.ExecutionPolicyClass

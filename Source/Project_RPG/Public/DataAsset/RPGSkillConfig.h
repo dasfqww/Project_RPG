@@ -52,11 +52,11 @@ public:
 
 	/** 스킬 연마 설정 (3단계 구조) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "스킬 연마")
-	TArray<FRPGSkillTripodOption> Tier1Options;
+	TArray<FRPGSkillRefinementOption> Tier1Options;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "스킬 연마")
-	TArray<FRPGSkillTripodOption> Tier2Options;
+	TArray<FRPGSkillRefinementOption> Tier2Options;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "스킬 연마")
-	TArray<FRPGSkillTripodOption> Tier3Options;
+	TArray<FRPGSkillRefinementOption> Tier3Options;
 };

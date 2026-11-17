@@ -150,7 +150,7 @@ bool FRPGMenuFrontendTest::RunTest(const FString&)
 	for (const TCHAR* Name : {TEXT("Player.Ability.Skill.AssultBlade"), TEXT("Player.Ability.Skill.Charge"), TEXT("Player.Ability.Skill.WhirlWind")})
 	{
 		FRPGSavedProgressionSkill Skill; Skill.SkillTag = FGameplayTag::RequestGameplayTag(FName(Name));
-		Skill.Level = 1; Skill.TripodIds = {FString(), FString()}; Completed.Skills.Add(Skill);
+		Skill.Level = 1; Skill.RefinementIds = {FString(), FString()}; Completed.Skills.Add(Skill);
 	}
 	Completed.SkillSlots.SetNum(8); Completed.SkillSlots[0] = Completed.Skills[0].SkillTag; Completed.SkillSlots[1] = Completed.Skills[1].SkillTag;
 	FRPGCharacterProgressionResult Confirmed; Confirmed.bSuccessful = true; Confirmed.Snapshot = Completed;

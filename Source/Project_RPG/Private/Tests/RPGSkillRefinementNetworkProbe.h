@@ -9,16 +9,16 @@ class URPGPlayerSkillComponent;
 class URPGSkillCatalogSubsystem;
 class URPGSkillDefinition;
 class URPGSkillViewModel;
-class URPGTripodBoard;
+class URPGSkillRefinementBoard;
 class URPGAbilitySystemComponent;
 class SWidget;
 class FRPGSkillAssetCooldownProbe;
 
 /** Opt-in, transient fixture; never edits authored definitions or D1 abilities. */
-class FRPGSkillTripodNetworkProbe
+class FRPGSkillRefinementNetworkProbe
 {
 public:
-	~FRPGSkillTripodNetworkProbe();
+	~FRPGSkillRefinementNetworkProbe();
 	enum class EResult : uint8 { Waiting, Passed, Failed };
 	EResult Tick(APlayerController& Controller);
 	const FString& GetFailure() const { return Failure; }
@@ -39,7 +39,7 @@ private:
 	bool CheckState(const URPGPlayerSkillComponent& Component, int32 Level,
 		int32 Option, int32 RemainingSP) const;
 	bool RequestRejection(URPGPlayerSkillComponent& Component);
-	bool ClickTripod(int32 Tier, int32 Option);
+	bool ClickRefinement(int32 Tier, int32 Option);
 	bool CheckButtons(int32 Level, int32 Option) const;
 	EResult TickClientActivation(APlayerController& Controller, bool bCharge);
 	bool ObserveServerActivation(APlayerController& Controller);
@@ -53,7 +53,7 @@ private:
 	TStrongObjectPtr<URPGSkillDefinition> Definition;
 	TStrongObjectPtr<URPGSkillDefinition> BudgetDefinition;
 	TStrongObjectPtr<URPGSkillViewModel> ViewModel;
-	TStrongObjectPtr<URPGTripodBoard> Board;
+	TStrongObjectPtr<URPGSkillRefinementBoard> Board;
 	TSharedPtr<SWidget> SlateBoard;
 	TSharedPtr<FRPGSkillAssetCooldownProbe> AssetCooldownProbe;
 	TWeakObjectPtr<URPGAbilitySystemComponent> InputAbilitySystem;

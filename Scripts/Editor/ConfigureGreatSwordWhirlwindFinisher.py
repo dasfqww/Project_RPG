@@ -38,7 +38,7 @@ def build_configuration(before):
             equivalent(before["Contributions"], desired), "Preserving customized base contributions")
     require(before.get("ContributionHitSection", "None") in ("None", "End"), "Preserving a custom contribution section")
     require(before["MaxSkillLevel"] >= 7, "Level seven is unavailable")
-    tiers = copy.deepcopy(before["TripodTiers"])
+    tiers = copy.deepcopy(before["RefinementTiers"])
     matches = [tier for tier in tiers if tier["requiredSkillLevel"] == 7]
     require(len(matches) == 1, "Expected one existing level-seven row")
     expected = {
@@ -46,7 +46,7 @@ def build_configuration(before):
         "description": "회전 종료 타격의 무력화 기여가 20에서 25로 증가한다. 반복 타격과 종료 타격 전 취소·헛침에는 기여하지 않는다.",
         "optionIcon": "None", "statModifiers": [{
             "statTag": {"tagName": "Shared.Stat.StaggerContribution"}, "scalarValue": 1.25}],
-        "cooldownReductionSeconds": 0.0, "tripodTag": {"tagName": "None"},
+        "cooldownReductionSeconds": 0.0, "refinementTag": {"tagName": "None"},
         "overrideActionClass": "None", "overrideExecutionPolicyClass": "None", "overrideExecutionConfig": {},
         "overrideTargetingPolicyClass": "None", "overrideTargetingConfig": {},
         "overrideMontage": "None", "overrideVFX": "None",
@@ -57,7 +57,7 @@ def build_configuration(before):
         require(equivalent(existing[0], expected), "Preserving a customized finishing choice")
     else:
         matches[0]["options"].append(expected)
-    return {"Contributions": desired, "ContributionHitSection": "End", "TripodTiers": tiers}
+    return {"Contributions": desired, "ContributionHitSection": "End", "RefinementTiers": tiers}
 
 
 def notify_snapshot(unreal, montage):

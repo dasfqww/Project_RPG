@@ -31,7 +31,7 @@ struct PROJECT_RPG_API FRPGSkillRuntimeSpec
 
 	void Reset();
 	float GetStatScalar(const FGameplayTag& StatTag, float DefaultValue = 1.0f) const;
-	bool HasTripodTag(const FGameplayTag& TripodTag) const;
+	bool HasRefinementTag(const FGameplayTag& RefinementTag) const;
 	float GetCooldownDuration(float MinimumDuration = 1.0f) const;
 	/** Resolve the frozen Radius scalar without changing the authored profile or security limits.
 	 * Sectors/rings and boxes expand horizontally; capsules retain their proportions;
@@ -61,10 +61,10 @@ struct PROJECT_RPG_API FRPGSkillRuntimeSpec
 
 	/** Invalid or locked selections are normalized to INDEX_NONE. */
 	UPROPERTY(BlueprintReadOnly, Transient, Category = "Skill")
-	TArray<int32> SelectedTripodIndices;
+	TArray<int32> SelectedRefinementIndices;
 
 	UPROPERTY(BlueprintReadOnly, Transient, Category = "Skill")
-	FGameplayTagContainer TripodTags;
+	FGameplayTagContainer RefinementTags;
 
 	/** Multipliers with the same tag are composed multiplicatively. */
 	UPROPERTY(BlueprintReadOnly, Transient, Category = "Skill")
@@ -98,7 +98,7 @@ struct PROJECT_RPG_API FRPGSkillRuntimeSpec
 	UPROPERTY(BlueprintReadOnly, Transient, Category = "Skill")
 	float BaseCooldown = 1.0f;
 
-	/** Frozen sum of the selected, unlocked tripods' flat cooldown reductions. */
+	/** Frozen sum of the selected, unlocked refinements' flat cooldown reductions. */
 	UPROPERTY(BlueprintReadOnly, Transient, Category = "Skill")
 	float CooldownReductionSeconds = 0.0f;
 

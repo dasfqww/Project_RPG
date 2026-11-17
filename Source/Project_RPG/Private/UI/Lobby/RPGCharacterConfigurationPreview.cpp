@@ -11,18 +11,18 @@ bool RPGCharacterConfigurationPreview::Resolve(const URPGSkillDefinition& Defini
 {
 	OutSpec.Reset();
 	if (Draft.SkillTag != Definition.SkillTag || !Draft.SkillTag.IsValid() || Draft.Level < 1
-		|| Definition.ClampSkillLevel(Draft.Level) != Draft.Level || Draft.TripodIds.Num() != 2) return false;
+		|| Definition.ClampSkillLevel(Draft.Level) != Draft.Level || Draft.RefinementIds.Num() != 2) return false;
 	FRPGSkillSaveData Save;
 	Save.SkillLevel = Draft.Level;
-	Save.SelectedTripodIndices.Init(INDEX_NONE, Definition.TripodTiers.Num());
-	for (int32 Tier = 0; Tier < Draft.TripodIds.Num(); ++Tier)
+	Save.SelectedRefinementIndices.Init(INDEX_NONE, Definition.RefinementTiers.Num());
+	for (int32 Tier = 0; Tier < Draft.RefinementIds.Num(); ++Tier)
 	{
-		if (Draft.TripodIds[Tier].IsEmpty()) continue;
+		if (Draft.RefinementIds[Tier].IsEmpty()) continue;
 		const int32 RequiredLevel = Tier == 0 ? 4 : 7; // Existing frontend save contract, not asset array indices.
 		int32 TierIndex, OptionIndex;
-		if (!Definition.ResolveSavedTripod(RequiredLevel, FName(*Draft.TripodIds[Tier]), TierIndex, OptionIndex)
-			|| !Definition.IsTripodSelectionAllowed(Draft.Level, TierIndex, OptionIndex)) return false;
-		Save.SelectedTripodIndices[TierIndex] = OptionIndex;
+		if (!Definition.ResolveSavedRefinement(RequiredLevel, FName(*Draft.RefinementIds[Tier]), TierIndex, OptionIndex)
+			|| !Definition.IsRefinementSelectionAllowed(Draft.Level, TierIndex, OptionIndex)) return false;
+		Save.SelectedRefinementIndices[TierIndex] = OptionIndex;
 	}
 	FRPGSkillRuntimeSpec Candidate;
 	Definition.BuildRuntimeSpec(nullptr, Save, Candidate);

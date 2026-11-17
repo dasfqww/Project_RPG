@@ -316,9 +316,9 @@ EDataValidationResult URPGSkillDefinition::IsDataValid(
 			"Maximum Targets Per Query."));
 	}
 
-	for (int32 TierIndex = 0; TierIndex < TripodTiers.Num(); ++TierIndex)
+	for (int32 TierIndex = 0; TierIndex < RefinementTiers.Num(); ++TierIndex)
 	{
-		const FRPGSkillTripodTier& Tier = TripodTiers[TierIndex];
+		const FRPGSkillRefinementTier& Tier = RefinementTiers[TierIndex];
 		if (Tier.RequiredSkillLevel < 1 ||
 			Tier.RequiredSkillLevel > MaxSkillLevel)
 		{
@@ -333,7 +333,7 @@ EDataValidationResult URPGSkillDefinition::IsDataValid(
 		for (int32 OptionIndex = 0;
 			OptionIndex < Tier.Options.Num(); ++OptionIndex)
 		{
-			const FRPGSkillTripodOption& Option = Tier.Options[OptionIndex];
+			const FRPGSkillRefinementOption& Option = Tier.Options[OptionIndex];
 			if (!FMath::IsFinite(Option.CooldownReductionSeconds) || Option.CooldownReductionSeconds < 0.0f)
 				Fail(NSLOCTEXT("RPGSkillDefinition", "InvalidTripodCooldownReduction",
 					"Tripod cooldown reduction must be finite, nonnegative seconds."));
@@ -457,23 +457,23 @@ EDataValidationResult URPGSkillDefinition::IsDataValid(
 }
 #endif
 
-bool URPGSkillDefinition::ResolveSavedTripod(const int32 RequiredSkillLevel, const FName PersistenceId,
+bool URPGSkillDefinition::ResolveSavedRefinement(const int32 RequiredSkillLevel, const FName PersistenceId,
 	int32& OutTierIndex, int32& OutOptionIndex) const
 {
 	OutTierIndex = OutOptionIndex = INDEX_NONE;
 	if (PersistenceId.IsNone()) return false;
 	int32 MatchingTier = INDEX_NONE;
-	for (int32 Tier = 0; Tier < TripodTiers.Num(); ++Tier)
+	for (int32 Tier = 0; Tier < RefinementTiers.Num(); ++Tier)
 	{
-		if (TripodTiers[Tier].RequiredSkillLevel != RequiredSkillLevel) continue;
+		if (RefinementTiers[Tier].RequiredSkillLevel != RequiredSkillLevel) continue;
 		if (MatchingTier != INDEX_NONE) return false;
 		MatchingTier = Tier;
 	}
 	if (MatchingTier == INDEX_NONE) return false;
 	int32 MatchingOption = INDEX_NONE;
-	for (int32 Option = 0; Option < TripodTiers[MatchingTier].Options.Num(); ++Option)
+	for (int32 Option = 0; Option < RefinementTiers[MatchingTier].Options.Num(); ++Option)
 	{
-		if (TripodTiers[MatchingTier].Options[Option].PersistenceId != PersistenceId) continue;
+		if (RefinementTiers[MatchingTier].Options[Option].PersistenceId != PersistenceId) continue;
 		if (MatchingOption != INDEX_NONE) return false;
 		MatchingOption = Option;
 	}
@@ -489,12 +489,12 @@ int32 URPGSkillDefinition::ClampSkillLevel(
 	return FMath::Clamp(RequestedLevel, 1, FMath::Max(1, MaxSkillLevel));
 }
 
-bool URPGSkillDefinition::IsTripodSelectionAllowed(
+bool URPGSkillDefinition::IsRefinementSelectionAllowed(
 	const int32 SkillLevel,
 	const int32 TierIndex,
 	const int32 OptionIndex) const
 {
-	if (!TripodTiers.IsValidIndex(TierIndex) || OptionIndex < INDEX_NONE)
+	if (!RefinementTiers.IsValidIndex(TierIndex) || OptionIndex < INDEX_NONE)
 	{
 		return false;
 	}
@@ -503,7 +503,7 @@ bool URPGSkillDefinition::IsTripodSelectionAllowed(
 		return true;
 	}
 
-	const FRPGSkillTripodTier& Tier = TripodTiers[TierIndex];
+	const FRPGSkillRefinementTier& Tier = RefinementTiers[TierIndex];
 	return ClampSkillLevel(SkillLevel) >= Tier.RequiredSkillLevel &&
 		Tier.Options.IsValidIndex(OptionIndex);
 }
@@ -512,19 +512,19 @@ void URPGSkillDefinition::NormalizeSaveData(
 	FRPGSkillSaveData& InOutSaveData) const
 {
 	InOutSaveData.SkillLevel = ClampSkillLevel(InOutSaveData.SkillLevel);
-	while (InOutSaveData.SelectedTripodIndices.Num() < TripodTiers.Num())
+	while (InOutSaveData.SelectedRefinementIndices.Num() < RefinementTiers.Num())
 	{
-		InOutSaveData.SelectedTripodIndices.Add(INDEX_NONE);
+		InOutSaveData.SelectedRefinementIndices.Add(INDEX_NONE);
 	}
-	if (InOutSaveData.SelectedTripodIndices.Num() > TripodTiers.Num())
+	if (InOutSaveData.SelectedRefinementIndices.Num() > RefinementTiers.Num())
 	{
-		InOutSaveData.SelectedTripodIndices.SetNum(TripodTiers.Num());
+		InOutSaveData.SelectedRefinementIndices.SetNum(RefinementTiers.Num());
 	}
 
-	for (int32 TierIndex = 0; TierIndex < TripodTiers.Num(); ++TierIndex)
+	for (int32 TierIndex = 0; TierIndex < RefinementTiers.Num(); ++TierIndex)
 	{
-		int32& Selection = InOutSaveData.SelectedTripodIndices[TierIndex];
-		if (!IsTripodSelectionAllowed(
+		int32& Selection = InOutSaveData.SelectedRefinementIndices[TierIndex];
+		if (!IsRefinementSelectionAllowed(
 			InOutSaveData.SkillLevel,
 			TierIndex,
 			Selection))
@@ -593,32 +593,32 @@ void URPGSkillDefinition::BuildRuntimeSpec(
 		}
 	}
 
-	const int32 SelectionCount = FMath::Max(3, TripodTiers.Num());
-	OutSpec.SelectedTripodIndices.Init(INDEX_NONE, SelectionCount);
-	for (int32 TierIndex = 0; TierIndex < TripodTiers.Num(); ++TierIndex)
+	const int32 SelectionCount = FMath::Max(3, RefinementTiers.Num());
+	OutSpec.SelectedRefinementIndices.Init(INDEX_NONE, SelectionCount);
+	for (int32 TierIndex = 0; TierIndex < RefinementTiers.Num(); ++TierIndex)
 	{
-		if (!NormalizedSaveData.SelectedTripodIndices.IsValidIndex(TierIndex))
+		if (!NormalizedSaveData.SelectedRefinementIndices.IsValidIndex(TierIndex))
 		{
 			continue;
 		}
 
-		const FRPGSkillTripodTier& Tier = TripodTiers[TierIndex];
+		const FRPGSkillRefinementTier& Tier = RefinementTiers[TierIndex];
 		const int32 OptionIndex =
-			NormalizedSaveData.SelectedTripodIndices[TierIndex];
+			NormalizedSaveData.SelectedRefinementIndices[TierIndex];
 		if (!Tier.Options.IsValidIndex(OptionIndex))
 		{
 			continue;
 		}
 
-		OutSpec.SelectedTripodIndices[TierIndex] = OptionIndex;
-		const FRPGSkillTripodOption& Option = Tier.Options[OptionIndex];
+		OutSpec.SelectedRefinementIndices[TierIndex] = OptionIndex;
+		const FRPGSkillRefinementOption& Option = Tier.Options[OptionIndex];
 		const float Reduction = Option.CooldownReductionSeconds;
 		const float CombinedReduction = OutSpec.CooldownReductionSeconds + Reduction;
 		if (FMath::IsFinite(Reduction) && Reduction >= 0.0f && FMath::IsFinite(CombinedReduction))
 			OutSpec.CooldownReductionSeconds = CombinedReduction;
-		if (Option.TripodTag.IsValid())
+		if (Option.RefinementTag.IsValid())
 		{
-			OutSpec.TripodTags.AddTag(Option.TripodTag);
+			OutSpec.RefinementTags.AddTag(Option.RefinementTag);
 		}
 
 		for (const FRPGSkillModifier& Modifier : Option.StatModifiers)
@@ -678,7 +678,7 @@ void URPGSkillDefinition::BuildRuntimeSpec(
 		return;
 	}
 
-	// State overrides are intentionally resolved after tripods. This provides a
+	// State overrides are intentionally resolved after refinements. This provides a
 	// deterministic final layer for identities, stances, and transformation modes.
 	for (const FSkillModeOverride& Override : ModeOverrides)
 	{
@@ -740,14 +740,14 @@ void URPGSkillDefinition::BuildRuntimeSpec(
 
 void URPGSkillDefinition::GetSkillDataForContext(
 	AActor* InActor,
-	const TArray<int32>& SelectedTripods,
+	const TArray<int32>& SelectedRefinements,
 	UTexture2D*& OutIcon,
 	UAnimMontage*& OutMontage,
 	TSubclassOf<URPGSkillAction>& OutActionClass) const
 {
 	FRPGSkillSaveData SaveData;
 	SaveData.SkillLevel = FMath::Max(1, MaxSkillLevel);
-	SaveData.SelectedTripodIndices = SelectedTripods;
+	SaveData.SelectedRefinementIndices = SelectedRefinements;
 
 	FRPGSkillRuntimeSpec RuntimeSpec;
 	BuildRuntimeSpec(InActor, SaveData, RuntimeSpec);

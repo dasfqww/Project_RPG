@@ -10,7 +10,7 @@ import math
 
 
 ASSET = "/Game/Blueprints/GameData/Skill/DA_Skill_WhirlWind"
-FIELDS = ["SkillTag", "TripodTiers", "TargetingProfile", "SecurityProfile",
+FIELDS = ["SkillTag", "RefinementTiers", "TargetingProfile", "SecurityProfile",
           "DefaultExecutionPolicyClass", "MaxSkillLevel"]
 
 
@@ -45,7 +45,7 @@ def build_configuration(properties):
     require(math.isfinite(radius) and radius > 0 and math.isfinite(limit) and limit > 0
             and radius * 1.2 <= limit, "Area choice exceeds the authored server distance limit")
 
-    tiers = copy.deepcopy(properties["TripodTiers"])
+    tiers = copy.deepcopy(properties["RefinementTiers"])
     changed = False
     # Reserve the level-four row before appending level seven on an empty asset.
     # No movement choice or effectless persistent ID is authored here.
@@ -62,7 +62,7 @@ def build_configuration(properties):
         "description": "회전 공격의 반경이 20% 증가한다. 공격 높이와 지속시간은 유지한다.",
         "optionIcon": "None",
         "statModifiers": [{"statTag": {"tagName": "Shared.Stat.Radius"}, "scalarValue": 1.2}],
-        "tripodTag": {"tagName": "None"}, "overrideActionClass": "None",
+        "refinementTag": {"tagName": "None"}, "overrideActionClass": "None",
         "overrideExecutionPolicyClass": "None", "overrideExecutionConfig": {},
         "overrideTargetingPolicyClass": "None", "overrideTargetingConfig": {},
         "overrideMontage": "None", "overrideVFX": "None",
@@ -74,7 +74,7 @@ def build_configuration(properties):
     else:
         tier["options"].append(expected)
         changed = True
-    return {"TripodTiers": tiers}, changed
+    return {"RefinementTiers": tiers}, changed
 
 
 def main():

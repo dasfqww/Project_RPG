@@ -20,7 +20,7 @@ FIELDS = ["SkillTag", "SkillDataHandle", "SkillName", "SkillIcon", "SkillMontage
           "DefaultTargetingPolicyClass", "DefaultTargetingConfig", "BaseCooldown",
           "TargetingProfile", "SecurityProfile", "HitReactionPolicy", "StunDuration",
           "Knockback", "Slow", "Burn", "Stagger", "ActivationImmunities", "ModeOverrides",
-          "TripodTiers", "MaxSkillLevel"]
+          "RefinementTiers", "MaxSkillLevel"]
 CHARGE_FIELDS = ["MaxChargeHoldTime", "MaxChargeLevel", "ChargeTimePerLevel",
                  "MontageSections", "ChargeLevelSettings"]
 
@@ -56,7 +56,7 @@ def build_configuration(properties, tag, cooldown):
             "Missing authored soft-target data")
     movement = properties["SecurityProfile"]["authorizedMovement"]
     require(movement["bEnabled"] and movement["durationSeconds"] > 0, "Missing bounded montage movement authorization")
-    tiers = copy.deepcopy(properties["TripodTiers"])
+    tiers = copy.deepcopy(properties["RefinementTiers"])
     for level, identity, reduction, distance, label, description in [
         (4, "QuickApproach", 2.0, 0.8, "빠른 접근",
          "돌진 이동 거리가 20% 감소하고 기본 쿨타임이 2초 감소한다. 추가 회복과 함께 선택하면 5초다."),
@@ -73,7 +73,7 @@ def build_configuration(properties, tag, cooldown):
             "statModifiers": ([{"statTag": {"tagName": "Shared.Stat.MovementDistance"}, "scalarValue": distance}]
                               if distance is not None else []),
             "cooldownReductionSeconds": reduction,
-            "tripodTag": {"tagName": "None"}, "overrideActionClass": "None",
+            "refinementTag": {"tagName": "None"}, "overrideActionClass": "None",
             "overrideExecutionPolicyClass": "None", "overrideExecutionConfig": {},
             "overrideTargetingPolicyClass": "None", "overrideTargetingConfig": aim,
             "overrideMontage": "None", "overrideVFX": "None",
@@ -85,7 +85,7 @@ def build_configuration(properties, tag, cooldown):
             require(equivalent(existing[0], expected), "Preserving a customized choice: " + identity)
         else:
             options.append(expected)
-    update["TripodTiers"] = tiers
+    update["RefinementTiers"] = tiers
     return update
 
 
@@ -95,7 +95,7 @@ def main():
 
     apply = "-RPGConfigureGreatSwordCombatBaseline" in unreal.SystemLibrary.get_command_line()
     if apply:
-        require(hasattr(unreal.RPGSkillTripodOption(), "cooldown_reduction_seconds"),
+        require(hasattr(unreal.RPGSkillRefinementOption(), "cooldown_reduction_seconds"),
                 "Load the normal module with flat cooldown reduction before saving")
     require(unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_game_world() is None,
             "Finish PIE before editing skill content")

@@ -1,6 +1,18 @@
 # 스킬 및 연마 효과 모듈 아키텍처
 
-> 2026-11-18 명칭 확정: 출시용 시스템명은 **스킬 연마**, 단계는 **연마 1·2·3단계**, 개별 선택지는 **연마 효과**로 통일한다. 로비의 해금 표시는 “4레벨 스킬 연마”처럼 스킬 레벨을 함께 표시한다. 기존 `Tripod` 타입·프로퍼티·RPC·JSON `tripods`·안정 ID·에셋 경로는 호환성을 위해 유지한다. 아래 과거 구현/검증 기록의 이전 명칭은 당시 기록이며 별도 시스템을 뜻하지 않는다.
+## 2026-11-18 스킬 연마 네이티브 명칭 전환
+
+`URPGTripodBoard/Button`과 `FRPGSkillTripodTier/Option`을 각각 `URPGSkillRefinementBoard/Button`, `FRPGSkillRefinementTier/Option`으로 변경했다. 관련 멤버는 `RefinementTiers`, `SelectedRefinementIndices`, `RefinementIds`, `SelectRefinement`, `RequestRefinementSelection` 등의 이름을 사용한다. UI 소스 4개와 개발용 네트워크 검사 클래스의 소스 2개를 새 이름으로 옮기고, UE 작성 스크립트 9개도 새 프로퍼티/파이썬 타입으로 연결했다.
+
+Core Redirect 20개는 클래스 2개·구조체 2개·프로퍼티 9개·함수 7개다. 부모 타입이 먼저 변경된 뒤 멤버를 읽는 경우도 지원한다. 기존 WBP 패키지와 안정 옵션 ID, 서버 JSON `tripods`, 개발 검사 CLI/로그와 작성 스크립트 파일명은 유지한다. 에셋 재저장은 하지 않았다.
+
+게시 `3ab19f89`와 본인 입력을 고정한 사설 Editor 타깃은 UHT·1078단계·DLL 링크/종료 0을 통과했다. 변경/헤더 참조 검사와 게임 소스를 모두 컴파일하고 무관한 독립 검사 114개는 사본에서 제외했다(게시본의 중복 검사 클래스 1개 포함). 실제 새 모듈에서 native 12개가 성공했다. Redirect 20개·기존 WBP 2개·Definition 4개/안정 선택지 16개, 버튼 선택→GAS, 구성 미리보기와 쿨타임/레벨 규칙을 확인했다. 검사 오류 0·에셋/디버그 경고 147, 기동 Condition 오류 15는 별도 기록했다. 경고 없는 실행으로 보고하지 않는다.
+
+원본 게임 소스 41입력은 선언한 이름 변경 외 코드 토큰이 같고, Python 9개 구문·JSON 필드 보존·최종 입력 SHA와 에셋 불변을 확인했다. 새 검사의 경로 표현 비교는 사설 컴파일 전 canonical 이름 비교로 보완하고 동일 바이트를 원본에 반영했다. 실제 화면 렌더링·다인 네트워크·Shipping과 정상 DLL 설치는 수행하지 않았다. 후속 다른 담당 변경을 포함한 전체 HEAD 검증으로 확대하지 않는다.
+
+자기 임시 사본·OBJ/PCH·DLL/PDB·캐시 7,038,227,676 bytes(약 6.55 GiB)와 Content 링크 1개를 안전 폐기했다. 잔여 임시/PID/예외 0이며 원본 Content·Binaries·Intermediate와 다른 담당의 작업은 보존했다. 작은 `Saved/BuildChecks/SkillRefinementCode-20261118/Completion.json`과 최소 로그만 로컬 유지한다. 폐기한 모듈 SHA는 당시 실행 증거다.
+
+> 2026-11-18 명칭 확정: 출시용 시스템명은 **스킬 연마**, 단계는 **연마 1·2·3단계**, 개별 선택지는 **연마 효과**로 통일한다. 로비의 해금 표시는 “4레벨 스킬 연마”처럼 스킬 레벨을 함께 표시한다. 후속 코드 정리에서는 네이티브 UI 클래스/구조체를 `SkillRefinement`, 관련 멤버를 `Refinement`로 변경하고 구형 클래스·구조체·프로퍼티·BP 함수 이름은 `Config/DefaultEngine.ini`의 Core Redirect로 연결한다. 서버 JSON `tripods`·안정 ID·WBP 에셋 경로·기존 검사 CLI/로그·작성 스크립트 파일명은 호환성을 위해 유지한다. 아래 과거 구현/검증 기록의 이전 명칭은 당시 기록이며 별도 시스템을 뜻하지 않는다.
 
 > 갱신일: 2026-10-25 (초기 설계: 2026-07-20)
 >
@@ -33,7 +45,7 @@
 - `RPGPlayerSkillAbilities.cpp` 하나가 여러 플레이어 직업 스킬의 수명주기, 타기팅, 피해, 상태이상, 연출을 함께 소유한다.
 - `URPGSkillDefinition`, `URPGSkillAction`, 스킬 연마 UI가 존재하지만 D1 이식 Ability와 연결되지 않았다.
 - `URPGSkillConfig`와 `URPGSkillDefinition`이 비슷한 데이터를 중복 정의한다.
-- `FRPGSkillModifier`, `TripodTag`, Montage/VFX Override 데이터가 실행 경로에서 실제로 소비되지 않았다.
+- `FRPGSkillModifier`, `RefinementTag`, Montage/VFX Override 데이터가 실행 경로에서 실제로 소비되지 않았다.
 - `URPGPlayerSkillComponent`가 플레이어에 구성되거나 서버 권한으로 복제되지 않아 선택값을 신뢰할 수 없다.
 - `OverrideActionClass`만으로 모든 변형을 처리하면 스킬 연마 조합 수만큼 클래스가 증가한다.
 
@@ -84,7 +96,7 @@ GameplayAbility Container (수명주기/예측/커밋)
 스킬 연마는 우선 다음 세 수단을 조합한다.
 
 1. `StatModifiers`: 피해, 범위, 쿨다운 같은 수치 배율
-2. `TripodTag`: 관통, 폭발, 다단히트 같은 실행 분기
+2. `RefinementTag`: 관통, 폭발, 다단히트 같은 실행 분기
 3. Montage/VFX Override: 표현 교체
 
 전체 실행 방식이 완전히 달라질 때만 `OverrideActionClass`를 사용한다. 예를 들어 투사체 수 증가나 폭발 추가 때문에 새 Action 클래스를 만들지 않고, 태그와 Feature Module 조합으로 처리한다.
@@ -103,7 +115,7 @@ GameplayAbility Container (수명주기/예측/커밋)
 
 - [x] RuntimeSpec 타입 추가
 - [x] 스킬 연마 레벨/인덱스 검증 및 수치 배율 합성
-- [x] TripodTag, Action, Montage, VFX 최종 해석
+- [x] RefinementTag, Action, Montage, VFX 최종 해석
 - [x] SkillContainer와 ChargeAction이 RuntimeSpec을 소비
 - [x] `URPGSkillDefinition`을 신규 스킬의 단일 원본으로 확정
 - [x] Editor `-NoLink` UHT/C++ 빌드 및 Game 타깃 전체 링크 성공

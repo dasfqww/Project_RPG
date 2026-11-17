@@ -45,11 +45,11 @@ void URPGSkillSlotViewModel::RefreshFromSaveData(const FRPGSkillSaveData& Data)
 		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(SkillLevel);
 	}
 
-	if (CurrentTripodIndices != Data.SelectedTripodIndices)
+	if (CurrentRefinementIndices != Data.SelectedRefinementIndices)
 	{
-		CurrentTripodIndices = Data.SelectedTripodIndices;
-		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(CurrentTripodIndices);
-		OnTripodIndicesChanged.Broadcast(CurrentTripodIndices);
+		CurrentRefinementIndices = Data.SelectedRefinementIndices;
+		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(CurrentRefinementIndices);
+		OnRefinementIndicesChanged.Broadcast(CurrentRefinementIndices);
 	}
 
 	// 다음 레벨업 비용 계산
@@ -81,12 +81,12 @@ FGameplayTag URPGSkillSlotViewModel::GetSkillTag() const
 	return FGameplayTag();
 }
 
-void URPGSkillSlotViewModel::RequestTripodSelection(int32 Tier, int32 OptionIndex)
+void URPGSkillSlotViewModel::RequestRefinementSelection(int32 Tier, int32 OptionIndex)
 {
 	if (OwnerSkillComponent.IsValid() && SkillDefinition)
 	{
 		FGameplayTag SkillTag = SkillDefinition->SkillTag;
-		if (OwnerSkillComponent->SelectTripod(SkillTag, Tier, OptionIndex))
+		if (OwnerSkillComponent->SelectRefinement(SkillTag, Tier, OptionIndex))
 		{
 			// 성공 시 데이터 갱신
 			FRPGSkillSaveData NewData = OwnerSkillComponent->GetSkillSaveData(SkillTag);
@@ -95,11 +95,11 @@ void URPGSkillSlotViewModel::RequestTripodSelection(int32 Tier, int32 OptionInde
 	}
 }
 
-bool URPGSkillSlotViewModel::IsTripodSelected(int32 Tier, int32 OptionIndex) const
+bool URPGSkillSlotViewModel::IsRefinementSelected(int32 Tier, int32 OptionIndex) const
 {
-	if (CurrentTripodIndices.IsValidIndex(Tier))
+	if (CurrentRefinementIndices.IsValidIndex(Tier))
 	{
-		return CurrentTripodIndices[Tier] == OptionIndex;
+		return CurrentRefinementIndices[Tier] == OptionIndex;
 	}
 	return false;
 }

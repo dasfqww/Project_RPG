@@ -10,7 +10,7 @@ import math
 
 
 ASSET = "/Game/Blueprints/GameData/Skill/DA_Skill_WhirlWind"
-FIELDS = ["SkillTag", "TripodTiers", "DefaultExecutionPolicyClass", "DefaultExecutionConfig",
+FIELDS = ["SkillTag", "RefinementTiers", "DefaultExecutionPolicyClass", "DefaultExecutionConfig",
           "DefaultTargetingPolicyClass", "DefaultTargetingConfig", "MaxSkillLevel"]
 
 
@@ -44,7 +44,7 @@ def build_configuration(properties):
             "Missing native holding data")
     require(targeting.get("_structType") == "/Script/Project_RPG.RPGSkillCameraDirectionTargetingConfig",
             "Missing native camera-direction data")
-    tiers = copy.deepcopy(properties["TripodTiers"])
+    tiers = copy.deepcopy(properties["RefinementTiers"])
     matching = [tier for tier in tiers if tier.get("requiredSkillLevel") == 4]
     require(len(matching) == 1, "Author the reserved level-four row before movement choices")
     options = matching[0]["options"]
@@ -63,7 +63,7 @@ def build_configuration(properties):
             "cooldownReductionSeconds": 0.0,
             "persistenceId": identity, "optionName": label, "description": description, "optionIcon": "None",
             "statModifiers": [{"statTag": {"tagName": "Shared.Stat.Damage"}, "scalarValue": damage}],
-            "tripodTag": {"tagName": "None"}, "overrideActionClass": "None",
+            "refinementTag": {"tagName": "None"}, "overrideActionClass": "None",
             "overrideExecutionPolicyClass": "None", "overrideExecutionConfig": config,
             "overrideTargetingPolicyClass": "None", "overrideTargetingConfig": aim,
             "overrideMontage": "None", "overrideVFX": "None",
@@ -75,7 +75,7 @@ def build_configuration(properties):
         else:
             options.append(expected)
             changed = True
-    return {"TripodTiers": tiers}, changed
+    return {"RefinementTiers": tiers}, changed
 
 
 def main():

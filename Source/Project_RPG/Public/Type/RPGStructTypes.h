@@ -43,7 +43,7 @@ struct FRPGSkillSaveData
 
 	// 선택된 스킬 연마 인덱스 배열 (인덱스 0: 1티어, 1: 2티어, 2: 3티어 / -1은 선택 안됨)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "선택한 연마 효과"))
-	TArray<int32> SelectedTripodIndices = { -1, -1, -1 };
+	TArray<int32> SelectedRefinementIndices = { -1, -1, -1 };
 };
 
 USTRUCT(BlueprintType)
@@ -130,7 +130,7 @@ struct FRPGSkillModifier
  * 스킬 연마 효과 선택지 (통합본)
  */
 USTRUCT(BlueprintType, meta = (DisplayName = "연마 효과"))
-struct FRPGSkillTripodOption
+struct FRPGSkillRefinementOption
 {
 	GENERATED_BODY()
 
@@ -157,7 +157,7 @@ struct FRPGSkillTripodOption
 
 	/** 2. 로직 분기 태그 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic", meta = (DisplayName = "연마 효과 태그"))
-	FGameplayTag TripodTag;
+	FGameplayTag RefinementTag;
 
 	/** 3. 로직 자체 교체: 차징->즉발 등 (새 기능) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic")

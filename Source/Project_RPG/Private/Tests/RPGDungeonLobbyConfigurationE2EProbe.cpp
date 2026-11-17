@@ -468,7 +468,7 @@ bool URPGDungeonFlowE2EClient::TickLobbyConfigurationProbe(UWorld*, APlayerContr
 			return Fail(TEXT("ConfigurationDraftNavigationNotRefreshed"));
 		AssaultLevel->SetSelectedIndex(1); // would exceed the confirmed three SP
 		if (AssaultLevel->GetSelectedIndex() != 0 || ChargeTier1->GetIsEnabled()
-			|| Configuration->SetTripodChoice(Charge, 1, TEXT("Stagger")))
+			|| Configuration->SetRefinementChoice(Charge, 1, TEXT("Stagger")))
 			return Fail(TEXT("ConfigurationEligibilityGuardFailed"));
 		ChargeTier0->SetSelectedIndex(1);
 		if (bPreview)
@@ -567,7 +567,7 @@ bool URPGDungeonFlowE2EClient::TickLobbyConfigurationProbe(UWorld*, APlayerContr
 			FRPGSavedProgressionSkill SiblingCharge;
 			SiblingCharge.SkillTag = Charge;
 			SiblingCharge.Level = 1;
-			SiblingCharge.TripodIds = { TEXT(""), TEXT("") };
+			SiblingCharge.RefinementIds = { TEXT(""), TEXT("") };
 			const FText Expected = RPGCharacterConfigurationPreview::Describe(
 				GI->GetSubsystem<URPGSkillCatalogSubsystem>()->FindSkillDefinition(Charge), SiblingCharge);
 			if (Configuration->GetSkillPreview(Charge).ToString() != Expected.ToString())

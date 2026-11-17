@@ -1,5 +1,5 @@
 #include "Tests/RPGSkillNetworkE2EProbeComponent.h"
-#include "Tests/RPGSkillTripodNetworkProbe.h"
+#include "Tests/RPGSkillRefinementNetworkProbe.h"
 #include "Tests/RPGSkillDamageNetworkProbe.h"
 #include "Tests/RPGSkillFinalCapNetworkProbe.h"
 #include "Tests/RPGNPCDeathNetworkProbe.h"
@@ -28,7 +28,7 @@
 #include "Skill/RPGSkillDefinition.h"
 #include "Skill/RPGSkillExecutionTypes.h"
 #include "UI/MVVM/RPGSkillViewModel.h"
-#include "UI/Skill/RPGTripodBoard.h"
+#include "UI/Skill/RPGSkillRefinementBoard.h"
 #include "UI/ViewModel/RPGSkillSlotViewModel.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UnrealType.h"
@@ -139,7 +139,7 @@ void URPGSkillNetworkE2EProbeComponent::BeginPlay()
 	}
 	if (FParse::Param(FCommandLine::Get(), TEXT("RPGSkillTripodE2E")))
 	{
-		TripodProbe = MakeShared<FRPGSkillTripodNetworkProbe>();
+		RefinementProbe = MakeShared<FRPGSkillRefinementNetworkProbe>();
 		DeadlineSeconds += ProbeTimeoutSeconds;
 	}
 	SetComponentTickEnabled(true);
@@ -155,7 +155,7 @@ void URPGSkillNetworkE2EProbeComponent::EndPlay(
 {
 	FinishProbe();
 	DamageProbe.Reset();
-	TripodProbe.Reset();
+	RefinementProbe.Reset();
 	FinalCapProbe.Reset();
 	NPCDeathProbe.Reset();
 	Super::EndPlay(EndPlayReason);
@@ -199,17 +199,17 @@ void URPGSkillNetworkE2EProbeComponent::TickComponent(
 	{
 		return;
 	}
-	if (TripodProbe)
+	if (RefinementProbe)
 	{
 		if (!Controller->HasAuthority() && !Controller->IsLocalController()) return;
-		const auto Result = TripodProbe->Tick(*Controller);
-		if (Result == FRPGSkillTripodNetworkProbe::EResult::Failed)
+		const auto Result = RefinementProbe->Tick(*Controller);
+		if (Result == FRPGSkillRefinementNetworkProbe::EResult::Failed)
 		{
 			RPG_SKILL_PROBE_LOG(Error, TEXT("RPG_SKILL_TRIPOD_NETTEST FAILED Role=%s Reason=%s"),
-				Controller->HasAuthority() ? TEXT("Server") : TEXT("Client"), *TripodProbe->GetFailure());
-			FailProbe(*TripodProbe->GetFailure());
+				Controller->HasAuthority() ? TEXT("Server") : TEXT("Client"), *RefinementProbe->GetFailure());
+			FailProbe(*RefinementProbe->GetFailure());
 		}
-		else if (Result == FRPGSkillTripodNetworkProbe::EResult::Passed)
+		else if (Result == FRPGSkillRefinementNetworkProbe::EResult::Passed)
 		{
 			FinishProbe();
 		}

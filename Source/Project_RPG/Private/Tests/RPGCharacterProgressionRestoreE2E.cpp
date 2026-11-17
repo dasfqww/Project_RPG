@@ -142,14 +142,14 @@ bool URPGCharacterProgressionRestoreE2E::TickProbe(float)
 	const auto* ChargeBinding = Definition->FindSkill(Charge);
 	if (!ChargeBinding || !ChargeBinding->Definition
 		|| (ChargeChoice != TEXT("FullCharge") && ChargeChoice != TEXT("QuickCharge"))
-		|| !ChargeBinding->Definition->ResolveSavedTripod(4, FName(*ChargeChoice), Tier, Option)) return Fail(TEXT("AuthoredTripod"));
+		|| !ChargeBinding->Definition->ResolveSavedRefinement(4, FName(*ChargeChoice), Tier, Option)) return Fail(TEXT("AuthoredTripod"));
 	FRPGSkillSaveData ChargeSave;
 	if (!Growth->TryGetSkillSaveData(Charge, ChargeSave)) return true;
 	if (View.BackendRevision != 3 || View.Experience != 100 || View.Level != 2 || View.ProfileId != TEXT("FirstSlice.GreatSword.v1")
 		|| Definition->ClassId != TEXT("GreatSwordWarrior") || Growth->GetTotalSP() != 3 || Growth->GetRemainingSP() != 0
 		|| Growth->IsConfigurationMutable() || !Growth->IsClassIdentityUnlocked() || !Growth->IsSkillAcquired(Assault)
 		|| !Growth->IsSkillAcquired(Whirlwind) || Growth->IsSkillAcquired(Jump) || ChargeSave.SkillLevel != 4
-		|| !ChargeSave.SelectedTripodIndices.IsValidIndex(Tier) || ChargeSave.SelectedTripodIndices[Tier] != Option)
+		|| !ChargeSave.SelectedRefinementIndices.IsValidIndex(Tier) || ChargeSave.SelectedRefinementIndices[Tier] != Option)
 		return Fail(TEXT("SavedGrowthMismatch"));
 	for (int32 Index = 0; Index < 8; ++Index)
 	{
@@ -279,7 +279,7 @@ bool URPGCharacterProgressionRestoreE2E::TickProbe(float)
 		const auto& Runtime = Skill->GetActiveSkillSpec();
 		const auto* Config = Runtime.ExecutionConfig.GetPtr<FRPGSkillChargeExecutionConfig>();
 		if (!Config || Runtime.SkillTag != Charge || Runtime.SkillLevel != 4
-			|| !Runtime.SelectedTripodIndices.IsValidIndex(Tier) || Runtime.SelectedTripodIndices[Tier] != Option
+			|| !Runtime.SelectedRefinementIndices.IsValidIndex(Tier) || Runtime.SelectedRefinementIndices[Tier] != Option
 			|| !FMath::IsNearlyEqual(Config->ChargeTimePerLevel * Config->MaxChargeLevel, ChargeChoice == TEXT("FullCharge") ? 1.2f : 0.7f)
 			|| Config->MinimumReleaseLevel != Config->MaxChargeLevel) return Fail(TEXT("FrozenRuntimeMismatch"));
 		const auto Handle = ChargeSpec->Handle;

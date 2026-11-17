@@ -72,17 +72,17 @@ bool FRPGCharacterProgressionSnapshotCodec::Decode(const FString& Body, const FS
 	{
 		if (!Value || Value->Type != EJson::Object) return false;
 		const auto& Object = Value->AsObject();
-		const TArray<TSharedPtr<FJsonValue>>* Tripods = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Refinements = nullptr;
 		FRPGSavedProgressionSkill Skill;
 		const TSharedPtr<FJsonValue>* TagValue = Object->Values.Find(TEXT("skillTag"));
 		if (!TagValue || !TagValue->IsValid() || !ReadTag(**TagValue, Skill.SkillTag, false)
 			|| Acquired.Contains(Skill.SkillTag) || !ReadInteger(*Object, TEXT("level"), 1, Skill.Level) || Skill.Level > 128
-			|| !Object->TryGetArrayField(TEXT("tripods"), Tripods) || !Tripods || Tripods->Num() != 2) return false;
-		for (const auto& Choice : *Tripods)
+			|| !Object->TryGetArrayField(TEXT("tripods"), Refinements) || !Refinements || Refinements->Num() != 2) return false;
+		for (const auto& Choice : *Refinements)
 		{
 			FString Id;
 			if (!Choice || Choice->Type != EJson::String || !Choice->TryGetString(Id) || Id.Len() > 32) return false;
-			Skill.TripodIds.Add(MoveTemp(Id));
+			Skill.RefinementIds.Add(MoveTemp(Id));
 		}
 		Acquired.Add(Skill.SkillTag);
 		Record.Skills.Add(MoveTemp(Skill));
@@ -123,20 +123,20 @@ bool FRPGCharacterProgressionSnapshot::BuildSkillRestoreData(const URPGPlayerCla
 		const auto* Binding = Definition.FindSkill(Saved.SkillTag);
 		const auto* Skill = Binding ? Binding->Definition.Get() : nullptr;
 		if (!Skill || Acquired.Contains(Saved.SkillTag) || Saved.Level < 1 || Saved.Level > Skill->MaxSkillLevel
-			|| Saved.TripodIds.Num() != 2) return Fail(TEXT("Saved skill acquisition or level requires content migration."));
+			|| Saved.RefinementIds.Num() != 2) return Fail(TEXT("Saved skill acquisition or level requires content migration."));
 		Acquired.Add(Saved.SkillTag);
 		FRPGReplicatedSkillSaveEntry& Entry = Record.AcquiredSkills.AddDefaulted_GetRef();
 		Entry.SkillTag = Saved.SkillTag;
 		Entry.SaveData.SkillLevel = Saved.Level;
-		Entry.SaveData.SelectedTripodIndices.Init(INDEX_NONE, Skill->TripodTiers.Num());
-		for (int32 SavedTier = 0; SavedTier < Saved.TripodIds.Num(); ++SavedTier)
+		Entry.SaveData.SelectedRefinementIndices.Init(INDEX_NONE, Skill->RefinementTiers.Num());
+		for (int32 SavedTier = 0; SavedTier < Saved.RefinementIds.Num(); ++SavedTier)
 		{
-			if (Saved.TripodIds[SavedTier].IsEmpty()) continue;
+			if (Saved.RefinementIds[SavedTier].IsEmpty()) continue;
 			int32 TierIndex = INDEX_NONE, OptionIndex = INDEX_NONE;
-			if (!Skill->ResolveSavedTripod(SavedTier == 0 ? 4 : 7, FName(*Saved.TripodIds[SavedTier]), TierIndex, OptionIndex)
-				|| !Skill->IsTripodSelectionAllowed(Saved.Level, TierIndex, OptionIndex))
+			if (!Skill->ResolveSavedRefinement(SavedTier == 0 ? 4 : 7, FName(*Saved.RefinementIds[SavedTier]), TierIndex, OptionIndex)
+				|| !Skill->IsRefinementSelectionAllowed(Saved.Level, TierIndex, OptionIndex))
 				return Fail(TEXT("Saved tripod identity or unlock tier requires content migration."));
-			Entry.SaveData.SelectedTripodIndices[TierIndex] = OptionIndex;
+			Entry.SaveData.SelectedRefinementIndices[TierIndex] = OptionIndex;
 		}
 		for (int32 SkillLevel = 2; SkillLevel <= Saved.Level; ++SkillLevel)
 			CalculatedUsedSP += Growth.GetRequiredSPForLevel(SkillLevel);
@@ -168,18 +168,18 @@ bool FRPGCharacterProgressionSnapshotCodec::EncodeConfiguration(const FRPGCharac
 	for (const auto& Skill : Command.Skills)
 	{
 		if (!Skill.SkillTag.IsValid() || Acquired.Contains(Skill.SkillTag) || Skill.Level < 1 || Skill.Level > 128
-			|| Skill.TripodIds.Num() != 2) return false;
+			|| Skill.RefinementIds.Num() != 2) return false;
 		Acquired.Add(Skill.SkillTag);
 		const auto Row = MakeShared<FJsonObject>();
 		Row->SetStringField(TEXT("skillTag"), Skill.SkillTag.ToString());
 		Row->SetNumberField(TEXT("level"), Skill.Level);
-		TArray<TSharedPtr<FJsonValue>> Tripods;
-		for (const FString& Id : Skill.TripodIds)
+		TArray<TSharedPtr<FJsonValue>> Refinements;
+		for (const FString& Id : Skill.RefinementIds)
 		{
 			if (Id.Len() > 32) return false;
-			Tripods.Add(MakeShared<FJsonValueString>(Id));
+			Refinements.Add(MakeShared<FJsonValueString>(Id));
 		}
-		Row->SetArrayField(TEXT("tripods"), Tripods);
+		Row->SetArrayField(TEXT("tripods"), Refinements);
 		Skills.Add(MakeShared<FJsonValueObject>(Row));
 	}
 	for (const FGameplayTag Tag : Command.SkillSlots)

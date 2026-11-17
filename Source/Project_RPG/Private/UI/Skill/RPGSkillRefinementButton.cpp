@@ -1,9 +1,9 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "UI/Skill/RPGTripodButton.h"
+#include "UI/Skill/RPGSkillRefinementButton.h"
 
-void URPGTripodButton::NativeOnInitialized()
+void URPGSkillRefinementButton::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
@@ -12,21 +12,21 @@ void URPGTripodButton::NativeOnInitialized()
 	SetIsSelectable(false);
 	SetShouldSelectUponReceivingFocus(false);
 	SetIsInteractableWhenSelected(true);
-	OnClicked().AddUObject(this, &ThisClass::HandleTripodButtonClicked);
+	OnClicked().AddUObject(this, &ThisClass::HandleRefinementButtonClicked);
 }
 
-void URPGTripodButton::InitializeTripod(int32 InTier, int32 InIndex, const FRPGSkillTripodOption& InOption)
+void URPGSkillRefinementButton::InitializeRefinement(int32 InTier, int32 InIndex, const FRPGSkillRefinementOption& InOption)
 {
 	TierIndex = InTier;
 	OptionIndex = InIndex;
-	TripodOption = InOption;
+	RefinementOption = InOption;
 
-	SetIsTripodSelected(false);
+	SetIsRefinementSelected(false);
 	// 초기화 시 선택 상태는 기본 false로
-	BP_OnTripodInitialized(TripodOption, false);
+	BP_OnRefinementInitialized(RefinementOption, false);
 }
 
-void URPGTripodButton::SetIsTripodSelected(bool bInSelected)
+void URPGSkillRefinementButton::SetIsRefinementSelected(bool bInSelected)
 {
 	// Apply authoritative/predicted model state even for a non-toggleable
 	// authored button. SetIsSelected(false) otherwise cannot clear selection.
@@ -37,15 +37,15 @@ void URPGTripodButton::SetIsTripodSelected(bool bInSelected)
 	BP_OnSelectionChanged(bInSelected);
 }
 
-void URPGTripodButton::HandleTripodButtonClicked()
+void URPGSkillRefinementButton::HandleRefinementButtonClicked()
 {
-	if (OnTripodClicked.IsBound())
+	if (OnRefinementClicked.IsBound())
 	{
-		OnTripodClicked.Broadcast(TierIndex, OptionIndex);
+		OnRefinementClicked.Broadcast(TierIndex, OptionIndex);
 	}
 }
 
-void URPGTripodButton::NativeOnCurrentTextStyleChanged()
+void URPGSkillRefinementButton::NativeOnCurrentTextStyleChanged()
 {
 	Super::NativeOnCurrentTextStyleChanged();
 	// 필요 시 텍스트 스타일 변경 로직 추가

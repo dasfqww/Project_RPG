@@ -41,8 +41,8 @@
 #include "Skill/RPGSkillTargetingTypes.h"
 #include "UI/MVVM/RPGSkillViewModel.h"
 #include "UI/Skill/RPGSkillLevelAdjuster.h"
-#include "UI/Skill/RPGTripodBoard.h"
-#include "UI/Skill/RPGTripodButton.h"
+#include "UI/Skill/RPGSkillRefinementBoard.h"
+#include "UI/Skill/RPGSkillRefinementButton.h"
 #include "UI/ViewModel/RPGSkillSlotViewModel.h"
 #include "CommonTextBlock.h"
 #include "UObject/StrongObjectPtr.h"
@@ -603,13 +603,13 @@ bool FRPGSkillRecoveryCooldownIntegrationTest::RunTest(const FString& Parameters
 	Definition->SkillVFX = nullptr;
 	FRPGSkillSaveData Save;
 	Save.SkillLevel = 7;
-	Save.SelectedTripodIndices.Init(INDEX_NONE, Definition->TripodTiers.Num());
+	Save.SelectedRefinementIndices.Init(INDEX_NONE, Definition->RefinementTiers.Num());
 	for (const auto& Choice : {TPair<int32, FName>(4, TEXT("QuickApproach")), TPair<int32, FName>(7, TEXT("ExtraRecovery"))})
 	{
 		int32 Tier, Option;
 		if (!TestTrue(TEXT("Resolve the stable saved recovery choice"),
-			Definition->ResolveSavedTripod(Choice.Key, Choice.Value, Tier, Option))) return false;
-		Save.SelectedTripodIndices[Tier] = Option;
+			Definition->ResolveSavedRefinement(Choice.Key, Choice.Value, Tier, Option))) return false;
+		Save.SelectedRefinementIndices[Tier] = Option;
 	}
 	RPGSkillIntegrationTests::FFixture Fixture;
 	if (!Fixture.Initialize(*this, Definition, Save)) return false;
@@ -685,16 +685,16 @@ bool FRPGPlayerSkillSelectionSnapshotTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	// Only the fixture receives this tripod; no authored asset or D1 code changes.
+	// Only the fixture receives this refinement; no authored asset or D1 code changes.
 	URPGSkillDefinition* Definition = DuplicateObject<URPGSkillDefinition>(
 		AuthoredDefinition, GetTransientPackage());
 	Definition->SkillVFX = nullptr;
 	AddInfo(FString::Printf(TEXT("Fixture cooldown normalized: authored=%g seconds, test=1 second"), Definition->BaseCooldown));
 	Definition->BaseCooldown = 1.0f;
-	Definition->TripodTiers.Reset();
-	FRPGSkillTripodTier& Tier = Definition->TripodTiers.AddDefaulted_GetRef();
+	Definition->RefinementTiers.Reset();
+	FRPGSkillRefinementTier& Tier = Definition->RefinementTiers.AddDefaulted_GetRef();
 	Tier.RequiredSkillLevel = 4;
-	FRPGSkillTripodOption& Option = Tier.Options.AddDefaulted_GetRef();
+	FRPGSkillRefinementOption& Option = Tier.Options.AddDefaulted_GetRef();
 	Option.OverrideExecutionPolicyClass = URPGSkillExecutionPolicy_Instant::StaticClass();
 	FRPGSkillInstantExecutionConfig InstantConfig;
 	InstantConfig.StartSection = TEXT("Attack");
@@ -726,7 +726,7 @@ bool FRPGPlayerSkillSelectionSnapshotTest::RunTest(const FString& Parameters)
 	};
 	FRPGSkillSaveData Selection;
 	Selection.SkillLevel = 4;
-	Selection.SelectedTripodIndices = {0};
+	Selection.SelectedRefinementIndices = {0};
 	DeliverSelection(Selection);
 	URPGSkillViewModel* ViewModel = NewObject<URPGSkillViewModel>(Fixture.Player);
 	ViewModel->InitializeSkillData(Component, {Definition});
@@ -737,7 +737,7 @@ bool FRPGPlayerSkillSelectionSnapshotTest::RunTest(const FString& Parameters)
 	}
 	URPGSkillSlotViewModel* Slot = ViewModel->SkillSlots[0];
 	TestEqual(TEXT("UI reads the selected skill level"), Slot->SkillLevel, 4);
-	TestTrue(TEXT("UI reads the selected tripod"), Slot->IsTripodSelected(0, 0));
+	TestTrue(TEXT("UI reads the selected tripod"), Slot->IsRefinementSelected(0, 0));
 	Fixture.Press();
 	if (!TestTrue(TEXT("The native player's ASC activates the skill"), Fixture.Ability->IsActive()))
 	{
@@ -752,10 +752,10 @@ bool FRPGPlayerSkillSelectionSnapshotTest::RunTest(const FString& Parameters)
 		Fixture.AnimInstance->Montage_GetCurrentSection(), FName(TEXT("Attack")));
 
 	Selection.SkillLevel = 1;
-	Selection.SelectedTripodIndices = {INDEX_NONE};
+	Selection.SelectedRefinementIndices = {INDEX_NONE};
 	DeliverSelection(Selection);
 	TestEqual(TEXT("OnRep refreshes the existing UI slot"), Slot->SkillLevel, 1);
-	TestFalse(TEXT("OnRep clears the UI's selected tripod"), Slot->IsTripodSelected(0, 0));
+	TestFalse(TEXT("OnRep clears the UI's selected tripod"), Slot->IsRefinementSelected(0, 0));
 	TestEqual(TEXT("Selection changes cannot mutate an active level snapshot"),
 		Fixture.Ability->GetActiveSkillSpec().SkillLevel, 4);
 	TestTrue(TEXT("Selection changes cannot mutate an active execution snapshot"),
@@ -779,17 +779,17 @@ bool FRPGPlayerSkillSelectionSnapshotTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FRPGSkillTripodButtonExecutionTest,
+	FRPGSkillRefinementButtonExecutionTest,
 	"ProjectRPG.Skill.Integration.TripodButtonExecution",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FRPGSkillTripodButtonExecutionTest::RunTest(const FString& Parameters)
+bool FRPGSkillRefinementButtonExecutionTest::RunTest(const FString& Parameters)
 {
 	URPGSkillDefinition* Authored = LoadObject<URPGSkillDefinition>(nullptr,
 		TEXT("/Game/Blueprints/GameData/Skill/DA_Skill_ChargeSlash.DA_Skill_ChargeSlash"));
-	UClass* BoardClass = LoadClass<URPGTripodBoard>(nullptr,
+	UClass* BoardClass = LoadClass<URPGSkillRefinementBoard>(nullptr,
 		TEXT("/Game/Blueprints/UI/Skill/WBP_TripodBoard.WBP_TripodBoard_C"));
-	UClass* ButtonClass = LoadClass<URPGTripodButton>(nullptr,
+	UClass* ButtonClass = LoadClass<URPGSkillRefinementButton>(nullptr,
 		TEXT("/Game/Blueprints/UI/Skill/WBP_TripodButton.WBP_TripodButton_C"));
 	if (!TestNotNull(TEXT("Authored charge definition"), Authored)
 		|| !TestNotNull(TEXT("Authored tripod board"), BoardClass)
@@ -814,17 +814,17 @@ bool FRPGSkillTripodButtonExecutionTest::RunTest(const FString& Parameters)
 	Definition->SkillVFX = nullptr;
 	AddInfo(FString::Printf(TEXT("Fixture cooldown normalized: authored=%g seconds, test=1 second"), Definition->BaseCooldown));
 	Definition->BaseCooldown = 1.0f;
-	Definition->TripodTiers.Reset();
-	FRPGSkillTripodTier& Tier = Definition->TripodTiers.AddDefaulted_GetRef();
+	Definition->RefinementTiers.Reset();
+	FRPGSkillRefinementTier& Tier = Definition->RefinementTiers.AddDefaulted_GetRef();
 	Tier.RequiredSkillLevel = 4;
-	FRPGSkillTripodOption& Instant = Tier.Options.AddDefaulted_GetRef();
+	FRPGSkillRefinementOption& Instant = Tier.Options.AddDefaulted_GetRef();
 	Instant.OptionName = FText::FromString(TEXT("Instant fixture"));
 	Instant.OverrideExecutionPolicyClass = URPGSkillExecutionPolicy_Instant::StaticClass();
 	FRPGSkillInstantExecutionConfig InstantConfig;
 	InstantConfig.StartSection = TEXT("Attack");
 	Instant.OverrideExecutionConfig.InitializeAs<FRPGSkillInstantExecutionConfig>(InstantConfig);
 	Tier.Options.AddDefaulted_GetRef().OptionName = FText::FromString(TEXT("Charge fixture"));
-	FRPGSkillTripodTier& LockedTier = Definition->TripodTiers.AddDefaulted_GetRef();
+	FRPGSkillRefinementTier& LockedTier = Definition->RefinementTiers.AddDefaulted_GetRef();
 	LockedTier.RequiredSkillLevel = 7;
 	LockedTier.Options.AddDefaulted();
 
@@ -837,19 +837,19 @@ bool FRPGSkillTripodButtonExecutionTest::RunTest(const FString& Parameters)
 	Model->InitializeSkillData(Component, {Definition});
 	if (!TestEqual(TEXT("One skill slot"), Model->SkillSlots.Num(), 1)) return false;
 	URPGSkillSlotViewModel* Slot = Model->SkillSlots[0];
-	URPGTripodBoard* Board = NewObject<URPGTripodBoard>(GetTransientPackage(), BoardClass);
+	URPGSkillRefinementBoard* Board = NewObject<URPGSkillRefinementBoard>(GetTransientPackage(), BoardClass);
 	if (!TestTrue(TEXT("Authored board initializes"), Board->Initialize())) return false;
 	[[maybe_unused]] const TSharedRef<SWidget> SlateBoard = Board->TakeWidget();
 	Board->InitializeBoard(Slot);
-	URPGTripodButton* InstantButton = Cast<URPGTripodButton>(Board->GetWidgetFromName(TEXT("Btn_1_1")));
-	URPGTripodButton* ChargeButton = Cast<URPGTripodButton>(Board->GetWidgetFromName(TEXT("Btn_1_2")));
-	URPGTripodButton* MissingButton = Cast<URPGTripodButton>(Board->GetWidgetFromName(TEXT("Btn_1_3")));
-	URPGTripodButton* LockedButton = Cast<URPGTripodButton>(Board->GetWidgetFromName(TEXT("Btn_2_1")));
+	URPGSkillRefinementButton* InstantButton = Cast<URPGSkillRefinementButton>(Board->GetWidgetFromName(TEXT("Btn_1_1")));
+	URPGSkillRefinementButton* ChargeButton = Cast<URPGSkillRefinementButton>(Board->GetWidgetFromName(TEXT("Btn_1_2")));
+	URPGSkillRefinementButton* MissingButton = Cast<URPGSkillRefinementButton>(Board->GetWidgetFromName(TEXT("Btn_1_3")));
+	URPGSkillRefinementButton* LockedButton = Cast<URPGSkillRefinementButton>(Board->GetWidgetFromName(TEXT("Btn_2_1")));
 	if (!TestNotNull(TEXT("Instant tripod button"), InstantButton)
 		|| !TestNotNull(TEXT("Charge tripod button"), ChargeButton)
 		|| !TestNotNull(TEXT("Missing option button"), MissingButton)
 		|| !TestNotNull(TEXT("Locked tier button"), LockedButton)) return false;
-	const auto Click = [](URPGTripodButton* Button)
+	const auto Click = [](URPGSkillRefinementButton* Button)
 	{
 		// Exercise CommonUI's actual handler, including its automatic selection
 		// logic. This is not an OnClicked delegate or simulated mouse hardware.
@@ -858,13 +858,13 @@ bool FRPGSkillTripodButtonExecutionTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Level one locks the first tier"), InstantButton->GetIsEnabled());
 	TestTrue(TEXT("Absent options are collapsed"), MissingButton->GetVisibility() == ESlateVisibility::Collapsed);
 	Click(InstantButton);
-	TestFalse(TEXT("Locked button cannot select through CommonUI"), Slot->IsTripodSelected(0, 0));
+	TestFalse(TEXT("Locked button cannot select through CommonUI"), Slot->IsRefinementSelected(0, 0));
 	for (int32 Level = 1; Level < 4; ++Level) Model->RequestSkillLevelUp(Definition->SkillTag);
 	TestEqual(TEXT("Level commands reach the canonical component"), Slot->SkillLevel, 4);
 	TestTrue(TEXT("The first tier unlocks reactively"), InstantButton->GetIsEnabled());
 	TestFalse(TEXT("Higher tier remains locked"), LockedButton->GetIsEnabled());
 	Click(InstantButton);
-	TestTrue(TEXT("CommonUI click reaches the real selection command"), Slot->IsTripodSelected(0, 0));
+	TestTrue(TEXT("CommonUI click reaches the real selection command"), Slot->IsRefinementSelected(0, 0));
 	TestTrue(TEXT("The selected native button matches the model"), InstantButton->GetSelected());
 	TestFalse(TEXT("Unselected native button stays clear"), ChargeButton->GetSelected());
 	Fixture.Press();
@@ -874,7 +874,7 @@ bool FRPGSkillTripodButtonExecutionTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("The actual montage starts at Attack"),
 		Fixture.AnimInstance->Montage_GetCurrentSection(), FName(TEXT("Attack")));
 	Click(ChargeButton);
-	TestTrue(TEXT("Active class execution rejects configuration changes"), Slot->IsTripodSelected(0, 0));
+	TestTrue(TEXT("Active class execution rejects configuration changes"), Slot->IsRefinementSelected(0, 0));
 	TestFalse(TEXT("Rejected switch cannot select the charge button"), ChargeButton->GetSelected());
 	TestTrue(TEXT("Rejected UI changes preserve the active execution snapshot"),
 		Fixture.Ability->GetActiveSkillSpec().ExecutionPolicyClass == URPGSkillExecutionPolicy_Instant::StaticClass());
@@ -882,17 +882,17 @@ bool FRPGSkillTripodButtonExecutionTest::RunTest(const FString& Parameters)
 	Fixture.Release();
 	Fixture.Advance(1.1f);
 	Click(ChargeButton);
-	TestTrue(TEXT("Switching buttons updates the same slot"), Slot->IsTripodSelected(0, 1));
+	TestTrue(TEXT("Switching buttons updates the same slot"), Slot->IsRefinementSelected(0, 1));
 	TestFalse(TEXT("Switch clears the previous native selection"), InstantButton->GetSelected());
 	TestTrue(TEXT("Switch selects only the new native button"), ChargeButton->GetSelected());
 	TestFalse(TEXT("An explicit duplicate selection is a no-op"),
-		Component->SelectTripod(Definition->SkillTag, 0, 1));
-	TestTrue(TEXT("Duplicate explicit commands preserve model selection"), Slot->IsTripodSelected(0, 1));
+		Component->SelectRefinement(Definition->SkillTag, 0, 1));
+	TestTrue(TEXT("Duplicate explicit commands preserve model selection"), Slot->IsRefinementSelected(0, 1));
 	Click(ChargeButton);
 	TestFalse(TEXT("Clicking the selected UI option clears its display"), ChargeButton->GetSelected());
-	TestFalse(TEXT("The UI clear command also clears model selection"), Slot->IsTripodSelected(0, 1));
+	TestFalse(TEXT("The UI clear command also clears model selection"), Slot->IsRefinementSelected(0, 1));
 	Click(ChargeButton);
-	TestTrue(TEXT("A new UI click selects the option again"), ChargeButton->GetSelected() && Slot->IsTripodSelected(0, 1));
+	TestTrue(TEXT("A new UI click selects the option again"), ChargeButton->GetSelected() && Slot->IsRefinementSelected(0, 1));
 	Fixture.Press();
 	if (!TestTrue(TEXT("Next activation succeeds"), Fixture.Ability->IsActive())) return false;
 	TestTrue(TEXT("Switch restores charge on the next activation"),
@@ -1262,42 +1262,42 @@ bool FRPGSkillDefinitionProgressionRulesTest::RunTest(
 	URPGSkillDefinition* Definition = NewObject<URPGSkillDefinition>();
 	Definition->MaxSkillLevel = 5;
 
-	FRPGSkillTripodTier& FirstTier =
-		Definition->TripodTiers.AddDefaulted_GetRef();
+	FRPGSkillRefinementTier& FirstTier =
+		Definition->RefinementTiers.AddDefaulted_GetRef();
 	FirstTier.RequiredSkillLevel = 2;
 	FirstTier.Options.AddDefaulted(2);
-	FRPGSkillTripodTier& SecondTier =
-		Definition->TripodTiers.AddDefaulted_GetRef();
+	FRPGSkillRefinementTier& SecondTier =
+		Definition->RefinementTiers.AddDefaulted_GetRef();
 	SecondTier.RequiredSkillLevel = 4;
 	SecondTier.Options.AddDefaulted();
 
 	FRPGSkillSaveData SaveData;
 	SaveData.SkillLevel = 99;
-	SaveData.SelectedTripodIndices = {1, 7, 0};
+	SaveData.SelectedRefinementIndices = {1, 7, 0};
 	Definition->NormalizeSaveData(SaveData);
 	TestEqual(TEXT("Authored maximum level clamps save data"),
 		SaveData.SkillLevel,
 		5);
 	TestEqual(TEXT("Selection count follows authored tripod tiers"),
-		SaveData.SelectedTripodIndices.Num(),
+		SaveData.SelectedRefinementIndices.Num(),
 		2);
 	TestEqual(TEXT("A valid authored option is preserved"),
-		SaveData.SelectedTripodIndices[0],
+		SaveData.SelectedRefinementIndices[0],
 		1);
 	TestEqual(TEXT("An out-of-range option is cleared"),
-		SaveData.SelectedTripodIndices[1],
+		SaveData.SelectedRefinementIndices[1],
 		INDEX_NONE);
 
 	SaveData.SkillLevel = 3;
-	SaveData.SelectedTripodIndices = {0, 0};
+	SaveData.SelectedRefinementIndices = {0, 0};
 	Definition->NormalizeSaveData(SaveData);
 	TestEqual(TEXT("A locked-tier selection is cleared"),
-		SaveData.SelectedTripodIndices[1],
+		SaveData.SelectedRefinementIndices[1],
 		INDEX_NONE);
 	TestTrue(TEXT("A locked tier can always be deselected"),
-		Definition->IsTripodSelectionAllowed(1, 1, INDEX_NONE));
+		Definition->IsRefinementSelectionAllowed(1, 1, INDEX_NONE));
 	TestFalse(TEXT("Unknown tripod options are rejected"),
-		Definition->IsTripodSelectionAllowed(5, 1, 2));
+		Definition->IsRefinementSelectionAllowed(5, 1, 2));
 
 	return true;
 }
@@ -1340,15 +1340,15 @@ bool FRPGSkillDefinitionDataValidationTest::RunTest(
 		EDataValidationResult::Invalid);
 
 	Definition->DefaultExecutionConfig.Reset();
-	FRPGSkillTripodTier& Tier =
-		Definition->TripodTiers.AddDefaulted_GetRef();
+	FRPGSkillRefinementTier& Tier =
+		Definition->RefinementTiers.AddDefaulted_GetRef();
 	Tier.RequiredSkillLevel = 1;
-	FRPGSkillTripodOption& Option = Tier.Options.AddDefaulted_GetRef();
+	FRPGSkillRefinementOption& Option = Tier.Options.AddDefaulted_GetRef();
 	Option.OverrideExecutionPolicyClass =
 		URPGSkillExecutionPolicy_Charge::StaticClass();
-	FDataValidationContext InvalidTripodContext;
+	FDataValidationContext InvalidRefinementContext;
 	TestEqual(TEXT("A tripod cannot select a policy without its config"),
-		Definition->IsDataValid(InvalidTripodContext),
+		Definition->IsDataValid(InvalidRefinementContext),
 		EDataValidationResult::Invalid);
 
 	Option.OverrideExecutionPolicyClass =
@@ -1356,9 +1356,9 @@ bool FRPGSkillDefinitionDataValidationTest::RunTest(
 	FRPGSkillInstantExecutionConfig InstantConfig;
 	Option.OverrideExecutionConfig.InitializeAs<
 		FRPGSkillInstantExecutionConfig>(InstantConfig);
-	FDataValidationContext ValidTripodContext;
+	FDataValidationContext ValidRefinementContext;
 	TestEqual(TEXT("A type-safe tripod execution override is valid"),
-		Definition->IsDataValid(ValidTripodContext),
+		Definition->IsDataValid(ValidRefinementContext),
 		EDataValidationResult::Valid);
 
 	return true;
@@ -1448,9 +1448,9 @@ bool FRPGSkillRuntimeSpecExecutionOverrideTest::RunTest(
 	Definition->DefaultExecutionConfig
 		.InitializeAs<FRPGSkillChargeExecutionConfig>(DefaultConfig);
 
-	FRPGSkillTripodTier& Tier = Definition->TripodTiers.AddDefaulted_GetRef();
+	FRPGSkillRefinementTier& Tier = Definition->RefinementTiers.AddDefaulted_GetRef();
 	Tier.RequiredSkillLevel = 1;
-	FRPGSkillTripodOption& Option = Tier.Options.AddDefaulted_GetRef();
+	FRPGSkillRefinementOption& Option = Tier.Options.AddDefaulted_GetRef();
 	Option.OverrideExecutionPolicyClass =
 		URPGSkillExecutionPolicy_Instant::StaticClass();
 	FRPGSkillInstantExecutionConfig InstantConfig;
@@ -1460,7 +1460,7 @@ bool FRPGSkillRuntimeSpecExecutionOverrideTest::RunTest(
 
 	FRPGSkillSaveData SaveData;
 	SaveData.SkillLevel = 1;
-	SaveData.SelectedTripodIndices = {0, INDEX_NONE, INDEX_NONE};
+	SaveData.SelectedRefinementIndices = {0, INDEX_NONE, INDEX_NONE};
 
 	FRPGSkillRuntimeSpec RuntimeSpec;
 	Definition->BuildRuntimeSpec(nullptr, SaveData, RuntimeSpec);
@@ -1500,9 +1500,9 @@ bool FRPGSkillRuntimeSpecCastingChainOverrideTest::RunTest(
 	Definition->DefaultExecutionConfig.InitializeAs<
 		FRPGSkillCastingExecutionConfig>(CastingConfig);
 
-	FRPGSkillTripodTier& Tier = Definition->TripodTiers.AddDefaulted_GetRef();
+	FRPGSkillRefinementTier& Tier = Definition->RefinementTiers.AddDefaulted_GetRef();
 	Tier.RequiredSkillLevel = 1;
-	FRPGSkillTripodOption& Option = Tier.Options.AddDefaulted_GetRef();
+	FRPGSkillRefinementOption& Option = Tier.Options.AddDefaulted_GetRef();
 	Option.OverrideExecutionPolicyClass =
 		URPGSkillExecutionPolicy_Chain::StaticClass();
 	FRPGSkillChainExecutionConfig ChainConfig;
@@ -1513,7 +1513,7 @@ bool FRPGSkillRuntimeSpecCastingChainOverrideTest::RunTest(
 
 	FRPGSkillSaveData SaveData;
 	SaveData.SkillLevel = 1;
-	SaveData.SelectedTripodIndices = {0, INDEX_NONE, INDEX_NONE};
+	SaveData.SelectedRefinementIndices = {0, INDEX_NONE, INDEX_NONE};
 
 	FRPGSkillRuntimeSpec RuntimeSpec;
 	Definition->BuildRuntimeSpec(nullptr, SaveData, RuntimeSpec);
@@ -1782,9 +1782,9 @@ bool FRPGSkillRuntimeSpecTargetingOverrideTest::RunTest(
 	Definition->DefaultTargetingConfig.InitializeAs<
 		FRPGSkillCameraDirectionTargetingConfig>(CameraConfig);
 
-	FRPGSkillTripodTier& Tier = Definition->TripodTiers.AddDefaulted_GetRef();
+	FRPGSkillRefinementTier& Tier = Definition->RefinementTiers.AddDefaulted_GetRef();
 	Tier.RequiredSkillLevel = 1;
-	FRPGSkillTripodOption& Option = Tier.Options.AddDefaulted_GetRef();
+	FRPGSkillRefinementOption& Option = Tier.Options.AddDefaulted_GetRef();
 	Option.OverrideTargetingPolicyClass =
 		URPGSkillTargetingPolicy_SoftTarget::StaticClass();
 	FRPGSkillSoftTargetingConfig SoftTargetConfig;
@@ -1795,7 +1795,7 @@ bool FRPGSkillRuntimeSpecTargetingOverrideTest::RunTest(
 
 	FRPGSkillSaveData SaveData;
 	SaveData.SkillLevel = 1;
-	SaveData.SelectedTripodIndices = {0, INDEX_NONE, INDEX_NONE};
+	SaveData.SelectedRefinementIndices = {0, INDEX_NONE, INDEX_NONE};
 
 	FRPGSkillRuntimeSpec RuntimeSpec;
 	Definition->BuildRuntimeSpec(nullptr, SaveData, RuntimeSpec);
