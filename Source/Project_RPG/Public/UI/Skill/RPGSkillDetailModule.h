@@ -12,7 +12,7 @@ class URPGSkillSlotViewModel;
 /**
  * URPGSkillDetailModule
  * 
- * 선택된 스킬의 상세 정보(설명, 트라이포드 설정 등)를 표시하는 위젯입니다.
+ * 선택된 스킬의 상세 정보(설명, 스킬 연마 설정 등)를 표시하는 위젯입니다.
  */
 UCLASS()
 class PROJECT_RPG_API URPGSkillDetailModule : public URPGWidgetBase

@@ -1,4 +1,6 @@
-# 스킬 및 트라이포드 모듈 아키텍처
+# 스킬 및 연마 효과 모듈 아키텍처
+
+> 2026-11-18 명칭 확정: 출시용 시스템명은 **스킬 연마**, 단계는 **연마 1·2·3단계**, 개별 선택지는 **연마 효과**로 통일한다. 로비의 해금 표시는 “4레벨 스킬 연마”처럼 스킬 레벨을 함께 표시한다. 기존 `Tripod` 타입·프로퍼티·RPC·JSON `tripods`·안정 ID·에셋 경로는 호환성을 위해 유지한다. 아래 과거 구현/검증 기록의 이전 명칭은 당시 기록이며 별도 시스템을 뜻하지 않는다.
 
 > 갱신일: 2026-10-25 (초기 설계: 2026-07-20)
 >
@@ -14,12 +16,12 @@
 
 ## 1. 목표
 
-> 2026-10-25 영속 성장 복원: 서버 성장 기록을 인증된 Pawn의 기존 성장 → 클래스 부여 → 8슬롯 경계에 공급하는 소스를 연결했다. 안정적인 트라이포드 ID, 고유 능력 해금과 전투 Pawn의 저장 구성 잠금을 반영한다. 기존 대검 안정 ID `GreatSwordWarrior`와 서버 초안 ID의 명시적 변환도 추가했다. UHT·소스 컴파일 `-NoLink`는 통과했으며 새 모듈 링크·실제 실행은 미실행이다. 실제 옵션·고유 능력 데이터와 실행/검증 범위는 [성장 API의 UE 계약](../Backend/CHARACTER_PROGRESSION_API.md#6-ue-서버-복원-연결--2026-10-25)을 따른다.
+> 2026-10-25 영속 성장 복원: 서버 성장 기록을 인증된 Pawn의 기존 성장 → 클래스 부여 → 8슬롯 경계에 공급하는 소스를 연결했다. 안정적인 스킬 연마 ID, 고유 능력 해금과 전투 Pawn의 저장 구성 잠금을 반영한다. 기존 대검 안정 ID `GreatSwordWarrior`와 서버 초안 ID의 명시적 변환도 추가했다. UHT·소스 컴파일 `-NoLink`는 통과했으며 새 모듈 링크·실제 실행은 미실행이다. 실제 옵션·고유 능력 데이터와 실행/검증 범위는 [성장 API의 UE 계약](../Backend/CHARACTER_PROGRESSION_API.md#6-ue-서버-복원-연결--2026-10-25)을 따른다.
 
-스킬 수와 트라이포드 조합이 늘어나도 다음을 유지한다.
+스킬 수와 스킬 연마 조합이 늘어나도 다음을 유지한다.
 
 - 타기팅, 피해, 상태이상, 연출을 서로 독립적으로 교체할 수 있다.
-- 트라이포드 조합마다 GameplayAbility 서브클래스를 만들지 않는다.
+- 스킬 연마 조합마다 GameplayAbility 서브클래스를 만들지 않는다.
 - 서버와 클라이언트가 동일한 활성화 입력을 사용한다.
 - DataAsset과 AnimNotify 같은 공유 객체에는 실행 중인 상태를 저장하지 않는다.
 - D1 직렬화 호환 코드는 어댑터 경계에 두고 신규 스킬 코어로 퍼뜨리지 않는다.
@@ -29,11 +31,11 @@
 아래는 초기 문제 목록이다. 현재 구현/검증 여부는 6절과 8절을 기준으로 판단한다. D1 정리 범위는 문서 상단의 최신 기록을 따른다.
 
 - `RPGPlayerSkillAbilities.cpp` 하나가 여러 플레이어 직업 스킬의 수명주기, 타기팅, 피해, 상태이상, 연출을 함께 소유한다.
-- `URPGSkillDefinition`, `URPGSkillAction`, 트라이포드 UI가 존재하지만 D1 이식 Ability와 연결되지 않았다.
+- `URPGSkillDefinition`, `URPGSkillAction`, 스킬 연마 UI가 존재하지만 D1 이식 Ability와 연결되지 않았다.
 - `URPGSkillConfig`와 `URPGSkillDefinition`이 비슷한 데이터를 중복 정의한다.
 - `FRPGSkillModifier`, `TripodTag`, Montage/VFX Override 데이터가 실행 경로에서 실제로 소비되지 않았다.
 - `URPGPlayerSkillComponent`가 플레이어에 구성되거나 서버 권한으로 복제되지 않아 선택값을 신뢰할 수 없다.
-- `OverrideActionClass`만으로 모든 변형을 처리하면 트라이포드 조합 수만큼 클래스가 증가한다.
+- `OverrideActionClass`만으로 모든 변형을 처리하면 스킬 연마 조합 수만큼 클래스가 증가한다.
 
 ## 3. 책임 경계
 
@@ -60,14 +62,14 @@ GameplayAbility Container (수명주기/예측/커밋)
 
 ### SkillDefinition
 
-- 기본 Action, 수치, 몽타주, VFX, 트라이포드 선택지를 보관한다.
+- 기본 Action, 수치, 몽타주, VFX, 연마 효과 선택지를 보관한다.
 - 실행 중 상태를 절대 저장하지 않는다.
 - 신규 스킬의 단일 데이터 원본으로 사용한다.
 
 ### RuntimeSpec
 
 - 스킬 활성화 시작 시 한 번 생성하는 불변 스냅샷이다.
-- 스킬 레벨, 유효한 트라이포드 인덱스, 분기 태그, 합성 수치 배율, 최종 Action/Montage/VFX를 보관한다.
+- 스킬 레벨, 유효한 스킬 연마 인덱스, 분기 태그, 합성 수치 배율, 최종 Action/Montage/VFX를 보관한다.
 - 같은 StatTag의 배율은 티어 순서대로 곱한다.
 - 잘못되었거나 레벨이 부족한 선택은 `INDEX_NONE`으로 정규화한다.
 
@@ -77,9 +79,9 @@ GameplayAbility Container (수명주기/예측/커밋)
 - 타기팅, 효과, 연출은 작은 Feature Module/AbilityTask로 추가 분리한다.
 - 공유 Definition이나 Module CDO에는 HitActors, TimerHandle 같은 런타임 상태를 두지 않는다.
 
-## 4. 트라이포드 구성 규칙
+## 4. 스킬 연마 구성 규칙
 
-트라이포드는 우선 다음 세 수단을 조합한다.
+스킬 연마는 우선 다음 세 수단을 조합한다.
 
 1. `StatModifiers`: 피해, 범위, 쿨다운 같은 수치 배율
 2. `TripodTag`: 관통, 폭발, 다단히트 같은 실행 분기
@@ -89,7 +91,7 @@ GameplayAbility Container (수명주기/예측/커밋)
 
 ## 5. 네트워크 원칙
 
-- 트라이포드 선택과 스킬 레벨은 서버 권한 상태로 관리한다. 현재 구현은 소유자 전용 `TArray`/revision 복제이며, FastArray 전환은 성능상 필요가 확인될 때 검토한다.
+- 연마 효과 선택과 스킬 레벨은 서버 권한 상태로 관리한다. 현재 구현은 소유자 전용 `TArray`/revision 복제이며, FastArray 전환은 성능상 필요가 확인될 때 검토한다.
 - Ability 활성화 시 서버와 예측 클라이언트는 복제된 선택값으로 각각 RuntimeSpec을 만든다.
 - 피해, 상태이상, 드롭, 스폰은 서버만 확정한다.
 - 클라이언트 TargetData를 사용하는 스킬은 Prediction Key와 서버 공간 검증을 반드시 통과한다.
@@ -100,7 +102,7 @@ GameplayAbility Container (수명주기/예측/커밋)
 ### 단계 A — RuntimeSpec 기반 정리
 
 - [x] RuntimeSpec 타입 추가
-- [x] 트라이포드 레벨/인덱스 검증 및 수치 배율 합성
+- [x] 스킬 연마 레벨/인덱스 검증 및 수치 배율 합성
 - [x] TripodTag, Action, Montage, VFX 최종 해석
 - [x] SkillContainer와 ChargeAction이 RuntimeSpec을 소비
 - [x] `URPGSkillDefinition`을 신규 스킬의 단일 원본으로 확정
@@ -109,12 +111,12 @@ GameplayAbility Container (수명주기/예측/커밋)
 ### 단계 B — 선택 상태 네트워크화
 
 - [x] `URPGPlayerSkillComponent`를 `ARPGPlayer`의 기본 컴포넌트로 구성
-- [x] 스킬 레벨/트라이포드 선택 서버 RPC 구현
+- [x] 스킬 레벨/연마 효과 선택 서버 RPC 구현
 - [x] 소유자 전용 선택/SP/revision 복제 및 OnRep UI 갱신 구현
 - [x] 서버에서 SP, 티어 레벨과 OptionIndex 재검증 구현
 - [x] 스킬창 생성 시 플레이어 컴포넌트와 공용 카탈로그 자동 연결
 - [x] UI ViewModel 레벨 명령 → 서버 RPC → 소유자 복제 → 양쪽 실행 레벨 반영 → 초기화/SP 환급을 서버+2클라이언트에서 검증
-- [x] ViewModel 트라이포드 선택/변경 및 거부된 낙관적 변경 복원을 서버+2클라이언트에서 검증
+- [x] ViewModel 연마 효과 선택/변경 및 거부된 낙관적 변경 복원을 서버+2클라이언트에서 검증
 - [x] SP 부족 요청 거부 및 다른 소유자의 선택/SP/revision 비노출을 서버+2클라이언트에서 검증
 - [ ] 실제 스킬창 버튼과 표시를 멀티클라이언트 PIE에서 검증
 
@@ -136,7 +138,7 @@ GameplayAbility Container (수명주기/예측/커밋)
 - [x] Definition의 기본 필드, 티어/옵션 수, 수치 Modifier 구조 검증기 추가
 - [ ] 모든 Definition 에셋에 대한 일괄 검증 실행 및 수정
 - [ ] 서버/클라이언트 RuntimeSpec 해시 일치 확인
-- [ ] 트라이포드 조합별 피해/범위/투사체 수 자동 테스트
+- [ ] 스킬 연마 조합별 피해/범위/투사체 수 자동 테스트
 - [ ] Listen Server에서 중복 피해와 GameplayCue 검증
 
 ## 7. 당장 지킬 규칙
@@ -988,7 +990,7 @@ Actor를 함께 읽고, 일반 스킬과 대검 고유 능력이 이를 사용�
 
 ### 2026-10-27 대검 첫 전투 쿨타임과 돌진 회복 선택
 
-[첫 성장 구간 3.2](PLAYER_PROGRESSION_FIRST_SLICE_V01.md#32-스킬과-트라이포드-가설)의 쿨타임을 네 실제 Definition에 반영했다. 이는 첫 플레이 조정을 위한 기준이며 출시 밸런스의 확정이 아니다.
+[첫 성장 구간 3.2](PLAYER_PROGRESSION_FIRST_SLICE_V01.md#32-스킬과-연마-효과-가설)의 쿨타임을 네 실제 Definition에 반영했다. 이는 첫 플레이 조정을 위한 기준이며 출시 밸런스의 확정이 아니다.
 
 | 실제 스킬 | 기본 쿨타임 | 마나 비용 |
 |---|---:|---:|

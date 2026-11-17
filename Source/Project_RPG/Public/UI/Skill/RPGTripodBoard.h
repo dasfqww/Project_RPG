@@ -10,10 +10,10 @@ class URPGSkillSlotViewModel;
 class URPGTripodButton;
 
 /**
- * 트라이포드 선택 보드 (고정형 3-3-2 구조)
+ * 스킬 연마 선택 보드 (고정형 3-3-2 구조)
  * - WBP에서 8개의 버튼을 미리 배치하고 BindWidget으로 연결
  */
-UCLASS()
+UCLASS(meta = (DisplayName = "스킬 연마 보드"))
 class PROJECT_RPG_API URPGTripodBoard : public URPGWidgetBase
 {
 	GENERATED_BODY()

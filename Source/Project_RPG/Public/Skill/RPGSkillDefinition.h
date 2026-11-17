@@ -57,9 +57,9 @@ struct FSkillModeOverride
 };
 
 /**
- * 트라이포드 티어 그룹 (3-3-2 구조)
+ * 스킬 연마 티어 그룹 (3-3-2 구조)
  */
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (DisplayName = "스킬 연마 단계"))
 struct FRPGSkillTripodTier
 {
 	GENERATED_BODY()
@@ -114,7 +114,7 @@ public:
 		int32 OptionIndex) const;
 	void NormalizeSaveData(FRPGSkillSaveData& InOutSaveData) const;
 
-	// 현재 캐릭터 상태와 선택된 트라이포드에 맞는 데이터를 반환
+	// 현재 캐릭터 상태와 선택된 스킬 연마에 맞는 데이터를 반환
 	void GetSkillDataForContext(AActor* InActor, const TArray<int32>& SelectedTripods, UTexture2D*& OutIcon, UAnimMontage*& OutMontage, TSubclassOf<URPGSkillAction>& OutActionClass) const;
 
 	// ---------------------------------------------------
@@ -213,13 +213,13 @@ public:
 	FRPGCombatImmunitySettings ActivationImmunities;
 
 	// ---------------------------------------------------
-	// 3. 변이 및 트라이포드
+	// 3. 변이 및 스킬 연마
 	// ---------------------------------------------------
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Overrides")
 	TArray<FSkillModeOverride> ModeOverrides;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Tripods")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "스킬 연마", meta = (DisplayName = "연마 단계"))
 	TArray<FRPGSkillTripodTier> TripodTiers;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Config")

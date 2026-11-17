@@ -9,7 +9,7 @@ PvE 인스턴스형 MORPG를 위한 ASP.NET Core 백엔드다. UE Dedicated Serv
 - Steam Web API 티켓 검증 및 opaque Bearer 세션 발급
 - 서버 `issuedAt`/`expiresAt` 메타데이터와 UE 단조 증가 시간 기반 플레이어 인증 만료
 - 계정, 캐릭터, 인벤토리 저장
-- 첫 성장 구간의 경험치·해금·SP·트라이포드·8슬롯 저장 API. 구현·검증 범위와 UE 연결 잔여는 [성장 API](CHARACTER_PROGRESSION_API.md) 참고
+- 첫 성장 구간의 경험치·해금·SP·스킬 연마·8슬롯 저장 API. 구현·검증 범위와 UE 연결 잔여는 [성장 API](CHARACTER_PROGRESSION_API.md) 참고
 - 계정별 기본 원정대와 Account/Roster/Character 범위의 서버 권위 재화 저장
 - 원자적 다중 재화 지급·소모, 거래 영수증, 멱등 요청 처리
 - 던전 파티 전체의 재화·아이템 보상을 묶는 영속 정산 작업과 결정적 영수증

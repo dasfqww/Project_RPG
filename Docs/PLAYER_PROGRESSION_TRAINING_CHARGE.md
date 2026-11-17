@@ -6,7 +6,7 @@
 
 ## 기본 차지가 목표로 인정되지 않던 조건
 
-`URPGSkillDefinition_Charge::ApplyDefinitionExecutionDefaults`는 기본 차지를 부분 충전도 해제할 수 있는 설정으로 만든다. `FRPGSkillChargeExecutionConfig::MinimumReleaseLevel`의 기본값은 0이다. 완충/빠른 충전 트라이포드는 4레벨에서 해제 하한을 최대 단계와 같게 설정한다.
+`URPGSkillDefinition_Charge::ApplyDefinitionExecutionDefaults`는 기본 차지를 부분 충전도 해제할 수 있는 설정으로 만든다. `FRPGSkillChargeExecutionConfig::MinimumReleaseLevel`의 기본값은 0이다. 완충/빠른 충전 연마 효과는 4레벨에서 해제 하한을 최대 단계와 같게 설정한다.
 
 기존 훈련 관찰기는 커밋 당시 `MinimumReleaseLevel == MaxChargeLevel`을 요구했다. 새 캐릭터의 기본 차지는 실제로 끝까지 충전해도 이 검사에서 제외된다. 훈련 전에 4레벨 선택을 요구하거나, 기본 스킬의 부분 충전을 금지하는 방식으로 해결하지 않는다.
 

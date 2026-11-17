@@ -81,8 +81,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 /**
  * URPGPlayerSkillComponent
  * 
- * 유저의 스킬 포인트(SP), 스킬 레벨, 트라이포드 선택 정보를 관리합니다.
- * 로스트아크의 스킬창 시스템을 뒷받침하는 핵심 데이터 컴포넌트입니다.
+ * 유저의 스킬 포인트(SP), 스킬 레벨, 스킬 연마 선택 정보를 관리합니다.
+ * 스킬 구성 화면과 서버 승인 선택 상태를 연결하는 데이터 컴포넌트입니다.
  */
 UCLASS(BlueprintType, meta=(BlueprintSpawnableComponent))
 class PROJECT_RPG_API URPGPlayerSkillComponent : public UPawnExtensionComponentBase
@@ -133,8 +133,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RPG|Skill")
 	void ResetSkillLevel(FGameplayTag SkillTag);
 
-	/** 트라이포드 선택 (레벨 제한 체크 포함) */
-	UFUNCTION(BlueprintCallable, Category = "RPG|Skill")
+	/** 연마 효과 선택 (레벨 제한 체크 포함) */
+	UFUNCTION(BlueprintCallable, Category = "RPG|Skill", meta = (DisplayName = "연마 효과 선택"))
 	bool SelectTripod(FGameplayTag SkillTag, int32 TierIndex, int32 OptionIndex);
 
 	/** 특정 스킬의 저장된 데이터 가져오기 */

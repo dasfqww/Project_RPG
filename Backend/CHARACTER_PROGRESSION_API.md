@@ -2,7 +2,7 @@
 
 갱신일: 2026-10-26
 
-현재 구현은 [첫 성장 구간 v0.1](../Docs/PLAYER_PROGRESSION_FIRST_SLICE_V01.md)의 **경험치·SP·스킬 습득·스킬 투자·트라이포드 선택·8슬롯 저장 및 UE 서버 복원 연결**이다. Memory와 PostgreSQL, 인증된 HTTP 경로와 Pawn의 기록 공급자 소스를 연결했다. 실제 훈련·던전 콘텐츠, 고유 능력·트라이포드 효과 데이터, 장비 강화·제작·개인별 장비 추첨은 후속 연결 대상이다.
+현재 구현은 [첫 성장 구간 v0.1](../Docs/PLAYER_PROGRESSION_FIRST_SLICE_V01.md)의 **경험치·SP·스킬 습득·스킬 투자·연마 효과 선택·8슬롯 저장 및 UE 서버 복원 연결**이다. Memory와 PostgreSQL, 인증된 HTTP 경로와 Pawn의 기록 공급자 소스를 연결했다. 실제 훈련·던전 콘텐츠, 고유 능력·스킬 연마 효과 데이터, 장비 강화·제작·개인별 장비 추첨은 후속 연결 대상이다.
 
 ## 1. 원본과 생성
 
@@ -54,7 +54,7 @@
 
 서버가 저장한 습득 목록만 반환하며 새로 습득한 스킬을 빈 슬롯에 자동으로 넣지 않는다. 시작 스킬은 `Player.Ability.Skill.AssultBlade`와 `Player.Ability.Skill.Charge`, 훈련 해금은 `Player.Ability.Skill.WhirlWind`, 첫 입문 해금은 `Player.Ability.Skill.JumpSmash`다. 이 태그는 현재 UE 태그 정의와 일치한다.
 
-## 4. 스킬·트라이포드·편성 저장
+## 4. 스킬·연마 효과·편성 저장
 
 `PUT /api/characters/{characterId}/skill-configuration`
 
@@ -72,9 +72,9 @@
 }
 ```
 
-전체 습득 스킬을 중복 없이 한 번씩 보내고 8개 슬롯을 함께 보낸다. 사용 SP가 총 SP를 초과하거나, 미습득 스킬·중복 슬롯·범위 밖 레벨·해금 전 트라이포드를 포함하면 거절한다. 재분배 자체에는 비용이 없다. 레벨을 낮춰 트라이포드 자격을 잃으면 해당 선택을 빈 문자열로 지워서 제출해야 한다.
+전체 습득 스킬을 중복 없이 한 번씩 보내고 8개 슬롯을 함께 보낸다. 사용 SP가 총 SP를 초과하거나, 미습득 스킬·중복 슬롯·범위 밖 레벨·해금 전 스킬 연마를 포함하면 거절한다. 재분배 자체에는 비용이 없다. 레벨을 낮춰 스킬 연마 자격을 잃으면 해당 선택을 빈 문자열로 지워서 제출해야 한다.
 
-트라이포드는 배열 순서에 따른 옵션 인덱스를 영속 저장하지 않고 다음 안정적인 선택 ID를 저장한다. 두 배열 위치는 스킬 4레벨과 7레벨의 티어다. 빈 문자열은 미선택이다.
+스킬 연마는 배열 순서에 따른 옵션 인덱스를 영속 저장하지 않고 다음 안정적인 선택 ID를 저장한다. 두 배열 위치는 스킬 4레벨과 7레벨의 티어다. 빈 문자열은 미선택이다.
 
 | 스킬 | 4레벨 선택 ID | 7레벨 선택 ID |
 |---|---|---|
@@ -94,7 +94,7 @@ UE에는 옵션의 `PersistenceId`를 해금 레벨 4·7과 함께 찾아 실제
 - PostgreSQL: `character_progression`, `character_progression_awards`, `character_progression_commands`를 스키마에 추가했다. 새 캐릭터의 생성과 초기 성장 기록은 같은 트랜잭션이다. 기존 행에 자동 0 경험치를 채우지 않는다.
 - Memory: 같은 게임 저장소의 캐릭터·던전 잠금 아래 성장 상태와 지급/명령 기록을 관리한다. 외부에 반환하는 배열은 복사해 호출자가 저장 원본을 바꾸지 못한다.
 - 종료 정산·지급 기록은 재시도와 복원 근거다. 보존 정책 없이 이 기록을 정리하거나 누락을 초기값으로 덮지 않는다.
-- 검증: Release 빌드 경고·오류 0. 기존 StarterEquipment 검사에 성장 사례를 추가해 정산 전 미지급, 중복 방지, 해금 순서, SP·트라이포드·편성 거절, 소유권, 실패 무보상, 상한, 과거 요청 재전송과 동시 revision 충돌을 확인했다.
+- 검증: Release 빌드 경고·오류 0. 기존 StarterEquipment 검사에 성장 사례를 추가해 정산 전 미지급, 중복 방지, 해금 순서, SP·스킬 연마·편성 거절, 소유권, 실패 무보상, 상한, 과거 요청 재전송과 동시 revision 충돌을 확인했다.
 - 실제 로컬 HTTP/Memory/개발 인증으로 생성·401/403·조회·저장·재전송·충돌·SP 초과·잘못된 revision·거절 후 상태 보존의 14개 검사를 통과했다. 결과는 `Saved/Build/CharacterProgression-1792922547201/http-checks.json`이다.
 - PostgreSQL 코드와 스키마는 추가했지만 실제 DB 적용·재시작 복원·동시 SQL 실행은 아직 검증하지 않았다. Steam 운영 인증·UE에서의 실제 조회/복원·GAS·자연 전투 검증도 미실행이다. UE 소스와 최소 컴파일 범위는 6절을 따른다.
 
@@ -107,7 +107,7 @@ UE에는 옵션의 `PersistenceId`를 해금 레벨 4·7과 함께 찾아 실제
 1. 현재 Pawn·Controller·PlayerState·World와 캐릭터·Steam·세션·접속 세대를 고정한다.
 2. HTTP 응답의 캐릭터 GUID, 숫자·revision·습득 스킬·8슬롯을 검증한다. 401·403·404·전송 실패·잘못된 기록을 기본 성장이나 개발 프로필로 대체하지 않는다.
 3. 저장된 클래스의 Primary Asset ID를 AssetManager에서 해석해 비동기로 로드한다. 클라이언트가 보낸 에셋 경로를 사용하지 않는다.
-4. 클래스 정의와 저장 스킬의 소속·레벨·트라이포드 ID·해금 조건·슬롯을 대조하고 기존 SP 비용 함수로 사용량을 다시 계산한다. 이름·배열 순서로 선택을 추측하지 않는다.
+4. 클래스 정의와 저장 스킬의 소속·레벨·스킬 연마 ID·해금 조건·슬롯을 대조하고 기존 SP 비용 함수로 사용량을 다시 계산한다. 이름·배열 순서로 선택을 추측하지 않는다.
 5. 기존 `URPGPlayerSkillComponent`의 서버 복원 → `URPGPlayerClassComponent`의 소유 Ability 부여 → `UQuickSlotComponent`의 1회 슬롯 복원을 사용한다. 빈 위치는 그대로 유지한다.
 6. 완료한 기록의 XP·레벨·진행·backend revision과 공급자 상태/오류를 소유자에게만 복제한다. SP·습득·편성의 원본을 공급자 컴포넌트에 별도로 만들지 않는다.
 
@@ -115,7 +115,7 @@ HTTP 응답과 클래스 로드가 끝날 때마다 고정한 컨텍스트를 �
 
 backend 복원은 `identityUnlocked`를 GAS 부여 계획에 반영한다. 잠긴 고유 능력은 클래스에 Ability가 지정돼 있어도 부여하지 않는다. 반대로 저장상 해금된 고유 능력에 실제 Ability가 없으면 콘텐츠 누락으로 실패한다.
 
-복원된 전투 Pawn은 저장 구성을 읽기 전용으로 사용한다. 기존 SP 변경·트라이포드·스킬 슬롯 RPC와 임시 `AddTotalSP`로 저장 상태와 다르게 바꿀 수 없다. 초기 복원 자체는 정확한 복원 세대와 1회 초기화 경계에서 허용한다. 아이템 슬롯과 일반 인벤토리 동작의 정책을 일괄 잠그지는 않는다. 로비에서 PUT을 호출하는 UE 편집·저장 경로는 7절을 따른다.
+복원된 전투 Pawn은 저장 구성을 읽기 전용으로 사용한다. 기존 SP 변경·스킬 연마·스킬 슬롯 RPC와 임시 `AddTotalSP`로 저장 상태와 다르게 바꿀 수 없다. 초기 복원 자체는 정확한 복원 세대와 1회 초기화 경계에서 허용한다. 아이템 슬롯과 일반 인벤토리 동작의 정책을 일괄 잠그지는 않는다. 로비에서 PUT을 호출하는 UE 편집·저장 경로는 7절을 따른다.
 
 개발 프로필은 인증된 Pawn에 새로 적용하지 않는다. 이미 적용한 비영속/개발 기록이 남은 Pawn에 뒤늦게 인증을 붙여 운영 기록으로 승격시키지도 않는다. 이런 경우 새 Pawn에서 복원해야 한다. 초기화 실패 시에도 기존 기본값으로 재부여하거나 현재 Pawn의 쿨타임을 초기화하는 재시도를 하지 않는다.
 
@@ -125,7 +125,7 @@ backend 복원은 `identityUnlocked`를 GAS 부여 계획에 반영한다. 잠�
 
 2026-10-26 [대검 클래스 바인딩과 차지 첫 선택](../Docs/SKILL_AND_TRIPOD_MODULAR_ARCHITECTURE.md#2026-10-26-투지-해방-바인딩과-차지-4레벨-선택-저장)을 실제 에셋에 저장해 클래스의 고유 능력 미설정과 차지 4레벨 두 ID의 누락은 해소했다. 나머지 선택 ID·효과는 아직 미작성이다. 실제 HTTP/Pawn/GAS/복제·재접속·PostgreSQL 변환/복원 검증은 수행하지 않았으므로 이 저장을 운영 기록의 실제 플레이 성공으로 세지 않는다.
 
-주요 소스는 [복원 공급자](../Source/Project_RPG/Private/Progression/RPGCharacterProgressionComponent.cpp), [기록 해석·변환](../Source/Project_RPG/Private/Progression/RPGCharacterProgressionSnapshot.cpp), [서버 HTTP 요청](../Source/Project_RPG/Private/Manager/HttpWebManagerProgression.cpp)다. 로비 구성 저장은 7절에 후속 연결했으며 실제 대검 고유 능력·트라이포드 ID/효과 작성은 남아 있다. 전체 첫 성장 구간 구현 완료와 구분한다.
+주요 소스는 [복원 공급자](../Source/Project_RPG/Private/Progression/RPGCharacterProgressionComponent.cpp), [기록 해석·변환](../Source/Project_RPG/Private/Progression/RPGCharacterProgressionSnapshot.cpp), [서버 HTTP 요청](../Source/Project_RPG/Private/Manager/HttpWebManagerProgression.cpp)다. 로비 구성 저장은 7절에 후속 연결했으며 실제 대검 고유 능력·스킬 연마 ID/효과 작성은 남아 있다. 전체 첫 성장 구간 구현 완료와 구분한다.
 
 ### 6.1 저장 구성의 실제 서버 복원과 차지 시전 — 2026-10-27
 
@@ -154,7 +154,7 @@ backend 복원은 `identityUnlocked`를 GAS 부여 계획에 반영한다. 잠�
 저장했다. 새 게임 서버와 클라이언트는 실제 티켓 소비·입장 확인·Iris를 거쳐 작성된
 `bossmap`의 `BP_Player`를 사용한다. 테스트용 성장 기록 주입이나 개발 프로필 대체는 없다.
 
-- 서버와 소유 클라이언트의 직업·성장·트라이포드·8슬롯, 습득 3개·일반 스킬 부여 3개·고유 능력 부여 1개가 일치했다. 미습득 도약은 부여되지 않았다.
+- 서버와 소유 클라이언트의 직업·성장·스킬 연마·8슬롯, 습득 3개·일반 스킬 부여 3개·고유 능력 부여 1개가 일치했다. 미습득 도약은 부여되지 않았다.
 - 기존 퀵슬롯 Press/Release로 서버의 실제 차지 시전을 관측했다. 고정 RuntimeSpec은 저장 레벨 4·FullCharge·총 충전 시간 1.2초였다. 시전 중 재알림/클래스 갱신 뒤에도 같은 활성 핸들을 유지하고 정상 종료했다.
 - 서버의 추가 SP·편성 변경 시도는 읽기 전용 저장 구성을 바꾸지 않았다. 실제 장비 종류 GreatSword(3)와 표현 Actor의 Count(7)를 관측했고, 수납 상태의 발동 거절도 확인했다.
 - 완료 뒤 성장 저장본 전체와 같은 계정의 다른 캐릭터 저장본이 각각 이전 값과 동일했다. 서버/클라이언트/러너 종료 0, 기동·실행 Error 0과 선택 입력 32개·DLL 전후 일치를 확인했다.
@@ -191,7 +191,7 @@ backend 복원은 `identityUnlocked`를 GAS 부여 계획에 반영한다. 잠�
 집중 검사는 기존 입장/복원 러너의 `-VerifyCombat` 모드와 `-ChargeChoice FullCharge|QuickCharge`로
 실행한다. 실제 정산으로 얻은 SP 3을 플레이어 PUT으로 저장하고, 새 서버/클라이언트가
 실제 티켓·입장 확인·Iris를 거쳐 같은 레벨 4/8슬롯 기록을 복원한다. 마나 비용이나 쿨타임,
-트라이포드 수치를 검사 중에 덮어쓰지 않는다. 이 실행 당시 차지 작성값은 마나 비용 0·GAS Cost GE 없음·
+스킬 연마 수치를 검사 중에 덮어쓰지 않는다. 이 실행 당시 차지 작성값은 마나 비용 0·GAS Cost GE 없음·
 기본 쿨타임 1초이며, 양수 마나 비용의 충분/부족 판정이나 밸런스 완료를 뜻하지 않는다.
 
 검증 조건에서의 서버 HP 감소와 소유 클라이언트 수신 결과는 다음과 같다. 정수 피해
@@ -241,14 +241,14 @@ native 실행의 테스트 시작 전 기존 `Condition failed` Error 15줄과 �
 자연 보스전·이동/피격 중 운용·GPU/실물 입력·Steam·PostgreSQL·재시작/재접속은 별도다.
 
 다음은 현재 마나 0/쿨타임 1초를 출시 수치로 취급하지 않고, 공통 비용·쿨타임 기준과
-남은 트라이포드를 정리한 뒤 자연 전투와 실제 HUD/입력에서 두 구성의 체감을 확인하는 것이다.
+남은 스킬 연마를 정리한 뒤 자연 전투와 실제 HUD/입력에서 두 구성의 체감을 확인하는 것이다.
 
 ## 7. UE 로비의 성장 구성 편집·저장 — 2026-10-25
 
 기본 온라인 로비의 캐릭터와 던전 섹션 사이에 `URPGCharacterConfigurationWidget`을 연결했다. 소유 목록의 캐릭터를 선택하고 **저장본 다시 읽기**를 눌러야 해당 캐릭터의 기록을 조회한다. 누락된 기록을 자동 생성하거나 기본 SP·개발 프로필로 대체하지 않는다.
 
 - 현재 화면은 명시적인 `FirstSlice.GreatSword.v1`과 `GreatSwordWarrior`를 지원한다. 스킬·선택 이름, 최대 레벨 7과 SP 미리보기는 이 버전의 UI 계약이다. 미지의 프로필/선택을 임의 변환해 편집하지 않으며 서버 검증이 최종 권한이다.
-- 습득한 스킬만 표시한다. 총/사용 SP, 스킬 1~7레벨과 4·7레벨 트라이포드를 편집하고 SP 초과를 미리 거절한다. 레벨을 낮춰 자격을 잃으면 해당 선택을 편집본에서 해제한다. 다시 올려도 선택을 자동 복원하지 않는다.
+- 습득한 스킬만 표시한다. 총/사용 SP, 스킬 1~7레벨과 4·7레벨 스킬 연마를 편집하고 SP 초과를 미리 거절한다. 레벨을 낮춰 자격을 잃으면 해당 선택을 편집본에서 해제한다. 다시 올려도 선택을 자동 복원하지 않는다.
 - 전투 슬롯은 8개이며 빈칸을 유지한다. 이미 다른 슬롯의 스킬을 선택하면 빈칸으로 이동하거나 두 슬롯을 맞바꾼다. UI가 스킬을 습득시키거나 중복 슬롯을 만들지 않는다.
 - **변경 취소**는 확인한 저장본으로 로컬 편집본만 되돌린다. **저장본 다시 읽기**는 서버를 조회해 편집본을 교체한다. 편집만으로 Pawn·GAS·쿨타임·자원을 갱신하지 않는다.
 - 활성 던전의 로비에서도 조회는 가능하다. 새 편집·저장은 미완료 던전, Steam 파티, 미확정 출발·포기와 요청/이동 중에 잠근다. 리스가 UI보다 먼저 바뀌어도 백엔드의 캐릭터 잠금·리스 검사가 새 PUT을 거절한다.
@@ -263,11 +263,11 @@ native 실행의 테스트 시작 전 기존 `Condition failed` Error 15줄과 �
 
 커스텀 UI는 `RPGOnlineLobbySubsystem.GetLobbyWidget` → `GetCharacterConfigurationWidget`을 통해 `LoadSavedConfiguration`, `SetSkillLevel`, `SetTripodChoice`(티어 0/1), `SetCombatSlot`(슬롯 0~7), `SaveConfiguration`, `ResetDraft`를 사용한다. true는 로컬 편집 또는 요청 시작이며 저장 완료 보증이 아니다. 버튼과 BP 호출 모두 현재 로비·소유 선택·인증·요청 상태를 다시 검사한다.
 
-소스는 [로비 편집 화면](../Source/Project_RPG/Private/UI/Lobby/RPGCharacterConfigurationWidget.cpp), [플레이어 HTTP 요청](../Source/Project_RPG/Private/Manager/HttpWebManagerProgression.cpp)이다. UHT와 관련 CPP 7개 `-FileList -NoLink`의 [최소 컴파일](../Saved/BuildChecks/LobbyCharacterConfiguration-20261025/Compile-Fixed.log)이 종료 코드 0/`Succeeded`였다. 초기 단독 컴파일에서 드러난 로비 서브시스템의 기존 `UPackage` include 누락을 필요한 범위에서 보완했다. 마지막 인증 안내 문구도 [해당 CPP 컴파일](../Saved/BuildChecks/LobbyCharacterConfiguration-20261025/Compile-Final.log)이 통과했다. 당시 열린 공유 에디터의 Live Coding 세션 때문에 마지막 산출물은 임시 위치이며 DLL 반영·핫리로드를 수행한 결과가 아니다. 이 단계의 모듈 링크·실제 화면 입력·HTTP 왕복·재인증/충돌·플레이 검증은 미실행이다. backend API/스키마와 콘텐츠 에셋은 이번에 변경하지 않았다. 선택 UI가 생겼다는 사실은 미작성인 고유 능력·트라이포드 실행 효과를 보장하지 않는다. 다음 구현은 해당 콘텐츠와 첫 구간의 훈련/보스/보상 정의 연결이다.
+소스는 [로비 편집 화면](../Source/Project_RPG/Private/UI/Lobby/RPGCharacterConfigurationWidget.cpp), [플레이어 HTTP 요청](../Source/Project_RPG/Private/Manager/HttpWebManagerProgression.cpp)이다. UHT와 관련 CPP 7개 `-FileList -NoLink`의 [최소 컴파일](../Saved/BuildChecks/LobbyCharacterConfiguration-20261025/Compile-Fixed.log)이 종료 코드 0/`Succeeded`였다. 초기 단독 컴파일에서 드러난 로비 서브시스템의 기존 `UPackage` include 누락을 필요한 범위에서 보완했다. 마지막 인증 안내 문구도 [해당 CPP 컴파일](../Saved/BuildChecks/LobbyCharacterConfiguration-20261025/Compile-Final.log)이 통과했다. 당시 열린 공유 에디터의 Live Coding 세션 때문에 마지막 산출물은 임시 위치이며 DLL 반영·핫리로드를 수행한 결과가 아니다. 이 단계의 모듈 링크·실제 화면 입력·HTTP 왕복·재인증/충돌·플레이 검증은 미실행이다. backend API/스키마와 콘텐츠 에셋은 이번에 변경하지 않았다. 선택 UI가 생겼다는 사실은 미작성인 고유 능력·스킬 연마 실행 효과를 보장하지 않는다. 다음 구현은 해당 콘텐츠와 첫 구간의 훈련/보스/보상 정의 연결이다.
 
 ### 7.1 실제 로비 왕복과 캐릭터별 구성 분리 — 2026-10-26
 
-레벨·트라이포드·슬롯 편집과 변경 취소 뒤 상위 로비도 즉시 갱신하도록 보완했다.
+레벨·스킬 연마·슬롯 편집과 변경 취소 뒤 상위 로비도 즉시 갱신하도록 보완했다.
 미저장 변경이 생기면 캐릭터 전환 버튼이 바로 잠기고 사유를 표시하며, 취소하면 다시 풀린다.
 기존 서버 승인·미확정 명령·저장 정책과 Pawn/GAS 상태의 원본은 유지한다.
 
@@ -370,7 +370,7 @@ DLL/선택 소스 24개 전후 일치이며 실행 모듈은 `8E2F2A1A…D01D5B4
 정상 Editor 후속 확인은 최신 공유 모듈에서 0 action·종료 0이다. 자체 첫 컴파일의 UE_LOG 분기
 오류를 수정하고 공유 보스 헤더/생성 파일 불일치 후 재생성한 기록은
 `Saved/BuildChecks/LobbyConfigurationConflict-20261026/Editor-Build.log`·`Editor-Retry.log`에 구분했다.
-첫 실행은 별도 접속 요청의 기본 JSON 깊이가 트라이포드 배열을 문자열로 바꿔 준비 단계에서
+첫 실행은 별도 접속 요청의 기본 JSON 깊이가 스킬 연마 배열을 문자열로 바꿔 준비 단계에서
 실패했다(`Saved/Tests/LobbyConfigurationConflict/14c02d23e7da4b1b97608e126bf2c09f/`).
 검사 도구의 깊이를 8로 명시한 뒤 위 실행을 완료했으며 게임 API 계약은 변경하지 않았다.
 
@@ -416,7 +416,7 @@ UE/러너 종료 0·기동/실행 Error 각각 0·DLL/선택 소스 24개 전후
 
 ### 7.5 로비 편집본의 스킬 수치 미리보기 — 2026-10-28
 
-로비 구성 화면에서 습득 스킬의 레벨/트라이포드 아래에 **기본 상태 미리보기**를 추가했다. 실제 카탈로그의 Definition과 현재 편집본의 안정 ID를 기존 RuntimeSpec으로 해석한다. 별도 밸런스 표를 UI에 복사하지 않는다.
+로비 구성 화면에서 습득 스킬의 레벨/스킬 연마 아래에 **기본 상태 미리보기**를 추가했다. 실제 카탈로그의 Definition과 현재 편집본의 안정 ID를 기존 RuntimeSpec으로 해석한다. 별도 밸런스 표를 UI에 복사하지 않는다.
 
 - 선택 후 쿨타임과 피해 배율, 완충 시간/최대 유지 시간, 이동 속도/거리, 반경과 무력화/부위 파괴 기여를 해당 데이터가 있을 때 표시한다. 회전의 종료 타격 기여 조건도 표시한다. 시간은 기존 실행의 ChargeTime/HoldTime 배율을 반영하며, 피해는 최종 HP 피해가 아닌 기본 피해 대비 배율이다.
 - 레벨/선택 변경과 변경 취소는 현재 편집본으로 문구를 갱신한다. 미리보기만으로 저장·SP 사용·GAS 부여·쿨타임/자원을 적용하지 않는다. 저장 후 다음 전투 입장에 반영된다는 툴팁을 둔다. 기존 인증/리스/미확정 저장·충돌/캐릭터 전환 규칙은 유지한다.

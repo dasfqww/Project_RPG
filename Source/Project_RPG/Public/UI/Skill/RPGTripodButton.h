@@ -10,9 +10,9 @@
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnTripodButtonClicked, int32 /*Tier*/, int32 /*Index*/);
 
 /**
- * 트라이포드 개별 버튼
+ * 연마 효과 개별 버튼
  */
-UCLASS()
+UCLASS(meta = (DisplayName = "연마 효과 버튼"))
 class PROJECT_RPG_API URPGTripodButton : public UCommonButtonBase
 {
 	GENERATED_BODY()
@@ -27,20 +27,20 @@ protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeOnCurrentTextStyleChanged() override; // CommonButtonBase override
 
-	UPROPERTY(BlueprintReadOnly, Category = "Tripod")
+	UPROPERTY(BlueprintReadOnly, Category = "스킬 연마")
 	int32 TierIndex = -1;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Tripod")
+	UPROPERTY(BlueprintReadOnly, Category = "스킬 연마")
 	int32 OptionIndex = -1;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Tripod")
+	UPROPERTY(BlueprintReadOnly, Category = "스킬 연마", meta = (DisplayName = "연마 효과"))
 	FRPGSkillTripodOption TripodOption;
 
 	// UI 바인딩용 (아이콘, 텍스트 설정)
-	UFUNCTION(BlueprintImplementableEvent, Category = "Tripod")
+	UFUNCTION(BlueprintImplementableEvent, Category = "스킬 연마", meta = (DisplayName = "연마 효과 초기화"))
 	void BP_OnTripodInitialized(const FRPGSkillTripodOption& Option, bool bIsSelected);
 	
-	UFUNCTION(BlueprintImplementableEvent, Category = "Tripod")
+	UFUNCTION(BlueprintImplementableEvent, Category = "스킬 연마")
 	void BP_OnSelectionChanged(bool bIsSelected);
 
 private:

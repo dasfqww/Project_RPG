@@ -14,7 +14,7 @@ class UAnimMontage;
 class UNiagaraSystem;
 
 /**
- * 로스트아크식 스킬 정보를 담는 데이터 에셋
+ * 스킬과 연마 효과 정보를 담는 구형 데이터 에셋
  */
 // Legacy prototype retained for existing assets. New skills use
 // URPGSkillDefinition as the canonical definition.
@@ -33,7 +33,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "General")
 	TSubclassOf<URPGGameplayAbility> AbilityClass;
 
-	/** 기본 전투 수치 (트라이포드 미적용 시) */
+	/** 기본 전투 수치 (스킬 연마 미적용 시) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BaseStats")
 	float BaseCooldownTime;
 
@@ -50,13 +50,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BaseVisual")
 	TObjectPtr<UNiagaraSystem> DefaultVFX;
 
-	/** 트라이포드 설정 (로아와 동일하게 3티어 구조) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Tripods")
+	/** 스킬 연마 설정 (3단계 구조) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "스킬 연마")
 	TArray<FRPGSkillTripodOption> Tier1Options;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Tripods")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "스킬 연마")
 	TArray<FRPGSkillTripodOption> Tier2Options;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Tripods")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "스킬 연마")
 	TArray<FRPGSkillTripodOption> Tier3Options;
 };

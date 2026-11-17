@@ -41,8 +41,8 @@ struct FRPGSkillSaveData
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	int32 SkillLevel = 1;
 
-	// 선택된 트라이포드 인덱스 배열 (인덱스 0: 1티어, 1: 2티어, 2: 3티어 / -1은 선택 안됨)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	// 선택된 스킬 연마 인덱스 배열 (인덱스 0: 1티어, 1: 2티어, 2: 3티어 / -1은 선택 안됨)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "선택한 연마 효과"))
 	TArray<int32> SelectedTripodIndices = { -1, -1, -1 };
 };
 
@@ -112,7 +112,7 @@ struct FSingleSectionData
 
 
 /** 
- * 트라이포드가 주는 수치적 변화 (기존 RPGSkillConfig 설계 계승)
+ * 스킬 연마가 주는 수치적 변화 (기존 RPGSkillConfig 설계 계승)
  */
 USTRUCT(BlueprintType)
 struct FRPGSkillModifier
@@ -127,9 +127,9 @@ struct FRPGSkillModifier
 };
 
 /** 
- * 로스트아크식 트라이포드 선택지 (통합본)
+ * 스킬 연마 효과 선택지 (통합본)
  */
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintType, meta = (DisplayName = "연마 효과"))
 struct FRPGSkillTripodOption
 {
 	GENERATED_BODY()
@@ -156,7 +156,7 @@ struct FRPGSkillTripodOption
 	float CooldownReductionSeconds = 0.0f;
 
 	/** 2. 로직 분기 태그 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Logic", meta = (DisplayName = "연마 효과 태그"))
 	FGameplayTag TripodTag;
 
 	/** 3. 로직 자체 교체: 차징->즉발 등 (새 기능) */

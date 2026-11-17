@@ -405,7 +405,7 @@ void URPGCharacterConfigurationWidget::RebuildChoices()
 		for (int32 Tier = 0; Tier < 2; ++Tier)
 		{
 			TArray<FString> Options{LOCTEXT("NoTripod", "선택 안 함").ToString(), Info->Tiers[Tier][0].Label, Info->Tiers[Tier][1].Label};
-			AddChoice(1, Row, Tier, FText::Format(LOCTEXT("TripodTier", "{0}레벨 트라이포드"), FText::AsNumber(UnlockLevel(Tier))), Options);
+			AddChoice(1, Row, Tier, FText::Format(LOCTEXT("TripodTier", "{0}레벨 스킬 연마"), FText::AsNumber(UnlockLevel(Tier))), Options);
 		}
 		auto* Preview = RPGOnlineLobbyLayout::Text(*WidgetTree, *Choices, NAME_None, GetSkillPreview(DraftSkills[Row].SkillTag));
 		Preview->SetToolTipText(LOCTEXT("PreviewHelp", "편집 중인 선택의 기본 수치입니다. 저장 후 다음 전투 입장부터 적용되며, 전투 중 상태 보정과 적 방어는 포함하지 않습니다."));
