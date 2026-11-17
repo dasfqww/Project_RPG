@@ -15,10 +15,11 @@ try
     var development = new ConfigurationBuilder().SetBasePath(AppContext.BaseDirectory)
         .AddJsonFile("appsettings.json").AddJsonFile("appsettings.Development.json").Build();
     var catalog = ShopCatalogConfiguration.Load(development);
-    Check(catalog.Enabled && catalog.CurrencyCode == "RosterGold" && catalog.SaleRules.Count == 0
+    Check(catalog.Enabled && catalog.CurrencyCode == "RosterGold" && catalog.SaleRules.Count == 1
         && catalog.Offers.Count == 1 && catalog.Offers[0].DefinitionName == "GameItem.Consume.Potion.Red.Large"
         && catalog.Offers[0].DefinitionVersion == 1 && catalog.Offers[0].MaximumStackSize == 10,
-        "packaged development catalog uses the existing potion and no invented sale goods");
+        "packaged development catalog uses the authored potion and junk");
+    await CatalogContentCases.Run(catalog, Check);
     DomainCases.Run(Check);
     await StorageCases.Run(Check);
     await ApiCases.Run(Check);

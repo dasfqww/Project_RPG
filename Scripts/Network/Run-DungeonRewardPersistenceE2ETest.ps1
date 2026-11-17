@@ -623,6 +623,10 @@ function Get-RewardState {
         $_.definitionType -eq 'RPGItemDefinition' -and
         $_.definitionName -eq 'GameItem.Equipment.Helm.Default'
     })
+    $brokenParts = @($items.items | Where-Object {
+        $_.definitionType -ceq 'RPGItemDefinition' -and
+        $_.definitionName -ceq 'GameItem.Material.Junk.BrokenPart'
+    })
     $expectedContainer = "DungeonReward.$($RewardSessionId.ToString('N'))"
     $expectedType = 'Mail'
     $expectedRevision = 1
@@ -654,13 +658,21 @@ function Get-RewardState {
         $helms[0].location.containerType -ne $expectedType -or
         $helms[0].location.containerId -ne $expectedContainer -or
         $helms[0].location.slotIndex -ne 1 -or
-        @($items.items).Count -ne 2) {
+        $brokenParts.Count -ne 1 -or $brokenParts[0].definitionVersion -ne 1 -or
+        $brokenParts[0].state.quantity -ne 3 -or $brokenParts[0].revision -ne $expectedRevision -or
+        $brokenParts[0].lifecycleState -cne 'Active' -or $brokenParts[0].metadata.bindState -cne 'Unbound' -or
+        $brokenParts[0].owner.type -cne 'Character' -or [Guid]$brokenParts[0].owner.ownerId -ne $CharacterId -or
+        $brokenParts[0].location.containerType -cne $expectedType -or $brokenParts[0].location.containerId -cne $expectedContainer -or
+        $brokenParts[0].location.slotIndex -ne $(if ($expectedType -ceq 'Inventory') { 160 } else { 2 }) -or
+        @($items.items | Where-Object { $_.metadata.creationSource -cne 'DungeonClear.pve_hard_v2' }).Count -ne 0 -or
+        @($items.items).Count -ne 3) {
         throw "Backend reward state does not match one Hard reward for $CharacterId."
     }
     return [pscustomobject]@{
         Gold = [long] $gold[0].balance
         Potion = $potions[0]
         Helm = $helms[0]
+        BrokenPart = $brokenParts[0]
     }
 }
 
@@ -683,12 +695,22 @@ function Assert-PartyRewardState {
         if (-not $identities.Add($potionId) -or -not $identities.Add($helmId)) {
             throw 'Reward item identities were reused across party members.'
         }
+        if (-not $InventoryOverflow) {
+            $brokenPartId = [Guid]$state.BrokenPart.state.instanceId
+            if ($member.BrokenPartId -eq [Guid]::Empty) { $member.BrokenPartId = $brokenPartId }
+            if ($brokenPartId -eq [Guid]::Empty -or $member.BrokenPartId -ne $brokenPartId -or -not $identities.Add($brokenPartId)) {
+                throw 'Broken-part identity changed across restore/claim or was reused across party members.'
+            }
+        }
     }
 }
 
 function Initialize-OverflowInventory {
     param([object[]] $Members, [object] $Session)
 
+    # Historical 80-slot overflow fixture. Its seeded slot layout and native two-item
+    # claim protocol predate canonical tab slots and the v2 broken-part reward.
+    # This branch is not v2 catalogue validation and must not be reported as such.
     $serverHeaders = @{ Authorization = "Bearer $($Session.gameServerAccessToken)" }
 
     foreach ($member in $Members) {
@@ -1024,6 +1046,7 @@ try {
             CharacterId = [Guid] $character.characterId
             PotionId = [Guid]::Empty
             HelmId = [Guid]::Empty
+            BrokenPartId = [Guid]::Empty
             SeedIds = @()
             ConsumeA = [Guid]::Empty
             ConsumeB = [Guid]::Empty
@@ -1173,6 +1196,9 @@ try {
         PotionQuantityMergedIntoExistingStack = $(if ($PartialStackOverflow) { 2 } else { 0 })
         HelmItemId = $firstMember.HelmId.ToString('D')
         HelmQuantity = 1
+        BrokenPartItemId = $(if ($InventoryOverflow) { $null } else { $firstMember.BrokenPartId.ToString('D') })
+        BrokenPartQuantity = $(if ($InventoryOverflow) { $null } else { 3 })
+        RewardVersion = $(if ($InventoryOverflow) { $null } else { 'pve_hard_v2' })
         DuplicateClearGrantedOnce = $true
         BackendRestartRestored = $true
         DedicatedServer = $true
@@ -1187,6 +1213,8 @@ try {
                 PotionQuantity = $(if ($PartialStackOverflow) { 1 } else { 3 })
                 HelmItemId = $_.HelmId.ToString('D')
                 HelmQuantity = 1
+                BrokenPartItemId = $(if ($InventoryOverflow) { $null } else { $_.BrokenPartId.ToString('D') })
+                BrokenPartQuantity = $(if ($InventoryOverflow) { $null } else { 3 })
                 ItemRevision = $(if ($runMailClaim) { 2 } else { 1 })
                 SeedStackItemId = $(if ($InventoryOverflow) { $_.SeedIds[0].ToString('D') } else { $null })
                 ConsumedSeedItemIds = $(if ($InventoryOverflow) { @($_.ConsumeA.ToString('D'), $_.ConsumeB.ToString('D')) } else { @() })

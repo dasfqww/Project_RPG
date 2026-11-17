@@ -24,13 +24,37 @@
 카탈로그와 가격을 환경 설정으로 지정한다. 서비스 시작 때 알 수 없는 설정 필드,
 중복 물품, 잘못된 금액/중첩/바인딩을 거절한다.
 
-개발 환경은 `appsettings.Development.json`에 기존 대형 회복 물약 1종을 연결했다.
-`RPGItemDefinition:GameItem.Consume.Potion.Red.Large`, 버전 1, 중첩/1회 구매 최대 10,
-`RosterGold` 25의 **개발용 임시 가격**이다. 상점 이름에도 개발용 가격임을 표시한다.
+2026-11-17 사용자 위임에 따라 초기 품목·가격을 확정했다. 플레이 가능한 개발 환경의
+`appsettings.Development.json`은 아래 카탈로그를 사용하며 상점 이름은 `보급 상점`이다.
+
+| 방향 | 물품 | 개당 가격 | 중첩 / 한 번에 거래하는 최대 수량 |
+|---|---|---|---|
+| 플레이어 구매 | 대형 회복 물약 | 25 골드 | 10 / 10 |
+| 플레이어 판매 | 망가진 부품 | 5 골드 | 99 / 99 |
+
+재화는 기존 `RosterGold`다. 물약은 `RPGItemDefinition:GameItem.Consume.Potion.Red.Large`,
+부품은 `RPGItemDefinition:GameItem.Material.Junk.BrokenPart`이며 둘 다 정의 버전 1이다.
+부품은 `Unbound`만 매입한다. 장비·소모품·성장 광석·제작 증표는 매입하지 않는다.
+부품을 상점에서 판매하지 않으므로 상점 구매/매각을 반복해 골드를 늘릴 수 없다.
+
+일반 PvE의 기존 Easy 100 / Normal 250 / Hard 500 / Hell 1000골드와 물약 보상을 유지하고,
+망가진 부품을 각각 **1 / 2 / 3 / 5개** 추가했다. 부품은 기타 가방에 들어가는 판매 전용
+잡동사니로, 강화·제작·퀘스트에 사용하지 않는다. 이 판매 수익은 각각 5 / 10 / 15 / 25골드다.
+물약 1개 가격은 Easy 골드 보상의 25%, Normal의 10%이며, 부품 5개를 팔면 물약 1개를 살 수 있다.
+물약·골드의 기존 공급을 바꾸지 않는 초기 보충/잡동사니 정리 기준이다.
+
+일반 보상 에셋 4개의 버전은 `pve_easy_v2` / `pve_normal_v2` / `pve_hard_v2` /
+`pve_hell_v2`다. 기존 세션에 이미 고정된 v1 보상·영수증은 유지하며 새 세션부터 v2를 쓴다.
+Intro/FirstSlice의 성장 재료·보상은 그대로다. 기본 운영 설정의 상점 공개 여부는 별도로 유지한다.
+
 원본 `DA_Item_Potion_Red_Large.uasset`의 저장된 `MaxStackSize`는 10이며,
 정의 버전은 override가 없는 네이티브 기본값 1이다. `Unbound`는 기존 아이템 생성의
 기본 정책을 적용한 것으로 에셋에 작성된 귀속 필드는 아니다.
-판매 대상은 아직 지정되지 않아 개발 카탈로그의 `SaleRules`도 비어 있다.
+
+`Scripts/Editor/CreateDungeonRewardAssets.py`는 기본 읽기 검사만 한다.
+`-RPGCreateDungeonRewardAssets`를 명시하면 신규 부품과 정확한 기존 v1 기본 보상만 v2로 작성한다.
+사용자 변경/미저장 대상은 거절한다. `-RPGDungeonRewardsOnly`는 GameMode를 건드리지 않는다.
+태그는 `Config/Tags/ShopItems.ini`, 부품 에셋은 `Item/Shop/DA_Item_BrokenPart`에 보관한다.
 
 `Shop` 필드는 `Enabled`, `ShopId`, `DisplayName`, `CurrencyCode`, `Offers`, `SaleRules`다.
 각 구매 항목에는 `OfferId`, `DisplayName`, `DefinitionType`, `DefinitionName`,
@@ -98,6 +122,19 @@ Scripts/Tests/Run-ShopIntegrationCompile.ps1
 각 러너는 게시된 기준 소스에 명시한 상점 변경만 더한 사본을 사용한다.
 원본 에디터/DLL/DB를 변경하지 않으며 종료 후 자기 사본과 대형 빌드 산출물을 폐기한다.
 작은 결과는 `Saved/BuildChecks/Shop-20261117`에 남긴다.
+
+확정 카탈로그의 회귀 검사는 `CatalogContentCases`에서 실제 개발 설정을 읽고 일반 Normal v2
+보상의 원자 지급·중복 수령 방지 → 부품 2개 판매(10골드) → 물약 1개 구매(25골드)를
+실제 loopback HTTP로 확인한다. 최종 235골드/물약 3개와 성장 재료 보존을 검사한다.
+이 검사의 신원은 테스트 주입이며 실제 Steam 인증/게임 클라이언트 실행과 구분한다.
+품목·가격 확정 작업의 작은 결과는 `Saved/BuildChecks/ShopCatalog-20261117`에 보관한다.
+이 작업에서 backend 518개 검사, 전체 UHT와 영향받는 검사 CPP 2개 컴파일을 통과했다.
+격리 엔진의 작성·무변경 재적용·새 프로세스 재로드가 각각 종료 0이며, 에셋 5개 native 검증은
+오류/경고 없이 유효하다. 설치한 원본 에셋의 해시와 서버 매입 규칙도 재로드 결과와 일치한다.
+
+일반 보상의 native/네트워크 검사 기대값도 v2/부품 수량에 맞췄다. 이전 persistence/overflow
+검사기의 80칸·시작 장비/슬롯·2개 우편 수령 전제는 이번 작업에서 이전하지 않았으므로,
+해당 전체 러너의 현재 통합 성공을 의미하지 않는다.
 
 백엔드 검사는 규칙·Memory 저장·실제 loopback HTTP 계약과 패키징된 마이그레이션을 다룬다.
 HTTP 검사의 인증 주체는 테스트가 주입하며 Steam 로그인을 대체 검증하지 않는다.

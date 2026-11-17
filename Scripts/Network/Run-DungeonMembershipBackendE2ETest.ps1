@@ -471,7 +471,7 @@ try {
         @($members | ForEach-Object { [ordered]@{characterId=$_.CharacterId;gold=0;starterItem=$_.StarterItem} }) |
             ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $runRoot 'InitialEquipment.proof.json') -Encoding UTF8
     }
-    # Settlement assertions use the authored Hard reward (500 gold, 3 potions, 1 helm).
+    # Settlement assertions use the authored Hard v2 reward (500 gold, 3 potions, 1 helm, 3 broken parts).
     $fixtureDifficulty=if ($VerifyRemainingPartySettlement) {'Hard'} else {'Normal'}
     $fixtureDungeonId=if ($VerifyRemainingPartySettlement) {'Dungeon.RaidSwordMan'} else {'Dungeon.MembershipE2E'}
     $session=Invoke-Api 'dungeon-sessions' 'Post' $members[0].Headers @{characterId=$members[0].CharacterId;dungeonId=$fixtureDungeonId;difficulty=$fixtureDifficulty} 201
@@ -823,7 +823,7 @@ try {
         $rewardedMembers=if ($VerifyReconnectWithinGrace) {@($members)} else {@($members | Select-Object -Skip 1)}
         foreach ($member in $rewardedMembers) {
             $memberLog=if ($VerifyReconnectWithinGrace -and $member.CharacterId -eq $members[0].CharacterId) {$reconnectedClientLog} else {$member.Log}
-            Wait-Marker $memberLog 'DUNGEON_FLOW_E2E_RETURN_CLICK LiveWidget=1 Gold=500 InventoryQuantity=4 MailQuantity=0'
+            Wait-Marker $memberLog 'DUNGEON_FLOW_E2E_RETURN_CLICK LiveWidget=1 Gold=500 InventoryQuantity=7 MailQuantity=0 RewardVersion=pve_hard_v2'
             Wait-Marker $memberLog 'DUNGEON_FLOW_E2E_LOBBY_COMPLETE ActualMap=1 Standalone=1 Idle=1 AuthSelectionRetained=1 NoJoinTicket=1'
         }
         $terminal=Invoke-Api "dungeon-sessions/$sessionId" 'Get' $adminHeaders
@@ -863,11 +863,17 @@ try {
             } else {
                 $potion=@($rewardItems | Where-Object definitionName -eq 'GameItem.Consume.Potion.Red.Large')
                 $helm=@($rewardItems | Where-Object definitionName -eq 'GameItem.Equipment.Helm.Default')
-                if ($gold.Count -ne 1 -or $gold[0].balance -ne 500 -or $rewardItems.Count -ne 2 -or $potion.Count -ne 1 -or $helm.Count -ne 1 -or
+                $brokenParts=@($rewardItems | Where-Object { $_.definitionType -ceq 'RPGItemDefinition' -and $_.definitionName -ceq 'GameItem.Material.Junk.BrokenPart' })
+                if ($gold.Count -ne 1 -or $gold[0].balance -ne 500 -or $rewardItems.Count -ne 3 -or $potion.Count -ne 1 -or $helm.Count -ne 1 -or
                     $potion[0].state.quantity -ne 3 -or $helm[0].state.quantity -ne 1 -or
+                    $brokenParts.Count -ne 1 -or $brokenParts[0].definitionVersion -ne 1 -or $brokenParts[0].state.quantity -ne 3 -or
+                    $brokenParts[0].metadata.bindState -cne 'Unbound' -or $brokenParts[0].metadata.creationSource -cne 'DungeonClear.pve_hard_v2' -or
+                    $brokenParts[0].owner.type -cne 'Character' -or $brokenParts[0].owner.ownerId -cne $member.CharacterId -or
+                    $brokenParts[0].lifecycleState -cne 'Active' -or $brokenParts[0].location.containerId -cne $member.CharacterId -or
+                    $brokenParts[0].location.slotIndex -ne 160 -or
                     @($rewardItems | Where-Object { $_.location.containerType -ne 'Inventory' -or $_.revision -ne 1 }).Count -ne 0) { throw 'Remaining character reward mismatch.' }
             }
-            [ordered]@{characterId=$member.CharacterId;excluded=$excluded;gold=$(if ($excluded) {0} else {500});inventoryQuantity=$(if ($excluded) {0} else {4});mailQuantity=0}
+            [ordered]@{characterId=$member.CharacterId;excluded=$excluded;gold=$(if ($excluded) {0} else {500});inventoryQuantity=$(if ($excluded) {0} else {7});brokenPartQuantity=$(if ($excluded) {0} else {3});mailQuantity=0}
         })
         foreach ($member in $members) { if ($member.CharacterId -cnotmatch '^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$') { throw 'Noncanonical character UUID.' } }
         $characterSql=@($members | ForEach-Object { "'$($_.CharacterId)'" }) -join ','
@@ -879,8 +885,8 @@ try {
             @($persisted.characters).Count -ne $ClientCount) { throw 'Durable settlement recipient mismatch.' }
         foreach ($character in $persisted.characters) {
             $excluded= -not $VerifyReconnectWithinGrace -and $character.characterId -eq $members[0].CharacterId
-            if ($character.gold -ne $(if ($excluded) {0} else {500}) -or $character.itemCount -ne $(if ($excluded) {1} else {3}) -or
-                $character.quantity -ne $(if ($excluded) {1} else {5})) { throw 'Durable reward exclusion or delivery mismatch.' }
+            if ($character.gold -ne $(if ($excluded) {0} else {500}) -or $character.itemCount -ne $(if ($excluded) {1} else {4}) -or
+                $character.quantity -ne $(if ($excluded) {1} else {8})) { throw 'Durable reward exclusion or delivery mismatch.' }
         }
     } else {
         Wait-Marker $serverLog 'RPG_EJECTION_NET SERVER_COMPLETE '

@@ -234,10 +234,10 @@ bool FRPGDungeonRewardConfiguredAssetsTest::RunTest(
 	};
 	const FConfiguredRewardExpectation RewardExpectations[] =
 	{
-		{ TEXT("/Game/Blueprints/GameData/DungeonReward/DA_DungeonReward_Easy.DA_DungeonReward_Easy"), TEXT("pve_easy_v1"), 100, 1, false },
-		{ TEXT("/Game/Blueprints/GameData/DungeonReward/DA_DungeonReward_Normal.DA_DungeonReward_Normal"), TEXT("pve_normal_v1"), 250, 2, false },
-		{ TEXT("/Game/Blueprints/GameData/DungeonReward/DA_DungeonReward_Hard.DA_DungeonReward_Hard"), TEXT("pve_hard_v1"), 500, 3, true },
-		{ TEXT("/Game/Blueprints/GameData/DungeonReward/DA_DungeonReward_Hell.DA_DungeonReward_Hell"), TEXT("pve_hell_v1"), 1000, 5, true }
+		{ TEXT("/Game/Blueprints/GameData/DungeonReward/DA_DungeonReward_Easy.DA_DungeonReward_Easy"), TEXT("pve_easy_v2"), 100, 1, false },
+		{ TEXT("/Game/Blueprints/GameData/DungeonReward/DA_DungeonReward_Normal.DA_DungeonReward_Normal"), TEXT("pve_normal_v2"), 250, 2, false },
+		{ TEXT("/Game/Blueprints/GameData/DungeonReward/DA_DungeonReward_Hard.DA_DungeonReward_Hard"), TEXT("pve_hard_v2"), 500, 3, true },
+		{ TEXT("/Game/Blueprints/GameData/DungeonReward/DA_DungeonReward_Hell.DA_DungeonReward_Hell"), TEXT("pve_hell_v2"), 1000, 5, true }
 	};
 	for (const FConfiguredRewardExpectation& Expectation : RewardExpectations)
 	{
@@ -275,7 +275,7 @@ bool FRPGDungeonRewardConfiguredAssetsTest::RunTest(
 				Expectation.Gold);
 		}
 
-		const int32 ExpectedItemCount = Expectation.bIncludesHelm ? 2 : 1;
+		const int32 ExpectedItemCount = Expectation.bIncludesHelm ? 3 : 2;
 		TestEqual(TEXT("Configured reward has the expected item count"),
 			ItemRewards.Num(),
 			ExpectedItemCount);
@@ -302,6 +302,16 @@ bool FRPGDungeonRewardConfiguredAssetsTest::RunTest(
 			TestEqual(TEXT("Configured helm quantity matches the backend contract"),
 				ItemRewards[1].Quantity,
 				1);
+		}
+		if (ItemRewards.Num() == ExpectedItemCount)
+		{
+			const FRPGDungeonItemReward& Salvage = ItemRewards.Last();
+			TestEqual(TEXT("Shop salvage uses the persistent item type"), Salvage.DefinitionType, FName(TEXT("RPGItemDefinition")));
+			TestEqual(TEXT("Shop salvage uses a dedicated non-progression definition"), Salvage.DefinitionName, FName(TEXT("GameItem.Material.Junk.BrokenPart")));
+			TestEqual(TEXT("Shop salvage has definition version one"), Salvage.DefinitionVersion, 1);
+			TestEqual(TEXT("Shop salvage quantity follows the difficulty"), Salvage.Quantity, Expectation.PotionQuantity);
+			TestEqual(TEXT("Shop salvage stacks to ninety-nine"), Salvage.MaxStackSize, 99);
+			TestEqual(TEXT("Shop salvage remains unbound"), Salvage.BindState, ERPGItemBindState::Unbound);
 		}
 	}
 

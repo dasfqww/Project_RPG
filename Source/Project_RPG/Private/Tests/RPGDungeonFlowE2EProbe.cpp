@@ -93,14 +93,15 @@ namespace
 		int64 Gold;
 		int32 Potions;
 		int32 Helms;
+		int32 BrokenParts;
 	};
 	const FRewardExpectation* FindRewardExpectation(const FString& Difficulty)
 	{
 		static const FRewardExpectation Expectations[] = {
-			{ TEXT("Easy"), TEXT("pve_easy_v1"), 100, 1, 0 },
-			{ TEXT("Normal"), TEXT("pve_normal_v1"), 250, 2, 0 },
-			{ TEXT("Hard"), TEXT("pve_hard_v1"), 500, 3, 1 },
-			{ TEXT("Hell"), TEXT("pve_hell_v1"), 1000, 5, 1 }
+			{ TEXT("Easy"), TEXT("pve_easy_v2"), 100, 1, 0, 1 },
+			{ TEXT("Normal"), TEXT("pve_normal_v2"), 250, 2, 0, 2 },
+			{ TEXT("Hard"), TEXT("pve_hard_v2"), 500, 3, 1, 3 },
+			{ TEXT("Hell"), TEXT("pve_hell_v2"), 1000, 5, 1, 5 }
 		};
 		for (const auto& Expected : Expectations)
 			if (Same(Difficulty, Expected.Difficulty)) return &Expected;
@@ -1054,7 +1055,7 @@ bool URPGDungeonFlowE2EClient::TickProbe(float)
 		// Use the authenticated session snapshot, including non-lobby probe callers.
 		const auto* Expected = FindRewardExpectation(Flow->GetCurrentDungeonSession().Difficulty);
 		if (!Expected) return Fail(TEXT("UnsupportedRewardDifficulty"));
-		const int32 InventoryQuantity = Expected->Potions + Expected->Helms;
+		const int32 InventoryQuantity = Expected->Potions + Expected->Helms + Expected->BrokenParts;
 		const bool bFirstSliceStarter = Projection->GetProjectedItems().ContainsByPredicate([](const FRPGInventoryProjectionEntry& Item)
 		{
 			return Item.GetDefinitionId().PrimaryAssetName == TEXT("GameItem.Equipment.Progression.Starter.GreatSword")
@@ -1062,19 +1063,30 @@ bool URPGDungeonFlowE2EClient::TickProbe(float)
 				&& Item.GetSlotIndex() == int32(EEquipmentSlotType::Weapon_Primary_R);
 		});
 		// New characters have three starters; old characters retain their one legacy sword.
-		const int32 ItemRecords = (bFirstSliceStarter ? 4 : 2) + (Expected->Helms > 0 ? 1 : 0);
+		const int32 ItemRecords = (bFirstSliceStarter ? 5 : 3) + (Expected->Helms > 0 ? 1 : 0);
 		if (!Same(Notice.DungeonSessionId, SessionId) || !Same(Notice.RewardVersion, Expected->Version)
 			|| Notice.InventoryQuantity != InventoryQuantity || Notice.MailQuantity != 0)
 			return Fail(TEXT("RewardNoticeMismatch"));
 		if (State->GetCurrencyBalance(TEXT("RosterGold")) != Expected->Gold || Projection->GetProjectedItems().Num() != ItemRecords
 			|| !Projection->GetMailItems().IsEmpty()) return true; // independent owner-only replication can arrive later
-		int32 Potions = 0, Helms = 0, Swords = 0, StarterChests = 0, StarterGloves = 0;
+		int32 Potions = 0, Helms = 0, BrokenParts = 0, BrokenPartRecords = 0, Swords = 0, StarterChests = 0, StarterGloves = 0;
 		for (const auto& Item : Projection->GetProjectedItems())
 		{
 			if (Item.GetDefinitionId().PrimaryAssetName == TEXT("GameItem.Consume.Potion.Red.Large")
 				&& Item.GetContainerType() == ERPGItemContainerType::Inventory) Potions += Item.GetQuantity();
 			if (Item.GetDefinitionId().PrimaryAssetName == TEXT("GameItem.Equipment.Helm.Default")
 				&& Item.GetContainerType() == ERPGItemContainerType::Inventory) Helms += Item.GetQuantity();
+			if (Item.GetDefinitionId().PrimaryAssetName == TEXT("GameItem.Material.Junk.BrokenPart"))
+			{
+				if (Item.GetDefinitionId().PrimaryAssetType.ToString() != TEXT("RPGItemDefinition")
+					|| Item.GetDefinitionVersion() != 1 || Item.GetQuantity() != Expected->BrokenParts
+					|| Item.GetBindState() != ERPGItemBindState::Unbound || Item.GetRevision() != 1
+					|| Item.GetContainerType() != ERPGItemContainerType::Inventory
+					|| Item.GetSlotIndex() < 160 || Item.GetSlotIndex() >= 240)
+					return Fail(TEXT("BrokenPartProjectionMetadataMismatch"));
+				BrokenParts += Item.GetQuantity();
+				++BrokenPartRecords;
+			}
 			const FName SwordName = bFirstSliceStarter ? FName(TEXT("GameItem.Equipment.Progression.Starter.GreatSword"))
 				: FName(TEXT("GameItem.Equipment.Weapon.GreatSword"));
 			if (Item.GetDefinitionId().PrimaryAssetName == SwordName
@@ -1095,7 +1107,7 @@ bool URPGDungeonFlowE2EClient::TickProbe(float)
 					&& Item.GetSlotIndex() == int32(EEquipmentSlotType::Hands)) ++StarterGloves;
 			}
 		}
-		if (Potions != Expected->Potions || Helms != Expected->Helms || Swords != 1
+		if (Potions != Expected->Potions || Helms != Expected->Helms || BrokenParts != Expected->BrokenParts || BrokenPartRecords != 1 || Swords != 1
 			|| (bFirstSliceStarter && (StarterChests != 1 || StarterGloves != 1))) return Fail(TEXT("RewardProjectionMismatch"));
 		TArray<UUserWidget*> Widgets;
 		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, Widgets, URPGDungeonResultActionsWidget::StaticClass(), false);

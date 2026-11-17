@@ -142,13 +142,13 @@ if ($LobbyDifficultyOnly -and (-not $LobbyUI -or $ReauthenticateInLobby -or $Rea
 }
 # Expectations mirror the saved reward definitions; never inject them into gameplay.
 $expectedRewards = @{
-    Easy = @{ Gold = 100; Potions = 1; Helms = 0; Version = 'pve_easy_v1'; AbilityLevel = 1 }
-    Normal = @{ Gold = 250; Potions = 2; Helms = 0; Version = 'pve_normal_v1'; AbilityLevel = 2 }
-    Hard = @{ Gold = 500; Potions = 3; Helms = 1; Version = 'pve_hard_v1'; AbilityLevel = 3 }
-    Hell = @{ Gold = 1000; Potions = 5; Helms = 1; Version = 'pve_hell_v1'; AbilityLevel = 4 }
+    Easy = @{ Gold = 100; Potions = 1; Helms = 0; BrokenParts = 1; Version = 'pve_easy_v2'; AbilityLevel = 1 }
+    Normal = @{ Gold = 250; Potions = 2; Helms = 0; BrokenParts = 2; Version = 'pve_normal_v2'; AbilityLevel = 2 }
+    Hard = @{ Gold = 500; Potions = 3; Helms = 1; BrokenParts = 3; Version = 'pve_hard_v2'; AbilityLevel = 3 }
+    Hell = @{ Gold = 1000; Potions = 5; Helms = 1; BrokenParts = 5; Version = 'pve_hell_v2'; AbilityLevel = 4 }
 }[$LobbyDifficulty]
-$expectedInventoryQuantity = $expectedRewards.Potions + $expectedRewards.Helms
-$expectedItemRecords = 4 + [int]($expectedRewards.Helms -gt 0) # potion + three newly created starters + optional helm
+$expectedInventoryQuantity = $expectedRewards.Potions + $expectedRewards.Helms + $expectedRewards.BrokenParts
+$expectedItemRecords = 5 + [int]($expectedRewards.Helms -gt 0) # potion + broken parts + three newly created starters + optional helm
 if ($LiveBossAI -and -not $NaturalPlayerAttack) { throw 'LiveBossAI requires NaturalPlayerAttack.' }
 if ($CreateCharactersInUI -and -not $LobbyUI) { throw 'CreateCharactersInUI requires LobbyUI.' }
 if ($ReauthenticateInLobby -and -not $LobbyUI) { throw 'ReauthenticateInLobby requires LobbyUI.' }
@@ -1140,16 +1140,24 @@ try {
         $items = @($itemPage.items)
         $potion = @($items | Where-Object { $_.definitionType -eq 'RPGItemDefinition' -and $_.definitionName -eq 'GameItem.Consume.Potion.Red.Large' })
         $helm = @($items | Where-Object { $_.definitionType -eq 'RPGItemDefinition' -and $_.definitionName -eq 'GameItem.Equipment.Helm.Default' })
+        $brokenParts = @($items | Where-Object { $_.definitionType -ceq 'RPGItemDefinition' -and $_.definitionName -ceq 'GameItem.Material.Junk.BrokenPart' })
         Assert-DungeonFirstSliceStarterEquipment $items $member.CharacterId
         if ($gold.Count -ne 1 -or $gold[0].balance -ne $expectedRewards.Gold -or $items.Count -ne $expectedItemRecords -or
             $potion.Count -ne 1 -or $potion[0].state.quantity -ne $expectedRewards.Potions -or
             $helm.Count -ne [int]($expectedRewards.Helms -gt 0) -or
             ($expectedRewards.Helms -gt 0 -and $helm[0].state.quantity -ne $expectedRewards.Helms) -or
+            $brokenParts.Count -ne 1 -or $brokenParts[0].definitionVersion -ne 1 -or
+            $brokenParts[0].state.quantity -ne $expectedRewards.BrokenParts -or $brokenParts[0].revision -ne 1 -or
+            $brokenParts[0].lifecycleState -cne 'Active' -or $brokenParts[0].metadata.bindState -cne 'Unbound' -or
+            $brokenParts[0].metadata.creationSource -cne ('DungeonClear.' + $expectedRewards.Version) -or
+            $brokenParts[0].owner.type -cne 'Character' -or $brokenParts[0].owner.ownerId -cne $member.CharacterId -or
+            $brokenParts[0].location.containerType -cne 'Inventory' -or $brokenParts[0].location.containerId -cne $member.CharacterId -or
+            $brokenParts[0].location.slotIndex -ne 160 -or
             @($items | Where-Object { $_.location.containerType -cnotin @('Equipment','Inventory') }).Count -ne 0) {
             throw 'Persisted reward or starter equipment mismatch after lobby travel.'
         }
         [pscustomobject]@{ CharacterId = $member.CharacterId; Gold = $expectedRewards.Gold;
-            Potions = $expectedRewards.Potions; Helms = $expectedRewards.Helms; RewardVersion = $expectedRewards.Version;
+            Potions = $expectedRewards.Potions; Helms = $expectedRewards.Helms; BrokenParts = $expectedRewards.BrokenParts; RewardVersion = $expectedRewards.Version;
             ItemRecords = $expectedItemRecords; InventoryQuantity = $expectedInventoryQuantity; MailQuantity = 0 }
     })
     for ($check = 0; $check -lt 8; $check++) { Start-Sleep -Milliseconds 250; Assert-Healthy }
