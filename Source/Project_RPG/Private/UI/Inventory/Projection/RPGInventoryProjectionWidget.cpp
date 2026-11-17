@@ -613,6 +613,8 @@ void URPGInventoryProjectionWidget::BindViewModel()
 		URPGInventoryProjectionViewModel::FFieldNotificationClassDescriptor::PendingItemCommandCount, Delegate);
 	InventoryViewModel->AddFieldValueChangedDelegate(
 		URPGInventoryProjectionViewModel::FFieldNotificationClassDescriptor::LocalActionFeedback, Delegate);
+	InventoryViewModel->AddFieldValueChangedDelegate(
+		URPGInventoryProjectionViewModel::FFieldNotificationClassDescriptor::NewItemHighlightRevision, Delegate);
 }
 
 void URPGInventoryProjectionWidget::UnbindViewModel()

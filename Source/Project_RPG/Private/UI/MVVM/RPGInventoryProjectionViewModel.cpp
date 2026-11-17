@@ -110,6 +110,7 @@ void URPGInventoryProjectionViewModel::InitializeFromPlayerController(
 
 	if (Projection)
 	{
+		Projection->OnItemHighlightsChanged.AddUniqueDynamic(this, &ThisClass::HandleItemHighlightsChanged);
 		Projection->OnProjectionChanged.AddUniqueDynamic(
 			this,
 			&ThisClass::HandleProjectionChanged);
@@ -890,6 +891,25 @@ void URPGInventoryProjectionViewModel::HandleProjectionChanged()
 	RefreshProjection();
 }
 
+bool URPGInventoryProjectionViewModel::IsInventoryItemUnseen(const FGuid ItemId) const
+{
+	const auto* Projection = ProjectionComponent.Get();
+	return !IsItemAuthorityRevoked() && Projection &&
+		Projection->GetLoadState() == ERPGInventoryProjectionLoadState::Ready &&
+		Projection->IsInventoryItemUnseen(ItemId);
+}
+
+void URPGInventoryProjectionViewModel::MarkInventoryItemSeen(const FGuid ItemId)
+{
+	if (auto* Projection = ProjectionComponent.Get()) Projection->MarkInventoryItemSeen(ItemId);
+}
+
+void URPGInventoryProjectionViewModel::HandleItemHighlightsChanged()
+{
+	NewItemHighlightRevision = NewItemHighlightRevision == MAX_int32 ? 0 : NewItemHighlightRevision + 1;
+	UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(NewItemHighlightRevision);
+}
+
 void URPGInventoryProjectionViewModel::HandleDungeonRewardDelivered(const FRPGDungeonRewardDeliveryNotice& Notice)
 {
 	if (IsItemAuthorityRevoked() || !Notice.bApplied)
@@ -1184,6 +1204,7 @@ void URPGInventoryProjectionViewModel::UnbindComponents()
 	if (URPGInventoryProjectionComponent* Projection =
 		ProjectionComponent.Get())
 	{
+		Projection->OnItemHighlightsChanged.RemoveDynamic(this, &ThisClass::HandleItemHighlightsChanged);
 		Projection->OnProjectionChanged.RemoveDynamic(
 			this,
 			&ThisClass::HandleProjectionChanged);

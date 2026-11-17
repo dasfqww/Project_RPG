@@ -32,6 +32,7 @@ protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual void NativeOnMouseEnter(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 	virtual FReply NativeOnMouseButtonDown(
 		const FGeometry& InGeometry,
 		const FPointerEvent& InMouseEvent) override;
@@ -54,6 +55,7 @@ private:
 	void RefreshItemVisuals();
 	void ApplyIcon(UTexture2D* Texture);
 	void CancelIconLoad();
+	void MarkItemSeen();
 	ERPGItemSlotPresentationState GetCurrentPresentationState() const;
 
 	UPROPERTY(Transient)
@@ -70,6 +72,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> StatusText;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBorder> NewItemBadge;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UBorder> Frame;

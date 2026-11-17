@@ -54,6 +54,7 @@ bool URPGInventoryProjectionItemSlotWidget::RequestDefaultAction()
 	URPGInventoryProjectionViewModel* Model = ViewModel.Get();
 	if (!ItemId.IsValid() || !Model || GetCurrentPresentationState() != ERPGItemSlotPresentationState::Idle)
 		return false;
+	MarkItemSeen();
 	FGuid RequestId;
 	return bEquipment
 		? Model->RequestUnequipToFirstFreeSlot(ItemId, RequestId)
@@ -129,6 +130,21 @@ void URPGInventoryProjectionItemSlotWidget::NativeOnInitialized()
 	UOverlaySlot* StatusSlot = Layers->AddChildToOverlay(StatusText);
 	StatusSlot->SetHorizontalAlignment(HAlign_Left);
 	StatusSlot->SetVerticalAlignment(VAlign_Top);
+
+	NewItemBadge = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("NewItemBadge"));
+	NewItemBadge->SetBrushColor(FLinearColor(1.f, .72f, .18f));
+	NewItemBadge->SetPadding(FMargin(2.f, 0.f));
+	NewItemBadge->SetVisibility(ESlateVisibility::Collapsed);
+	UTextBlock* NewLabel = WidgetTree->ConstructWidget<UTextBlock>();
+	NewLabel->SetText(NSLOCTEXT("RPGItemUI", "NewItemBadge", "NEW"));
+	NewLabel->SetColorAndOpacity(FSlateColor(FLinearColor(.08f, .04f, .01f)));
+	Font = NewLabel->GetFont();
+	Font.Size = 8;
+	NewLabel->SetFont(Font);
+	NewItemBadge->SetContent(NewLabel);
+	UOverlaySlot* NewSlot = Layers->AddChildToOverlay(NewItemBadge);
+	NewSlot->SetHorizontalAlignment(HAlign_Right);
+	NewSlot->SetVerticalAlignment(VAlign_Top);
 
 	Frame->SetContent(Layers);
 	WidgetTree->RootWidget = Frame;
@@ -222,6 +238,8 @@ void URPGInventoryProjectionItemSlotWidget::RefreshItemVisuals()
 FReply URPGInventoryProjectionItemSlotWidget::NativeOnMouseButtonDown(
 	const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton ||
+		InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton) MarkItemSeen();
 	if (ItemId.IsValid() && InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
 	{
 		RequestDefaultAction();
@@ -233,6 +251,20 @@ FReply URPGInventoryProjectionItemSlotWidget::NativeOnMouseButtonDown(
 		return FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
 	}
 	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+}
+
+void URPGInventoryProjectionItemSlotWidget::MarkItemSeen()
+{
+	if (!bEquipment && ItemId.IsValid())
+		if (auto* Model = ViewModel.Get()) Model->MarkInventoryItemSeen(ItemId);
+	RefreshInteractionState();
+}
+
+void URPGInventoryProjectionItemSlotWidget::NativeOnMouseEnter(
+	const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	Super::NativeOnMouseEnter(InGeometry, InMouseEvent);
+	MarkItemSeen();
 }
 
 void URPGInventoryProjectionItemSlotWidget::NativeOnDragDetected(
@@ -349,6 +381,12 @@ void URPGInventoryProjectionItemSlotWidget::RefreshInteractionState()
 	}
 	if (IconImage) IconImage->SetColorAndOpacity(State == EState::Idle
 		? FLinearColor::White : FLinearColor(.5f, .5f, .5f));
+	if (NewItemBadge)
+	{
+		const auto* Model = ViewModel.Get();
+		NewItemBadge->SetVisibility(!bEquipment && State == EState::Idle && Model && Model->IsInventoryItemUnseen(ItemId)
+			? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
 	const bool bShowReason = !Reason.IsEmpty() && (ItemId.IsValid() || State == EState::Pending);
 	SetToolTipText(!bShowReason ? BaseToolTip : BaseToolTip.IsEmpty() ? Reason
 		: FText::Format(NSLOCTEXT("RPGItemUI", "ItemDetailsAndStatus", "{0}\n\n{1}"), BaseToolTip, Reason));
@@ -368,7 +406,11 @@ void URPGInventoryProjectionItemSlotWidget::UpdateFrameColor(const bool bValidDr
 		case EState::Pending: Color = FLinearColor(.23f, .18f, .07f); break;
 		case EState::RecoveryRequired: Color = FLinearColor(.18f, .12f, .06f); break;
 		case EState::Unavailable: Color = FLinearColor(.065f, .065f, .065f); break;
-		case EState::Idle: if (bValidDropTarget) Color = FLinearColor(.12f, .32f, .20f); break;
+		case EState::Idle:
+			if (!bEquipment && ViewModel.IsValid() && ViewModel->IsInventoryItemUnseen(ItemId))
+				Color = FLinearColor(.55f, .34f, .065f);
+			if (bValidDropTarget) Color = FLinearColor(.12f, .32f, .20f);
+			break;
 		}
 		Frame->SetBrushColor(Color);
 	}

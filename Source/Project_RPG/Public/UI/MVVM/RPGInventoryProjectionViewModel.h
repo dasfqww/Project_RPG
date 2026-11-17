@@ -119,6 +119,14 @@ public:
 	/** Read-only binding check; opening another window must not reset in-flight requests. */
 	bool IsBoundToPlayerController(const APlayerController* PlayerController) const;
 
+	UFUNCTION(BlueprintPure, Category = "RPG|Item|ViewModel")
+	bool IsInventoryItemUnseen(FGuid ItemId) const;
+	UFUNCTION(BlueprintCallable, Category = "RPG|Item|ViewModel")
+	void MarkInventoryItemSeen(FGuid ItemId);
+	/** Attention-only changes refresh cell decorations without rebuilding the bag. */
+	UPROPERTY(BlueprintReadOnly, Transient, FieldNotify, Category = "RPG|Item|ViewModel")
+	int32 NewItemHighlightRevision = 0;
+
 	/** Retry a failed owner projection load without exposing backend credentials to UI. */
 	UFUNCTION(BlueprintCallable, Category = "RPG|Item|ViewModel")
 	bool RequestRetryLoad();
@@ -320,6 +328,8 @@ private:
 
 	UFUNCTION()
 	void HandleProjectionChanged();
+	UFUNCTION()
+	void HandleItemHighlightsChanged();
 
 	UFUNCTION()
 	void HandleLoadStateChanged(

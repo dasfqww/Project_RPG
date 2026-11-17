@@ -3,6 +3,7 @@
 #include "Components/ActorComponent.h"
 #include "CoreMinimal.h"
 #include "Item/Projection/RPGInventoryProjectionStore.h"
+#include "Item/Projection/RPGInventoryNewItemTracker.h"
 #include "Item/Projection/RPGInventoryProjectionTypes.h"
 #include "RPGInventoryProjectionComponent.generated.h"
 
@@ -96,6 +97,11 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "RPG|Inventory Projection")
 	FRPGInventoryProjectionChanged OnProjectionChanged;
 
+	/** Local UI attention only, independent of whether an inventory window exists. */
+	bool IsInventoryItemUnseen(FGuid ItemId) const { return NewItemTracker.IsUnseen(ItemId); }
+	void MarkInventoryItemSeen(FGuid ItemId);
+	FRPGInventoryProjectionChanged OnItemHighlightsChanged;
+
 	UPROPERTY(BlueprintAssignable, Category = "RPG|Inventory Projection")
 	FRPGInventoryProjectionLoadStateChanged OnLoadStateChanged;
 
@@ -107,6 +113,7 @@ private:
 	friend struct FRPGInventoryProjectionList;
 
 	void HandleProjectionReplicated();
+	void RefreshNewItemHighlights();
 	bool ReconcileProjection(
 		const TArray<FRPGInventoryProjectionEntry>& DesiredEntries,
 		FString* OutError);
@@ -130,4 +137,5 @@ private:
 	bool bAuthenticatedIdentityRevoked = false;
 	uint64 AuthoritativeSnapshotGeneration = 0;
 	FRPGInventoryProjectionStore AuthoritativeStore;
+	FRPGInventoryNewItemTracker NewItemTracker;
 };

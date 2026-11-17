@@ -339,6 +339,7 @@ bool URPGInventoryProjectionComponent::ReconcileProjection(
 	}
 	if (bChanged || bMailChanged)
 	{
+		RefreshNewItemHighlights();
 		OnProjectionChanged.Broadcast();
 		GetOwner()->ForceNetUpdate();
 	}
@@ -403,7 +404,21 @@ bool URPGInventoryProjectionComponent::FindMailItem(
 
 void URPGInventoryProjectionComponent::HandleProjectionReplicated()
 {
+	RefreshNewItemHighlights();
 	OnProjectionChanged.Broadcast();
+}
+
+void URPGInventoryProjectionComponent::RefreshNewItemHighlights()
+{
+	if (LoadState == ERPGInventoryProjectionLoadState::Ready)
+		NewItemTracker.Observe(Projection.GetEntries());
+	else if (LoadState == ERPGInventoryProjectionLoadState::Uninitialized)
+		NewItemTracker.Reset();
+}
+
+void URPGInventoryProjectionComponent::MarkInventoryItemSeen(const FGuid ItemId)
+{
+	if (NewItemTracker.MarkSeen(ItemId)) OnItemHighlightsChanged.Broadcast();
 }
 
 void URPGInventoryProjectionComponent::SetLoadState(
@@ -415,6 +430,7 @@ void URPGInventoryProjectionComponent::SetLoadState(
 		return;
 	}
 	LoadState = NewState;
+	RefreshNewItemHighlights();
 	OnLoadStateChanged.Broadcast(LoadState);
 	if (GetOwner() && GetOwner()->HasAuthority())
 	{
@@ -424,5 +440,6 @@ void URPGInventoryProjectionComponent::SetLoadState(
 
 void URPGInventoryProjectionComponent::OnRep_LoadState()
 {
+	RefreshNewItemHighlights();
 	OnLoadStateChanged.Broadcast(LoadState);
 }
