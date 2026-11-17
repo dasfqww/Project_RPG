@@ -8,6 +8,7 @@
 #include "RPGHUD.generated.h"
 
 class URPGActionBarHUDPresenter;
+class URPGItemQuickSlotBar;
 class URPGInteractionWidget;
 class URPGMainMenuWidget;
 class URPGOptionMenu;
@@ -26,6 +27,7 @@ class PROJECT_RPG_API ARPGHUD : public AHUD
 	GENERATED_BODY()
 public:
 	ARPGHUD();
+	URPGItemQuickSlotBar* GetItemQuickSlotBar() const { return ItemQuickSlotBar; }
 
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
@@ -108,6 +110,7 @@ protected:
 	URPGInteractionWidget* InteractionWidget;
 
 private:
+	UPROPERTY(Transient) TObjectPtr<URPGItemQuickSlotBar> ItemQuickSlotBar;
 	UPROPERTY(Transient) TObjectPtr<UUserWidget> PlayerHUDWidget;
 	UPROPERTY(Transient) TObjectPtr<URPGActionBarHUDPresenter> ActionBarPresenter;
 	TWeakObjectPtr<APlayerController> PlayerHUDController;

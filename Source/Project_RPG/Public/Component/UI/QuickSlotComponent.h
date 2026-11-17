@@ -30,6 +30,16 @@ class PROJECT_RPG_API UQuickSlotComponent : public UActorComponent
 
 public:	
 	UQuickSlotComponent();
+	static constexpr int32 GeneralItemSlots = 8;
+	static constexpr int32 PotionSlotIndex = GeneralItemSlots;
+	static constexpr int32 ItemSlotCount = GeneralItemSlots + 1;
+	/** Local assistance only; all consumption still passes the shared command facade. */
+	bool IsItemAllowedInSlot(int32 Index, const FRPGInventoryProjectionEntry& Entry) const;
+	bool IsPotionAutoUseEnabled() const { return bPotionAutoUse; }
+	int32 GetPotionHealthThreshold() const { return PotionHealthThreshold; }
+	void SetPotionAutoUse(bool bEnabled);
+	void CyclePotionHealthThreshold();
+	static bool ShouldAutoUsePotion(float Health, float MaxHealth, int32 Threshold);
 
 	// 슬롯 설정 및 사용 (타입 구분)
 	UFUNCTION(BlueprintCallable, Category = "QuickSlot")
@@ -90,6 +100,7 @@ public:
 	FOnQuickSlotQuantityChanged OnQuickSlotQuantityChanged;
 
 protected:
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* TickFunction) override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
@@ -101,7 +112,7 @@ private:
 	int32 MaxSkillSlots = 8;
 
 	UPROPERTY(EditDefaultsOnly, Category = "QuickSlot", meta = (ClampMin = "1"))
-	int32 MaxItemSlots = 8;
+	int32 MaxItemSlots = ItemSlotCount;
 
 	UPROPERTY(VisibleAnywhere, ReplicatedUsing = OnRep_SkillSlots, Category = "QuickSlot")
 	TArray<FRPGQuickSlotContent> SkillSlots;
@@ -144,6 +155,10 @@ private:
 	/** Keeps Release routed to the exact spec that received Press. */
 	TMap<int32, FGameplayAbilitySpecHandle> PressedSkillSpecHandles;
 	TSet<int32> HeldSkillInputs;
+	bool bPotionAutoUse = false;
+	int32 PotionHealthThreshold = 50;
+	/** Assistance cadence, not an invented server item cooldown. */
+	double NextPotionAutoAttempt = 0.0;
 	UPROPERTY(Transient) TObjectPtr<URPGActionBarContext> ActionBarContext;
 
 	UFUNCTION(Server, Reliable)
@@ -159,5 +174,5 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	FORCEINLINE int32 GetMaxSkillSlots() const { return MaxSkillSlots; }
-	FORCEINLINE int32 GetMaxItemSlots() const { return MaxItemSlots; }
+	FORCEINLINE int32 GetMaxItemSlots() const { return ItemSlotCount; }
 };

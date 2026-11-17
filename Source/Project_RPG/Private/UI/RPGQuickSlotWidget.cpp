@@ -30,6 +30,14 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Application/SlateUser.h"
 #include "UI/Slots/SRPGSlotFrame.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/Border.h"
+#include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
+#include "Components/SizeBox.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SScrollBox.h"
 
 #include "RPGGameplayTags.h"
 #include "RPGDebugHelper.h"
@@ -239,7 +247,17 @@ void URPGQuickSlotWidget::RefreshItemCommandState()
 	}
 	const FText Details = Model && SlotItemId.IsValid()
 		? Model->GetItemPresentation(SlotItemId).GetDetailsText() : FText::GetEmpty();
-	SetToolTipText(Details.IsEmpty() ? Status : Status.IsEmpty() ? Details
+	if (auto* Overlay = Cast<UTextBlock>(GetWidgetFromName(TEXT("ItemStatusText"))))
+	{
+		Overlay->SetText(!SlotItemId.IsValid() ? (SlotIndex == UQuickSlotComponent::PotionSlotIndex
+			? NSLOCTEXT("ItemQuickSlots", "HealthPlaceholder", "HP") : FText::FromString(TEXT("+")))
+			: State == EState::Pending ? NSLOCTEXT("ItemQuickSlots", "Pending", "대기")
+			: State == EState::RecoveryRequired ? NSLOCTEXT("ItemQuickSlots", "Recovery", "확인") : FText::GetEmpty());
+	}
+	SetToolTipText(!SlotItemId.IsValid() ? (SlotIndex == UQuickSlotComponent::PotionSlotIndex
+		? NSLOCTEXT("ItemQuickSlots", "PotionEmpty", "회복 물약 · 클릭하여 등록\nX 또는 클릭으로 사용 · 우클릭으로 변경/해제")
+		: NSLOCTEXT("ItemQuickSlots", "ItemEmpty", "소모품 · 클릭하여 등록\n단축키 또는 클릭으로 사용 · 우클릭으로 변경/해제"))
+		: Details.IsEmpty() ? Status : Status.IsEmpty() ? Details
 		: FText::Format(NSLOCTEXT("RPGQuickSlot", "ItemDetailsAndStatus", "{0}\n\n{1}"), Details, Status));
 }
 
@@ -350,17 +368,19 @@ void URPGQuickSlotWidget::UpdateSkillCooldownView(const float RemainingFraction)
 void URPGQuickSlotWidget::NativeTick(const FGeometry& Geometry, const float DeltaTime)
 {
 	Super::NativeTick(Geometry, DeltaTime);
-	if (!bIsSkillSlot || !LinkedQuickSlotComponent.IsValid()) return;
+	if (!LinkedQuickSlotComponent.IsValid()) return;
 	SkillRefreshElapsed += DeltaTime;
 	if (SkillRefreshElapsed >= 0.1f)
 	{
 		SkillRefreshElapsed = 0.f;
-		RefreshSkillSlotView();
+		if (bIsSkillSlot) RefreshSkillSlotView();
+		else SetInputKeyText(ResolveQuickSlotInputKeyText(LinkedQuickSlotComponent.Get(), false, SlotIndex, InputText));
 	}
 }
 
 TSharedRef<SWidget> URPGQuickSlotWidget::RebuildWidget()
 {
+	if (!bIsSkillSlot && (!WidgetTree || !WidgetTree->RootWidget)) BuildNativeItemCell();
 	const TSharedRef<SWidget> Content = Super::RebuildWidget();
 	const TWeakObjectPtr<URPGQuickSlotWidget> WeakThis(this);
 	const auto Frame = SNew(SRPGSlotFrame).Appearance_Lambda([WeakThis] {
@@ -383,6 +403,14 @@ FReply URPGQuickSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry,
 	if (Reply.IsEventHandled())
 	{
 		return Reply;
+	}
+	if (!bIsSkillSlot && GetIsEnabled() && LinkedQuickSlotComponent.IsValid() &&
+		(InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton ||
+		 (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !SlotItemId.IsValid())))
+	{
+		CancelPendingItemClick();
+		OpenItemPicker(InMouseEvent.GetScreenSpacePosition());
+		return FReply::Handled();
 	}
 	if (bIsSkillSlot && InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
 	{
@@ -570,12 +598,93 @@ bool URPGQuickSlotWidget::NativeOnDrop(
 		Drag->ItemId.IsValid() &&
 		Projection->FindProjectedItem(Drag->ItemId, Entry) &&
 		Entry.GetContainerType() == ERPGItemContainerType::Inventory &&
-		Entry.GetQuantity() > 0)
+		Entry.GetQuantity() > 0 && QuickSlots->IsItemAllowedInSlot(SlotIndex, Entry))
 	{
 		QuickSlots->SetItemSlotById(SlotIndex, Entry.GetItemId());
 		return true;
 	}
 	return false;
+}
+
+void URPGQuickSlotWidget::ConfigureItemSlot(const int32 Index)
+{
+	bIsSkillSlot = false;
+	SlotIndex = Index;
+	SetIsFocusable(false);
+	SetVisibility(ESlateVisibility::Visible);
+}
+
+void URPGQuickSlotWidget::BuildNativeItemCell()
+{
+	if (!WidgetTree) WidgetTree = NewObject<UWidgetTree>(this, TEXT("WidgetTree"));
+	auto* Size = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ItemCellSize"));
+	Size->SetWidthOverride(44.f); Size->SetHeightOverride(44.f);
+	WidgetTree->RootWidget = Size;
+	auto* Border = WidgetTree->ConstructWidget<UBorder>();
+	Border->SetBrushColor(FLinearColor(.36f, .27f, .16f, 1.f)); Border->SetPadding(FMargin(1.f));
+	Size->AddChild(Border);
+	auto* Inner = WidgetTree->ConstructWidget<UBorder>();
+	Inner->SetBrushColor(FLinearColor(.035f, .026f, .021f, .98f)); Inner->SetPadding(FMargin(3.f));
+	Border->AddChild(Inner);
+	auto* Overlay = WidgetTree->ConstructWidget<UOverlay>(); Inner->AddChild(Overlay);
+	SlotItemImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("SlotItemImage"));
+	Overlay->AddChildToOverlay(SlotItemImage)->SetPadding(FMargin(3.f));
+	SetImageAlpha(SlotItemImage, 0.f);
+	InputKeyText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("InputKeyText"));
+	InputKeyText->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 10));
+	InputKeyText->SetColorAndOpacity(FSlateColor(FLinearColor(.95f, .82f, .61f)));
+	auto* KeySlot = Overlay->AddChildToOverlay(InputKeyText); KeySlot->SetHorizontalAlignment(HAlign_Left); KeySlot->SetVerticalAlignment(VAlign_Top);
+	SlotItemCountText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("SlotItemCountText"));
+	SlotItemCountText->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 10));
+	auto* CountSlot = Overlay->AddChildToOverlay(SlotItemCountText); CountSlot->SetHorizontalAlignment(HAlign_Right); CountSlot->SetVerticalAlignment(VAlign_Bottom);
+	auto* Status = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ItemStatusText"));
+	Status->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 10));
+	auto* StatusSlot = Overlay->AddChildToOverlay(Status); StatusSlot->SetHorizontalAlignment(HAlign_Center); StatusSlot->SetVerticalAlignment(VAlign_Center);
+	// Decorative children must not intercept slot presses or inventory drops.
+	Border->SetVisibility(ESlateVisibility::HitTestInvisible);
+}
+
+void URPGQuickSlotWidget::OpenItemPicker(const FVector2D& ScreenPosition)
+{
+	const auto* PC = GetOwningPlayer();
+	const auto* Slots = LinkedQuickSlotComponent.Get();
+	const auto* Projection = PC ? PC->FindComponentByClass<URPGInventoryProjectionComponent>() : nullptr;
+	const auto* Data = GetWorld() && GetWorld()->GetGameInstance() ? GetWorld()->GetGameInstance()->GetSubsystem<UDataManager>() : nullptr;
+	if (!PC || !Slots || Slots->GetOwner() != PC->GetPawn() || !Projection || !Data || !FSlateApplication::IsInitialized()) return;
+	const TWeakObjectPtr<URPGQuickSlotWidget> Weak(this);
+	const TWeakObjectPtr<UQuickSlotComponent> ExpectedSlots(LinkedQuickSlotComponent);
+	const int32 ExpectedIndex = SlotIndex;
+	const auto Assign = [Weak, ExpectedSlots, ExpectedIndex](FGuid Id)
+	{
+		auto* Self = Weak.Get(); auto* Current = ExpectedSlots.Get();
+		if (!Self || !Current || Self->LinkedQuickSlotComponent != ExpectedSlots || Self->SlotIndex != ExpectedIndex
+			|| !Self->GetOwningPlayer() || Self->GetOwningPlayerPawn() != Current->GetOwner()) return;
+		Current->SetItemSlotById(ExpectedIndex, Id);
+	};
+	FMenuBuilder Menu(true, nullptr);
+	Menu.BeginSection(NAME_None, NSLOCTEXT("ItemQuickSlots", "Register", "아이템 등록"));
+	if (SlotItemId.IsValid())
+		Menu.AddMenuEntry(NSLOCTEXT("ItemQuickSlots", "Clear", "슬롯 해제"), FText::GetEmpty(), FSlateIcon(),
+			FUIAction(FExecuteAction::CreateLambda([Assign] { Assign(FGuid()); })));
+	int32 Eligible = 0;
+	for (const auto& Entry : Projection->GetProjectedItems())
+	{
+		FRPGItemDefinitionView View; FRPGItemActionPolicy Policy;
+		if (!Slots->IsItemAllowedInSlot(SlotIndex, Entry)
+			|| !Data->GetItemActionPolicyCatalog().TryFindActionPolicy(Entry.GetDefinitionId(), Policy)
+			|| !Policy.IsValid() || !Policy.IsConsumable() || Policy.DefinitionVersion != Entry.GetDefinitionVersion()
+			|| !Data->GetItemDefinitionViewCatalog().TryFindDefinitionView(Entry.GetDefinitionId(), View)
+			|| !View.IsValid() || View.Snapshot.DefinitionVersion != Entry.GetDefinitionVersion()) continue;
+		++Eligible;
+		Menu.AddMenuEntry(FText::Format(NSLOCTEXT("ItemQuickSlots", "ItemQuantity", "{0}  ×{1}"), View.DisplayName, FText::AsNumber(Entry.GetQuantity())),
+			View.Description, FSlateIcon(), FUIAction(FExecuteAction::CreateLambda([Assign, Id=Entry.GetItemId()] { Assign(Id); })));
+	}
+	if (!Eligible) Menu.AddMenuEntry(NSLOCTEXT("ItemQuickSlots", "EmptyBag", "등록할 소모품이 없습니다"), FText::GetEmpty(), FSlateIcon(),
+		FUIAction(FExecuteAction(), FCanExecuteAction::CreateLambda([] { return false; })));
+	Menu.EndSection();
+	FSlateApplication::Get().PushMenu(TakeWidget(), FWidgetPath(),
+		SNew(SBox).WidthOverride(280.f).MaxDesiredHeight(300.f)[SNew(SScrollBox) + SScrollBox::Slot()[Menu.MakeWidget()]],
+		ScreenPosition, FPopupTransitionEffect(FPopupTransitionEffect::ContextMenu));
 }
 
 //void URPGQuickSlotWidget::NativeOnDragCancelled(const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
@@ -709,7 +818,7 @@ void URPGQuickSlotWidget::ClearSlotItem()
 	}
 
 	SetImageAlpha(SlotItemImage, 0.f);
-	if (!bIsSkillSlot) SetToolTipText(FText::GetEmpty());
+	if (!bIsSkillSlot) RefreshItemCommandState();
 }
 
 void URPGQuickSlotWidget::SetInputKeyText(FText InText)

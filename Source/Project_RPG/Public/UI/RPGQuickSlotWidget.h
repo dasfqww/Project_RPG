@@ -71,6 +71,8 @@ public:
 	void ClearSlotItem();
 
 	void SetInputKeyText(FText InText);
+	/** Configure before TakeWidget; native cells share the authored item's command/drag lifecycle. */
+	void ConfigureItemSlot(int32 Index);
 
 	// 아이템의 이미지 및 수량을 업데이트하는 함수
 	//void UpdateSlotUI();
@@ -93,6 +95,8 @@ public:
 private:
 	friend struct FRPGQuickSlotClickTestAccess;
 	void CancelPendingItemClick();
+	void OpenItemPicker(const FVector2D& ScreenPosition);
+	void BuildNativeItemCell();
 	void BindToQuickSlot();
 	void UnbindFromQuickSlot();
 	void RefreshSkillSlotView();

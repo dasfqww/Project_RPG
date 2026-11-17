@@ -3,6 +3,10 @@
 
 #include "UI/HUD/RPGHUD.h"
 #include "UI/ActionBar/RPGActionBarHUDPresenter.h"
+#include "UI/ItemQuickSlot/RPGItemQuickSlotBar.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Component/UI/QuickSlotComponent.h"
 #include "GameFramework/Pawn.h"
 #include "UI/RPGMainMenuWidget.h"
@@ -138,6 +142,7 @@ void ARPGHUD::OnPlayerHUDPawnChanged(APawn* OldPawn, APawn* NewPawn)
 
 void ARPGHUD::RemovePlayerHUD()
 {
+	ItemQuickSlotBar = nullptr;
     ++PlayerHUDRevision;
     TStrongObjectPtr<URPGActionBarHUDPresenter> PreviousPresenter(ActionBarPresenter);
     ActionBarPresenter = nullptr;
@@ -173,6 +178,7 @@ void ARPGHUD::RefreshPlayerHUD()
     // Legacy visual modules capture their Pawn during OnInitialized. Recreate the
     // visual tree on possession, rather than leaving their old bindings on screen.
     const uint64 Revision = ++PlayerHUDRevision;
+	ItemQuickSlotBar = nullptr;
     TStrongObjectPtr<URPGActionBarHUDPresenter> PreviousPresenter(ActionBarPresenter);
     ActionBarPresenter = nullptr;
     TStrongObjectPtr<UUserWidget> Previous(PlayerHUDWidget);
@@ -200,6 +206,24 @@ void ARPGHUD::RefreshPlayerHUD()
     };
     if (StillCurrent())
     {
+		// Keep the authored tree intact; replace only its right-hand item region.
+		auto* Original = Widget->WidgetTree ? Widget->WidgetTree->FindWidget(TEXT("HorizontalBox_QuickSlot")) : nullptr;
+		auto* ItemCanvas = Original ? Cast<UCanvasPanel>(Original->GetParent()) : nullptr;
+		if (ItemCanvas && Cast<UCanvasPanelSlot>(Original->Slot))
+		{
+			ItemQuickSlotBar = CreateWidget<URPGItemQuickSlotBar>(Controller);
+			if (ItemQuickSlotBar)
+			{
+				ItemQuickSlotBar->TakeWidget();
+				if (ItemQuickSlotBar->GetCellCount() == UQuickSlotComponent::ItemSlotCount)
+				{
+					auto* Slot = ItemCanvas->AddChildToCanvas(ItemQuickSlotBar);
+					Slot->SetAnchors(FAnchors(.5f, 1.f)); Slot->SetAlignment(FVector2D(0.f, 1.f));
+					Slot->SetPosition(FVector2D(84.f, -24.f)); Slot->SetSize(FVector2D(264.f, 92.f)); Slot->SetZOrder(3);
+					Original->SetVisibility(ESlateVisibility::Collapsed);
+				}
+			}
+		}
         if (auto* Slots = Pawn->FindComponentByClass<UQuickSlotComponent>())
         {
             TStrongObjectPtr<URPGActionBarHUDPresenter> Presenter(NewObject<URPGActionBarHUDPresenter>(this));

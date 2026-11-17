@@ -22,6 +22,10 @@
 #include "PlayerClass/RPGPlayerClassDefinition.h"
 #include "Component/Skill/RPGPlayerSkillComponent.h"
 #include "PlayerClass/RPGPlayerClassComponent.h"
+#include "Attribute/RPGAttributeSet.h"
+#include "UI/MVVM/RPGInventoryProjectionViewModel.h"
+#include "RPGGameplayTags.h"
+#include "Framework/Application/SlateApplication.h"
 
 namespace
 {
@@ -34,7 +38,8 @@ URPGAbilitySystemComponent* GetQuickSlotASC(const UQuickSlotComponent& Slots)
 
 UQuickSlotComponent::UQuickSlotComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.TickInterval = 0.25f;
 	SetIsReplicatedByDefault(true);
 
 	SkillSlots.SetNum(MaxSkillSlots);
@@ -159,7 +164,7 @@ void UQuickSlotComponent::SetItemSlotById(int32 Index, FGuid ItemId)
 				!ActionPolicies->TryFindActionPolicy(Entry.GetDefinitionId(), Policy) ||
 				!Policy.IsValid() || !Policy.IsConsumable() ||
 				Policy.DefinitionId != Entry.GetDefinitionId() ||
-				Policy.DefinitionVersion != Entry.GetDefinitionVersion())
+				Policy.DefinitionVersion != Entry.GetDefinitionVersion() || !IsItemAllowedInSlot(Index, Entry))
 			{
 				UE_LOG(LogTemp, Warning,
 					TEXT("QuickSlot: Rejected an ID without an owned consumable inventory record."));
@@ -193,11 +198,12 @@ void UQuickSlotComponent::Server_SetItemSlotById_Implementation(int32 Index, FGu
 void UQuickSlotComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	MaxItemSlots = ItemSlotCount;
 
 	if (GetOwner() && GetOwner()->HasAuthority())
 	{
 		MaxSkillSlots = FMath::Clamp(MaxSkillSlots, 1, URPGPlayerClassDefinition::MaxCombatSkills);
-		MaxItemSlots = FMath::Max(MaxItemSlots, 1);
+		// Older authored defaults contain eight slots. The ninth is always the dedicated potion slot.
 		SkillSlots.SetNum(MaxSkillSlots);
 		ItemSlots.SetNum(MaxItemSlots);
 	}
@@ -207,6 +213,7 @@ void UQuickSlotComponent::BeginPlay()
 
 void UQuickSlotComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	bPotionAutoUse = false;
 	ReleaseAllSkillInputs();
 	if (ActionBarContext) ActionBarContext->Shutdown();
 	UnbindInventoryProjection();
@@ -488,10 +495,70 @@ void UQuickSlotComponent::BroadcastSlotChanged(bool bIsSkillSlot, int32 Index)
 	}
 	else
 	{
+		if (Index == PotionSlotIndex && ItemSlots[Index].IsEmpty()) bPotionAutoUse = false;
 		OnItemSlotChanged.Broadcast(Index, Slots[Index]);
 	}
 
 	OnQuickSlotChanged.Broadcast(Index, Slots[Index]);
+}
+
+bool UQuickSlotComponent::IsItemAllowedInSlot(const int32 Index, const FRPGInventoryProjectionEntry& Entry) const
+{
+	if (Index < 0 || Index >= ItemSlotCount || Entry.GetContainerType() != ERPGItemContainerType::Inventory || Entry.GetQuantity() <= 0)
+		return false;
+	if (Index != PotionSlotIndex) return true;
+	const auto* Data = GetWorld() && GetWorld()->GetGameInstance()
+		? GetWorld()->GetGameInstance()->GetSubsystem<UDataManager>() : nullptr;
+	FRPGItemDefinitionView View;
+	if (!Data || !Data->GetItemDefinitionViewCatalog().TryFindDefinitionView(Entry.GetDefinitionId(), View)
+		|| !View.IsValid() || View.Snapshot.DefinitionId != Entry.GetDefinitionId()
+		|| View.Snapshot.DefinitionVersion != Entry.GetDefinitionVersion()) return false;
+	// The current native red-potion family is explicitly health recovery; blue potions and arbitrary consumables are excluded.
+	return View.ItemTag.ToString().StartsWith(TEXT("GameItem.Consume.Potion.Red."));
+}
+
+bool UQuickSlotComponent::ShouldAutoUsePotion(const float Health, const float MaxHealth, const int32 Threshold)
+{
+	return FMath::IsFinite(Health) && FMath::IsFinite(MaxHealth) && Health > 0.f && MaxHealth > 0.f
+		&& Threshold >= 25 && Threshold <= 75 && Health / MaxHealth <= Threshold / 100.f;
+}
+
+void UQuickSlotComponent::SetPotionAutoUse(const bool bEnabled)
+{
+	const auto* Pawn = Cast<APawn>(GetOwner());
+	if (!Pawn || !Pawn->IsLocallyControlled()) return;
+	FRPGInventoryProjectionEntry Entry;
+	bPotionAutoUse = bEnabled && FindAssignedItem(PotionSlotIndex, Entry) && IsItemAllowedInSlot(PotionSlotIndex, Entry);
+}
+
+void UQuickSlotComponent::CyclePotionHealthThreshold()
+{
+	PotionHealthThreshold = PotionHealthThreshold >= 75 ? 25 : PotionHealthThreshold + 25;
+}
+
+void UQuickSlotComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* TickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, TickFunction);
+	if (!bPotionAutoUse) return;
+	const auto* Pawn = Cast<APawn>(GetOwner());
+	auto* PC = Pawn ? Cast<ARPGPlayerController>(Pawn->GetController()) : nullptr;
+	const auto* ASC = GetQuickSlotASC(*this);
+	const auto* Attributes = ASC ? ASC->GetSet<URPGAttributeSet>() : nullptr;
+	if (!PC || !PC->IsLocalController() || PC->GetPawn() != Pawn || !Attributes || PC->bShowMouseCursor
+		|| (FSlateApplication::IsInitialized() && FSlateApplication::Get().AnyMenusVisible())
+		|| PC->IsPaused() || (ActionBarContext && ActionBarContext->HasOverride())
+		|| ASC->HasMatchingGameplayTag(RPGGameplayTags::Shared_Status_Death)
+		|| !ShouldAutoUsePotion(Attributes->GetCurrentHealth(), Attributes->GetMaxHealth(), PotionHealthThreshold)) return;
+	const double Now = FPlatformTime::Seconds();
+	if (Now < NextPotionAutoAttempt) return;
+	FRPGInventoryProjectionEntry Entry;
+	const auto* Model = PC->GetInventoryProjectionViewModel();
+	if (!FindAssignedItem(PotionSlotIndex, Entry) || !IsItemAllowedInSlot(PotionSlotIndex, Entry)
+		|| !Model || Model->GetItemSlotPresentationState(Entry.GetItemId(), ERPGItemContainerType::Inventory)
+			!= ERPGItemSlotPresentationState::Idle) return;
+	// Throttle even synchronous failures. Pending/recovery continues to block through the same facade as manual use.
+	NextPotionAutoAttempt = Now + 5.0;
+	UseItemSlot(PotionSlotIndex, PC);
 }
 
 const FRPGQuickSlotContent* UQuickSlotComponent::GetSkillSlotContent(int32 Index) const

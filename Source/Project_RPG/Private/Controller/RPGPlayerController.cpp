@@ -41,6 +41,7 @@
 #include "Component/UI/QuickSlotComponent.h"
 #include "UI/ActionBar/RPGActionBarContext.h"
 #include "Skill/QuickSlot/RPGQuickSlotInputBindings.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Component/UI/RPGSkillWindowComponent.h"
 #include "UI/Skill/RPGSkillWindow.h"
 #include "UI/RPGWindowInputState.h"
@@ -412,6 +413,7 @@ void ARPGPlayerController::ReleaseSkillSlot(const int32 SlotIndex)
 void ARPGPlayerController::UseItemSlot(int32 SlotIndex)
 {
 	if (WindowInputState->HasOpenWindows()) return;
+	if (FSlateApplication::IsInitialized() && FSlateApplication::Get().AnyMenusVisible()) return;
 	if (APawn* PlayerPawn = GetPawn())
 	{
 		if (UQuickSlotComponent* QuickSlotComp = PlayerPawn->FindComponentByClass<UQuickSlotComponent>())
@@ -458,6 +460,15 @@ void ARPGPlayerController::SetupInputComponent()
 			RPGInputMappingClone::RestoreMissingRecords(*Authored, *InputConfigDataAsset->DefaultMappingContext);
 			ObservePartyInputSetup(TEXT("after-context-copy"));
 		}
+		FRPGQuickSlotInputBindings::ConfigureItemDefaults(*InputConfigDataAsset);
+		if (auto* Settings = URPGGameUserSettings::GetRPGGameUserSettings())
+			FRPGQuickSlotInputBindings::MigrateSavedItemBindings(*SourceInputConfig, *InputConfigDataAsset, Settings->CustomKeyMappings);
+		// Input options restore against the expanded product defaults, never the old four-cell asset.
+		SourceInputConfig = NewObject<UDataAsset_InputConfig>(this, NAME_None, RF_Transient);
+		SourceInputConfig->NativeInputActions = InputConfigDataAsset->NativeInputActions;
+		SourceInputConfig->AbilityInputActions = InputConfigDataAsset->AbilityInputActions;
+		SourceInputConfig->DefaultMappingContext = InputConfigDataAsset->DefaultMappingContext
+			? DuplicateObject<UInputMappingContext>(InputConfigDataAsset->DefaultMappingContext, SourceInputConfig) : nullptr;
 	}
 
 	auto* SubSystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer());

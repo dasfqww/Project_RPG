@@ -4,6 +4,8 @@
 #include "DataAsset/Input/DataAsset_InputConfig.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
+#include "Component/UI/QuickSlotComponent.h"
+#include "Settings/RPGGameUserSettings.h"
 
 namespace
 {
@@ -20,6 +22,78 @@ bool SharesMappedKey(const UInputMappingContext* Context, const UInputAction* Fi
 	}
 	return false;
 }
+}
+
+void FRPGQuickSlotInputBindings::ConfigureItemDefaults(UDataAsset_InputConfig& Config)
+{
+	if (!Config.HasAnyFlags(RF_Transient) || !Config.DefaultMappingContext
+		|| !Config.DefaultMappingContext->HasAnyFlags(RF_Transient)) return;
+	TMap<int32, UInputAction*> Previous;
+	for (const auto& Binding : Read(&Config))
+	{
+		if (Binding.bIsSkillSlot) continue;
+		Config.DefaultMappingContext->UnmapAllKeysFromAction(Binding.Action);
+		if (!Previous.Contains(Binding.SlotIndex)) Previous.Add(Binding.SlotIndex, Binding.Action);
+	}
+	Config.NativeInputActions.RemoveAll([](const FWarriorInputActionConfig& Entry) {
+		bool bSkill = false; int32 Index = INDEX_NONE;
+		return ParseTag(Entry.InputTag, bSkill, Index) && !bSkill;
+	});
+	const FKey Keys[] = {EKeys::F1, EKeys::F2, EKeys::F3, EKeys::F4, EKeys::F5, EKeys::F6, EKeys::F7, EKeys::F8, EKeys::X};
+	for (int32 Index = 0; Index < UQuickSlotComponent::ItemSlotCount; ++Index)
+	{
+		const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*FString::Printf(TEXT("InputTag.QuickItem.%d"), Index + 1)));
+		UInputAction* Action = Previous.FindRef(Index);
+		if (!Action) Action = NewObject<UInputAction>(&Config, NAME_None, RF_Transient);
+		FWarriorInputActionConfig Entry;
+		Entry.InputTag = Tag; Entry.InputAction = Action;
+		Entry.InputActionName = Index == UQuickSlotComponent::PotionSlotIndex
+			? NSLOCTEXT("ItemQuickSlots", "PotionInput", "회복 물약")
+			: FText::Format(NSLOCTEXT("ItemQuickSlots", "ConsumableInput", "소모품 {0}"), FText::AsNumber(Index + 1));
+		Config.NativeInputActions.Add(Entry);
+		Config.DefaultMappingContext->MapKey(Action, Keys[Index]);
+		if (Index == 0)
+		{
+			Entry.InputTag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.QuickItem.F1"));
+			Entry.bShowInInputOptionMenu = false;
+			Config.NativeInputActions.Add(Entry); // saved legacy aliases still resolve to the same action
+		}
+	}
+}
+
+void FRPGQuickSlotInputBindings::MigrateSavedItemBindings(const UDataAsset_InputConfig& OldDefaults,
+	const UDataAsset_InputConfig& NewDefaults, TArray<FRPGKeyMapping>& Saved)
+{
+	if (!OldDefaults.DefaultMappingContext || !NewDefaults.DefaultMappingContext) return;
+	const TArray<FRPGKeyMapping> Original(Saved);
+	TArray<FRPGKeyMapping> Migrated;
+	for (const FRPGKeyMapping& Record : Original)
+	{
+		FRPGKeyMapping Candidate = Record;
+		bool bSkill = false; int32 Index = INDEX_NONE;
+		if (Record.DefaultKey.IsValid() && ParseTag(Record.InputTag, bSkill, Index) && !bSkill)
+		{
+			const auto* OldAction = OldDefaults.FindNativeInputActionByTag(Record.InputTag);
+			const FGameplayTag NewTag = FindTag(&NewDefaults, false, Index);
+			const auto* NewAction = NewDefaults.FindNativeInputActionByTag(NewTag);
+			const bool bKnownOldBinding = OldAction && OldDefaults.DefaultMappingContext->GetMappings().ContainsByPredicate(
+				[&](const auto& M) { return M.Action == OldAction && M.Key == Record.DefaultKey; });
+			if (bKnownOldBinding && NewAction)
+			{
+				const auto* Mapping = NewDefaults.DefaultMappingContext->GetMappings().FindByPredicate(
+					[&](const auto& M) { return M.Action == NewAction; });
+				if (Mapping && (Record.InputTag != NewTag || Record.DefaultKey != Mapping->Key))
+				{
+					// A newer explicit setting wins over a stale alias/old numeric default.
+					if (Original.ContainsByPredicate([&](const auto& M) { return M.InputTag == NewTag && M.DefaultKey == Mapping->Key; })) continue;
+					Candidate.InputTag = NewTag; Candidate.DefaultKey = Mapping->Key;
+					if (Record.Key == Record.DefaultKey) Candidate.Key = Mapping->Key;
+				}
+			}
+		}
+		Migrated.Add(Candidate);
+	}
+	Saved = MoveTemp(Migrated);
 }
 
 bool FRPGQuickSlotInputBindings::ParseTag(const FGameplayTag Tag, bool& bSkill, int32& Index)
@@ -61,7 +135,7 @@ TArray<FRPGQuickSlotInputBinding> FRPGQuickSlotInputBindings::Read(const UDataAs
 		Binding.Action = Entry.InputAction;
 		const bool bDuplicate = Result.ContainsByPredicate([&Binding](const auto& Item)
 		{
-			return Item.InputTag == Binding.InputTag && Item.Action == Binding.Action;
+			return Item.bIsSkillSlot == Binding.bIsSkillSlot && Item.SlotIndex == Binding.SlotIndex && Item.Action == Binding.Action;
 		});
 		if (!bDuplicate) Result.Add(Binding);
 	}
