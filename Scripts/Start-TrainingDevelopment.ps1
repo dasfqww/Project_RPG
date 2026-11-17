@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$EngineRoot='D:\UE_5.8',
-    [ValidateSet('Training','Intro1','Intro2')][string]$DungeonProfile='Training',
+    [ValidateSet('Training','Intro1','Intro2','Intro3')][string]$DungeonProfile='Training',
     [switch]$ChapterOne,
     [ValidateRange(1024,65535)][int]$BackendPort=3076,
     [ValidateRange(1024,65535)][int]$GamePort=18896,
@@ -16,7 +16,7 @@ param(
 # Disposable local training sessions. The normal mode opens an interactive
 # lobby; SmokeTest drives existing client ability input, not lobby button clicks.
 $ErrorActionPreference='Stop'
-if($ChapterOne -and $DungeonProfile -cnotin @('Intro1','Intro2')){throw 'ChapterOne requires -DungeonProfile Intro1 or Intro2'}
+if($ChapterOne -and $DungeonProfile -cnotin @('Intro1','Intro2','Intro3')){throw 'ChapterOne requires -DungeonProfile Intro1, Intro2 or Intro3'}
 . (Join-Path $PSScriptRoot 'Tests/TrainingDevelopmentContent.ps1')
 $contentMaps=Get-RPGTrainingDevelopmentContent $DungeonProfile
 if($DungeonProfile -cne 'Training' -and ($SmokeTest -or $SessionLoopSmoke -or $LobbyUISmoke)){throw 'Progression profiles require interactive mode; existing smoke drivers cover Training only'}

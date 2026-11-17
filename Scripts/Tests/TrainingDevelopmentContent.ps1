@@ -9,7 +9,12 @@ function Get-RPGTrainingDevelopmentContent {
             $maps['Progression.Intro1']='/Game/Maps/Progression/L_ProgressionIntro1'
             $maps['Progression.Intro2']='/Game/Maps/Progression/L_ProgressionIntro2'
         }
-        default { throw 'Unknown development content profile; expected Training, Intro1 or Intro2' }
+        'Intro3' {
+            $maps['Progression.Intro1']='/Game/Maps/Progression/L_ProgressionIntro1'
+            $maps['Progression.Intro2']='/Game/Maps/Progression/L_ProgressionIntro2'
+            $maps['Progression.Intro3']='/Game/Maps/Progression/L_ProgressionIntro3'
+        }
+        default { throw 'Unknown development content profile; expected Training, Intro1, Intro2 or Intro3' }
     }
     return $maps
 }

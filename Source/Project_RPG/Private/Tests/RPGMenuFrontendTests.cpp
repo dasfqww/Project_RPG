@@ -60,7 +60,7 @@ bool FRPGIntro1EntryPolicyTest::RunTest(const FString&)
 	FRPGDungeonSession S;
 	auto Decide = [&]() { return FRPGTutorialEntryPolicy::Decide(S, TEXT("hero"), false, false, false, TEXT("Progression.Intro1")); };
 	TestEqual(TEXT("Resolved empty membership can create only the requested practice"), Decide(), Action::Create);
-	TestEqual(TEXT("Unknown target never creates"), FRPGTutorialEntryPolicy::Decide(S, TEXT("hero"), false, false, false, TEXT("Progression.Intro2")), Action::Reject);
+	TestEqual(TEXT("Unknown target never creates"), FRPGTutorialEntryPolicy::Decide(S, TEXT("hero"), false, false, false, TEXT("Progression.Unknown")), Action::Reject);
 	S.DungeonSessionId = TEXT("session"); S.DungeonId = TEXT("Progression.Intro1"); S.Difficulty = TEXT("Normal");
 	S.State = TEXT("Waiting"); S.LeaderCharacterId = TEXT("hero"); S.Members.AddDefaulted_GetRef().CharacterId = TEXT("hero");
 	TestEqual(TEXT("Intro1 own waiting membership departs"), Decide(), Action::Depart);

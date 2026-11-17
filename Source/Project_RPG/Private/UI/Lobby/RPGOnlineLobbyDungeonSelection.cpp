@@ -38,6 +38,8 @@ void URPGOnlineLobbyWidget::LoadDungeonDefinitions()
 			TEXT("/Game/System/Dungeons/Progression/DA_Dungeon_Intro1.DA_Dungeon_Intro1"))));
 		if (Profile.bIntro2) DungeonDefinitions.Add(TSoftObjectPtr<URPGDungeonDefinition>(FSoftObjectPath(
 			TEXT("/Game/System/Dungeons/Progression/DA_Dungeon_Intro2.DA_Dungeon_Intro2"))));
+		if (Profile.bIntro3) DungeonDefinitions.Add(TSoftObjectPtr<URPGDungeonDefinition>(FSoftObjectPath(
+			TEXT("/Game/System/Dungeons/Progression/DA_Dungeon_Intro3.DA_Dungeon_Intro3"))));
 	}
 	if (DungeonDefinitions.Num() > 64) { DungeonDefinitionsLoadError = TEXT("too_many_dungeon_definitions"); return; }
 	for (const auto& Reference : DungeonDefinitions)
@@ -48,7 +50,9 @@ void URPGOnlineLobbyWidget::LoadDungeonDefinitions()
 	}
 	if (Profile.bTraining && DungeonDefinitionsLoadError.IsEmpty())
 	{
-		const TArray<FString> Expected = Profile.bIntro2
+		const TArray<FString> Expected = Profile.bIntro3
+			? TArray<FString>{TEXT("Progression.Training"), TEXT("Progression.Intro1"), TEXT("Progression.Intro2"), TEXT("Progression.Intro3")}
+			: Profile.bIntro2
 			? TArray<FString>{TEXT("Progression.Training"), TEXT("Progression.Intro1"), TEXT("Progression.Intro2")}
 			: Profile.bIntro1
 			? TArray<FString>{TEXT("Progression.Training"), TEXT("Progression.Intro1")}

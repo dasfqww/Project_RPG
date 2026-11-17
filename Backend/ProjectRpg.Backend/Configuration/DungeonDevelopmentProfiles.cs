@@ -26,7 +26,8 @@ public static class DungeonDevelopmentProfiles
             "Training" => "Training.json",
             "Intro1" => "Intro1.json",
             "Intro2" => "Intro2.json",
-            _ => throw new InvalidOperationException("Unknown dungeon development profile. Supported: Training, Intro1, Intro2.")
+            "Intro3" => "Intro3.json",
+            _ => throw new InvalidOperationException("Unknown dungeon development profile. Supported: Training, Intro1, Intro2, Intro3.")
         };
 
         string path = Path.Combine(baseDirectory, "DevelopmentProfiles", fileName);

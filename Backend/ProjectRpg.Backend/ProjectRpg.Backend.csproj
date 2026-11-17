@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Update="DevelopmentProfiles\Training.json;DevelopmentProfiles\Intro1.json;DevelopmentProfiles\Intro2.json"
+    <Content Update="DevelopmentProfiles\Training.json;DevelopmentProfiles\Intro1.json;DevelopmentProfiles\Intro2.json;DevelopmentProfiles\Intro3.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\Database\schema.sql"

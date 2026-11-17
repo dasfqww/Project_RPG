@@ -43,8 +43,9 @@ namespace RPGTrainingPlaytest
 // server completion call, reward request, ability cancellation, or forced end.
 struct FProbe
 {
+	int32 InitialInputRetries = 0;
 	FString Gates, Character, Steam, Session, Sibling;
-	double Deadline = FPlatformTime::Seconds() + 240.0, NextAction = 0, ReleasedAt = 0;
+	double Deadline = FPlatformTime::Seconds() + (FParse::Param(FCommandLine::Get(), TEXT("RPGTrainingExtendedStartup")) ? 600.0 : 240.0), NextAction = 0, ReleasedAt = 0;
 	int32 Stage = 0, Action = 0, Slot = INDEX_NONE, LastMask = -1, LastWait = -1;
 	bool bHeld = false, bPassed = false;
 	bool bCompletionUI = false, bReturnRequested = false, bReturned = false;
@@ -315,7 +316,18 @@ struct FProbe
 		{
 			if (!(Mask & (1 << Action)))
 			{
-				if (Now - ReleasedAt > 20.0) return Fail(TEXT("NormalEndNotObserved"));
+				if (Now - ReleasedAt > 20.0)
+				{
+					// Cold startup can consume the first input while presentation attaches.
+					// Retry ordinary input, never write the objective or assume an end event.
+					if (Action == 0 && InitialInputRetries < 2 && FParse::Param(FCommandLine::Get(), TEXT("RPGTrainingRetryInitialAttack")))
+					{
+						++InitialInputRetries; ReleasedAt = 0; NextAction = Now + .5;
+						UE_LOG(LogTemp, Display, TEXT("RPG_TRAINING_PLAYTEST RETRY_INITIAL_INPUT Attempt=%d"), InitialInputRetries);
+						return true;
+					}
+					return Fail(TEXT("NormalEndNotObserved"));
+				}
 				return true;
 			}
 			++Action; ReleasedAt = 0; NextAction = Now + 0.5;

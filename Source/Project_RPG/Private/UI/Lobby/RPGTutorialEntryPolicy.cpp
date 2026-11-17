@@ -4,7 +4,7 @@ ERPGTutorialEntryAction FRPGTutorialEntryPolicy::Decide(const FRPGDungeonSession
 	const FString& CharacterId, bool bBusy, bool bUnresolvedDeparture, bool bAdmissionBlocked, const FString& DungeonId)
 {
 	if (DungeonId != TEXT("Progression.Training") && DungeonId != TEXT("Progression.Intro1")
-		&& DungeonId != TEXT("Progression.Intro2")) return ERPGTutorialEntryAction::Reject;
+		&& DungeonId != TEXT("Progression.Intro2") && DungeonId != TEXT("Progression.Intro3")) return ERPGTutorialEntryAction::Reject;
 	if (CharacterId.IsEmpty() || bAdmissionBlocked || bUnresolvedDeparture) return ERPGTutorialEntryAction::Reject;
 	if (bBusy) return ERPGTutorialEntryAction::Wait;
 	if (Session.DungeonSessionId.IsEmpty())
