@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "name": "ChapterOne",
+  "minimumPartySize": 1,
+  "maximumPartySize": 1,
+  "content": {
+    "entries": [
+      {
+        "dungeonId": "Progression.Training",
+        "mapPackage": "/Game/Maps/Progression/L_ProgressionTraining",
+        "difficulties": [
+          "Normal"
+        ]
+      },
+      {
+        "dungeonId": "Progression.Intro1",
+        "mapPackage": "/Game/Maps/Progression/L_ProgressionIntro1",
+        "difficulties": [
+          "Normal"
+        ]
+      },
+      {
+        "dungeonId": "Progression.Intro2",
+        "mapPackage": "/Game/Maps/Progression/L_ProgressionIntro2",
+        "difficulties": [
+          "Normal"
+        ]
+      },
+      {
+        "dungeonId": "Progression.Intro3",
+        "mapPackage": "/Game/Maps/Progression/L_ProgressionIntro3",
+        "difficulties": [
+          "Normal"
+        ]
+      },
+      {
+        "dungeonId": "Progression.FirstBoss",
+        "mapPackage": "/Game/Maps/Progression/L_ChapterOneBoss",
+        "difficulties": [
+          "Normal",
+          "Hard"
+        ]
+      },
+      {
+        "dungeonId": "Story.ChapterOneReturn",
+        "mapPackage": "/Game/Maps/Progression/L_ChapterOneReturn",
+        "difficulties": [
+          "Normal"
+        ]
+      }
+    ]
+  }
+}

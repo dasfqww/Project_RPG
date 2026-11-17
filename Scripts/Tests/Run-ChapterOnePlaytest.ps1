@@ -12,7 +12,7 @@ if(!$RuntimeProjectRoot){$RuntimeProjectRoot=$workspace}
 if(!$BackendRoot){$BackendRoot=Join-Path $workspace 'Backend'}
 $ownerRoot=if($ChapterSix){'M06'}elseif($RescuePractice){'Intro3'}elseif($ChapterFive){'M05'}elseif($OpportunityPractice){'Intro2'}elseif($ApproachPractice){'M04'}else{'M03'}
 $proofFolder=if($ChapterSix){'ChapterM06-20261118'}elseif($RescuePractice){'Intro3Rescue-20261117'}elseif($ChapterFive){'ChapterM05-20261117'}elseif($OpportunityPractice){'Intro2Opportunity-20261117'}elseif($ApproachPractice){'ChapterM04-20261116'}else{'ChapterM03-20261115'}
-$profile=if($RescuePractice){'Intro3'}elseif($OpportunityPractice){'Intro2'}else{'Intro1'}
+$profile='ChapterOne' # The complete authored catalog also references the boss and return scene.
 $id=[Guid]::NewGuid().ToString('N');$temp=Join-Path $workspace ('Saved/'+$ownerRoot+'/play-'+$id)
 $proof=Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/play-'+$id)
 $null=[IO.Directory]::CreateDirectory($temp);$null=[IO.Directory]::CreateDirectory($proof)

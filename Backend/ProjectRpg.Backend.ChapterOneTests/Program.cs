@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using ProjectRpg.Backend.Authentication;
 using ProjectRpg.Backend.Data;
 using ProjectRpg.Backend.Domain;
@@ -165,5 +165,49 @@ Check((await View()).State.Quests.Single(q=>q.QuestId=="CH01.M06").Status==Quest
 Check((await Record(Patient())).AppliedObjectives.IsEmpty,"Reinvestigation never duplicates M06 credit");
 Check((await View()).AvailableDialogues.Any(d=>d.Id=="CH01.D07.Preview")&&(await View()).State.CompletedChapters.IsEmpty,"Internal shelter offers the return-route preview without final export or chapter completion");
 Check(growth==JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(character.CharacterId,clock.Now,default)),"M06 acceptance, briefing, prior receipt and scene add no growth rewards");
-Console.WriteLine("PASS Chapter One M01-M06 integration");
+
+Check((await View()).AvailableDialogues.Any(d=>d.Id=="CH01.M07.Offer"),"M07 offered after M06, not accepted automatically");
+// Close the old scene membership before the next physical instance.
+await game.EnqueueDungeonRewardSettlementAsync(session.DungeonSessionId,server,"close-m06",new string('e',64),[],[],clock.Now,default);
+await game.ClaimNextDungeonRewardSettlementAsync(server,clock.Now,clock.Now.AddMinutes(1),default);
+await game.CompleteDungeonRewardSettlementAsync(session.DungeonSessionId,server,clock.Now,default);
+var bossReceipt=await Clear("Progression.FirstBoss");
+await Choose("CH01.M07.Offer");
+session=await game.CreateDungeonSessionAsync(owner,character.CharacterId,"Story.ChapterOneReturn","Normal",clock.Now,clock.Now.AddHours(1),default);
+await game.AssignDungeonServerAsync(session.DungeonSessionId,server,"127.0.0.1:7777",clock.Now,clock.Now.AddHours(1),default);
+await game.StartDungeonSessionAsync(session.DungeonSessionId,server,clock.Now,clock.Now.AddHours(1),default);generation=await Admit();clock.Advance();
+NarrativeInteractionCommand Operation(string step)=>new(Guid.NewGuid(),"CH01.M07."+step,generation,clock.Now);
+Check((await Record(Operation("export"))).AppliedObjectives.IsEmpty,"Boss death alone cannot export patients");
+view=await View();
+await Goals().RecordAsync(character.CharacterId,owner,new(Guid.NewGuid(),view.State.Revision,catalog.Version,bossReceipt,"CH01.M07","boss"),default);
+Check((await View()).State.Quests.Single(q=>q.QuestId=="CH01.M07").CompletedObjectives.SequenceEqual(["boss"]),"Prior Normal receipt recognizes combat only; no safety/opening/export fabricated");
+Check((await Record(Operation("brace"))).AppliedObjectives.IsEmpty,"Cannot open B before C is safe");
+clock.Advance();var safety=Operation("safe");var safetyCopies=await Task.WhenAll(Record(safety),Record(safety));
+Check(safetyCopies.All(x=>x.AppliedObjectives.Length==1)&&safetyCopies[0].Revision==safetyCopies[1].Revision,"Safety is committed once under duplicate delivery");
+await game.RecordDungeonMemberDisconnectionAsync(session.DungeonSessionId,server,owner,character.CharacterId,generation,clock.Now,default);
+await Reject(()=>Record(Operation("brace")),"interaction_not_authorized");
+oldGeneration=generation;generation=await Admit();clock.Advance();
+await Reject(()=>Record(Operation("brace") with {ConnectionGeneration=oldGeneration}),"interaction_not_authorized");
+Check((await View()).State.Quests.Single(q=>q.QuestId=="CH01.M07").DungeonObjectives!["boss"].DungeonSessionId==bossReceipt,"Disconnect preserves the original combat anchor");
+Check((await Record(Operation("brace"))).AppliedObjectives.Length==1,"Recovered scene opens B without another boss clear");
+// A new admitted return instance must resume only the unfinished export.
+await game.FinishDungeonSessionAsync(session.DungeonSessionId,server,DungeonSessionState.Failed,clock.Now,default);
+session=await game.CreateDungeonSessionAsync(owner,character.CharacterId,"Story.ChapterOneReturn","Normal",clock.Now,clock.Now.AddHours(1),default);
+await game.AssignDungeonServerAsync(session.DungeonSessionId,server,"127.0.0.1:7777",clock.Now,clock.Now.AddHours(1),default);
+await game.StartDungeonSessionAsync(session.DungeonSessionId,server,clock.Now,clock.Now.AddHours(1),default);generation=await Admit();clock.Advance();
+Check((await Record(Operation("safe"))).AppliedObjectives.IsEmpty,"New instance does not duplicate saved safety");
+var export=Operation("export");await Record(export);await Record(export);
+var m07=(await View()).State.Quests.Single(q=>q.QuestId=="CH01.M07");
+Check(m07.Status==QuestStatus.Completed&&m07.DungeonObjectives!["boss"].DungeonSessionId==bossReceipt,"Only ordered approved final export completes M07 with original combat anchor");
+Check((await View()).State.CompletedChapters.IsEmpty,"M07 is not M08/chapter completion or account skip entitlement");
+Check(growth==JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(character.CharacterId,clock.Now,default)),"Extraction/recovery never duplicates growth rewards");
+Console.WriteLine("PASS Chapter One M01-M07 integration");
+var content = new ProjectRpg.Backend.Application.DungeonContentCatalog(new ProjectRpg.Backend.Configuration.DungeonContentOptions {
+    Entries=[new(){DungeonId="Story.ChapterOneReturn",MapPackage="/Game/Maps/Progression/L_ChapterOneReturn",Difficulties=["Normal"]},
+        new(){DungeonId="Progression.FirstBoss",MapPackage="/Game/Maps/Progression/L_ChapterOneBoss",Difficulties=["Normal","Hard"]}] });
+var admission=new DungeonStoryAdmission(content,catalog);
+Check(await admission.GetErrorAsync(game,character.CharacterId,owner,"Story.ChapterOneReturn",default) is null,"M06-complete character may resume the story scene");
+Check(await admission.GetErrorAsync(game,alt.CharacterId,owner,"Story.ChapterOneReturn",default)=="story_prerequisite_not_met","Story scene rejects an unqualified alt independently of party leader");
+Check(await admission.GetErrorAsync(game,alt.CharacterId,owner,"Progression.FirstBoss",default) is null,"Existing repeat/skip combat adds no narrative gate; original growth admission retains authority");
+
 sealed class Clock(DateTimeOffset now):TimeProvider { public DateTimeOffset Now=now; public override DateTimeOffset GetUtcNow()=>Now; public void Advance()=>Now=Now.AddSeconds(2); }

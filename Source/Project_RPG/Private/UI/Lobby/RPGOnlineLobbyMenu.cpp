@@ -400,7 +400,7 @@ void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 	if (NarrativePanel && NarrativePanel->IsInViewport()
 		&& (!CanOpenNarrativeDialogues() || NarrativePanel->GetCharacterId().ToString(EGuidFormats::DigitsWithHyphensLower) != Flow->GetSelectedCharacterId()))
 		NarrativePanel->CloseScreen();
-	Control(TEXT("OpenDungeonMenuButton"), bHome && !bTutorialEntryActive, bHome && !Profile.bTraining);
+	Control(TEXT("OpenDungeonMenuButton"), bHome && !bTutorialEntryActive, bHome && (!Profile.bTraining || Profile.bChapterOne));
 	Control(TEXT("CloseLobbyDetailsButton"), bHome && !bTutorialEntryActive, bHome && (bSkillMenuOpen || bDungeonMenuOpen || bEquipmentMenuOpen));
 	if (TutorialStatusText)
 	{

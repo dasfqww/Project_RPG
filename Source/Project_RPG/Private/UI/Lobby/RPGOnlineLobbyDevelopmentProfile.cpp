@@ -21,6 +21,7 @@ RPGOnlineLobbyDevelopmentProfile::FSelection RPGOnlineLobbyDevelopmentProfile::R
 	if (!bDevelopmentUIEnabled) return {false, TEXT("development_dungeon_profile_disabled")};
 	if (Name.Equals(TEXT("Intro1"), ESearchCase::CaseSensitive)) return {true, {}, true};
 	if (Name.Equals(TEXT("Intro2"), ESearchCase::CaseSensitive)) return {true, {}, true, true};
+	if (Name.Equals(TEXT("ChapterOne"), ESearchCase::CaseSensitive)) return {true, {}, true, true, true, true};
 	if (Name.Equals(TEXT("Intro3"), ESearchCase::CaseSensitive)) return {true, {}, true, true, true};
 	if (!Name.Equals(TEXT("Training"), ESearchCase::CaseSensitive))
 		return {false, TEXT("unknown_development_dungeon_profile")};

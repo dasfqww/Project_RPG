@@ -41,7 +41,12 @@ void URPGOnlineLobbyWidget::LoadDungeonDefinitions()
 		if (Profile.bIntro3) DungeonDefinitions.Add(TSoftObjectPtr<URPGDungeonDefinition>(FSoftObjectPath(
 			TEXT("/Game/System/Dungeons/Progression/DA_Dungeon_Intro3.DA_Dungeon_Intro3"))));
 	}
-	if (DungeonDefinitions.Num() > 64) { DungeonDefinitionsLoadError = TEXT("too_many_dungeon_definitions"); return; }
+	if (Profile.bChapterOne)
+    {
+        DungeonDefinitions.Add(TSoftObjectPtr<URPGDungeonDefinition>(FSoftObjectPath(TEXT("/Game/System/Dungeons/Progression/DA_Dungeon_FirstBoss.DA_Dungeon_FirstBoss"))));
+        DungeonDefinitions.Add(TSoftObjectPtr<URPGDungeonDefinition>(FSoftObjectPath(TEXT("/Game/System/Dungeons/Progression/DA_Dungeon_ChapterOneReturn.DA_Dungeon_ChapterOneReturn"))));
+    }
+    if (DungeonDefinitions.Num() > 64) { DungeonDefinitionsLoadError = TEXT("too_many_dungeon_definitions"); return; }
 	for (const auto& Reference : DungeonDefinitions)
 	{
 		auto* Definition = Reference.LoadSynchronous();
@@ -50,7 +55,9 @@ void URPGOnlineLobbyWidget::LoadDungeonDefinitions()
 	}
 	if (Profile.bTraining && DungeonDefinitionsLoadError.IsEmpty())
 	{
-		const TArray<FString> Expected = Profile.bIntro3
+		const TArray<FString> Expected = Profile.bChapterOne
+            ? TArray<FString>{TEXT("Progression.Training"),TEXT("Progression.Intro1"),TEXT("Progression.Intro2"),TEXT("Progression.Intro3"),TEXT("Progression.FirstBoss"),TEXT("Story.ChapterOneReturn")}
+            : Profile.bIntro3
 			? TArray<FString>{TEXT("Progression.Training"), TEXT("Progression.Intro1"), TEXT("Progression.Intro2"), TEXT("Progression.Intro3")}
 			: Profile.bIntro2
 			? TArray<FString>{TEXT("Progression.Training"), TEXT("Progression.Intro1"), TEXT("Progression.Intro2")}
@@ -63,7 +70,7 @@ void URPGOnlineLobbyWidget::LoadDungeonDefinitions()
 			const auto* Definition = LoadedDungeonDefinitions[Index].Get();
 			bValid = Definition && Definition->DungeonId.Equals(Expected[Index], ESearchCase::CaseSensitive)
 				&& Definition->DefaultDifficulty == ERPGGameDifficulty::Normal
-				&& Definition->Difficulties == TArray<ERPGGameDifficulty>{ERPGGameDifficulty::Normal};
+				&& Definition->Difficulties == (Expected[Index] == TEXT("Progression.FirstBoss") ? TArray<ERPGGameDifficulty>{ERPGGameDifficulty::Normal, ERPGGameDifficulty::Hard} : TArray<ERPGGameDifficulty>{ERPGGameDifficulty::Normal});
 		}
 		if (!bValid)
 		{

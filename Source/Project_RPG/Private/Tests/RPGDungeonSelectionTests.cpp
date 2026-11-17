@@ -331,6 +331,15 @@ bool FRPGDungeonDevelopmentProfileWidgetTest::RunTest(const FString&)
 	auto* IntroBox = Cast<UComboBoxString>(IntroWidget->GetWidgetFromName(TEXT("DungeonSelectionOptions")));
 	TestTrue(TEXT("Actual Intro1 selector has two choices"), IntroBox && IntroBox->GetOptionCount() == 2);
 	TestFalse(TEXT("Intro1 profile cannot manufacture player authentication"), IntroWidget->CreateSelectedDungeonSession());
+	FCommandLine::Set(TEXT("-RPGDungeonProfile=ChapterOne -RPGDevelopmentLogin -nosteam"));
+	auto* ChapterWidget = CreateWidget<URPGOnlineLobbyWidget>(World, URPGOnlineLobbyWidget::StaticClass());
+	if (!TestNotNull(TEXT("ChapterOne native widget initializes"), ChapterWidget)) return false;
+	const auto ChapterSlate = ChapterWidget->TakeWidget();
+	TestTrue(TEXT("Full story catalog preserves practice and adds real boss and extraction entry"), ChapterWidget->GetDungeonOptions()
+		== TArray<FString>{TEXT("Progression.Training"),TEXT("Progression.Intro1"),TEXT("Progression.Intro2"),TEXT("Progression.Intro3"),TEXT("Progression.FirstBoss"),TEXT("Story.ChapterOneReturn")});
+	auto* ChapterBox = Cast<UComboBoxString>(ChapterWidget->GetWidgetFromName(TEXT("DungeonSelectionOptions")));
+	TestTrue(TEXT("Real UMG selector offers all six entries"), ChapterBox && ChapterBox->GetOptionCount()==6);
+	TestFalse(TEXT("Story selection cannot manufacture authentication"), ChapterWidget->CreateSelectedDungeonSession());
 	TestEqual(TEXT("CDO and serialized config defaults are untouched"),
 		FRPGDungeonSelectionTestAccess::Preferences(GetDefault<URPGOnlineLobbyWidget>()), DefaultBefore);
 	return true;

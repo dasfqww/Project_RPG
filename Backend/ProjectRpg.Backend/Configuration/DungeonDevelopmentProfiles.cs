@@ -27,6 +27,7 @@ public static class DungeonDevelopmentProfiles
             "Intro1" => "Intro1.json",
             "Intro2" => "Intro2.json",
             "Intro3" => "Intro3.json",
+            "ChapterOne" => "ChapterOne.json",
             _ => throw new InvalidOperationException("Unknown dungeon development profile. Supported: Training, Intro1, Intro2, Intro3.")
         };
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": 3,
+  "catalogVersion": 4,
   "quests": [
     {
       "id": "CH01.M01",
@@ -191,6 +191,63 @@
           "targetId": "CH01.M06.Patient"
         }
       }
+    },
+    {
+      "id": "CH01.M07",
+      "version": 1,
+      "title": "돌아갈 길",
+      "category": "Main",
+      "autoComplete": true,
+      "prerequisites": [
+        "CH01.M06"
+      ],
+      "objectives": [
+        "boss",
+        "safe",
+        "brace",
+        "export"
+      ],
+      "objectiveTexts": {
+        "boss": "FirstBoss Normal 성공 정산 확인 (승인된 실적 인정)",
+        "safe": "반출 현장 C에서 주갱도 안전 확인",
+        "brace": "B의 버팀대를 해체해 반출로 개방",
+        "export": "D의 환자를 열린 B 밖으로 반출"
+      },
+      "objectivePrerequisites": {
+        "safe": [
+          "boss"
+        ],
+        "brace": [
+          "safe"
+        ],
+        "export": [
+          "brace"
+        ]
+      },
+      "dungeonObjectives": {
+        "boss": {
+          "dungeonId": "Progression.FirstBoss",
+          "difficulty": "Normal",
+          "allowPriorCompletion": true
+        }
+      },
+      "interactionObjectives": {
+        "safe": {
+          "dungeonId": "Story.ChapterOneReturn",
+          "difficulty": "Normal",
+          "targetId": "CH01.M07.safe"
+        },
+        "brace": {
+          "dungeonId": "Story.ChapterOneReturn",
+          "difficulty": "Normal",
+          "targetId": "CH01.M07.brace"
+        },
+        "export": {
+          "dungeonId": "Story.ChapterOneReturn",
+          "difficulty": "Normal",
+          "targetId": "CH01.M07.export"
+        }
+      }
     }
   ],
   "chapters": [],
@@ -371,6 +428,36 @@
         {
           "id": "close",
           "text": "다음 목표: 돌아갈 길과 주갱도 확보",
+          "effect": "None"
+        }
+      ]
+    },
+    {
+      "id": "CH01.M07.Offer",
+      "speaker": "다온",
+      "text": "들것은 주갱도로만 나갑니다. 저놈부터 멈춰야 해요. 일반 보스 제압과 정산 후 반출 현장으로 돌아오세요. 이미 실적이 있다면 빠진 반출만 진행합니다.",
+      "questId": "CH01.M07",
+      "requiredStatus": null,
+      "choices": [
+        {
+          "id": "accept",
+          "text": "돌아갈 길 수락",
+          "effect": "AcceptQuest"
+        }
+      ]
+    },
+    {
+      "id": "CH01.D07",
+      "speaker": "다온",
+      "text": "C에서 안전을 확인한 뒤 B의 버팀대를 풀고, D의 환자를 B 밖으로 함께 옮깁시다. 중단돼도 저장한 단계부터 이어갑니다.",
+      "questId": null,
+      "requiredStatus": null,
+      "informational": true,
+      "requiredCompletedQuests": ["CH01.M06"],
+      "choices": [
+        {
+          "id": "close",
+          "text": "반출 순서를 확인한다",
           "effect": "None"
         }
       ]
