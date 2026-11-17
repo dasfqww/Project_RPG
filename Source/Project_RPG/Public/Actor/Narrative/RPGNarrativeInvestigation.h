@@ -19,7 +19,7 @@ public:
     virtual void Interact(APlayerController* Controller) override;
     virtual void BeginFocus() override;
     virtual void EndFocus() override;
-    bool CanObserve(APlayerController* Controller) const;
+    virtual bool CanObserve(APlayerController* Controller) const;
     const FString& GetTargetId() const { return TargetId; }
     void SetLocalStatus(const FText& Status, bool bRetry);
 protected:

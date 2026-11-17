@@ -1,16 +1,17 @@
 [CmdletBinding()]
 param([string]$RuntimeProjectRoot='', [string]$BackendRoot='', [int]$BackendPort=3092, [int]$GamePort=18912,
-    [switch]$ApproachPractice, [switch]$OpportunityPractice, [switch]$ChapterFive, [switch]$RescuePractice,
+    [switch]$ApproachPractice, [switch]$OpportunityPractice, [switch]$ChapterFive, [switch]$RescuePractice, [switch]$ChapterSix,
     [string]$EngineRoot='D:/UE_5.8')
 $ErrorActionPreference='Stop'
+if($ChapterSix){$RescuePractice=$true}
 if($RescuePractice){$ChapterFive=$true}
 if($ChapterFive){$OpportunityPractice=$true}
 if($OpportunityPractice){$ApproachPractice=$true}
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if(!$RuntimeProjectRoot){$RuntimeProjectRoot=$workspace}
 if(!$BackendRoot){$BackendRoot=Join-Path $workspace 'Backend'}
-$ownerRoot=if($RescuePractice){'Intro3'}elseif($ChapterFive){'M05'}elseif($OpportunityPractice){'Intro2'}elseif($ApproachPractice){'M04'}else{'M03'}
-$proofFolder=if($RescuePractice){'Intro3Rescue-20261117'}elseif($ChapterFive){'ChapterM05-20261117'}elseif($OpportunityPractice){'Intro2Opportunity-20261117'}elseif($ApproachPractice){'ChapterM04-20261116'}else{'ChapterM03-20261115'}
+$ownerRoot=if($ChapterSix){'M06'}elseif($RescuePractice){'Intro3'}elseif($ChapterFive){'M05'}elseif($OpportunityPractice){'Intro2'}elseif($ApproachPractice){'M04'}else{'M03'}
+$proofFolder=if($ChapterSix){'ChapterM06-20261118'}elseif($RescuePractice){'Intro3Rescue-20261117'}elseif($ChapterFive){'ChapterM05-20261117'}elseif($OpportunityPractice){'Intro2Opportunity-20261117'}elseif($ApproachPractice){'ChapterM04-20261116'}else{'ChapterM03-20261115'}
 $profile=if($RescuePractice){'Intro3'}elseif($OpportunityPractice){'Intro2'}else{'Intro1'}
 $id=[Guid]::NewGuid().ToString('N');$temp=Join-Path $workspace ('Saved/'+$ownerRoot+'/play-'+$id)
 $proof=Join-Path $workspace ('Saved/BuildChecks/'+$proofFolder+'/play-'+$id)
@@ -40,7 +41,7 @@ function Log([string]$Name){
     $s=[IO.File]::Open($path,'Open','Read','ReadWrite');$r=[IO.StreamReader]::new($s)
     try{return $r.ReadToEnd()}finally{$r.Dispose()}
 }
-function Peer([string]$Name,[string]$Map,[bool]$Server,[bool]$Training,[bool]$Continue=$false,[int]$OpportunityPhase=0,[int]$SurvivorPhase=0,[int]$RescuePhase=0){
+function Peer([string]$Name,[string]$Map,[bool]$Server,[bool]$Training,[bool]$Continue=$false,[int]$OpportunityPhase=0,[int]$SurvivorPhase=0,[int]$RescuePhase=0,[int]$ChapterSixPhase=0){
     $args=@(('"'+$project+'"'),$Map,'-nosteam','-unattended','-Multiprocess','-nosound','-nop4','-NoLiveCoding','-NoLoadingScreen','-DisablePython',
         '-UseIrisReplication=1','-RPGRequireIris','-DDC=(InstalledEnginePak,Local)','-ExecCmds="t.MaxFPS 30"',
         ('-UserDir="'+$temp+'/'+$Name+'"'),('-abslog="'+$temp+'/'+$Name+'.log"'),
@@ -50,10 +51,12 @@ function Peer([string]$Name,[string]$Map,[bool]$Server,[bool]$Training,[bool]$Co
         "-ini:Game:[/Script/Project_RPG.RPGEconomyBackendSubsystem]:ApiUrl=$url/api")
     $envs=@{PROJECT_RPG_GAME_SERVER_ID=$null;PROJECT_RPG_DUNGEON_SESSION_ID=$null;PROJECT_RPG_BACKEND_GAME_SERVER_TOKEN=$null;PROJECT_RPG_BACKEND_ADMIN_TOKEN=$null}
     if($Server){$args+=@('-server',"-port=$GamePort",'-nullrhi','-RPGItemE2EServer','-RPGItemE2EAllowUnverifiedIdentity');$envs.PROJECT_RPG_GAME_SERVER_ID=$serverId;$envs.PROJECT_RPG_DUNGEON_SESSION_ID=$sessionId;$envs.PROJECT_RPG_BACKEND_GAME_SERVER_TOKEN=[string]$assignment.gameServerAccessToken}
-    else{$args+=@('-game','-RPGDevelopmentLogin',('-RPGDungeonProfile='+$profile));if($Training){$args+='-nullrhi'}else{$args+=@('-RenderOffscreen','-d3d12','-Windowed','-ResX=1280','-ResY=900',('-M03Screenshot="'+$proof+'/M03.png"'),('-Intro2Screenshot="'+$proof+'/Intro2.png"'),('-Intro3Screenshot="'+$proof+'/Intro3.png"'))}}
+    else{$args+=@('-game','-RPGDevelopmentLogin',('-RPGDungeonProfile='+$profile));if($Training){$args+='-nullrhi'}else{$args+=@('-RenderOffscreen','-d3d12','-Windowed','-ResX=1280','-ResY=900',('-M03Screenshot="'+$proof+'/M03.png"'),('-Intro2Screenshot="'+$proof+'/Intro2.png"'),('-Intro3Screenshot="'+$proof+'/Intro3.png"'),('-M06Screenshot="'+$proof+'/M06.png"'))}}
     if($Training -or !$Server){
         $args+=@("-RPGTrainingCharacter=$characterId","-RPGTrainingSteam=$steam","-RPGTrainingSession=$sessionId",('-RPGTrainingGates="'+$temp+'"'))
-        $args+=$(if($Training){'-RPGTrainingPlaytest'}elseif($RescuePhase){'-RPGIntroRescuePlaytest'}elseif($SurvivorPhase){'-RPGChapterFivePlaytest'}elseif($OpportunityPhase){'-RPGIntroOpportunityPlaytest'}else{'-RPGChapterOnePlaytest'})
+        $args+=$(if($Training){'-RPGTrainingPlaytest'}elseif($ChapterSixPhase){'-RPGChapterSixPlaytest'}elseif($RescuePhase){'-RPGIntroRescuePlaytest'}elseif($SurvivorPhase){'-RPGChapterFivePlaytest'}elseif($OpportunityPhase){'-RPGIntroOpportunityPlaytest'}else{'-RPGChapterOnePlaytest'})
+        if($ChapterSixPhase-eq2){$args+='-RPGChapterSixContinue'}
+        if($ChapterSix -and $RescuePhase){$args+='-RPGChapterSixCombat'}
         if($RescuePhase-eq2){$args+='-RPGIntroRescueContinue'}
         if($SurvivorPhase-eq2){$args+='-RPGChapterFiveContinue'}
         if($OpportunityPhase -and $ChapterFive){$args+='-RPGChapterFiveCombat'}
@@ -204,6 +207,17 @@ try{
     if($RescuePractice){
         Stop-Owned $client;Stop-Owned $server
         Begin-Session 'Progression.Intro3' 'Intro3' '/Game/Maps/Progression/L_ProgressionIntro3' $false
+        if($ChapterSix){
+            foreach($phase in @(1,2)){
+                $name='M06Client'+$phase;$client=Peer $name '/Game/Maps/LobbyMap' $false $false $false 0 0 0 $phase
+                $until=[DateTime]::UtcNow.AddSeconds(600);$next=[DateTime]::MinValue
+                while(!$client.HasExited-and[DateTime]::UtcNow-lt$until){if([DateTime]::UtcNow-ge$next){Heartbeat;$next=[DateTime]::UtcNow.AddSeconds(10)};Start-Sleep -Milliseconds 250}
+                if(!$client.HasExited){throw 'M06 dialogue/observation timeout'};$client.WaitForExit()
+                if($client.ExitCode-ne0-or(Log $name)-notmatch'M06_PLAY PATIENT_SAVED Recall=0'){throw "M06 scene failed phase $phase"}
+                if($phase-eq2-and(Log $name)-notmatch'M06_PLAY RESTORED Survivors=1'){throw 'M06 observation not restored'}
+                Start-Sleep -Seconds 2
+            }
+        }
         foreach($phase in @(1,2)){
             $name='Intro3Client'+$phase;$client=Peer $name '/Game/Maps/LobbyMap' $false $false $false 0 0 $phase
             $until=[DateTime]::UtcNow.AddSeconds(600);$next=[DateTime]::MinValue
@@ -224,6 +238,10 @@ try{
         if($after.experience-ne400 -or $after.totalSP-ne12 -or $after.milestones-ne15){throw 'Intro3 authoritative growth mismatch'}
         $again=Api "characters/$characterId/progression" 'Get' $player
         if(($after|ConvertTo-Json -Depth 12 -Compress)-cne($again|ConvertTo-Json -Depth 12 -Compress)){throw 'Intro3 reread changed growth'}
+        if($ChapterSix){
+            $v=Api "characters/$characterId/narrative" 'Get' $player
+            if(@($v.quests|Where-Object {$_.questId-eq'CH01.M06'-and$_.status-eq'Completed'}).Count-ne1-or(Log 'Intro3Client2')-notmatch'M06_PLAY COMPLETE Saved=1'-or(Log 'Intro3Server')-notmatch'SurvivorInShelter=1'){throw 'M06 final story/shelter confirmation missing'}
+        }
         $result.Scope+=' Intro3 actual maximum Charge hits/Stagger100, client restart/reset, real threat damage and defense failure, whole-bundle retry/reset, two waves/45s protection, prepark rejection/reentry, living escape/settlement XP400/SP12.'
     }
     if((Get-FileHash "$RuntimeProjectRoot/Binaries/Win64/UnrealEditor-Project_RPG.dll").Hash-cne$result.ModuleSHA256){throw 'Runtime module changed during the playtest'}
@@ -231,8 +249,8 @@ try{
 }catch{$result.Failure=$_.Exception.Message}
 finally{
     foreach($p in $owned){Stop-Owned $p}
-    foreach($name in @('TrainingServer','TrainingClient','M03Server','M03Client1','M03Client2','Intro2Server','Intro2Client1','Intro2Client2','DaonClient1','DaonClient2','Intro3Server','Intro3Client1','Intro3Client2')){
-        $text=Log $name;if($text){$text -split "`n"|Where-Object {$_-match'INTRO3_|INTRO2_|M03_PLAY|M04_PLAY|M05_PLAY|RPG_TRAINING_PLAYTEST|Fatal error|Assertion failed|Error:'}|Set-Content "$proof/$name.log" -Encoding UTF8}
+    foreach($name in @('TrainingServer','TrainingClient','M03Server','M03Client1','M03Client2','Intro2Server','Intro2Client1','Intro2Client2','DaonClient1','DaonClient2','Intro3Server','Intro3Client1','Intro3Client2','M06Client1','M06Client2')){
+        $text=Log $name;if($text){$text -split "`n"|Where-Object {$_-match'M06_PLAY|INTRO3_|INTRO2_|M03_PLAY|M04_PLAY|M05_PLAY|RPG_TRAINING_PLAYTEST|Fatal error|Assertion failed|Error:'}|Set-Content "$proof/$name.log" -Encoding UTF8}
         if($result.Failure -and $text){$text -split "`n"|Select-Object -Last 160|Set-Content "$proof/$name.FailureTail.log" -Encoding UTF8}
     }
     if(Test-Path "$temp/backend.log"){Copy-Item "$temp/backend.log" "$proof/Backend.log"}

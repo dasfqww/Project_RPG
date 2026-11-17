@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": 2,
+  "catalogVersion": 3,
   "quests": [
     {
       "id": "CH01.M01",
@@ -152,6 +152,45 @@
           "targetId": "CH01.Daon"
         }
       }
+    },
+    {
+      "id": "CH01.M06",
+      "version": 1,
+      "title": "함께 열어야 하는 길",
+      "category": "Main",
+      "autoComplete": true,
+      "prerequisites": [
+        "CH01.M05"
+      ],
+      "objectives": [
+        "briefing",
+        "survivors",
+        "rescue"
+      ],
+      "objectiveTexts": {
+        "briefing": "다온의 구조 순서와 내부 대피 계획 확인",
+        "survivors": "현장에서 부상자 확인 (과거 실습 완료자는 대피실 재방문)",
+        "rescue": "같은 시도의 무력화·보호·생존 탈출과 입문 3 정산 성공 (승인된 실적은 인정)"
+      },
+      "objectivePrerequisites": {
+        "survivors": [
+          "briefing"
+        ]
+      },
+      "dungeonObjectives": {
+        "rescue": {
+          "dungeonId": "Progression.Intro3",
+          "difficulty": "Normal",
+          "allowPriorCompletion": true
+        }
+      },
+      "interactionObjectives": {
+        "survivors": {
+          "dungeonId": "Progression.Intro3",
+          "difficulty": "Normal",
+          "targetId": "CH01.M06.Patient"
+        }
+      }
     }
   ],
   "chapters": [],
@@ -285,6 +324,53 @@
         {
           "id": "close",
           "text": "안쪽 대피실로 갈 길을 확인한다.",
+          "effect": "None"
+        }
+      ]
+    },
+    {
+      "id": "CH01.M06.Offer",
+      "speaker": "다온",
+      "text": "걷지 못하는 사람부터 옮깁시다. 저 문 안쪽까지 가면 잠깐은 버틸 수 있어요. 아직 광산 밖으로 나간 것은 아닙니다.",
+      "questId": "CH01.M06",
+      "requiredStatus": null,
+      "choices": [
+        {
+          "id": "accept",
+          "text": "함께 열어야 하는 길 수락",
+          "effect": "AcceptQuest"
+        }
+      ]
+    },
+    {
+      "id": "CH01.D06",
+      "speaker": "다온",
+      "text": "먼저 부상자들의 상태를 확인해 주세요. 제가 차단문을 준비하는 동안 힘을 모아 길을 열고, 두 차례 밀려오는 적을 막아 주세요. 방어가 끝나면 안쪽 안전지점으로 함께 빠집시다. 이미 이 실습을 마쳤다면 대피실에서 빠진 현장 확인만 하면 됩니다.",
+      "questId": "CH01.M06",
+      "requiredStatus": "Active",
+      "choices": [
+        {
+          "id": "confirm",
+          "text": "부상자 확인 후 보호·내부 대피를 진행하겠습니다.",
+          "effect": "RecordObjective",
+          "objectiveId": "briefing"
+        }
+      ]
+    },
+    {
+      "id": "CH01.D07.Preview",
+      "speaker": "다온",
+      "text": "부상자들은 내부 차단문 뒤에서 잠시 버틸 수 있습니다. 광산 밖으로 나가려면 주갱도와 돌아갈 길을 확보해야 합니다. 아직 최종 반출은 끝나지 않았어요.",
+      "questId": null,
+      "requiredStatus": null,
+      "informational": true,
+      "requiredCompletedQuests": [
+        "CH01.M06"
+      ],
+      "choices": [
+        {
+          "id": "close",
+          "text": "다음 목표: 돌아갈 길과 주갱도 확보",
           "effect": "None"
         }
       ]

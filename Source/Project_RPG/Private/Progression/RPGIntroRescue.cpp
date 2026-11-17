@@ -167,7 +167,14 @@ void ARPGIntroRescueGameMode::Tick(float Delta)
         for(auto& P:Participants)
         {const bool Inside=InsideSafety(P.Pawn->GetActorLocation());if(Inside&&!P.bWasInside)P.bEntered=true;P.bWasInside=Inside;All&=Inside&&P.bEntered;}
         if(Phase==ERPGRescuePhase::Complete&&!All){FailAttempt();return;}
-        if(All&&Phase!=ERPGRescuePhase::Complete){Phase=ERPGRescuePhase::Complete;UE_LOG(LogTemp,Display,TEXT("INTRO3_ESCAPED Attempt=%u"),Attempt);}
+        if(All&&Phase!=ERPGRescuePhase::Complete)
+        {
+            // Safe segment transition; no carry interaction or moving escort AI.
+            // The protected survivor is still alive in this exact attempt.
+            if(!Survivor->SetActorLocation(FVector(2200,1550,100),false,nullptr,ETeleportType::TeleportPhysics)){FailAttempt();return;}
+            Phase=ERPGRescuePhase::Complete;
+            UE_LOG(LogTemp,Display,TEXT("INTRO3_ESCAPED Attempt=%u SurvivorInShelter=1"),Attempt);
+        }
     }
     for(auto& P:Participants)if(auto* C=P.Objectives.Get())
     {

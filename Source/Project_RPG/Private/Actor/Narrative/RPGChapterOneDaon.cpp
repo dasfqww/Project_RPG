@@ -30,7 +30,7 @@ void ARPGChapterOneDiscovery::BeginPlay()
 ARPGChapterOneDaon::ARPGChapterOneDaon()
 {
     DisplayName=NSLOCTEXT("ChapterOne","Daon","다온");
-    DialogueEntryIds={TEXT("CH01.M05.Offer"),TEXT("CH01.D05"),TEXT("CH01.D06.Preview")};
+    DialogueEntryIds={TEXT("CH01.M05.Offer"),TEXT("CH01.D05"),TEXT("CH01.D06.Preview"),TEXT("CH01.M06.Offer"),TEXT("CH01.D06"),TEXT("CH01.D07.Preview")};
     Label=CreateDefaultSubobject<UWidgetComponent>(TEXT("DaonPersonalLabel"));Label->SetupAttachment(RootComponent);
     Label->SetRelativeLocation(FVector(0,0,150));Label->SetWidgetSpace(EWidgetSpace::Screen);
     Label->SetDrawAtDesiredSize(true);Label->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -87,7 +87,14 @@ void ARPGChapterOneDaon::Tick(float Delta)
         const auto Quests=Flow->GetQuestManager()->GetQuests(Id);
         if(const auto* Q=Quests.FindByPredicate([](const auto& V){return V.QuestId==TEXT("CH01.M05");}))
         {
-            if(Q->Status==ERPGQuestStatus::Completed)Caption=NSLOCTEXT("ChapterOne","DaonSaved","[의뢰 완료] 생존자의 증언\n다온: 걷지 못하는 사람부터 옮깁시다.");
+            if(Q->Status==ERPGQuestStatus::Completed)
+            {
+                const auto* Rescue=Quests.FindByPredicate([](const auto& V){return V.QuestId==TEXT("CH01.M06");});
+                Caption=Rescue&&Rescue->Status==ERPGQuestStatus::Completed
+                    ?NSLOCTEXT("ChapterOne","DaonM06Saved","[완료 저장] 함께 열어야 하는 길\n다음: 주갱도와 돌아갈 길 확보")
+                    :Rescue?NSLOCTEXT("ChapterOne","DaonM06Active","[진행] 함께 열어야 하는 길\n입문 3에서 부상자 확인·보호·내부 대피 진행")
+                    :NSLOCTEXT("ChapterOne","DaonM06Offer","[다음 의뢰] 함께 열어야 하는 길\n다온과 대화해 구조 순서를 확인하세요.");
+            }
             else
             {
                 if(Q->CompletedObjectives.Contains(TEXT("discovery")))Caption=NSLOCTEXT("ChapterOne","DaonFound","[발견 저장] 다온\n가까이에서 대화해 봉쇄 이유와 구조 요청 확인");

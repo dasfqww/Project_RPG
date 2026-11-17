@@ -1,6 +1,6 @@
 # 입문3: 무력화·보호·생존 탈출
 
-M06의 전투 기반이다. [첫 챕터 기획](SCENARIO_FIRST_CHAPTER_PROPOSAL.md)의 A3 묶음과 [확정 C1~C9](SCENARIO_QUEST_DIALOGUE_DESIGN.md)를 따른다. M06 개인 의뢰·다온 대화·구출의 서사 사건 연결은 후속이며, 이 실습 정산을 챕터 완료로 취급하지 않는다.
+M06의 전투 기반이다. [첫 챕터 기획](SCENARIO_FIRST_CHAPTER_PROPOSAL.md)의 A3 묶음과 [확정 C1~C9](SCENARIO_QUEST_DIALOGUE_DESIGN.md)를 따른다. 개인 의뢰·다온 대화·현장 확인은 [M06 실행 계약](CHAPTER_ONE_PLAYABLE.md#m06-함께-열어야-하는-길)을 따른다. 이 실습 정산을 챕터 완료로 취급하지 않는다.
 
 ## 플레이
 
