@@ -1,9 +1,9 @@
 [CmdletBinding()]
-param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation, [switch]$IncludeRiderPose, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [string]$SnapshotWireFixture="", [switch]$IncludeContentSettings, [ValidateRange(1,4)][int]$MaxParallelActions=1)
+param([string]$EngineRoot = 'D:/UE_5.8', [switch]$IncludeSession, [switch]$IncludeActors, [switch]$IncludePresentation, [switch]$IncludeRiderPose, [switch]$IncludeDashPresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [string]$SnapshotWireFixture="", [switch]$IncludeContentSettings, [ValidateRange(1,4)][int]$MaxParallelActions=1)
 $ErrorActionPreference = 'Stop'
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $id = [Guid]::NewGuid().ToString('N')
-if ($IncludeRiderPose) { $IncludePresentation = $true }
+if ($IncludeRiderPose -or $IncludeDashPresentation) { $IncludePresentation = $true }
 if ($IncludeEmote) { $IncludeDashPrediction = $true }
 if ($IncludeInteraction) { $IncludeDashMotion = $true }
 if ($IncludeDashPrediction) { $IncludeDashGrant = $true }
@@ -36,6 +36,7 @@ if ($IncludeTimedInteraction) { $suite='RidingTimedInteraction'; $reservation='r
 if ($IncludeSnapshot) { $suite='RidingUEAdmission'; $reservation='riding-ue-admission-20261113'; $proofDate='20261113' }
 if ($IncludeContentSettings) { $suite='RidingContentSettings'; $reservation='riding-content-settings-20261116'; $proofDate='20261116' }
 if ($IncludeRiderPose) { $suite='RidingRiderPose'; $reservation='riding-rider-pose-20261117'; $proofDate='20261117' }
+if ($IncludeDashPresentation) { $suite='RidingDashPresentation'; $reservation='riding-dash-presentation-20261117'; $proofDate='20261117' }
 $proofRoot = Join-Path $workspace ('Saved/BuildChecks/' + $suite + '-' + $proofDate + '/' + $id)
 $tempRoot = Join-Path $workspace 'Saved/RF'
 $temp = Join-Path $tempRoot $id.Substring(0,8)
@@ -227,7 +228,7 @@ IRPGDungeonRecoveryHost* RPGRidingSnapshot::ResolveHost(UWorld*) { return nullpt
     }
     if ($IncludeContentSettings) { $expected += @('Defaults','Policy','Catalog','CatalogRejection','Components','Overrides') | ForEach-Object {'ProjectRPG.Riding.Content.'+$_} }
     if ($IncludePresentation) {
-        $expected += @('Async','Lifecycle','Replacement','Failure','Reentry','RiderPoseTransform','RiderPoseLifecycle','RiderPoseInvalidFrame','EmotePlayback','EmoteOwnership','EmoteRootMotion') | ForEach-Object {'ProjectRPG.Riding.Presentation.'+$_}
+        $expected += @('Async','Lifecycle','Replacement','Failure','Reentry','RiderPoseTransform','RiderPoseLifecycle','RiderPoseInvalidFrame','EmotePlayback','EmoteOwnership','EmoteRootMotion','DashPlayback','DashTransitions','DashRejection') | ForEach-Object {'ProjectRPG.Riding.Presentation.'+$_}
     }
     if ($IncludeWorld) {
         $expected += @('DefaultAndLifecycle','SweptPath','RestrictionIntersection','AuthorityTransitions') | ForEach-Object {'ProjectRPG.Riding.World.'+$_}

@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeRiderPose, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [switch]$IncludeCollection, [switch]$IncludeCollectionScreen, [switch]$IncludeIntent, [switch]$IncludeCommand, [switch]$IncludeLobbyCommand, [switch]$IncludeFreshAssets, [switch]$IncludeRegistrationClient, [switch]$IncludeRegistrationUI, [switch]$IncludePreferencesUI, [switch]$IncludeContentSettings, [string]$InputRoot, [switch]$EmotePresentationOnly, [ValidateRange(1,4)][int]$MaxParallelActions=1)
+param([string]$EngineRoot='D:/UE_5.8', [switch]$IncludePresentation, [switch]$IncludeRiderPose, [switch]$IncludeDashPresentation, [switch]$IncludeWorld, [switch]$IncludeAbilities, [switch]$IncludeConsume, [switch]$IncludeDamage, [switch]$IncludeControl, [switch]$IncludeDashAdmission, [switch]$IncludeDashMotion, [switch]$IncludeDashGAS, [switch]$IncludeDashReplay, [switch]$IncludeDashGrant, [switch]$IncludeDashPrediction, [switch]$IncludeEmote, [switch]$IncludeInteraction, [switch]$IncludeLocalInteraction, [switch]$IncludeTimedInteraction, [switch]$IncludeSnapshot, [switch]$IncludeCollection, [switch]$IncludeCollectionScreen, [switch]$IncludeIntent, [switch]$IncludeCommand, [switch]$IncludeLobbyCommand, [switch]$IncludeFreshAssets, [switch]$IncludeRegistrationClient, [switch]$IncludeRegistrationUI, [switch]$IncludePreferencesUI, [switch]$IncludeContentSettings, [string]$InputRoot, [switch]$EmotePresentationOnly, [ValidateRange(1,4)][int]$MaxParallelActions=1)
 $ErrorActionPreference='Stop'
 if ($IncludeFreshAssets) { $IncludeLobbyCommand=$true }
 if ($IncludeLobbyCommand) { $IncludeCommand=$true }
@@ -54,6 +54,7 @@ if ($IncludeRegistrationUI) { $proofRoot=Join-Path $workspace ('Saved/BuildCheck
 if ($IncludePreferencesUI) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingPreferencesUI-20261115/Integration-'+$run); $reservation='riding-preferences-ui-20261115' }
 if ($IncludeContentSettings) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingContentSettings-20261116/Integration-'+$run); $reservation='riding-content-settings-20261116' }
 if ($IncludeRiderPose) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingRiderPose-20261117/Integration-'+$run); $reservation='riding-rider-pose-20261117' }
+if ($IncludeDashPresentation) { $proofRoot=Join-Path $workspace ('Saved/BuildChecks/RidingDashPresentation-20261117/Integration-'+$run); $reservation='riding-dash-presentation-20261117' }
 . (Join-Path $workspace 'Scripts/Network/GuardianMelee2Artifacts.ps1')
 function Save-Proof { [IO.File]::WriteAllText((Join-Path $proofRoot 'Result.json'),($proof|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false)) }
 function Assert-Reservation {
@@ -173,6 +174,10 @@ try {
     if ($IncludePresentation -or $IncludeEmote) {
         $files+=@('Source/Project_RPG/Public/Riding/RPGRidingAnimFrame.h','Source/Project_RPG/Private/Riding/RPGRidingAnimFrame.cpp')
     }
+    if ($IncludeDashPresentation) {
+        $files=@('Source/Project_RPG/Public/Riding/RPGRidingPresentationComponent.h','Source/Project_RPG/Private/Riding/RPGRidingPresentationComponent.cpp',
+            'Source/Project_RPG/Private/Tests/RPGRidingPresentationTests.cpp','Source/Project_RPG/Public/Riding/RPGRidingAnimFrame.h','Source/Project_RPG/Private/Riding/RPGRidingAnimFrame.cpp')
+    }
     foreach($relative in @($files|Select-Object -Unique)) {
         $source=Join-Path $sourceRoot $relative
         $destination=Join-Path $project $relative
@@ -229,8 +234,9 @@ try {
             'Source/Project_RPG/Private/Tests/RPGRidingPreferencesUiTests.cpp')
     }
     if ($IncludeContentSettings) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingContentSettings.cpp','Source/Project_RPG/Private/Riding/RPGRidingComponent.cpp','Source/Project_RPG/Private/Riding/RPGRidingSessionComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingContentSettingsTests.cpp') }
-    $proof.CompileFiles=@($compile|Select-Object -Unique)
     if ($IncludeRiderPose) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingAnimFrame.cpp','Source/Project_RPG/Private/AnimInstance/Player/RPGPlayerAnimInstance.cpp','Source/Project_RPG/Private/Tests/RPGRidingPresentationTests.cpp') }
+    if ($IncludeDashPresentation) { $compile=@('Source/Project_RPG/Private/Riding/RPGRidingPresentationComponent.cpp','Source/Project_RPG/Private/Tests/RPGRidingPresentationTests.cpp') }
+    $proof.CompileFiles=@($compile|Select-Object -Unique)
     [IO.File]::WriteAllLines($fileList,@($compile|Select-Object -Unique|ForEach-Object {Join-Path $project $_}),[Text.UTF8Encoding]::new($false))
     $dotnet=Join-Path $EngineRoot 'Engine/Binaries/ThirdParty/DotNet/10.0/win-x64/dotnet.exe'
     $ubt=Join-Path $EngineRoot 'Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll'

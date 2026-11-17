@@ -46,7 +46,7 @@ void URPGRidingPresentationComponent::Detach()
 
 void URPGRidingPresentationComponent::ClearVisuals()
 {
-    if (bPlayingEmote) { bClearPending = bRefreshPending = true; return; }
+    if (bPlayingAction) { bClearPending = bRefreshPending = true; return; }
     // Invalidate first: canceling a handle must not resurrect a replaced visual through a queued delegate.
     LoadToken.Invalidate();
     if (LoadHandle) LoadHandle->CancelHandle();
@@ -61,7 +61,7 @@ void URPGRidingPresentationComponent::ClearVisuals()
     MountMesh = nullptr; Placeholder = nullptr; VisualRoot = nullptr; RiderMesh.Reset();
     Requested = {}; MeshPath.Reset(); AnimPath.Reset(); PosePath.Reset();
     Status = ERPGRidingVisualStatus::Hidden;
-    StopEmote();
+    StopActionPresentation();
     if (PreviousMount) PreviousMount->DestroyComponent();
     if (PreviousPlaceholder) PreviousPlaceholder->DestroyComponent();
     if (PreviousRoot) PreviousRoot->DestroyComponent();
@@ -87,7 +87,7 @@ void URPGRidingPresentationComponent::Refresh()
         && Requested.Key.StateRevision == State.Key.StateRevision && Requested.MountId == State.MountId
         && Requested.DefinitionVersion == State.DefinitionVersion && Character->GetMesh() == RiderMesh;
     if (bSame && ((!Definition && Status == ERPGRidingVisualStatus::Failed) || (Definition && MatchesDefinition(*Definition))))
-    { RefreshEmote(); return; }
+    { RefreshActionPresentation(); return; }
     ClearVisuals();
     Requested = State; LoadToken = FGuid::NewGuid();
     if (!EnsureRoot()) { ClearVisuals(); return; }
@@ -220,54 +220,62 @@ void URPGRidingPresentationComponent::CompleteLoad(const FGuid& Token)
     LoadedPoseLayer = PoseClass;
     Status = ERPGRidingVisualStatus::Ready;
     UpdateVisibility();
-    RefreshEmote();
+    RefreshActionPresentation();
 }
 
-void URPGRidingPresentationComponent::StopEmote()
+void URPGRidingPresentationComponent::StopActionPresentation()
 {
-    const auto OldAnim = EmoteAnim; auto* Montage = EmoteMontage.Get(); const int32 InstanceId = EmoteInstanceId;
-    EmoteToken.Invalidate(); EmoteState = {}; EmoteAnim.Reset(); EmoteMontage = nullptr; EmoteInstanceId = INDEX_NONE;
-    auto Handle = MoveTemp(EmoteLoadHandle); if (Handle) Handle->CancelHandle();
+    const auto OldAnim = ActionAnim; auto* Montage = ActionMontage.Get(); const int32 InstanceId = ActionInstanceId;
+    ActionToken.Invalidate(); VisualActionState = {}; ActionMontagePath.Reset(); ActionAnim.Reset(); ActionMontage = nullptr; ActionInstanceId = INDEX_NONE;
+    auto Handle = MoveTemp(ActionLoadHandle); if (Handle) Handle->CancelHandle();
     // A later user of the same montage asset owns a different instance. Never stop that playback.
     if (auto* Anim = OldAnim.Get(); Anim && Montage)
         if (auto* Current = Anim->GetMontageInstanceForID(InstanceId); Current && Current->Montage == Montage)
             Current->Stop(FAlphaBlend(0.f));
 }
 
-void URPGRidingPresentationComponent::RefreshEmote()
+void URPGRidingPresentationComponent::RefreshActionPresentation()
 {
-    if (bUpdatingEmote) return;
-    TGuardValue<bool> Updating(bUpdatingEmote, true);
+    if (bUpdatingAction) return;
+    TGuardValue<bool> Updating(bUpdatingAction, true);
     const auto Read = [this]() { return Riding.IsValid() ? Riding->GetDashMovementState() : FRPGRidingRepState{}; };
     auto State = Read();
     if (Status != ERPGRidingVisualStatus::Ready || !MatchesCurrent(LoadToken) || !RPGRiding::IsCanonical(State)
-        || State.Action != ERPGRidingAction::Emote) { StopEmote(); return; }
+        || (State.Action != ERPGRidingAction::Emote && State.Action != ERPGRidingAction::Dash)) { StopActionPresentation(); return; }
     const auto* Clock = GetWorld()->GetGameState(); const double Now = Clock ? Clock->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
-    if (!FMath::IsFinite(Now) || Now - State.ActionStartServerWorldSeconds >= State.ActionDuration) { StopEmote(); return; }
-    if (EmoteToken.IsValid() && EmoteState.ExecutionId == State.ExecutionId
-        && RPGRiding::Compare(EmoteState.Key, State.Key) == ERPGRidingStateOrder::Same) return;
-    StopEmote(); State = Read(); // Montage end callbacks may change the binding or action.
-    if (Status != ERPGRidingVisualStatus::Ready || !MatchesCurrent(LoadToken) || !RPGRiding::IsCanonical(State) || State.Action != ERPGRidingAction::Emote) return;
+    if (!FMath::IsFinite(Now) || Now - State.ActionStartServerWorldSeconds >= State.ActionDuration) { StopActionPresentation(); return; }
     const auto* Definition = Riding->GetPresentationDefinition();
-    if (!Definition || Definition->EmotePresentation.IsNull()) return;
-    EmoteState = State; EmoteToken = FGuid::NewGuid(); const auto Token = EmoteToken;
-    if (Definition->EmotePresentation.Get()) { CompleteEmote(Token); return; }
+    if (!Definition) { StopActionPresentation(); return; }
+    auto MontagePath = (State.Action == ERPGRidingAction::Dash ? Definition->DashPresentation : Definition->EmotePresentation).ToSoftObjectPath();
+    if (ActionToken.IsValid() && VisualActionState.ExecutionId == State.ExecutionId && VisualActionState.Action == State.Action
+        && RPGRiding::Compare(VisualActionState.Key, State.Key) == ERPGRidingStateOrder::Same && ActionMontagePath == MontagePath) return;
+    StopActionPresentation(); State = Read(); // Montage end callbacks may change the binding or action.
+    if (Status != ERPGRidingVisualStatus::Ready || !MatchesCurrent(LoadToken) || !RPGRiding::IsCanonical(State)
+        || (State.Action != ERPGRidingAction::Emote && State.Action != ERPGRidingAction::Dash)) return;
+    Definition = Riding->GetPresentationDefinition();
+    if (!Definition) return;
+    MontagePath = (State.Action == ERPGRidingAction::Dash ? Definition->DashPresentation : Definition->EmotePresentation).ToSoftObjectPath();
+    if (MontagePath.IsNull()) return;
+    VisualActionState = State; ActionMontagePath = MontagePath; ActionToken = FGuid::NewGuid(); const auto Token = ActionToken;
+    if (MontagePath.ResolveObject()) { CompleteActionPresentation(Token); return; }
     const TWeakObjectPtr<URPGRidingPresentationComponent> Weak(this);
-    EmoteLoadHandle = UAssetManager::GetStreamableManager().RequestAsyncLoad(Definition->EmotePresentation.ToSoftObjectPath(),
-        FStreamableDelegate::CreateLambda([Weak, Token] { if (auto* Self = Weak.Get()) Self->CompleteEmote(Token); }));
+    ActionLoadHandle = UAssetManager::GetStreamableManager().RequestAsyncLoad(MontagePath,
+        FStreamableDelegate::CreateLambda([Weak, Token] { if (auto* Self = Weak.Get()) Self->CompleteActionPresentation(Token); }));
 }
 
-void URPGRidingPresentationComponent::CompleteEmote(FGuid Token)
+void URPGRidingPresentationComponent::CompleteActionPresentation(FGuid Token)
 {
-    if (!Token.IsValid() || Token != EmoteToken || Status != ERPGRidingVisualStatus::Ready || !MatchesCurrent(LoadToken)) return;
+    if (!Token.IsValid() || Token != ActionToken || Status != ERPGRidingVisualStatus::Ready || !MatchesCurrent(LoadToken)) return;
     const auto State = Riding->GetDashMovementState();
-    if (State.Action != ERPGRidingAction::Emote || State.ExecutionId != EmoteState.ExecutionId
-        || RPGRiding::Compare(State.Key, EmoteState.Key) != ERPGRidingStateOrder::Same) return;
+    if (!RPGRiding::IsCanonical(State) || (State.Action != ERPGRidingAction::Emote && State.Action != ERPGRidingAction::Dash)
+        || State.Action != VisualActionState.Action || State.ExecutionId != VisualActionState.ExecutionId
+        || RPGRiding::Compare(State.Key, VisualActionState.Key) != ERPGRidingStateOrder::Same) return;
     const auto* Clock = GetWorld()->GetGameState(); const double Now = Clock ? Clock->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
     const double Elapsed = FMath::Max(0., Now - State.ActionStartServerWorldSeconds);
     if (!FMath::IsFinite(Now) || Elapsed >= State.ActionDuration) return;
     const auto* Definition = Riding->GetPresentationDefinition();
-    auto* Montage = Definition ? Definition->EmotePresentation.Get() : nullptr;
+    if (!Definition || (State.Action == ERPGRidingAction::Dash ? Definition->DashPresentation : Definition->EmotePresentation).ToSoftObjectPath() != ActionMontagePath) return;
+    auto* Montage = Cast<UAnimMontage>(ActionMontagePath.ResolveObject());
     auto* Anim = MountMesh ? MountMesh->GetAnimInstance() : nullptr;
     const auto* Asset = MountMesh ? MountMesh->GetSkeletalMeshAsset() : nullptr;
     if (!Montage || !Anim || !Asset || Montage->GetSkeleton() != Asset->GetSkeleton()
@@ -277,20 +285,20 @@ void URPGRidingPresentationComponent::CompleteEmote(FGuid Token)
     if (!FMath::IsFinite(Rate) || Rate <= 0) return;
     TSet<int32> PreviousInstances;
     for (const auto* Previous : Anim->MontageInstances) if (Previous) PreviousInstances.Add(Previous->GetInstanceID());
-    EmoteAnim = Anim; EmoteMontage = Montage; bPlayingEmote = true;
+    ActionAnim = Anim; ActionMontage = Montage; bPlayingAction = true;
     // Our instance is inserted before montage-start callbacks can create another. Preserve other groups.
     const float Played = Anim->Montage_Play(Montage, Rate, EMontagePlayReturnType::MontageLength,
         float(Elapsed * Rate * Montage->RateScale), false);
     FAnimMontageInstance* Instance = nullptr;
     if (IsValid(Anim)) for (auto* Candidate : Anim->MontageInstances)
         if (Candidate && Candidate->Montage == Montage && !PreviousInstances.Contains(Candidate->GetInstanceID())) { Instance = Candidate; break; }
-    bPlayingEmote = false;
-    if (Token == EmoteToken && EmoteAnim == Anim && EmoteMontage == Montage)
+    bPlayingAction = false;
+    if (Token == ActionToken && ActionAnim == Anim && ActionMontage == Montage)
     {
-        EmoteInstanceId = Played > 0 && Instance ? Instance->GetInstanceID() : INDEX_NONE;
+        ActionInstanceId = Played > 0 && Instance ? Instance->GetInstanceID() : INDEX_NONE;
         const auto Latest = Riding.IsValid() ? Riding->GetDashMovementState() : FRPGRidingRepState{};
-        if (!MatchesCurrent(LoadToken) || Latest.Action != ERPGRidingAction::Emote || Latest.ExecutionId != EmoteState.ExecutionId
-            || RPGRiding::Compare(Latest.Key, EmoteState.Key) != ERPGRidingStateOrder::Same) StopEmote();
+        if (!MatchesCurrent(LoadToken) || Latest.Action != VisualActionState.Action || Latest.ExecutionId != VisualActionState.ExecutionId
+            || RPGRiding::Compare(Latest.Key, VisualActionState.Key) != ERPGRidingStateOrder::Same) StopActionPresentation();
     }
     else if (Played > 0 && Instance) Instance->Stop(FAlphaBlend(0.f));
     if (!bInstalling)

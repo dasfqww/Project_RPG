@@ -1058,3 +1058,15 @@ authoring spec은 아래 형식이다. 경로와 ID는 예시이며 해당 에�
 `Run-RidingFoundationTests.ps1 -IncludeRiderPose`는 실제 Mannequin을 검사 입력으로만 사용해 좌표 round-trip/actor·capsule·메시 보존, 로딩/하차/교체/폐기, 보조 메시/작업 스레드 접근 거절, 빈/퇴화 변환과 snapshot 보존을 기존 표시 회귀와 검사한다. `Run-RidingIntegrationCompile.ps1 -IncludeRiderPose`는 게시 원본 사본+명시 overlay의 전체 프로젝트 UHT와 실제 플레이어 AnimInstance/변환기/표시 검사 CPP3 컴파일이며, 전체 게임 DLL 링크나 실제 AnimBP/GPU·다인 검증과 구분한다. 작은 결과는 로컬 `Saved/BuildChecks/RidingRiderPose-20261117/Completion.json`에 남긴다.
 
 최종 입력에서 분리 모듈 UHT/42단계 빌드·링크와 **native26 Success(신규3 포함), 검사 오류/경고0·UE0**을 확인했다. 전체 프로젝트 **UHT/CPP3 개별 컴파일0**도 통과했다. 첫 개별 컴파일에서 찾은 직접 Templates/SubclassOf.h include 누락을 수정한 뒤 두 검증을 모두 다시 수행했으며 최종 소스 hash가 일치한다. 자기 네 사본/OBJ/DLL/PDB/cache **5,783,892,140 bytes(5.387GiB)**·읽기 링크2를 폐기했고 Temp/PID/정리 예외0이다. 원본 Editor/DLL·HUD/무기 layer·다른 담당 변경을 보존했으며 폐기한 DLL hash는 당시 근거다.
+
+## 54. M4f 돌진 모델 몽타주 연결 — 2026-11-17
+
+담당 `riding-dash-presentation-20261117`. `URPGMountDefinition.DashPresentation`은 필수 metadata였지만 재생 소비자가 없었다. PresentationComponent의 기존 Emote 전용 수명을 공통 액션 표시 수명으로 확장해, 현재 `GetDashMovementState`가 Dash이면 DashPresentation, Emote이면 EmotePresentation을 선택한다. 플레이어의 무기 몽타주/AnimLayer가 아닌 별도 탈것 모델의 AnimInstance에서만 재생한다.
+
+- 현재 모델/바인딩 세대·정규 상태·Key·ExecutionId·액션 종류·요청한 몽타주 경로를 확인한다. 같은 관측은 다시 재생하지 않으며, 액션 교체/취소/하차/표시 해제는 이전 로드와 소유 instance ID만 회수한다. 다른 호출자가 같은 몽타주 에셋을 새 instance로 재생한 경우는 보존한다.
+- 몽타주 길이와 RateScale을 현재 액션 지속 시간에 맞추고 서버 시각 경과에 해당하는 위치에서 시작한다. 늦은 로드가 끝났을 때 이미 종료되었거나 다른 실행/경로이면 재생하지 않는다. 소유자 예측 projection도 기존 조회 포트를 통해 읽지만, 이 단위의 native 검사는 합성 공개 상태를 사용하며 실제 GAS 예측/거절·NetDriver 검증을 대신하지 않는다.
+- 스켈레톤 불일치, root motion, 비정상 길이·RateScale은 시각 재생만 거절한다. CMC/RMS 이동·쿨타임·서버 승인/현재 Dash 상태와 캐릭터 transform은 바꾸지 않는다. 실제 모델 AnimBP에는 해당 몽타주의 Slot 출력이 저작돼 있어야 하며, 이 변경으로 최종 Dash 모션이나 승차 그래프가 만들어지는 것은 아니다.
+
+`Run-RidingFoundationTests.ps1 -IncludeDashPresentation`은 실제 엔진 몽타주의 Dash 전용 선택/속도·멱등성·취소/오래된 콜백·Emote→Dash·다른 instance 보존·root motion/잘못된 RateScale 거절을 기존 표시/승차 입력 회귀와 검사한다. 읽기 전용 Mannequin/Idle과 transient 몽타주를 사용한다. `Run-RidingIntegrationCompile.ps1 -IncludeDashPresentation`은 게시 원본 사본+본인 overlay의 전체 프로젝트 UHT/실제 표시 CPP2 컴파일이다. 실제 탈것 에셋/화면·물리 입력·전체 게임 링크·다인/Steam/cook 검증은 별도이며, 작은 결과/해시는 로컬 `Saved/BuildChecks/RidingDashPresentation-20261117/Completion.json`에 남긴다.
+
+최종 입력의 분리 모듈 UHT/42단계 빌드·링크와 **E3BF8401…BE8CE60** DLL에서 **native29 Success(신규3/기존26), 검사 오류/경고0·UE0**을 확인했다. 게시 전체 프로젝트 **UHT/관련 CPP2 컴파일0**, 현재 제품/검사 입력 SHA 일치·PS 구문·공백 확인을 통과했다. 두 실행의 자기 사본/OBJ/DLL/PDB/cache **2,898,780,199 bytes(2.700GiB)**·읽기 링크1을 폐기했고 Temp/PID/정리 예외0이다. 원본 게임 DLL/에디터·콘텐츠·무기/플레이어 애니메이션·다른 담당 변경을 보존했으며 폐기한 DLL hash는 당시 근거다.

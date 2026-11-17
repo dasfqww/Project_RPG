@@ -26,10 +26,10 @@ struct FRPGRidingPresentationTestAccess
     static USkeletalMeshComponent* Mesh(const URPGRidingPresentationComponent& C) { return C.MountMesh; }
     static USceneComponent* Root(const URPGRidingPresentationComponent& C) { return C.VisualRoot; }
     static UStaticMeshComponent* Placeholder(const URPGRidingPresentationComponent& C) { return C.Placeholder; }
-    static UAnimMontage* Emote(const URPGRidingPresentationComponent& C) { return C.EmoteMontage; }
-    static FGuid EmoteToken(const URPGRidingPresentationComponent& C) { return C.EmoteToken; }
-    static int32 EmoteId(const URPGRidingPresentationComponent& C) { return C.EmoteInstanceId; }
-    static void CompleteEmote(URPGRidingPresentationComponent& C, FGuid T) { C.CompleteEmote(T); }
+    static UAnimMontage* Montage(const URPGRidingPresentationComponent& C) { return C.ActionMontage; }
+    static FGuid ActionToken(const URPGRidingPresentationComponent& C) { return C.ActionToken; }
+    static int32 ActionId(const URPGRidingPresentationComponent& C) { return C.ActionInstanceId; }
+    static void CompleteAction(URPGRidingPresentationComponent& C, FGuid T) { C.CompleteActionPresentation(T); }
 };
 
 namespace
@@ -194,16 +194,16 @@ bool FRidingVisualEmote::RunTest(const FString&)
     F.Definitions[0]->EmotePresentation=Montage;
     ++F.State.Key.ActionSequence;F.State.Action=ERPGRidingAction::Emote;F.State.ExecutionId=FGuid::NewGuid();
     F.State.ActionDuration=3;F.State.ActionStartServerWorldSeconds=F.World->GetTimeSeconds();F.Set();
-    const auto Id=FRPGRidingPresentationTestAccess::EmoteId(*F.Visual);
-    auto* Owned=FRPGRidingPresentationTestAccess::Emote(*F.Visual);
+    const auto Id=FRPGRidingPresentationTestAccess::ActionId(*F.Visual);
+    auto* Owned=FRPGRidingPresentationTestAccess::Montage(*F.Visual);
     TestTrue(TEXT("Actual montage uses an owned execution instance"),Owned==Montage&&Id!=INDEX_NONE);
     auto* Model=FRPGRidingPresentationTestAccess::Mesh(*F.Visual);
     TestTrue(TEXT("Montage playback created on the private mount model"),Model&&Model->GetAnimInstance()->GetMontageInstanceForID(Id));
-    F.Set();TestEqual(TEXT("Repeated state does not restart montage"),FRPGRidingPresentationTestAccess::EmoteId(*F.Visual),Id);
-    const auto Token=FRPGRidingPresentationTestAccess::EmoteToken(*F.Visual);
+    F.Set();TestEqual(TEXT("Repeated state does not restart montage"),FRPGRidingPresentationTestAccess::ActionId(*F.Visual),Id);
+    const auto Token=FRPGRidingPresentationTestAccess::ActionToken(*F.Visual);
     F.State.Action=ERPGRidingAction::None;F.State.ExecutionId.Invalidate();F.State.ActionDuration=0;F.State.ActionStartServerWorldSeconds=0;++F.State.Key.ActionSequence;F.Set();
-    FRPGRidingPresentationTestAccess::CompleteEmote(*F.Visual,Token);
-    TestTrue(TEXT("Old load cannot revive an ended action"),!FRPGRidingPresentationTestAccess::Emote(*F.Visual)&&!Model->GetAnimInstance()->Montage_IsPlaying(Owned));
+    FRPGRidingPresentationTestAccess::CompleteAction(*F.Visual,Token);
+    TestTrue(TEXT("Old load cannot revive an ended action"),!FRPGRidingPresentationTestAccess::Montage(*F.Visual)&&!Model->GetAnimInstance()->Montage_IsPlaying(Owned));
     TestTrue(TEXT("Visual action never moves character"),F.Character->GetActorTransform().Equals(F.InitialActor));
     return true;
 }
@@ -217,9 +217,9 @@ bool FRidingVisualEmoteForeign::RunTest(const FString&)
     F.Definitions[0]->EmotePresentation=UAnimMontage::CreateSlotAnimationAsDynamicMontage(Sequence,TEXT("DefaultSlot"));
     FRPGRidingPresentationTestAccess::Mesh(*F.Visual)->InitAnim(true);
     ++F.State.Key.ActionSequence;F.State.Action=ERPGRidingAction::Emote;F.State.ExecutionId=FGuid::NewGuid();F.State.ActionDuration=3;F.Set();
-    auto* Owned=FRPGRidingPresentationTestAccess::Emote(*F.Visual);auto* Model=FRPGRidingPresentationTestAccess::Mesh(*F.Visual);
-    if(!TestTrue(TEXT("Owned montage started"),Owned&&Model&&FRPGRidingPresentationTestAccess::EmoteId(*F.Visual)!=INDEX_NONE))return false;
-    auto* Anim=Model->GetAnimInstance();const auto OldId=FRPGRidingPresentationTestAccess::EmoteId(*F.Visual);
+    auto* Owned=FRPGRidingPresentationTestAccess::Montage(*F.Visual);auto* Model=FRPGRidingPresentationTestAccess::Mesh(*F.Visual);
+    if(!TestTrue(TEXT("Owned montage started"),Owned&&Model&&FRPGRidingPresentationTestAccess::ActionId(*F.Visual)!=INDEX_NONE))return false;
+    auto* Anim=Model->GetAnimInstance();const auto OldId=FRPGRidingPresentationTestAccess::ActionId(*F.Visual);
     Anim->Montage_Play(Owned,1.f,EMontagePlayReturnType::MontageLength,0.f,false);
     const auto* Foreign=Anim->GetActiveInstanceForMontage(Owned);const auto ForeignId=Foreign?Foreign->GetInstanceID():INDEX_NONE;
     TestTrue(TEXT("Another playback has a distinct instance"),ForeignId!=INDEX_NONE&&ForeignId!=OldId);
@@ -239,8 +239,91 @@ bool FRidingVisualEmoteRootMotion::RunTest(const FString&)
     F.Definitions[0]->EmotePresentation=UAnimMontage::CreateSlotAnimationAsDynamicMontage(Sequence,TEXT("DefaultSlot"));
     if(!TestTrue(TEXT("Authored fixture really contains root motion"),F.Definitions[0]->EmotePresentation.Get()->HasRootMotion()))return false;
     ++F.State.Key.ActionSequence;F.State.Action=ERPGRidingAction::Emote;F.State.ExecutionId=FGuid::NewGuid();F.State.ActionDuration=3;F.Set();
-    TestTrue(TEXT("Root-motion authored montage cannot be installed as Emote"),!FRPGRidingPresentationTestAccess::Emote(*F.Visual));
+    TestTrue(TEXT("Root-motion authored montage cannot be installed as Emote"),!FRPGRidingPresentationTestAccess::Montage(*F.Visual));
     TestTrue(TEXT("Cosmetic rejection preserves mount state and transform"),F.Riding->GetRidingState().Action==ERPGRidingAction::Emote&&F.Character->GetActorTransform().Equals(F.InitialActor));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingVisualDash, "ProjectRPG.Riding.Presentation.DashPlayback", Flags)
+bool FRidingVisualDash::RunTest(const FString&)
+{
+    FVisualFixture F; F.Complete();
+    auto* Sequence = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/GreatswordComboPack/Demo/Mannequin/Animations/ThirdPersonIdle.ThirdPersonIdle"));
+    if (!TestNotNull(TEXT("Read-only animation fixture"), Sequence)) return false;
+    auto* Montage = UAnimMontage::CreateSlotAnimationAsDynamicMontage(Sequence, TEXT("DefaultSlot"));
+    Montage->RateScale = 1.5f;
+    auto* Model = FRPGRidingPresentationTestAccess::Mesh(*F.Visual); Model->InitAnim(true);
+    F.Definitions[0]->DashPresentation = Montage;
+    ++F.State.Key.ActionSequence; F.State.Action = ERPGRidingAction::Dash; F.State.ExecutionId = FGuid::NewGuid();
+    F.State.ActionDuration = 0.6f; F.State.ActionDirection = FVector::ForwardVector;
+    F.State.ActionStartServerWorldSeconds = F.World->GetTimeSeconds(); F.Set();
+    const auto Id = FRPGRidingPresentationTestAccess::ActionId(*F.Visual);
+    auto* Instance = Model->GetAnimInstance()->GetMontageInstanceForID(Id);
+    if (!TestTrue(TEXT("Dash selects its own definition montage"), FRPGRidingPresentationTestAccess::Montage(*F.Visual) == Montage && Instance)) return false;
+    TestTrue(TEXT("Dash duration accounts for authored montage rate scale"),
+        FMath::IsNearlyEqual(Instance->GetPlayRate() * Montage->RateScale, Montage->GetPlayLength() / F.State.ActionDuration, 0.0001f));
+    F.Set(); TestEqual(TEXT("Duplicate Dash observation does not restart playback"), FRPGRidingPresentationTestAccess::ActionId(*F.Visual), Id);
+    const auto Token = FRPGRidingPresentationTestAccess::ActionToken(*F.Visual);
+    F.State.Action = ERPGRidingAction::None; F.State.ExecutionId.Invalidate(); F.State.ActionDuration = 0;
+    F.State.ActionStartServerWorldSeconds = 0; F.State.ActionDirection = FVector::ZeroVector; ++F.State.Key.ActionSequence; F.Set();
+    FRPGRidingPresentationTestAccess::CompleteAction(*F.Visual, Token);
+    TestTrue(TEXT("Ended Dash cannot be revived by an old callback"), !FRPGRidingPresentationTestAccess::Montage(*F.Visual)
+        && !Model->GetAnimInstance()->Montage_IsPlaying(Montage));
+    TestTrue(TEXT("Dash presentation preserves character and mesh transforms"), F.Character->GetActorTransform().Equals(F.InitialActor)
+        && F.Character->GetMesh()->GetRelativeTransform().Equals(F.InitialMesh));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingVisualDashTransitions, "ProjectRPG.Riding.Presentation.DashTransitions", Flags)
+bool FRidingVisualDashTransitions::RunTest(const FString&)
+{
+    FVisualFixture F; F.Complete();
+    auto* Sequence = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/GreatswordComboPack/Demo/Mannequin/Animations/ThirdPersonIdle.ThirdPersonIdle"));
+    if (!TestNotNull(TEXT("Animation fixture"), Sequence)) return false;
+    auto* Emote = UAnimMontage::CreateSlotAnimationAsDynamicMontage(Sequence, TEXT("DefaultSlot"));
+    auto* Dash = UAnimMontage::CreateSlotAnimationAsDynamicMontage(Sequence, TEXT("DefaultSlot"));
+    F.Definitions[0]->EmotePresentation = Emote; F.Definitions[0]->DashPresentation = Dash;
+    auto* Model = FRPGRidingPresentationTestAccess::Mesh(*F.Visual); Model->InitAnim(true); auto* Anim = Model->GetAnimInstance();
+    ++F.State.Key.ActionSequence; F.State.Action = ERPGRidingAction::Emote; F.State.ExecutionId = FGuid::NewGuid(); F.State.ActionDuration = 3; F.Set();
+    const auto OldEmote = FRPGRidingPresentationTestAccess::ActionToken(*F.Visual);
+    ++F.State.Key.ActionSequence; F.State.Action = ERPGRidingAction::Dash; F.State.ExecutionId = FGuid::NewGuid();
+    F.State.ActionDuration = 0.6f; F.State.ActionDirection = FVector::ForwardVector; F.Set();
+    const auto DashId = FRPGRidingPresentationTestAccess::ActionId(*F.Visual);
+    TestTrue(TEXT("Dash preempts the private Emote playback"), FRPGRidingPresentationTestAccess::Montage(*F.Visual) == Dash
+        && !Anim->Montage_IsPlaying(Emote) && Anim->GetMontageInstanceForID(DashId));
+    FRPGRidingPresentationTestAccess::CompleteAction(*F.Visual, OldEmote);
+    TestEqual(TEXT("Old Emote callback preserves current Dash"), FRPGRidingPresentationTestAccess::ActionId(*F.Visual), DashId);
+    // A later caller using the same asset owns a different instance.
+    Anim->Montage_Play(Dash, 1.f, EMontagePlayReturnType::MontageLength, 0.f, false);
+    const auto* Foreign = Anim->GetActiveInstanceForMontage(Dash); const int32 ForeignId = Foreign ? Foreign->GetInstanceID() : INDEX_NONE;
+    F.State.Action = ERPGRidingAction::None; F.State.ExecutionId.Invalidate(); F.State.ActionDuration = 0;
+    F.State.ActionDirection = FVector::ZeroVector; ++F.State.Key.ActionSequence; F.Set();
+    TestTrue(TEXT("Ending Dash preserves a foreign instance of the same montage"), ForeignId != INDEX_NONE && ForeignId != DashId
+        && Anim->GetMontageInstanceForID(ForeignId) && Anim->Montage_IsPlaying(Dash));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingVisualDashRejection, "ProjectRPG.Riding.Presentation.DashRejection", Flags)
+bool FRidingVisualDashRejection::RunTest(const FString&)
+{
+    FVisualFixture F; F.Complete();
+    auto* RootSequence = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/GreatswordComboPack/Animations/RootMotion/Greatsword_Combo5_1_rm.Greatsword_Combo5_1_rm"));
+    if (!TestNotNull(TEXT("Root motion fixture"), RootSequence)) return false;
+    TGuardValue<bool> RestoreRootFlag(RootSequence->bEnableRootMotion, true);
+    auto* Montage = UAnimMontage::CreateSlotAnimationAsDynamicMontage(RootSequence, TEXT("DefaultSlot"));
+    if (!TestTrue(TEXT("Fixture really has root motion"), Montage && Montage->HasRootMotion())) return false;
+    F.Definitions[0]->DashPresentation = Montage;
+    FRPGRidingPresentationTestAccess::Mesh(*F.Visual)->InitAnim(true);
+    ++F.State.Key.ActionSequence; F.State.Action = ERPGRidingAction::Dash; F.State.ExecutionId = FGuid::NewGuid();
+    F.State.ActionDuration = 0.6f; F.State.ActionDirection = FVector::ForwardVector; F.Set();
+    TestNull(TEXT("Root-motion Dash visual is rejected"), FRPGRidingPresentationTestAccess::Montage(*F.Visual));
+    auto* Idle = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/GreatswordComboPack/Demo/Mannequin/Animations/ThirdPersonIdle.ThirdPersonIdle"));
+    if (!TestNotNull(TEXT("Idle fixture"), Idle)) return false;
+    Montage = UAnimMontage::CreateSlotAnimationAsDynamicMontage(Idle, TEXT("DefaultSlot")); Montage->RateScale = 0;
+    F.Definitions[0]->DashPresentation = Montage; ++F.State.Key.ActionSequence; F.State.ExecutionId = FGuid::NewGuid(); F.Set();
+    TestNull(TEXT("Invalid authored rate is rejected"), FRPGRidingPresentationTestAccess::Montage(*F.Visual));
+    TestTrue(TEXT("Cosmetic rejection leaves canonical server Dash unchanged"), RPGRiding::IsCanonical(F.Riding->GetRidingState())
+        && F.Riding->GetRidingState().Action == ERPGRidingAction::Dash && F.Character->GetActorTransform().Equals(F.InitialActor));
     return true;
 }
 
