@@ -35,6 +35,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Misc/FileHelper.h"
 #include "Misc/CommandLine.h"
+#include "Misc/CoreDelegates.h"
 #include "Misc/Parse.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
@@ -371,11 +372,14 @@ struct FProbe
         return true;
     }
 };
-static const auto Handle=[]()
+static const FDelegateHandle Registration = FCoreDelegates::GetOnPostEngineInit().AddLambda([]()
 {
-    if (!FParse::Param(FCommandLine::Get(),TEXT("RPGGuardianMelee2Network"))) return FTSTicker::FDelegateHandle();
-    auto Probe=MakeShared<FProbe>();
-    return FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([Probe](float Delta){return Probe->Tick(Delta);}),.02f);
-}();
+    if (FParse::Param(FCommandLine::Get(), TEXT("RPGGuardianMelee2Network")))
+    {
+        auto Probe = MakeShared<FProbe>();
+        FTSTicker::GetCoreTicker().AddTicker(
+            FTickerDelegate::CreateLambda([Probe](float Delta) { return Probe->Tick(Delta); }), .02f);
+    }
+});
 }
 #endif

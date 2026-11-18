@@ -22,6 +22,7 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Misc/CommandLine.h"
+#include "Misc/CoreDelegates.h"
 #include "Misc/Parse.h"
 #include "Misc/FileHelper.h"
 #include "HAL/FileManager.h"
@@ -137,10 +138,14 @@ struct FProbe
 		return true;
 	}
 };
-static const auto Handle=[]()
+static const FDelegateHandle Registration = FCoreDelegates::GetOnPostEngineInit().AddLambda([]()
 {
-	if(!FParse::Param(FCommandLine::Get(),TEXT("RPGDebuffHUDPreview")))return FTSTicker::FDelegateHandle();
-	auto P=MakeShared<FProbe>();return FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([P](float D){return P->Tick(D);}),.03f);
-}();
+	if (FParse::Param(FCommandLine::Get(), TEXT("RPGDebuffHUDPreview")))
+	{
+		auto Probe = MakeShared<FProbe>();
+		FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateLambda([Probe](float Delta) { return Probe->Tick(Delta); }), .03f);
+	}
+});
 }
 #endif
