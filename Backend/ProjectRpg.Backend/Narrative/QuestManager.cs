@@ -43,13 +43,16 @@ public sealed class QuestManager
                 if (!CanRecordObjective(current, definition, choice.ObjectiveId))
                     throw new NarrativeConflictException("objective_prerequisite_not_met");
                 ImmutableArray<string> objectives = current.CompletedObjectives.Add(choice.ObjectiveId);
-                updated = current with { CompletedObjectives = objectives,
-                    Status = objectives.Length == definition.Objectives.Length ? (definition.AutoComplete ? QuestStatus.Completed : QuestStatus.ReadyToReport) : QuestStatus.Active };
+                updated = AdvanceObjectives(current, definition, objectives);
                 break;
             case DialogueEffect.ReportQuest:
                 if (current is null || current.Status != QuestStatus.ReadyToReport)
                     throw new NarrativeConflictException("quest_not_ready");
-                updated = current with { Status = QuestStatus.Completed };
+                if (definition.ReportItemId is { } required &&
+                    (current.ReportItem is not { Delivered: false } item || item.ItemId != required))
+                    throw new NarrativeConflictException("quest_report_item_missing");
+                updated = current with { Status = QuestStatus.Completed,
+                    ReportItem = current.ReportItem is { } held ? held with { Delivered = true } : null };
                 break;
             default: throw new NarrativeConflictException("unsupported_dialogue_effect");
         }
@@ -74,14 +77,25 @@ public sealed class QuestManager
         if ((!requirement.AllowPriorCompletion && evidence.OccurredAt < activated.ActivatedAt) || evidence.OccurredAt > now)
             throw new NarrativeConflictException("dungeon_objective_event_out_of_window");
         ImmutableArray<string> objectives = current.CompletedObjectives.Add(objectiveId);
-        QuestProgress updated = current with
+        QuestProgress updated = AdvanceObjectives(current, definition, objectives) with
         {
-            CompletedObjectives = objectives,
-            Status = objectives.Length == definition.Objectives.Length ? (definition.AutoComplete ? QuestStatus.Completed : QuestStatus.ReadyToReport) : QuestStatus.Active,
             DungeonObjectives = objectiveProgress.SetItem(objectiveId,
                 activated with { DungeonSessionId = evidence.DungeonSessionId })
         };
         return state with { Quests = state.Quests.Replace(current, ActivateDungeonObjectives(updated, definition, now)) };
+    }
+
+    private static QuestProgress AdvanceObjectives(QuestProgress progress, QuestDefinition definition,
+        ImmutableArray<string> completed)
+    {
+        if (completed.Length != definition.Objectives.Length)
+            return progress with { CompletedObjectives = completed };
+        return progress with
+        {
+            CompletedObjectives = completed,
+            Status = definition.AutoComplete ? QuestStatus.Completed : QuestStatus.ReadyToReport,
+            ReportItem = definition.ReportItemId is { } itemId ? new(itemId, Delivered: false) : null
+        };
     }
 
     private static QuestProgress ActivateDungeonObjectives(QuestProgress progress, QuestDefinition definition, DateTimeOffset now)
@@ -131,8 +145,7 @@ public sealed class QuestManager
             var completed = current.CompletedObjectives.AddRange(matches);
             var evidence = current.InteractionObjectives;
             foreach (string id in matches) evidence = evidence.SetItem(id, evidence[id] with { EventId = command.EventId });
-            var progress = current with { CompletedObjectives = completed, InteractionObjectives = evidence,
-                Status = completed.Length == definition.Objectives.Length ? (definition.AutoComplete ? QuestStatus.Completed : QuestStatus.ReadyToReport) : QuestStatus.Active };
+            var progress = AdvanceObjectives(current, definition, completed) with { InteractionObjectives = evidence };
             updated = updated with { Quests = updated.Quests.Replace(current, ActivateDungeonObjectives(progress, definition, context.ReceivedAt)) };
         }
         return updated;
@@ -160,8 +173,7 @@ public sealed class QuestManager
                 counts = counts.SetItem(id, counts[id] with { Count = count, LastEventId = command.EventId });
                 if (count == definition.KillObjectives[id].RequiredCount) completed = completed.Add(id);
             }
-            var progress = current with { KillObjectives = counts, CompletedObjectives = completed,
-                Status = completed.Length == definition.Objectives.Length ? (definition.AutoComplete ? QuestStatus.Completed : QuestStatus.ReadyToReport) : QuestStatus.Active };
+            var progress = AdvanceObjectives(current, definition, completed) with { KillObjectives = counts };
             updated = updated with { Quests = updated.Quests.Replace(current, ActivateDungeonObjectives(progress, definition, context.ReceivedAt)) };
         }
         return updated;

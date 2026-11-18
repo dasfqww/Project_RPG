@@ -124,6 +124,55 @@ Check(view.AvailableDialogues.Where(d => d.Id.StartsWith("CH01.S01.Epilogue", St
     .SequenceEqual(["CH01.S01.Epilogue"]), "Before M08 Yuna leaves Taeo's fate open");
 Check(growth == JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(character.CharacterId, clock.Now, default)),
     "S01 report does not grant growth");
+
+NarrativeInteractionCommand TransportClue(string target) =>
+    new(Guid.NewGuid(), "CH01.S02." + target, generation, clock.Now);
+var earlyLedger = TransportClue("Ledger");
+Check((await Record(earlyLedger)).AppliedObjectives.IsEmpty, "An unaccepted ledger observation grants no report item");
+await Choose("CH01.S02.Offer");
+await Reject(() => Choose("CH01.S02.Report", "report"), "dialogue_not_available");
+await Record(TransportClue("Roster"));
+Check((await View()).State.Quests.Single(q => q.QuestId == "CH01.S02").ReportItem is null,
+    "One approved transport record grants no ledger");
+Check((await Record(earlyLedger)).AppliedObjectives.IsEmpty, "An early ledger receipt stays a no-op after acceptance");
+await game.RecordDungeonMemberDisconnectionAsync(session.DungeonSessionId, server, owner, character.CharacterId, generation, clock.Now, default);
+generation = await Admit(); clock.Advance();
+var ledger = TransportClue("Ledger");
+var ledgerCopies = await Task.WhenAll(Record(ledger), Record(ledger));
+Check(ledgerCopies[0].Revision == ledgerCopies[1].Revision, "Duplicate final transport observations share one revision");
+var beforeMira = await View();
+var s02Held = beforeMira.State.Quests.Single(q => q.QuestId == "CH01.S02");
+const string ledgerId = "CH01.S02.TransportLedger";
+Check(s02Held is { Status: QuestStatus.ReadyToReport, ReportItem: { ItemId: ledgerId, Delivered: false } }
+    && beforeMira.AvailableDialogues.All(d => d.Id != "CH01.S02.Epilogue"),
+    "Both records create one held ledger and the epilogue waits for delivery");
+var altBeforeReport = await Flow().LoadAsync(alt.CharacterId, owner, default);
+Check(altBeforeReport.State.Quests.All(q => q.QuestId != "CH01.S02")
+    && altBeforeReport.AvailableDialogues.All(d => d.Id != "CH01.S02.Report"), "The ledger belongs only to its investigating character");
+await Reject(() => Choose("CH01.S02.Report", "report", alt.CharacterId), "dialogue_not_available");
+var missingLedger = beforeMira.State with { Quests = beforeMira.State.Quests.Replace(s02Held, s02Held with { ReportItem = null }) };
+await Reject(() => Task.FromResult(quests.Apply(missingLedger, catalog.Quests["CH01.S02"],
+    catalog.Dialogues["CH01.S02.Report"].Choices.Single())), "quest_report_item_missing");
+var miraReport = new NarrativeCommand(Guid.NewGuid(), beforeMira.State.Revision, catalog.Version, "CH01.S02.Report", "report");
+var miraReports = await Task.WhenAll(Flow().ChooseAsync(character.CharacterId, owner, miraReport, default),
+    Flow().ChooseAsync(character.CharacterId, owner, miraReport, default));
+Check(miraReports.All(r => r.State.Revision == beforeMira.State.Revision + 1 && r.State.CompletedChapters.IsEmpty
+    && r.State.Quests.Single(q => q.QuestId == "CH01.S02") is { Status: QuestStatus.Completed, ReportItem: { ItemId: ledgerId, Delivered: true } }),
+    "An idempotent report consumes the owned ledger and completes only S02");
+await Reject(() => Choose("CH01.S02.Report", "report"), "dialogue_not_available");
+await Reject(() => Choose("CH01.S02.Offer"), "dialogue_not_available");
+await Record(ledger);
+var afterMira = await View();
+Check(afterMira.State.Quests.Single(q => q.QuestId == "CH01.S02").ReportItem is { Delivered: true }
+    && afterMira.AvailableDialogues.Single(d => d.Id == "CH01.S02.Epilogue").Choices
+        .Any(c => c.NextDialogueId == "CH01.S02.Epilogue.Meal"), "Replayed investigation cannot mint another ledger and the feast epilogue is readable");
+var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+var restoredS02 = JsonSerializer.Deserialize<NarrativeState>(JsonSerializer.Serialize(afterMira.State, jsonOptions), jsonOptions)!
+    .Quests.Single(q => q.QuestId == "CH01.S02");
+Check(restoredS02.ReportItem is { ItemId: ledgerId, Delivered: true }
+    && growth == JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(character.CharacterId, clock.Now, default)),
+    "The narrative save retains delivery and S02 adds no growth");
+
 await Choose("CH01.M04.Offer");
 Check((await View()).State.Quests.Single(q=>q.QuestId=="CH01.M04").Status==QuestStatus.Active,"M04 still requires actual Intro1 evidence");
 view=await View();
@@ -294,6 +343,8 @@ Check(altGrowth == JsonSerializer.Serialize(await ((ICharacterProgressionReposit
     "Story skip preserves alt growth and does not add direct account history");
 Check(skipped.AvailableDialogues.Where(d => d.Id.StartsWith("CH01.S01", StringComparison.Ordinal)).Select(d => d.Id)
     .SequenceEqual(["CH01.S01.Offer.Skipped"]), "An alt after a skip still gets the optional side quest with the correct opening");
+Check(skipped.AvailableDialogues.Where(d => d.Id.StartsWith("CH01.S02", StringComparison.Ordinal)).Select(d => d.Id)
+    .SequenceEqual(["CH01.S02.Offer.Skipped"]), "The story skip leaves S02 available without creating a ledger or report");
 await Reject(() => Choose("CH01.S01.Offer.After", subject: alt.CharacterId), "dialogue_not_available");
 await Choose("CH01.S01.Offer.Skipped", subject: alt.CharacterId);
 session = await game.CreateDungeonSessionAsync(owner, alt.CharacterId, "Progression.Intro1", "Normal", clock.Now, clock.Now.AddHours(1), default);
@@ -310,7 +361,7 @@ Check(altSide.State.Quests.Single().Status == QuestStatus.Completed
 await Reject(() => Choose("CH01.S01.Epilogue.After", "close", alt.CharacterId), "dialogue_not_available");
 Check(altGrowth == JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(alt.CharacterId, clock.Now, default)),
     "Side report after a story skip does not alter growth");
-Console.WriteLine("PASS Chapter One M01-M08 and S01 integration");
+Console.WriteLine("PASS Chapter One M01-M08 and S01-S02 integration");
 var content = new ProjectRpg.Backend.Application.DungeonContentCatalog(new ProjectRpg.Backend.Configuration.DungeonContentOptions {
     Entries=[new(){DungeonId="Story.ChapterOneReturn",MapPackage="/Game/Maps/Progression/L_ChapterOneReturn",Difficulties=["Normal"]},
         new(){DungeonId="Progression.FirstBoss",MapPackage="/Game/Maps/Progression/L_ChapterOneBoss",Difficulties=["Normal","Hard"]}] });

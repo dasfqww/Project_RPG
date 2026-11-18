@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": 6,
+  "catalogVersion": 7,
   "quests": [
     {
       "id": "CH01.M01",
@@ -281,6 +281,31 @@
           "dungeonId": "Progression.Intro1",
           "difficulty": "Normal",
           "targetId": "CH01.S01.Nameplate"
+        }
+      }
+    },
+    {
+      "id": "CH01.S02",
+      "version": 1,
+      "title": "장부 속의 부탁",
+      "category": "Side",
+      "prerequisites": ["CH01.M02"],
+      "objectives": ["roster", "ledger"],
+      "objectiveTexts": {
+        "roster": "폐광 외곽에서 운송 인원 명단의 이름을 확인하기",
+        "ledger": "광석 운송 장부를 조사한 뒤 미라에게 전달하기"
+      },
+      "reportItemId": "CH01.S02.TransportLedger",
+      "interactionObjectives": {
+        "roster": {
+          "dungeonId": "Progression.Intro1",
+          "difficulty": "Normal",
+          "targetId": "CH01.S02.Roster"
+        },
+        "ledger": {
+          "dungeonId": "Progression.Intro1",
+          "difficulty": "Normal",
+          "targetId": "CH01.S02.Ledger"
         }
       }
     }
@@ -653,6 +678,75 @@
       "informational": true,
       "requiredCompletedQuests": ["CH01.S01"],
       "requiredChapterProgress": { "chapterId": "CH01", "status": "Skipped" },
+      "choices": [
+        { "id": "close", "text": "대화를 마친다", "effect": "None" }
+      ]
+    },
+    {
+      "id": "CH01.S02.Offer",
+      "speaker": "미라",
+      "text": "갱도에 들어간 사람들 이름을 확인하고 있어요. 외곽의 운송 인원 명단과 광석 장부를 살펴보고, 남은 장부를 가져와 주세요.",
+      "questId": "CH01.S02",
+      "requiredStatus": null,
+      "requiredChapterProgress": { "chapterId": "CH01", "status": "Unresolved" },
+      "choices": [
+        { "id": "accept", "text": "운송 기록을 확인한다", "effect": "AcceptQuest" }
+      ]
+    },
+    {
+      "id": "CH01.S02.Offer.After",
+      "speaker": "미라",
+      "text": "돌아온 사람들과 폐광 기록을 정리하고 있어요. 외곽의 운송 인원 명단을 확인하고, 남은 광석 장부를 가져와 주실래요?",
+      "questId": "CH01.S02",
+      "requiredStatus": null,
+      "requiredChapterProgress": { "chapterId": "CH01", "status": "Completed" },
+      "choices": [
+        { "id": "accept", "text": "운송 기록을 확인한다", "effect": "AcceptQuest" }
+      ]
+    },
+    {
+      "id": "CH01.S02.Offer.Skipped",
+      "speaker": "미라",
+      "text": "구조가 끝나고 남은 폐광 기록을 정리하고 있어요. 외곽의 운송 인원 명단을 확인하고, 광석 장부를 가져와 주실래요?",
+      "questId": "CH01.S02",
+      "requiredStatus": null,
+      "requiredChapterProgress": { "chapterId": "CH01", "status": "Skipped" },
+      "choices": [
+        { "id": "accept", "text": "운송 기록을 확인한다", "effect": "AcceptQuest" }
+      ]
+    },
+    {
+      "id": "CH01.S02.Report",
+      "speaker": "미라",
+      "text": "명단에 적힌 사람들과 대조할 수 있겠네요. 가져온 장부를 제게 맡겨주시겠어요?",
+      "questId": "CH01.S02",
+      "requiredStatus": "ReadyToReport",
+      "choices": [
+        { "id": "report", "text": "광석 운송 장부를 전달한다", "effect": "ReportQuest" }
+      ]
+    },
+    {
+      "id": "CH01.S02.Epilogue",
+      "speaker": "미라",
+      "text": "‘늦는 사람 몫의 식사 남겨둘 것.’ 수량표 옆에 이런 부탁을 적었군요. 식사 자리에는 모두의 자리를 남겨둘게요.",
+      "questId": null,
+      "requiredStatus": null,
+      "informational": true,
+      "requiredCompletedQuests": ["CH01.S02"],
+      "choices": [
+        { "id": "meal", "text": "공용 식사 자리는 어떻게 됐나요?", "effect": "None", "nextDialogueId": "CH01.S02.Epilogue.Meal" },
+        { "id": "close", "text": "대화를 마친다", "effect": "None" }
+      ]
+    },
+    {
+      "id": "CH01.S02.Epilogue.Meal",
+      "speaker": "미라",
+      "text": "공용 식사 자리를 정리했어요. 먼저 온 사람이 늦는 사람 몫까지 챙기기로 했고요.",
+      "questId": null,
+      "requiredStatus": null,
+      "informational": true,
+      "entryPoint": false,
+      "requiredCompletedQuests": ["CH01.S02"],
       "choices": [
         { "id": "close", "text": "대화를 마친다", "effect": "None" }
       ]

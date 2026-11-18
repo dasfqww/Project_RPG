@@ -60,6 +60,10 @@ public sealed class NarrativeCoordinator(INarrativeRepository repository, Narrat
                 || (progress.Status == QuestStatus.Active) == (progress.CompletedObjectives.Length == definition.Objectives.Length)
                 || !definition.Prerequisites.All(state.SatisfiesStoryQuest))
                 throw new NarrativeConflictException("incompatible_narrative_state");
+            var expectedItem = definition.ReportItemId is { } itemId && progress.Status != QuestStatus.Active
+                ? new ReportItemProgress(itemId, Delivered: progress.Status == QuestStatus.Completed) : null;
+            if (progress.ReportItem != expectedItem)
+                throw new NarrativeConflictException("incompatible_quest_report_item_state");
             var dungeonProgress = progress.DungeonObjectives;
             var dungeonDefinitions = definition.DungeonObjectives;
             if (dungeonProgress is not null && dungeonProgress.Any(pair => pair.Value is null

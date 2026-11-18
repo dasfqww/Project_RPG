@@ -33,6 +33,8 @@ public sealed class NarrativeCatalog
                 && (q.ObjectiveTexts is null || q.ObjectiveTexts.All(pair => q.Objectives.Contains(pair.Key)
                     && !string.IsNullOrWhiteSpace(pair.Value) && pair.Value.Length <= 1024)),
                 "invalid_quest_presentation");
+            Require(q.ReportItemId is null || !q.AutoComplete && NarrativeCommand.ValidId(q.ReportItemId),
+                "invalid_quest_report_item");
             Require(q.ObjectivePrerequisites is null || q.ObjectivePrerequisites.Count <= q.Objectives.Length
                 && q.ObjectivePrerequisites.All(pair => q.Objectives.Contains(pair.Key)
                     && !pair.Value.IsDefault && pair.Value.Length <= 256

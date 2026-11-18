@@ -16,7 +16,7 @@ public sealed record QuestDefinition(string Id, int Version, ImmutableArray<stri
     ImmutableDictionary<string, DungeonClearObjective>? DungeonObjectives = null,
     ImmutableDictionary<string, InteractionObjective>? InteractionObjectives = null,
     ImmutableDictionary<string, KillObjective>? KillObjectives = null,
-    QuestCategory Category = QuestCategory.Unspecified, bool AutoComplete = false)
+    QuestCategory Category = QuestCategory.Unspecified, bool AutoComplete = false, string? ReportItemId = null)
 {
     internal ImmutableArray<string> RequiredObjectives(string objectiveId) =>
         ObjectivePrerequisites?.GetValueOrDefault(objectiveId, []) ?? [];
@@ -27,6 +27,7 @@ public sealed record InteractionObjective(string DungeonId, string Difficulty, s
 public sealed record InteractionObjectiveProgress(DateTimeOffset ActivatedAt, Guid? EventId = null);
 public sealed record KillObjective(string DungeonId, string Difficulty, string EnemyId, int RequiredCount);
 public sealed record KillObjectiveProgress(DateTimeOffset ActivatedAt, int RequiredCount, int Count = 0, Guid? LastEventId = null);
+public sealed record ReportItemProgress(string ItemId, bool Delivered);
 public sealed record ChapterDefinition(string Id, ImmutableArray<string> RequiredQuests,
     ImmutableArray<string> StoryUnlocks, string? Title = null, bool AllowStorySkip = false);
 public sealed record DialogueChoice(string Id, string Text, DialogueEffect Effect, string? ObjectiveId = null,
@@ -42,7 +43,10 @@ public sealed record QuestProgress(string QuestId, int DefinitionVersion, QuestS
     ImmutableArray<string> CompletedObjectives,
     ImmutableDictionary<string, DungeonObjectiveProgress>? DungeonObjectives = null,
     ImmutableDictionary<string, InteractionObjectiveProgress>? InteractionObjectives = null,
-    ImmutableDictionary<string, KillObjectiveProgress>? KillObjectives = null);
+    ImmutableDictionary<string, KillObjectiveProgress>? KillObjectives = null)
+{
+    public ReportItemProgress? ReportItem { get; init; }
+}
 public sealed record NarrativeState(Guid CharacterId, int SchemaVersion, long Revision,
     ImmutableArray<QuestProgress> Quests, ImmutableArray<string> CompletedChapters,
     ImmutableArray<string> StoryUnlocks)
