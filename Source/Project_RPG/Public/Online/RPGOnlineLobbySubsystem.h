@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Containers/Ticker.h"
+#include "Engine/EngineBaseTypes.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "RPGOnlineLobbySubsystem.generated.h"
 
@@ -20,6 +21,12 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 	bool IsLobbyController(const APlayerController* Controller) const;
+	bool IsCharacterSelectionController(const APlayerController* Controller) const;
+	bool IsSeparateGameplayLobbyController(const APlayerController* Controller) const;
+	bool OpenCharacterSelection(APlayerController* Controller);
+	bool EnterGameplayLobby(APlayerController* Controller);
+	bool IsFrontendTravelPending() const;
+	bool HasFrontendTravelFailed() const;
 	UFUNCTION(BlueprintPure, Category = "RPG|Online|Lobby")
 	URPGOnlineLobbyWidget* GetLobbyWidget() const { return LobbyWidget; }
 	UFUNCTION(BlueprintPure, Category = "RPG|Online|Authentication")
@@ -33,12 +40,19 @@ public:
 		bool bUnresolvedAbandonment, bool bParty, bool bBusy);
 private:
 	bool TickLobby(float DeltaTime);
+	bool IsLocalControllerInMap(const APlayerController* Controller, const FString& Package) const;
+	bool OpenFrontendMap(APlayerController* Controller, const FString& Package);
+	void HandleFrontendTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& Error);
 	UPROPERTY(Config)
 	bool bAutoShowOnlineLobby = true;
 	UPROPERTY(Config)
 	FString LobbyMapPackage = TEXT("/Game/Maps/LobbyMap");
+	UPROPERTY(Config)
+	FString CharacterSelectionMapPackage;
 	UPROPERTY(Transient)
 	TObjectPtr<URPGOnlineLobbyWidget> LobbyWidget;
 	FTSTicker::FDelegateHandle TickerHandle;
+	TWeakObjectPtr<UWorld> PendingFrontendTravel;
+	TWeakObjectPtr<UWorld> FailedFrontendTravel;
 	bool bShuttingDown = false;
 };

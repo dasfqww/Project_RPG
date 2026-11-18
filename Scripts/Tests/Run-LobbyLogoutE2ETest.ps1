@@ -298,6 +298,10 @@ try {
         $arguments = @($arguments | Where-Object {
             $_ -ne '-RPGFlowE2ELobbyLogout' -and $_ -notlike '-RPGFlowE2ECharacter=*' -and $_ -notlike '-RPGFlowE2ELogoutNext*'
         }) + @('-RPGFlowE2ECreateCharacter', '-RPGFlowE2ELobbyCreationOnly', ('-RPGFlowE2ECharacterName=' + $creationName))
+        $arguments[1] = '/Game/Maps/CharacterSelection'
+    } else {
+        # These scenarios isolate backend logout/configuration in one world.
+        $arguments += '-ini:Game:[/Script/Project_RPG.RPGOnlineLobbySubsystem]:CharacterSelectionMapPackage='
     }
     if ($ConfigurationOnly) {
         $arguments = @($arguments | Where-Object {

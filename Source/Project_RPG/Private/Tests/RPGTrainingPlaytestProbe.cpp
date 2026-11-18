@@ -75,7 +75,7 @@ struct FProbe
 		auto* Lobby = GI->GetSubsystem<URPGOnlineLobbySubsystem>();
 		auto* Widget = Lobby ? Lobby->GetLobbyWidget() : nullptr;
 		auto* PC = World->GetFirstPlayerController();
-		if (!Widget || !Widget->IsInViewport() || !Lobby->IsLobbyController(PC)) return true;
+		if (!Widget || !Widget->IsInViewport() || !Lobby->IsLobbyController(PC) || Lobby->IsFrontendTravelPending()) return true;
 		auto* Configuration = Widget->GetCharacterConfigurationWidget();
 		auto* Start = Cast<UButton>(Widget->GetWidgetFromName(TEXT("StartTutorialButton")));
 		auto* Change = Cast<UButton>(Widget->GetWidgetFromName(TEXT("ChangeCharacterButton")));
@@ -89,11 +89,18 @@ struct FProbe
 			if (Saved->CharacterId != Character || !(Saved->Milestones & 1) || Start->GetIsEnabled())
 				return Fail(TEXT("CompletedTutorialMenu"));
 			if (!Change->GetIsEnabled()) return true;
-			Change->OnClicked.Broadcast(); Selector->SetSelectedOption(Widget->GetCharacterOption(Sibling));
+			Change->OnClicked.Broadcast();
 			ProgressionLobbyStage = 1; return true;
 		}
 		if (ProgressionLobbyStage == 1 || ProgressionLobbyStage == 3)
 		{
+			const FString& Target = ProgressionLobbyStage == 1 ? Sibling : Character;
+			if (Flow->GetSelectedCharacterId() != Target)
+			{
+				const FString Option = Widget->GetCharacterOption(Target);
+				if (!Option.IsEmpty() && Selector->GetIsEnabled()) Selector->SetSelectedOption(Option);
+				return true;
+			}
 			if (!Continue->GetIsEnabled()) return true;
 			Continue->OnClicked.Broadcast();
 			if (!Configuration->GetConfirmedProgression())
@@ -109,7 +116,7 @@ struct FProbe
 			if (Saved->CharacterId != Sibling || Saved->Milestones != 0 || Saved->Level != 1 || !Start->GetIsEnabled())
 				return Fail(TEXT("SiblingTutorialProgress"));
 			if (!Change->GetIsEnabled()) return true;
-			Change->OnClicked.Broadcast(); Selector->SetSelectedOption(Widget->GetCharacterOption(Character));
+			Change->OnClicked.Broadcast();
 			ProgressionLobbyStage = 3; return true;
 		}
 		if (ProgressionLobbyStage == 4)

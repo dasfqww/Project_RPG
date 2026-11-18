@@ -1,9 +1,12 @@
 #include "Online/RPGOnlineLobbySubsystem.h"
 #include "UObject/Package.h"
+#include "Misc/PackageName.h"
 
+#include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "Kismet/GameplayStatics.h"
 #include "Manager/HttpWebManager.h"
 #include "Online/RPGDungeonSessionSubsystem.h"
 #include "Online/RPGSteamAuthSubsystem.h"
@@ -40,6 +43,7 @@ void URPGOnlineLobbySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	Collection.InitializeDependency<URPGSteamAuthSubsystem>();
 	Collection.InitializeDependency<URPGDungeonSessionSubsystem>();
 	Collection.InitializeDependency<URPGSteamLobbySubsystem>();
+	if (GEngine) GEngine->OnTravelFailure().AddUObject(this, &ThisClass::HandleFrontendTravelFailure);
 	TickerHandle = FTSTicker::GetCoreTicker().AddTicker(
 		FTickerDelegate::CreateUObject(this, &ThisClass::TickLobby), .25f);
 }
@@ -48,6 +52,7 @@ void URPGOnlineLobbySubsystem::Deinitialize()
 {
 	bShuttingDown = true;
 	OnLogoutCompleted.Clear();
+	if (GEngine) GEngine->OnTravelFailure().RemoveAll(this);
 	FTSTicker::GetCoreTicker().RemoveTicker(TickerHandle);
 	if (LobbyWidget) LobbyWidget->RemoveFromParent();
 	LobbyWidget = nullptr;
@@ -55,6 +60,22 @@ void URPGOnlineLobbySubsystem::Deinitialize()
 }
 
 bool URPGOnlineLobbySubsystem::IsLobbyController(const APlayerController* Controller) const
+{
+	return IsLocalControllerInMap(Controller, LobbyMapPackage) || IsCharacterSelectionController(Controller);
+}
+
+bool URPGOnlineLobbySubsystem::IsCharacterSelectionController(const APlayerController* Controller) const
+{
+	return IsLocalControllerInMap(Controller, CharacterSelectionMapPackage);
+}
+
+bool URPGOnlineLobbySubsystem::IsSeparateGameplayLobbyController(const APlayerController* Controller) const
+{
+	return !CharacterSelectionMapPackage.IsEmpty() && LobbyMapPackage.StartsWith(TEXT("/Game/"))
+		&& IsLocalControllerInMap(Controller, LobbyMapPackage);
+}
+
+bool URPGOnlineLobbySubsystem::IsLocalControllerInMap(const APlayerController* Controller, const FString& Package) const
 {
 	const UWorld* World = Controller ? Controller->GetWorld() : nullptr;
 	// PIE duplicates the map package. Normalize only that world type; ordinary
@@ -64,7 +85,54 @@ bool URPGOnlineLobbySubsystem::IsLobbyController(const APlayerController* Contro
 		: (World ? World->GetOutermost()->GetName() : FString());
 	return !bShuttingDown && Controller && Controller->IsLocalController() && World && World->IsGameWorld()
 		&& World->GetGameInstance() == GetGameInstance() && World->GetNetMode() == NM_Standalone
-		&& MapPackage.Equals(LobbyMapPackage, ESearchCase::CaseSensitive);
+		&& MapPackage.Equals(Package, ESearchCase::CaseSensitive);
+}
+
+bool URPGOnlineLobbySubsystem::IsFrontendTravelPending() const
+{
+	const UWorld* World = GetGameInstance()->GetWorld();
+	return World && PendingFrontendTravel.Get() == World;
+}
+
+bool URPGOnlineLobbySubsystem::HasFrontendTravelFailed() const
+{
+	const UWorld* World = GetGameInstance()->GetWorld();
+	return World && FailedFrontendTravel.Get() == World;
+}
+
+bool URPGOnlineLobbySubsystem::OpenCharacterSelection(APlayerController* Controller)
+{
+	return IsSeparateGameplayLobbyController(Controller) && OpenFrontendMap(Controller, CharacterSelectionMapPackage);
+}
+
+bool URPGOnlineLobbySubsystem::EnterGameplayLobby(APlayerController* Controller)
+{
+	const auto* Web = GetGameInstance()->GetSubsystem<UHttpWebManager>();
+	const auto* Flow = GetGameInstance()->GetSubsystem<URPGDungeonSessionSubsystem>();
+	return IsCharacterSelectionController(Controller) && Web && Web->HasAccessToken() && Flow
+		&& !Flow->GetSelectedCharacterId().IsEmpty() && !Flow->IsRequestInFlight()
+		&& OpenFrontendMap(Controller, LobbyMapPackage);
+}
+
+bool URPGOnlineLobbySubsystem::OpenFrontendMap(APlayerController* Controller, const FString& Package)
+{
+	if (IsFrontendTravelPending()) return false;
+	if (!FPackageName::IsValidLongPackageName(Package) || !FPackageName::DoesPackageExist(Package))
+	{
+		FailedFrontendTravel = Controller->GetWorld();
+		return false;
+	}
+	FailedFrontendTravel.Reset();
+	PendingFrontendTravel = Controller->GetWorld();
+	UGameplayStatics::OpenLevel(Controller, FName(*Package), true);
+	return true;
+}
+
+void URPGOnlineLobbySubsystem::HandleFrontendTravelFailure(UWorld* World, ETravelFailure::Type, const FString&)
+{
+	if (!World || PendingFrontendTravel.Get() != World) return;
+	PendingFrontendTravel.Reset();
+	FailedFrontendTravel = World;
 }
 
 bool URPGOnlineLobbySubsystem::IsLogoutAllowed(const bool bLocalLobby, const bool bHasCredential,
@@ -88,7 +156,7 @@ bool URPGOnlineLobbySubsystem::CanLogoutFromBackend(const APlayerController* Con
 	const auto* Auth = GI ? GI->GetSubsystem<URPGSteamAuthSubsystem>() : nullptr;
 	const auto* Flow = GI ? GI->GetSubsystem<URPGDungeonSessionSubsystem>() : nullptr;
 	const auto* Steam = GI ? GI->GetSubsystem<URPGSteamLobbySubsystem>() : nullptr;
-	if (!Web || !Auth || !Flow || !Steam || Flow->HasUnresolvedDeparture() || Flow->HasDepartureRecoveryError()) return false;
+	if (!Web || !Auth || !Flow || !Steam || IsFrontendTravelPending() || Flow->HasUnresolvedDeparture() || Flow->HasDepartureRecoveryError()) return false;
 	return IsLogoutAllowed(IsLobbyController(Controller), Web->HasPlayerLogoutCredential(),
 		HasUnresolvedLogoutSession(Flow->GetCurrentDungeonSession()), Flow->HasUnresolvedDungeonAbandonment(), Steam->IsInPartyLobby(),
 		Auth->IsLoginRequestInFlight() || Flow->IsRequestInFlight() || Steam->IsLobbyRequestInFlight()
@@ -155,21 +223,34 @@ bool URPGOnlineLobbySubsystem::TickLobby(float)
 		LobbyWidget = nullptr;
 		return true;
 	}
-	if (LobbyWidget && LobbyWidget->GetOwningPlayer() != PC)
+	if (LobbyWidget && (LobbyWidget->GetWorld() != World || LobbyWidget->GetOwningPlayer() != PC || !LobbyWidget->IsInViewport()))
 	{
 		LobbyWidget->RemoveFromParent();
 		LobbyWidget = nullptr;
 	}
+	const auto* Flow = GetGameInstance()->GetSubsystem<URPGDungeonSessionSubsystem>();
+	if (IsFrontendTravelPending()) return true;
+	if (IsSeparateGameplayLobbyController(PC) && Flow && Flow->GetSelectedCharacterId().IsEmpty()
+		&& !Flow->IsRequestInFlight() && !HasFrontendTravelFailed() && OpenCharacterSelection(PC)) return true;
 	if (!LobbyWidget)
 	{
 		LobbyWidget = CreateWidget<URPGOnlineLobbyWidget>(PC, URPGOnlineLobbyWidget::StaticClass());
 		if (LobbyWidget)
 		{
 			LobbyWidget->AddToViewport(120);
-			FInputModeGameAndUI Input;
-			Input.SetWidgetToFocus(LobbyWidget->TakeWidget());
-			Input.SetHideCursorDuringCapture(false);
-			PC->SetInputMode(Input);
+			if (IsCharacterSelectionController(PC))
+			{
+				FInputModeUIOnly Input;
+				Input.SetWidgetToFocus(LobbyWidget->TakeWidget());
+				PC->SetInputMode(Input);
+			}
+			else
+			{
+				FInputModeGameAndUI Input;
+				Input.SetWidgetToFocus(LobbyWidget->TakeWidget());
+				Input.SetHideCursorDuringCapture(false);
+				PC->SetInputMode(Input);
+			}
 			PC->bShowMouseCursor = true;
 		}
 	}

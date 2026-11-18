@@ -12,10 +12,13 @@
 #include "RPGOnlineLobbyWidget.generated.h"
 
 class ARPGCharacterLineupStage;
+class UBorder;
 class UButton;
 class UComboBoxString;
 class UEditableTextBox;
 class UImage;
+class UScrollBox;
+class USpacer;
 class UHorizontalBox;
 class UTextBlock;
 class UVerticalBox;
@@ -296,9 +299,13 @@ private:
 	UPROPERTY(Transient) TArray<TObjectPtr<UTextBlock>> LineupSlotLabels;
 	UPROPERTY(Transient) TObjectPtr<UImage> LineupImage;
 	UPROPERTY(Transient) TObjectPtr<UWidget> LineupFrame;
+	UPROPERTY(Transient) TObjectPtr<UBorder> PageBackground;
+	UPROPERTY(Transient) TObjectPtr<UScrollBox> PageScroll;
+	UPROPERTY(Transient) TObjectPtr<USpacer> RosterSpacer;
 	UPROPERTY(Transient) TObjectPtr<UVerticalBox> CreationPreviewColumn;
 	UPROPERTY(Transient) TObjectPtr<UImage> CreationPortrait;
 	UPROPERTY(Transient) TObjectPtr<UImage> TitleImage;
+	UPROPERTY(Transient) TObjectPtr<UWidget> TitleFrame;
 	UPROPERTY(Transient) TObjectPtr<ARPGCharacterLineupStage> LineupStage;
 	UPROPERTY(Transient) TObjectPtr<UVerticalBox> LobbyContent;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CharacterListText;

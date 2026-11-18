@@ -25,6 +25,7 @@
 #include "Components/EditableTextBox.h"
 #include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
+#include "Components/Spacer.h"
 #include "Components/VerticalBoxSlot.h"
 #include "UI/RPGConfirmationInput.h"
 #include "UI/RPGMenuFocus.h"
@@ -198,6 +199,8 @@ TSharedRef<SWidget> URPGOnlineLobbyWidget::RebuildWidget()
 		Canvas->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 		WidgetTree->RootWidget = Canvas;
 		auto* Border = WidgetTree->ConstructWidget<UBorder>();
+		PageBackground = Border;
+		Border->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 		Border->SetBrush(FSlateColorBrush(FLinearColor(.012f, .021f, .034f, 1.f)));
 		Border->SetPadding(FMargin(30.f, 24.f));
 		auto* PanelSlot = Canvas->AddChildToCanvas(Border);
@@ -213,6 +216,14 @@ TSharedRef<SWidget> URPGOnlineLobbyWidget::RebuildWidget()
 		NextStepText = RPGOnlineLobbyLayout::Text(*WidgetTree, *Header, TEXT("OnlineLobbyNextStep"), FText::GetEmpty());
 		NextStepText->SetColorAndOpacity(FSlateColor(FLinearColor(1.f, .84f, .48f)));
 		auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass(), TEXT("OnlineLobbyContentScroll"));
+		PageScroll = Scroll;
+		const auto* Lobby = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr;
+		if (Lobby && Lobby->IsCharacterSelectionController(GetOwningPlayer()))
+		{
+			RosterSpacer = WidgetTree->ConstructWidget<USpacer>();
+			RosterSpacer->SetVisibility(ESlateVisibility::Collapsed);
+			Page->AddChildToVerticalBox(RosterSpacer)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+		}
 		Scroll->SetScrollWhenFocusChanges(EScrollWhenFocusChanges::InstantScroll);
 		Scroll->SetNavigationDestination(EDescendantScrollDestination::IntoView);
 		Scroll->SetScrollbarPadding(FMargin(8.f, 0.f, 0.f, 0.f));
@@ -328,7 +339,17 @@ TSharedRef<SWidget> URPGOnlineLobbyWidget::RebuildWidget()
 			AddAction(TEXT("JoinDevelopmentSessionButton"), NSLOCTEXT("RPGOnlineLobby", "DevJoin", "개발용 대기 세션 참가"));
 		}
 		// Account recovery must stay reachable across authentication and page changes.
-		Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *PageSections, TEXT("OnlineLobbyAccountSection"),
+		auto* AccountParent = PageSections;
+		if (RosterSpacer)
+		{
+			AccountParent = WidgetTree->ConstructWidget<UVerticalBox>();
+			auto* AccountSlot = Canvas->AddChildToCanvas(AccountParent);
+			AccountSlot->SetAnchors(FAnchors(1.f, 0.f));
+			AccountSlot->SetAlignment(FVector2D(1, 0));
+			AccountSlot->SetOffsets(FMargin(-30.f, 24.f, 0, 0));
+			AccountSlot->SetAutoSize(true);
+		}
+		Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *AccountParent, TEXT("OnlineLobbyAccountSection"),
 			NSLOCTEXT("RPGOnlineLobby", "AccountSection", "계정"));
 		AccountSection = Rows->GetParent();
 		AddAction(TEXT("LogoutBackendButton"), NSLOCTEXT("RPGOnlineLobby", "Logout", "로그아웃"));
@@ -427,7 +448,9 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 		Steam->OnPartyInviteAccepted.AddUniqueDynamic(this, &ThisClass::HandleSteamLobby);
 		Steam->OnLobbySearchCompleted.AddUniqueDynamic(this, &ThisClass::HandleSteamSearch);
 	}
-	bPreparationOpen = Flow && !Flow->GetSelectedCharacterId().IsEmpty();
+	const auto* Lobby = GI ? GI->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr;
+	bPreparationOpen = Flow && !Flow->GetSelectedCharacterId().IsEmpty()
+		&& !(Lobby && Lobby->IsCharacterSelectionController(GetOwningPlayer()));
 	PollUntil = FPlatformTime::Seconds() + 120.0;
 	if (GetWorld()) GetWorld()->GetTimerManager().SetTimer(PollTimer, this, &ThisClass::PollSession, 2.f, true);
 	LoadDungeonDefinitions();
@@ -568,7 +591,8 @@ FRPGOnlineLobbyPresentation URPGOnlineLobbyWidget::CurrentPresentation() const
 {
 	const auto* Lobby = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr;
 	auto View = BuildPresentation(Web && Auth && Flow && Lobby && Lobby->IsLobbyController(GetOwningPlayer()),
-		Web && Web->HasAccessToken(), bLoadingCharacters || bCreatingCharacter || bLoggingIn || bLoggingOut || bAbandonmentConfirmationOpen
+		Web && Web->HasAccessToken(), (Lobby && Lobby->IsFrontendTravelPending())
+			|| bLoadingCharacters || bCreatingCharacter || bLoggingIn || bLoggingOut || bAbandonmentConfirmationOpen
 			|| (Web && Web->IsPlayerProgressionRequestInFlight()) || (ConfigurationPanel && ConfigurationPanel->IsRequestInFlight())
 			|| (EquipmentPanel && EquipmentPanel->IsBusy()),
 		Auth && Auth->IsLoginRequestInFlight(), Steam && Steam->IsLobbyRequestInFlight(), Flow && Flow->IsRequestInFlight(),
@@ -774,6 +798,10 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 		? Flow->GetLastErrorCode() : Flow && !Flow->GetDungeonAdmissionBlockReason().IsEmpty()
 		? Flow->GetDungeonAdmissionBlockReason() : Steam ? Steam->GetLastErrorCode() : FString();
 	if (!Web || !Auth || !Flow) Status = NSLOCTEXT("RPGOnlineLobby", "Unavailable", "온라인 서비스가 준비되지 않았습니다.");
+	else if (Lobby && Lobby->IsFrontendTravelPending())
+		Status = NSLOCTEXT("RPGOnlineLobby", "FrontendTravelPending", "화면을 불러오고 있습니다.");
+	else if (Lobby && Lobby->HasFrontendTravelFailed())
+		Status = NSLOCTEXT("RPGOnlineLobby", "FrontendTravelFailed", "화면을 열 수 없습니다. 다시 시도하세요.");
 	else if (bAbandonmentConfirmationOpen)
 		Status = NSLOCTEXT("RPGOnlineLobby", "ConfirmingAbandonment", "아직 포기 요청을 보내지 않았습니다. 아래 내용을 확인한 뒤 포기하거나 취소하세요.");
 	else if (bLoggingIn || Auth->IsLoginRequestInFlight())
@@ -871,11 +899,14 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 
 void URPGOnlineLobbyWidget::RefreshEntryPresentation()
 {
+	const auto* Lobby = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr;
+	const bool bGameplayLobby = Lobby && Lobby->IsSeparateGameplayLobbyController(GetOwningPlayer());
 	const bool bAuthenticated = Web && Web->HasAccessToken();
 	const ESlateVisibility LoginVisibility = bAuthenticated ? ESlateVisibility::Collapsed : ESlateVisibility::Visible;
 	const bool bShowPreparation = bAuthenticated && bPreparationOpen
 		&& (HasOwnedSelection() || bLoadingCharacters || bInitialCharacterLoadPending);
-	const ESlateVisibility CharacterVisibility = bAuthenticated && !bShowPreparation ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+	const ESlateVisibility CharacterVisibility = bAuthenticated && !bShowPreparation && !bGameplayLobby
+		? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
 	const bool bPageChanged = (LoginContent && LoginContent->GetVisibility() != LoginVisibility)
 		|| (CharacterContent && CharacterContent->GetVisibility() != CharacterVisibility);
 	auto* PC = GetOwningPlayer();
@@ -894,7 +925,7 @@ void URPGOnlineLobbyWidget::RefreshEntryPresentation()
 		RPGOnlineLobbyLayout::SetControlVisibility(*SteamButton,
 			IsDevelopmentUIEnabled() ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 	if (TitleText) TitleText->SetText(!bAuthenticated ? NSLOCTEXT("RPGOnlineLobby", "GameTitle", "PROJECT RPG")
-		: bShowPreparation ? NSLOCTEXT("RPGOnlineLobby", "PreparationTitle", "로비")
+		: bShowPreparation || bGameplayLobby ? NSLOCTEXT("RPGOnlineLobby", "PreparationTitle", "로비")
 		: bCharacterCreationOpen ? NSLOCTEXT("RPGOnlineLobby", "CreateCharacterTitle", "캐릭터 생성")
 		: NSLOCTEXT("RPGOnlineLobby", "CharacterSelectionTitle", "캐릭터 선택"));
 	if (LoginHintText)
@@ -1230,7 +1261,12 @@ void URPGOnlineLobbyWidget::HandleCharacters(const TArray<FRPGBackendCharacter>&
 	if (!bSuccess) { UIError = TEXT("load_characters_failed"); RefreshPresentation(); return; }
 	OwnedCharacters = Characters;
 	bHasLoadedCharacterList = true;
-	if (!HasOwnedSelection()) bPreparationOpen = false;
+	if (!HasOwnedSelection())
+	{
+		bPreparationOpen = false;
+		if (auto* Lobby = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr;
+			Lobby && !Lobby->HasFrontendTravelFailed()) Lobby->OpenCharacterSelection(GetOwningPlayer());
+	}
 	if (CharactersBox)
 	{
 		bUpdatingOptions = true;

@@ -8,7 +8,7 @@ class USceneCaptureComponent2D;
 class USkeletalMeshComponent;
 class UTextureRenderTarget2D;
 
-enum class ERPGLineupView : uint8 { Roster, Title, Creation };
+enum class ERPGLineupView : uint8 { Roster, FullscreenRoster, Title, Creation };
 
 /** Local presentation actors for the lobby. The roster and selection live in the lobby widget. */
 UCLASS(Transient, NotBlueprintable)
@@ -32,6 +32,7 @@ protected:
 	virtual void Tick(float DeltaSeconds) override;
 
 private:
+	void UpdateFraming(ERPGLineupView View);
 	UPROPERTY() TObjectPtr<USceneCaptureComponent2D> Capture;
 	UPROPERTY() TObjectPtr<UTextureRenderTarget2D> Image;
 	UPROPERTY() TArray<TObjectPtr<USkeletalMeshComponent>> Characters;

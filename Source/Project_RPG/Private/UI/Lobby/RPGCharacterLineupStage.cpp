@@ -1,5 +1,9 @@
 #include "UI/Lobby/RPGCharacterLineupStage.h"
 
+#include "Engine/GameViewportClient.h"
+#include "Engine/World.h"
+#include "UnrealClient.h"
+
 #include "Animation/AnimSequence.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
@@ -105,6 +109,8 @@ ARPGCharacterLineupStage::ARPGCharacterLineupStage()
 		return Light;
 	};
 	AddLight(TEXT("CoolFill"), FVector(345, 0, 320), FLinearColor(.68f, .78f, 1.f), 5.1f, 1400.f);
+	AddLight(TEXT("LeftFill"), FVector(240, 420, 184), FLinearColor(.65f, .79f, 1.f), 3.1f, 690.f);
+	AddLight(TEXT("RightFill"), FVector(240, -420, 184), FLinearColor(.65f, .79f, 1.f), 3.1f, 690.f);
 	AddLight(TEXT("WallLight"), FVector(-110, 0, 215), FLinearColor(.5f, .68f, 1.f), 3.5f, 1250.f);
 
 	auto AddCharacter = [this](int32 Index, FVector Position, float Yaw)
@@ -148,18 +154,13 @@ void ARPGCharacterLineupStage::BeginPlay()
 void ARPGCharacterLineupStage::Present(uint8 OccupiedSlots, int32 SelectedSlot, ERPGLineupView View, float PortraitYaw)
 {
 	const bool bCreation = View == ERPGLineupView::Creation;
-	const bool bCloseup = View != ERPGLineupView::Roster;
-	CameraTarget = bCreation ? CreationCamera : bCloseup ? TitleCamera : LineupCamera;
+	const bool bCloseup = bCreation || View == ERPGLineupView::Title;
 	TargetYaw = bCreation ? -108.f + PortraitYaw : FacingCameraYaw;
 	if (View != ActiveView)
 	{
-		if (bCreation || ActiveView == ERPGLineupView::Creation)
-		{
-			if (Image) Image->ResizeTarget(bCreation ? PortraitWidth : ImageWidth, bCreation ? PortraitHeight : ImageHeight);
-			Capture->FOVAngle = bCreation ? 35.f : 60.f;
-			Capture->SetRelativeLocation(CameraTarget);
-			Capture->bCameraCutThisFrame = true;
-		}
+		UpdateFraming(View);
+		Capture->SetRelativeLocation(CameraTarget);
+		Capture->bCameraCutThisFrame = true;
 		CloseupCharacter->SetRelativeRotation(FRotator(0, TargetYaw, 0));
 		ActiveView = View;
 	}
@@ -177,9 +178,37 @@ void ARPGCharacterLineupStage::Present(uint8 OccupiedSlots, int32 SelectedSlot, 
 	if (bCloseup) SlotLights[2]->SetVisibility(true);
 }
 
+void ARPGCharacterLineupStage::UpdateFraming(ERPGLineupView View)
+{
+	const bool bCreation = View == ERPGLineupView::Creation;
+	FIntPoint Size = bCreation ? FIntPoint(PortraitWidth, PortraitHeight) : FIntPoint(ImageWidth, ImageHeight);
+	CameraTarget = bCreation ? CreationCamera : View == ERPGLineupView::Title ? TitleCamera : LineupCamera;
+	Capture->FOVAngle = bCreation ? 35.f : 60.f;
+	if (View == ERPGLineupView::FullscreenRoster)
+	{
+		const auto* Viewport = GetWorld()->GetGameViewport();
+		const FIntPoint Pixels = Viewport && Viewport->Viewport ? Viewport->Viewport->GetSizeXY() : FIntPoint::ZeroValue;
+		if (Pixels.X > 0 && Pixels.Y > 0)
+		{
+			// Cap the capture workload and keep the projection at the viewport aspect ratio.
+			const float Scale = FMath::Min(1.f, 1920.f / FMath::Max(Pixels.X, Pixels.Y));
+			Size = FIntPoint(FMath::Max(1, FMath::RoundToInt(Pixels.X * Scale)),
+				FMath::Max(1, FMath::RoundToInt(Pixels.Y * Scale)));
+			const float ViewHeight = 2.f * LineupCamera.X * FMath::Tan(FMath::DegreesToRadians(30.f)) * Size.Y / Size.X;
+			CameraTarget.Z = .16f * ViewHeight;
+		}
+	}
+	if (Image && (Image->SizeX != Size.X || Image->SizeY != Size.Y))
+	{
+		Image->ResizeTarget(Size.X, Size.Y);
+		Capture->bCameraCutThisFrame = true;
+	}
+}
+
 void ARPGCharacterLineupStage::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	if (ActiveView == ERPGLineupView::FullscreenRoster) UpdateFraming(ActiveView);
 	if (ActiveView == ERPGLineupView::Creation)
 	{
 		const FRotator Facing = FMath::RInterpTo(CloseupCharacter->GetRelativeRotation(),

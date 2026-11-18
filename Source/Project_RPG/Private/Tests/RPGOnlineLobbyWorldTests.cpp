@@ -32,11 +32,11 @@ namespace
 			Lobby = Instance->GetSubsystem<URPGOnlineLobbySubsystem>();
 			SetLobbyMap(Directory + TEXT("LobbyMap"));
 		}
-		void SetLobbyMap(const FString& Package) const
+		void SetLobbyMap(const FString& Package, const TCHAR* PropertyName = TEXT("LobbyMapPackage")) const
 		{
 			if (Lobby)
 			{
-				auto* Property = FindFProperty<FStrProperty>(Lobby->GetClass(), TEXT("LobbyMapPackage"));
+				auto* Property = FindFProperty<FStrProperty>(Lobby->GetClass(), PropertyName);
 				check(Property);
 				Property->SetPropertyValue_InContainer(Lobby, Package);
 			}
@@ -77,6 +77,15 @@ bool FRPGOnlineLobbyWorldPackageTest::RunTest(const FString&)
 	{
 		FLobbyWorld F(TEXT("UEDPIE_0_LobbyMap"), Type);
 		TestFalse(TEXT("An ordinary game/preview cannot borrow a PIE-looking name"), F.Lobby->IsLobbyController(F.Controller));
+	}
+	{
+		FLobbyWorld F(TEXT("UEDPIE_0_CharacterSelection"), EWorldType::PIE);
+		F.SetLobbyMap(F.Directory + TEXT("CharacterSelection"), TEXT("CharacterSelectionMapPackage"));
+		TestTrue(TEXT("The exact selection package hosts the local frontend"), F.Lobby->IsCharacterSelectionController(F.Controller));
+		TestTrue(TEXT("Shared frontend authority also accepts character selection"), F.Lobby->IsLobbyController(F.Controller));
+		TestFalse(TEXT("The selection world cannot use the preparation map context"), F.Lobby->IsSeparateGameplayLobbyController(F.Controller));
+		F.SetLobbyMap(F.Directory + TEXT("Other/CharacterSelection"), TEXT("CharacterSelectionMapPackage"));
+		TestFalse(TEXT("A matching selection leaf outside the configured directory is rejected"), F.Lobby->IsLobbyController(F.Controller));
 	}
 	for (const TCHAR* Leaf : {TEXT("UEDPIE_0_bossmap"), TEXT("UEDPIE_0_L_ProgressionTraining"), TEXT("UEDPIE_0_lobbymap")})
 	{

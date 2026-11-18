@@ -1,8 +1,11 @@
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
 
 #include "Blueprint/WidgetTree.h"
+#include "Brushes/SlateColorBrush.h"
 #include "Components/Button.h"
 #include "Components/ButtonSlot.h"
+#include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Components/ComboBoxString.h"
 #include "Components/EditableTextBox.h"
 #include "Components/HorizontalBox.h"
@@ -11,7 +14,9 @@
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/ScaleBox.h"
+#include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
+#include "Components/Spacer.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
@@ -31,17 +36,32 @@
 
 UImage* URPGOnlineLobbyWidget::BuildLineupImage(UVerticalBox& Parent, bool bInteractive)
 {
-	auto* Scale = WidgetTree->ConstructWidget<UScaleBox>();
-	Scale->SetStretch(EStretch::ScaleToFit);
-	Scale->SetStretchDirection(EStretchDirection::DownOnly);
-	Parent.AddChildToVerticalBox(Scale)->SetPadding(FMargin(0, 0, 0, 12));
-	auto* Frame = WidgetTree->ConstructWidget<USizeBox>();
-	Frame->SetWidthOverride(ARPGCharacterLineupStage::ImageWidth);
-	Frame->SetHeightOverride(ARPGCharacterLineupStage::ImageHeight);
-	Scale->SetContent(Frame);
 	auto* Overlay = WidgetTree->ConstructWidget<UOverlay>();
-	Frame->SetContent(Overlay);
+	const bool bFullscreen = bInteractive && RosterSpacer;
+	UWidget* Frame = Overlay;
+	if (bFullscreen)
+	{
+		auto* Canvas = CastChecked<UCanvasPanel>(WidgetTree->RootWidget);
+		auto* OverlaySlot = Canvas->AddChildToCanvas(Overlay);
+		OverlaySlot->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
+		OverlaySlot->SetOffsets(FMargin(0));
+		OverlaySlot->SetZOrder(-1);
+	}
+	else
+	{
+		auto* Scale = WidgetTree->ConstructWidget<UScaleBox>();
+		Scale->SetStretch(EStretch::ScaleToFit);
+		Scale->SetStretchDirection(EStretchDirection::DownOnly);
+		Parent.AddChildToVerticalBox(Scale)->SetPadding(FMargin(0, 0, 0, 12));
+		auto* Size = WidgetTree->ConstructWidget<USizeBox>();
+		Size->SetWidthOverride(ARPGCharacterLineupStage::ImageWidth);
+		Size->SetHeightOverride(ARPGCharacterLineupStage::ImageHeight);
+		Scale->SetContent(Size);
+		Size->SetContent(Overlay);
+		Frame = Scale;
+	}
 	auto* Background = WidgetTree->ConstructWidget<UBorder>();
+	Background->SetVisibility(ESlateVisibility::HitTestInvisible);
 	Background->SetBrushColor(FLinearColor(.027f, .042f, .063f, 1.f));
 	Background->SetPadding(FMargin(0));
 	auto* BackgroundSlot = Overlay->AddChildToOverlay(Background);
@@ -51,11 +71,25 @@ UImage* URPGOnlineLobbyWidget::BuildLineupImage(UVerticalBox& Parent, bool bInte
 		bInteractive ? TEXT("CharacterLineupImage") : TEXT("LobbyTitleStage"));
 	Photo->SetVisibility(ESlateVisibility::HitTestInvisible);
 	Background->SetContent(Photo);
-	if (!bInteractive) return Photo;
+	if (!bInteractive)
+	{
+		TitleFrame = Frame;
+		return Photo;
+	}
 
-	LineupFrame = Scale;
+	LineupFrame = Frame;
 	LineupSlots = WidgetTree->ConstructWidget<UHorizontalBox>();
-	auto* SlotsOverlay = Overlay->AddChildToOverlay(LineupSlots);
+	UWidget* SlotContent = LineupSlots;
+	if (bFullscreen)
+	{
+		auto* Positions = WidgetTree->ConstructWidget<UCanvasPanel>();
+		Positions->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		auto* LineupSlot = Positions->AddChildToCanvas(LineupSlots);
+		LineupSlot->SetAnchors(FAnchors(0.f, .25f, 1.f, .72f));
+		LineupSlot->SetOffsets(FMargin(0));
+		SlotContent = Positions;
+	}
+	auto* SlotsOverlay = Overlay->AddChildToOverlay(SlotContent);
 	SlotsOverlay->SetHorizontalAlignment(HAlign_Fill);
 	SlotsOverlay->SetVerticalAlignment(VAlign_Fill);
 	for (int32 Index = 0; Index < ARPGCharacterLineupStage::SlotCount; ++Index)
@@ -66,8 +100,8 @@ UImage* URPGOnlineLobbyWidget::BuildLineupImage(UVerticalBox& Parent, bool bInte
 		Clear.DrawAs = ESlateBrushDrawType::NoDrawType;
 		FButtonStyle Style = Button->GetStyle();
 		Style.SetNormal(Clear).SetDisabled(Clear);
-		Style.Hovered.TintColor = FSlateColor(FLinearColor(.68f, .83f, 1.f, .28f));
-		Style.Pressed.TintColor = FSlateColor(FLinearColor(.87f, .69f, .35f, .4f));
+		Style.Hovered.TintColor = FSlateColor(FLinearColor(.68f, .83f, 1.f, bFullscreen ? .09f : .28f));
+		Style.Pressed.TintColor = FSlateColor(FLinearColor(.87f, .69f, .35f, bFullscreen ? .15f : .4f));
 		Style.SetNormalPadding(FMargin(2.f)).SetPressedPadding(FMargin(2.f));
 		Button->SetStyle(Style);
 		auto* Label = WidgetTree->ConstructWidget<UTextBlock>();
@@ -109,6 +143,14 @@ void URPGOnlineLobbyWidget::BuildCharacterContent(UVerticalBox& Parent)
 		return Button;
 	};
 	CharacterSelectionSection = Rows->GetParent();
+	if (RosterSpacer)
+	{
+		auto* Footer = CastChecked<UBorder>(CharacterSelectionSection);
+		Footer->SetBrush(FSlateColorBrush(FLinearColor(.015f, .023f, .036f, .9f)));
+		Footer->SetBrushColor(FLinearColor::White);
+		if (auto* Heading = GetWidgetFromName(TEXT("OnlineLobbyCharacterSectionTitle")))
+			Heading->SetVisibility(ESlateVisibility::Collapsed);
+	}
 	CharacterListText = RPGOnlineLobbyLayout::Text(*WidgetTree, *Rows, TEXT("OnlineLobbyCharacterListStatus"), FText::GetEmpty());
 	CharactersBox = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(), TEXT("OwnedCharacters"));
 	Rows->AddChildToVerticalBox(CharactersBox);
@@ -238,8 +280,19 @@ void URPGOnlineLobbyWidget::RefreshCharacterPresentation()
 		Button->SetIsEnabled(bOccupied ? bCanSelect : bNewSlot && bCanOpenCreation);
 		Label->SetColorAndOpacity(FSlateColor(bSelected ? FLinearColor(1.f, .78f, .43f) : FLinearColor(.88f, .94f, 1.f)));
 	}
-	if (LineupSlots) LineupSlots->SetVisibility(bCharacterCreationOpen ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
-	if (LineupFrame) LineupFrame->SetVisibility(bCharacterCreationOpen ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
+	const bool bFullscreenRoster = RosterSpacer && CharacterContent && CharacterContent->IsVisible() && !bCharacterCreationOpen;
+	const bool bShowLineup = !bCharacterCreationOpen && (!RosterSpacer || bFullscreenRoster);
+	if (LineupSlots) LineupSlots->SetVisibility(bShowLineup ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+	if (LineupFrame) LineupFrame->SetVisibility(bShowLineup ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+	if (RosterSpacer)
+	{
+		RosterSpacer->SetVisibility(bFullscreenRoster ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		PageBackground->SetBrushColor(bFullscreenRoster ? FLinearColor::Transparent : FLinearColor::White);
+		PageScroll->SetVisibility(bFullscreenRoster ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Visible);
+		CastChecked<UVerticalBoxSlot>(PageScroll->Slot)->SetSize(
+			FSlateChildSize(bFullscreenRoster ? ESlateSizeRule::Automatic : ESlateSizeRule::Fill));
+		CastChecked<UVerticalBoxSlot>(CharacterContent->Slot)->SetHorizontalAlignment(bFullscreenRoster ? HAlign_Fill : HAlign_Center);
+	}
 	if (CharacterSelectionSection) CharacterSelectionSection->SetVisibility(bCharacterCreationOpen ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 	if (CharacterCreationSection) CharacterCreationSection->SetVisibility(bCharacterCreationOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	auto Control = [this](const FName Name, bool bEnabled, bool bVisible)
@@ -273,11 +326,15 @@ void URPGOnlineLobbyWidget::RefreshCharacterPresentation()
 		ClassName->SetVisibility(CreationClass && CreationClasses.Num() == 1 ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
 
-	const bool bTitle = LoginContent && LoginContent->IsVisible();
+	const auto* Lobby = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr;
+	const bool bTitle = LoginContent && LoginContent->IsVisible()
+		&& !(Lobby && Lobby->IsSeparateGameplayLobbyController(GetOwningPlayer()));
+	if (TitleFrame) TitleFrame->SetVisibility(bTitle ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 	RefreshLineupStage(bTitle || (CharacterContent && CharacterContent->IsVisible() && (!bCharacterCreationOpen || bHasPortrait)));
 	if (LineupStage && LineupStage->IsActorTickEnabled())
 		LineupStage->Present(OccupiedSlots, SelectedSlot, bTitle ? ERPGLineupView::Title :
-			bCharacterCreationOpen ? ERPGLineupView::Creation : ERPGLineupView::Roster, CreationPreviewYaw);
+			bCharacterCreationOpen ? ERPGLineupView::Creation :
+			bFullscreenRoster ? ERPGLineupView::FullscreenRoster : ERPGLineupView::Roster, CreationPreviewYaw);
 
 	FText ListStatus;
 	if (bLoadingCharacters)
@@ -293,7 +350,11 @@ void URPGOnlineLobbyWidget::RefreshCharacterPresentation()
 	else
 		ListStatus = LastPage > 0 ? FText::Format(LOCTEXT("RosterPage", "{0} / {1}"),
 			FText::AsNumber(CharacterPage + 1), FText::AsNumber(LastPage + 1)) : FText::GetEmpty();
-	if (CharacterListText) CharacterListText->SetText(ListStatus);
+	if (CharacterListText)
+	{
+		CharacterListText->SetText(ListStatus);
+		CharacterListText->SetVisibility(ListStatus.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+	}
 	if (CreationClassText)
 	{
 		const auto* SelectedClass = GetSelectedCreationClass();
@@ -308,16 +369,18 @@ void URPGOnlineLobbyWidget::RefreshCharacterPresentation()
 	const auto* Selected = OwnedCharacters.FindByPredicate([&SelectedId](const FRPGBackendCharacter& Character)
 		{ return !SelectedId.IsEmpty() && Character.CharacterId == SelectedId; });
 	const FString SelectedName = Selected ? Selected->Name : FString();
+	const bool bShowSelectedSummary = Selected && (!bFullscreenRoster || SelectedSlot == INDEX_NONE);
 	if (SelectedCharacterText)
 	{
 		SelectedCharacterText->SetText(FText::FromString(SelectedName));
-		SelectedCharacterText->SetVisibility(Selected ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		SelectedCharacterText->SetVisibility(bShowSelectedSummary ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
 	const FText Progression = Selected ? GetCharacterProgressionText(*Selected) : FText::GetEmpty();
 	if (SelectedCharacterDetailsText)
 	{
 		SelectedCharacterDetailsText->SetText(Progression);
-		SelectedCharacterDetailsText->SetVisibility(Selected ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		const bool bShowDetails = bShowSelectedSummary || (Selected && Selected->ProgressionState != TEXT("Available"));
+		SelectedCharacterDetailsText->SetVisibility(bShowDetails ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
 	if (PreparationCharacterText) PreparationCharacterText->SetText(SelectedName.IsEmpty()
 		? NSLOCTEXT("RPGOnlineLobby", "CheckingSelectedCharacter", "선택한 캐릭터를 확인하고 있습니다.")
@@ -443,6 +506,7 @@ void URPGOnlineLobbyWidget::BeginCreationOptionsLoad()
 {
 	const auto* Lobby = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr;
 	if (!Web || !Auth || !Lobby || !Lobby->IsLobbyController(GetOwningPlayer()) || !Web->HasAccessToken()
+		|| Lobby->IsSeparateGameplayLobbyController(GetOwningPlayer())
 		|| bLoadingCreationOptions || bLoggingIn || bLoggingOut || Auth->IsLoginRequestInFlight() || Web->IsPlayerLogoutInFlight()) return;
 	bLoadingCreationOptions = true;
 	bCreationOptionsReady = false;
@@ -489,6 +553,13 @@ void URPGOnlineLobbyWidget::HandleCreationOptions(const TArray<FRPGCharacterCrea
 void URPGOnlineLobbyWidget::ContinueWithCharacter()
 {
 	if (!CanUse(TEXT("ContinueWithCharacterButton"))) return;
+	if (auto* Lobby = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr;
+		Lobby && Lobby->IsCharacterSelectionController(GetOwningPlayer()))
+	{
+		Lobby->EnterGameplayLobby(GetOwningPlayer());
+		RefreshPresentation();
+		return;
+	}
 	bPreparationOpen = true;
 	UIError.Reset();
 	RefreshPresentation();
@@ -497,6 +568,13 @@ void URPGOnlineLobbyWidget::ContinueWithCharacter()
 void URPGOnlineLobbyWidget::ChangeCharacter()
 {
 	if (!CanUse(TEXT("ChangeCharacterButton"))) return;
+	if (auto* Lobby = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr;
+		Lobby && Lobby->IsSeparateGameplayLobbyController(GetOwningPlayer()))
+	{
+		Lobby->OpenCharacterSelection(GetOwningPlayer());
+		RefreshPresentation();
+		return;
+	}
 	bPreparationOpen = false;
 	UIError.Reset();
 	RefreshPresentation();

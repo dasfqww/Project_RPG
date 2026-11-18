@@ -28,6 +28,7 @@
 #include "Engine/NetDriver.h"
 #include "Engine/NetConnection.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "Engine/LocalPlayer.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -541,6 +542,31 @@ bool URPGDungeonFlowE2EClient::TickProbe(float)
 	auto* Flow = GI->GetSubsystem<URPGDungeonSessionSubsystem>();
 	auto* Web = GI->GetSubsystem<UHttpWebManager>();
 	if (!Flow || !Web) return Fail(TEXT("MissingClientSubsystem"));
+	if (bLobbyCreationOnly && (Stage == 101 || Stage == 102))
+	{
+		auto* Lobby = GI->GetSubsystem<URPGOnlineLobbySubsystem>();
+		auto* Widget = Lobby ? Lobby->GetLobbyWidget() : nullptr;
+		if (!Widget || Widget->GetOwningPlayer() != PC || !Widget->IsInViewport() || Lobby->IsFrontendTravelPending()) return true;
+		if (!Same(Flow->GetSelectedCharacterId(), CharacterId) || !Flow->GetCurrentDungeonSession().DungeonSessionId.IsEmpty())
+			return Fail(TEXT("FrontendTravelMutatedSelectionOrSession"));
+		if (Stage == 101)
+		{
+			if (!Lobby->IsCharacterSelectionController(PC)) return Fail(TEXT("CharacterChangeDidNotOpenSelectionMap"));
+			if (TActorIterator<APawn>(World)) return Fail(TEXT("CharacterSelectionSpawnedPawn"));
+			auto* Continue = Cast<UButton>(Widget->GetWidgetFromName(TEXT("ContinueWithCharacterButton")));
+			if (!Continue || !Continue->GetIsEnabled()) return true; // fresh roster after travel
+			Stage = 102;
+			Continue->OnClicked.Broadcast();
+			return true;
+		}
+		if (!Lobby->IsSeparateGameplayLobbyController(PC)) return Fail(TEXT("ContinueDidNotOpenGameplayLobby"));
+		auto* Preparation = Widget->GetWidgetFromName(TEXT("OnlineLobbyAuthenticatedContent"));
+		if (!Preparation || !Preparation->IsVisible() || Widget->GetCharacterOption(CharacterId).IsEmpty()) return true;
+		UE_LOG(LogTemp, Display, TEXT("LOBBY_FRONTEND_E2E PASS LiveMap=1 NoPawn=1 CreatedInUI=1 OwnedSelection=1 Preparation=1 RoundTrip=1 NoDungeon=1"));
+		Stage = 7;
+		FPlatformMisc::RequestExit(false);
+		return false;
+	}
 	if (Web->HasAccessToken())
 	{
 		auto* Lobby = GI->GetSubsystem<URPGOnlineLobbySubsystem>();
@@ -622,7 +648,12 @@ bool URPGDungeonFlowE2EClient::TickProbe(float)
 			auto* Button = Widget ? Cast<UButton>(Widget->GetWidgetFromName(TEXT("LoginDevelopmentButton"))) : nullptr;
 			if (!Input || !Button || !Button->GetIsEnabled()) return true;
 			if (!bAbandonmentUI && !bLobbyCreationOnly && (SessionFile.IsEmpty() || ServerReadyFile.IsEmpty())) return Fail(TEXT("MissingLobbyFixtureFiles"));
-			if (bLobbyCreationOnly) UE_LOG(LogTemp, Display, TEXT("LOBBY_FRONTEND_E2E START LiveMap=1"));
+			if (bLobbyCreationOnly)
+			{
+				if (!Lobby->IsCharacterSelectionController(PC) || TActorIterator<APawn>(World))
+					return Fail(TEXT("CharacterSelectionNeedsItsOwnPawnFreeMap"));
+				UE_LOG(LogTemp, Display, TEXT("LOBBY_FRONTEND_E2E START LiveMap=1 NoPawn=1"));
+			}
 			bLoginStarted = true;
 			Input->SetText(FText::FromString(SteamId));
 			Button->OnClicked.Broadcast();
@@ -639,7 +670,7 @@ bool URPGDungeonFlowE2EClient::TickProbe(float)
 		auto* Lobby = GI->GetSubsystem<URPGOnlineLobbySubsystem>();
 		auto* Widget = Lobby ? Lobby->GetLobbyWidget() : nullptr;
 		auto* Selector = Widget ? Cast<UComboBoxString>(Widget->GetWidgetFromName(TEXT("OwnedCharacters"))) : nullptr;
-		if (!Widget || !Selector || Flow->IsRequestInFlight()) return true;
+		if (!Widget || Widget->GetOwningPlayer() != PC || !Widget->IsInViewport() || !Selector || Flow->IsRequestInFlight()) return true;
 		if (bCreateCharacter && !bCharacterCreated)
 		{
 			if (bCharacterCreateStarted) return true;
@@ -674,6 +705,11 @@ bool URPGDungeonFlowE2EClient::TickProbe(float)
 				auto* Input = Cast<UEditableTextBox>(Widget->GetWidgetFromName(TEXT("NewCharacterName")));
 				if (Selector->GetOptionCount() != 1 || !Input || !Input->GetText().IsEmpty())
 					return Fail(TEXT("CreatedCharacterRosterOrInputMismatch"));
+				auto* Classes = Cast<UComboBoxString>(Widget->GetWidgetFromName(TEXT("CharacterCreationClass")));
+				auto* Details = Cast<UTextBlock>(Widget->GetWidgetFromName(TEXT("OnlineLobbyCharacterDetails")));
+				if (!Classes || !Details || Classes->GetSelectedIndex() == INDEX_NONE
+					|| !Details->GetText().ToString().Contains(Classes->GetSelectedOption()))
+					return Fail(TEXT("CreatedCharacterClassMismatch"));
 				UE_LOG(LogTemp, Display, TEXT("DUNGEON_FLOW_E2E_LOBBY_CHARACTER_ROSTER OwnedCharacter=1 Refreshed=1 InputCleared=1"));
 			}
 			bCharacterSelected = true;
@@ -695,26 +731,18 @@ bool URPGDungeonFlowE2EClient::TickProbe(float)
 				auto* LoginPage = Widget->GetWidgetFromName(TEXT("OnlineLobbyLoginContent"));
 				auto* CharactersPage = Widget->GetWidgetFromName(TEXT("OnlineLobbyCharacterContent"));
 				auto* PreparationPage = Widget->GetWidgetFromName(TEXT("OnlineLobbyAuthenticatedContent"));
-				auto* Classes = Cast<UComboBoxString>(Widget->GetWidgetFromName(TEXT("CharacterCreationClass")));
-				auto* Details = Cast<UTextBlock>(Widget->GetWidgetFromName(TEXT("OnlineLobbyCharacterDetails")));
 				auto* Back = Cast<UButton>(Widget->GetWidgetFromName(TEXT("ChangeCharacterButton")));
-				auto* Continue = Cast<UButton>(Widget->GetWidgetFromName(TEXT("ContinueWithCharacterButton")));
-				if (!bCharacterCreated || !LoginPage || !CharactersPage || !PreparationPage || !Classes || !Details || !Back || !Continue
+				if (!Lobby->IsSeparateGameplayLobbyController(PC)) return true; // travel queued or still loading
+				if (Widget->GetCharacterOption(CharacterId).IsEmpty()) return true; // new lobby roster request
+				if (!bCharacterCreated || !LoginPage || !CharactersPage || !PreparationPage || !Back
 					|| LoginPage->GetVisibility() != ESlateVisibility::Collapsed || CharactersPage->GetVisibility() != ESlateVisibility::Collapsed
 					|| PreparationPage->GetVisibility() != ESlateVisibility::Visible || !Widget->IsInViewport()
-					|| Classes->GetSelectedIndex() == INDEX_NONE || !Details->GetText().ToString().Contains(Classes->GetSelectedOption())
-					|| !Flow->GetCurrentDungeonSession().DungeonSessionId.IsEmpty() || !Back->GetIsEnabled())
+					|| !Flow->GetCurrentDungeonSession().DungeonSessionId.IsEmpty())
 					return Fail(TEXT("LobbyCreationPreparationMismatch"));
+				if (!Back->GetIsEnabled()) return true;
+				Stage = 101;
 				Back->OnClicked.Broadcast();
-				if (CharactersPage->GetVisibility() != ESlateVisibility::Visible || !Continue->GetIsEnabled()
-					|| !Same(Flow->GetSelectedCharacterId(), CharacterId)) return Fail(TEXT("LobbyCreationBackLostSelection"));
-				Continue->OnClicked.Broadcast();
-				if (PreparationPage->GetVisibility() != ESlateVisibility::Visible || !Same(Flow->GetSelectedCharacterId(), CharacterId)
-					|| !Flow->GetCurrentDungeonSession().DungeonSessionId.IsEmpty()) return Fail(TEXT("LobbyCreationContinueMutatedSession"));
-				UE_LOG(LogTemp, Display, TEXT("LOBBY_FRONTEND_E2E PASS LiveMap=1 CatalogSelected=1 CreatedInUI=1 OwnedSelection=1 Preparation=1 BackPreserved=1 NoDungeon=1"));
-				Stage = 7;
-				FPlatformMisc::RequestExit(false);
-				return false;
+				return true;
 			}
 			UButton* Button = nullptr;
 			if (bLobbyLeader)

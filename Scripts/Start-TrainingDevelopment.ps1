@@ -208,7 +208,7 @@ try{
         $smokeGates=if($SessionLoopSmoke){Join-Path $runRoot 'Round1'}else{$runRoot}
         $null=New-Item -ItemType Directory -Path $smokeGates -Force
     }
-    $args=@(('"'+(Join-Path $runtime 'Project_RPG.uproject')+'"'),'/Game/Maps/LobbyMap','-game',
+    $args=@(('"'+(Join-Path $runtime 'Project_RPG.uproject')+'"'),'/Game/Maps/CharacterSelection','-game',
         ('-RPGDungeonProfile='+$DungeonProfile),'-RPGDevelopmentLogin','-nosteam','-UseIrisReplication=1','-RPGRequireIris',
         '-nop4','-nosplash','-NoLiveCoding','-NoLoadingScreen','-DisablePython','-DDC=(EnginePak,Local)',
         ('-UserDir="'+(Join-Path $users 'c')+'"'),('-abslog="'+(Join-Path $temp 'client.log')+'"'),'-ExecCmds="t.MaxFPS 60"',
