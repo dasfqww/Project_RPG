@@ -1259,9 +1259,15 @@ void URPGOnlineLobbyWidget::HandleCharacters(const TArray<FRPGBackendCharacter>&
 	if (!bLoadingCharacters) return;
 	bLoadingCharacters = false;
 	if (!bSuccess) { UIError = TEXT("load_characters_failed"); RefreshPresentation(); return; }
+	const bool bFirstRoster = !bHasLoadedCharacterList;
 	OwnedCharacters = Characters;
 	bHasLoadedCharacterList = true;
-	if (!HasOwnedSelection())
+	const FString SelectedId = Flow ? Flow->GetSelectedCharacterId() : FString();
+	const int32 SelectedIndex = SelectedId.IsEmpty() ? INDEX_NONE : OwnedCharacters.IndexOfByPredicate(
+		[&SelectedId](const FRPGBackendCharacter& Candidate) { return Same(Candidate.CharacterId, SelectedId); });
+	if (bFirstRoster && SelectedIndex != INDEX_NONE)
+		CharacterPage = SelectedIndex / ARPGCharacterLineupStage::SlotCount;
+	if (SelectedIndex == INDEX_NONE)
 	{
 		bPreparationOpen = false;
 		if (auto* Lobby = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr;
@@ -1272,7 +1278,7 @@ void URPGOnlineLobbyWidget::HandleCharacters(const TArray<FRPGBackendCharacter>&
 		bUpdatingOptions = true;
 		CharactersBox->ClearOptions();
 		for (const auto& Character : OwnedCharacters) CharactersBox->AddOption(CharacterOption(Character));
-		if (HasOwnedSelection()) CharactersBox->SetSelectedOption(GetCharacterOption(Flow->GetSelectedCharacterId()));
+		if (SelectedIndex != INDEX_NONE) CharactersBox->SetSelectedOption(GetCharacterOption(SelectedId));
 		bUpdatingOptions = false;
 	}
 	if (!PendingCreatedCharacterId.IsEmpty())

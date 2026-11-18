@@ -169,6 +169,27 @@ bool FRPGMenuFrontendTest::RunTest(const FString&)
 	Widget->ChangeCharacter();
 	TestEqual(TEXT("Character change returns to its own page"), Widget->CharacterContent->GetVisibility(), ESlateVisibility::Visible);
 	TestEqual(TEXT("Navigation does not clear selected server-owned identity"), Widget->Flow->GetSelectedCharacterId(), Character.CharacterId);
+	TArray<FRPGBackendCharacter> MultiPageRoster;
+	for (int32 Index = 0; Index < Widget->LineupSlotButtons.Num(); ++Index)
+	{
+		auto& Entry = MultiPageRoster.AddDefaulted_GetRef();
+		Entry.CharacterId = FString::Printf(TEXT("earlier-character-%d"), Index);
+		Entry.Name = FString::Printf(TEXT("Earlier Hero %d"), Index);
+	}
+	MultiPageRoster.Add(Character);
+	Widget->bHasLoadedCharacterList = false;
+	Widget->bLoadingCharacters = true;
+	Widget->HandleCharacters(MultiPageRoster, true);
+	TestEqual(TEXT("A new roster opens on the selected character's page"), Widget->CharacterPage, 1);
+	TestEqual(TEXT("The selected character appears in the returned lineup"), Widget->LineupSlotLabels[0]->GetText().ToString(), Character.Name);
+	Widget->PreviousCharacterPage();
+	TestEqual(TEXT("The player can browse another page"), Widget->CharacterPage, 0);
+	Widget->bLoadingCharacters = true;
+	Widget->HandleCharacters(MultiPageRoster, true);
+	TestEqual(TEXT("An ordinary refresh keeps the page the player is browsing"), Widget->CharacterPage, 0);
+	TestEqual(TEXT("Opening and refreshing the roster preserves selection"), Widget->Flow->GetSelectedCharacterId(), Character.CharacterId);
+	Widget->bLoadingCharacters = true;
+	Widget->HandleCharacters({Character}, true);
 	Widget->ConfigurationPanel = Configuration;
 	if (!TestNotNull(TEXT("Existing configuration owner"), Configuration)) return false;
 	const FDateTime Issued = FDateTime::UtcNow(); const double Now = FPlatformTime::Seconds();
