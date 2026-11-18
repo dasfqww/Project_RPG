@@ -1,4 +1,7 @@
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
+#include "UI/Lobby/RPGCharacterLineupStage.h"
+#include "Brushes/SlateColorBrush.h"
+#include "Components/Image.h"
 #include "UI/Lobby/RPGCharacterConfigurationWidget.h"
 #include "UI/Lobby/RPGEquipmentGrowthWidget.h"
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
@@ -195,11 +198,11 @@ TSharedRef<SWidget> URPGOnlineLobbyWidget::RebuildWidget()
 		Canvas->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 		WidgetTree->RootWidget = Canvas;
 		auto* Border = WidgetTree->ConstructWidget<UBorder>();
-		Border->SetBrushColor(FLinearColor(.025f, .04f, .06f, .97f));
-		Border->SetPadding(FMargin(18.f));
+		Border->SetBrush(FSlateColorBrush(FLinearColor(.012f, .021f, .034f, 1.f)));
+		Border->SetPadding(FMargin(30.f, 24.f));
 		auto* PanelSlot = Canvas->AddChildToCanvas(Border);
 		PanelSlot->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
-		PanelSlot->SetOffsets(FMargin(24.f));
+		PanelSlot->SetOffsets(FMargin(0.f));
 		auto* Page = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("OnlineLobbyPage"));
 		Border->SetContent(Page);
 		auto* Header = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("OnlineLobbyPinnedHeader"));
@@ -217,10 +220,11 @@ TSharedRef<SWidget> URPGOnlineLobbyWidget::RebuildWidget()
 		auto* Sections = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("OnlineLobbySections"));
 		Scroll->AddChild(Sections);
 		auto* LoginWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("OnlineLobbyLoginWidth"));
-		LoginWidth->SetMaxDesiredWidth(600.f);
+		LoginWidth->SetMaxDesiredWidth(770.f);
 		Sections->AddChildToVerticalBox(LoginWidth)->SetHorizontalAlignment(HAlign_Center);
 		LoginContent = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("OnlineLobbyLoginContent"));
 		LoginWidth->SetContent(LoginContent);
+		TitleImage = BuildLineupImage(*LoginContent, false);
 		LobbyContent = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("OnlineLobbyAuthenticatedContent"));
 		LobbyContent->SetVisibility(ESlateVisibility::Collapsed);
 		auto* Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *LoginContent, TEXT("OnlineLobbyLoginSection"), NSLOCTEXT("RPGOnlineLobby", "LoginSection", "모험을 시작하세요"));
@@ -240,27 +244,22 @@ TSharedRef<SWidget> URPGOnlineLobbyWidget::RebuildWidget()
 			ActionUnavailableTexts.Add(Name, RPGOnlineLobbyLayout::UnavailableReason(*WidgetTree, *Rows, Name));
 			return Button;
 		};
-		LoginHintText = AddText(TEXT("OnlineLobbyLoginHint"), NSLOCTEXT("RPGOnlineLobby", "LoginHint", "Steam 계정으로 접속한 뒤 캐릭터를 선택하세요. 친구들과 파티를 구성해 던전에 도전할 수 있습니다."));
-		AddAction(TEXT("LoginSteamButton"), NSLOCTEXT("RPGOnlineLobby", "SteamStart", "게임 시작"))->SetBackgroundColor(FLinearColor(.08f, .38f, .43f));
+		LoginHintText = AddText(TEXT("OnlineLobbyLoginHint"), FText::GetEmpty());
+		AddAction(TEXT("LoginSteamButton"), NSLOCTEXT("RPGOnlineLobby", "SteamStart", "Steam으로 시작"))->SetBackgroundColor(FLinearColor(.08f, .38f, .43f));
 		if (IsDevelopmentUIEnabled())
 		{
 			Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *LoginContent, TEXT("OnlineLobbyDevelopmentLoginSection"), NSLOCTEXT("RPGOnlineLobby", "DevelopmentLoginSection", "개발 전용 로그인"));
 			DevelopmentSteamId = AddInput(TEXT("DevelopmentSteamId"), NSLOCTEXT("RPGOnlineLobby", "DevId", "개발 테스트 SteamID (실제 Steam 인증 아님)"));
 			AddAction(TEXT("LoginDevelopmentButton"), NSLOCTEXT("RPGOnlineLobby", "DevLogin", "개발 백엔드 로그인"));
 		}
-		// Keep one set of bound controls alive across authentication expiry and
-		// re-login so pending configuration/session work retains its original scope.
-		Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *Sections, TEXT("OnlineLobbyAccountSection"), NSLOCTEXT("RPGOnlineLobby", "AccountSection", "계정"));
-		AccountSection = Rows->GetParent();
-		AddAction(TEXT("LogoutBackendButton"), NSLOCTEXT("RPGOnlineLobby", "Logout", "로그아웃"));
-		BuildMenuContent(*Sections, true);
 		BuildCharacterContent(*Sections);
+		auto* PageSections = Sections;
 		Sections->AddChildToVerticalBox(LobbyContent);
 		Sections = LobbyContent;
 		Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *Sections, TEXT("OnlineLobbySelectedCharacterSection"), NSLOCTEXT("RPGOnlineLobby", "SelectedCharacterSection", "플레이 중인 캐릭터"));
 		PreparationCharacterText = AddText(TEXT("OnlineLobbyPreparationCharacter"), FText::GetEmpty());
 		AddAction(TEXT("ChangeCharacterButton"), NSLOCTEXT("RPGOnlineLobby", "ChangeCharacter", "캐릭터 선택으로 돌아가기"));
-		BuildMenuContent(*Sections, false);
+		BuildMenuContent(*Sections);
 		Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *Sections, TEXT("OnlineLobbyConfigurationSection"), NSLOCTEXT("RPGOnlineLobby", "ConfigurationSection", "스킬 구성"));
 		ConfigurationSection = Rows->GetParent();
 		ConfigurationPanel = WidgetTree->ConstructWidget<URPGCharacterConfigurationWidget>(URPGCharacterConfigurationWidget::StaticClass(), TEXT("CharacterConfiguration"));
@@ -328,6 +327,11 @@ TSharedRef<SWidget> URPGOnlineLobbyWidget::RebuildWidget()
 			DevelopmentSessionId = AddInput(TEXT("DevelopmentSessionId"), NSLOCTEXT("RPGOnlineLobby", "DevSession", "개발용 파티 세션 GUID"));
 			AddAction(TEXT("JoinDevelopmentSessionButton"), NSLOCTEXT("RPGOnlineLobby", "DevJoin", "개발용 대기 세션 참가"));
 		}
+		// Account recovery must stay reachable across authentication and page changes.
+		Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *PageSections, TEXT("OnlineLobbyAccountSection"),
+			NSLOCTEXT("RPGOnlineLobby", "AccountSection", "계정"));
+		AccountSection = Rows->GetParent();
+		AddAction(TEXT("LogoutBackendButton"), NSLOCTEXT("RPGOnlineLobby", "Logout", "로그아웃"));
 	}
 	return Super::RebuildWidget();
 }
@@ -344,8 +348,6 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 	Flow = GI ? GI->GetSubsystem<URPGDungeonSessionSubsystem>() : nullptr;
 	Steam = GI ? GI->GetSubsystem<URPGSteamLobbySubsystem>() : nullptr;
 #define BIND_ACTION(Name, Method) if (auto* Button = Buttons.FindRef(TEXT(Name)).Get()) Button->OnClicked.AddUniqueDynamic(this, &ThisClass::Method)
-	BIND_ACTION("SelectServerButton", SelectServerPage);
-	BIND_ACTION("BackToServersButton", ShowServerPage);
 	BIND_ACTION("StartTutorialButton", StartTutorial);
 	BIND_ACTION("ReloadTutorialProgressButton", ReloadTutorialProgress);
 	BIND_ACTION("OpenSkillMenuButton", OpenSkillMenu);
@@ -360,6 +362,10 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 	BIND_ACTION("LoginSteamButton", LoginSteam);
 	BIND_ACTION("LoginDevelopmentButton", LoginDevelopment);
 	BIND_ACTION("LogoutBackendButton", LogoutBackend);
+	BIND_ACTION("OpenCharacterCreationButton", OpenCharacterCreation);
+	BIND_ACTION("CloseCharacterCreationButton", CloseCharacterCreation);
+	BIND_ACTION("PreviousCharacterPage", PreviousCharacterPage);
+	BIND_ACTION("NextCharacterPage", NextCharacterPage);
 	BIND_ACTION("ReloadCharactersButton", ReloadCharacters);
 	BIND_ACTION("CreateCharacterButton", CreateCharacter);
 	BIND_ACTION("ReloadCreationOptionsButton", ReloadCreationOptions);
@@ -385,6 +391,15 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 	BIND_ACTION("LeaveSteamPartyButton", LeaveSteamParty);
 	BIND_ACTION("JoinDevelopmentSessionButton", JoinDevelopmentSession);
 #undef BIND_ACTION
+	if (LineupSlotButtons.Num() == ARPGCharacterLineupStage::SlotCount)
+	{
+		LineupSlotButtons[0]->OnClicked.AddUniqueDynamic(this, &ThisClass::ActivateCharacterSlot0);
+		LineupSlotButtons[1]->OnClicked.AddUniqueDynamic(this, &ThisClass::ActivateCharacterSlot1);
+		LineupSlotButtons[2]->OnClicked.AddUniqueDynamic(this, &ThisClass::ActivateCharacterSlot2);
+		LineupSlotButtons[3]->OnClicked.AddUniqueDynamic(this, &ThisClass::ActivateCharacterSlot3);
+		LineupSlotButtons[4]->OnClicked.AddUniqueDynamic(this, &ThisClass::ActivateCharacterSlot4);
+		LineupSlotButtons[5]->OnClicked.AddUniqueDynamic(this, &ThisClass::ActivateCharacterSlot5);
+	}
 	if (CharactersBox) CharactersBox->OnSelectionChanged.AddUniqueDynamic(this, &ThisClass::SelectCharacter);
 	if (CreationClassBox) CreationClassBox->OnSelectionChanged.AddUniqueDynamic(this, &ThisClass::HandleCreationClassSelected);
 	if (DifficultyBox) DifficultyBox->OnSelectionChanged.AddUniqueDynamic(this, &ThisClass::HandleDungeonDifficultySelected);
@@ -411,7 +426,6 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 		Steam->OnLobbySearchCompleted.AddUniqueDynamic(this, &ThisClass::HandleSteamSearch);
 	}
 	bPreparationOpen = Flow && !Flow->GetSelectedCharacterId().IsEmpty();
-	bServerSelected = bPreparationOpen;
 	PollUntil = FPlatformTime::Seconds() + 120.0;
 	if (GetWorld()) GetWorld()->GetTimerManager().SetTimer(PollTimer, this, &ThisClass::PollSession, 2.f, true);
 	LoadDungeonDefinitions();
@@ -426,6 +440,10 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 
 void URPGOnlineLobbyWidget::NativeDestruct()
 {
+	if (LineupStage) LineupStage->Destroy();
+	LineupStage = nullptr;
+	if (LineupImage) LineupImage->SetBrush(FSlateBrush());
+	if (TitleImage) TitleImage->SetBrush(FSlateBrush());
 	UnbindServiceStatus();
 	if (NarrativePanel) NarrativePanel->CloseScreen();
 	if (TradePanel) { TradePanel->OnClosed.RemoveAll(this); TradePanel->CloseScreen(); }
@@ -442,6 +460,7 @@ void URPGOnlineLobbyWidget::NativeDestruct()
 	TutorialAccount.Reset(); TutorialCharacter.Reset(); TutorialDungeonId.Reset();
 	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(PollTimer);
 	for (const auto& Pair : Buttons) if (Pair.Value) Pair.Value->OnClicked.RemoveAll(this);
+	for (const auto& SlotButton : LineupSlotButtons) SlotButton->OnClicked.RemoveAll(this);
 	if (CharactersBox) CharactersBox->OnSelectionChanged.RemoveDynamic(this, &ThisClass::SelectCharacter);
 	if (CreationClassBox) CreationClassBox->OnSelectionChanged.RemoveDynamic(this, &ThisClass::HandleCreationClassSelected);
 	if (DifficultyBox) DifficultyBox->OnSelectionChanged.RemoveDynamic(this, &ThisClass::HandleDungeonDifficultySelected);
@@ -471,7 +490,7 @@ void URPGOnlineLobbyWidget::NativeDestruct()
 	if (EquipmentPanel) EquipmentPanel->SetLobby(nullptr);
 	CloseAbandonmentConfirmation();
 	bLoadingCharacters = false; bInitialCharacterLoadPending = false;
-	bCreatingCharacter = false; bLoggingIn = false; bLoggingOut = false;
+	bCreatingCharacter = false; bCharacterCreationOpen = false; bLoggingIn = false; bLoggingOut = false;
 	bLoadingCreationOptions = false;
 	Super::NativeDestruct();
 }
@@ -524,7 +543,7 @@ bool URPGOnlineLobbyWidget::CanUseEquipmentGrowth(bool bWrite, bool bRetry) cons
 FText URPGOnlineLobbyWidget::GetEquipmentGrowthUnavailableReason(bool bWrite, bool bRetry, bool* OutAllowed) const
 {
 	FRPGEquipmentGrowthAccess Access;
-	Access.bHome = bServerSelected && bPreparationOpen;
+	Access.bHome = bPreparationOpen;
 	Access.bTutorialActive = bTutorialEntryActive;
 	Access.bContextReady = CanUseCharacterConfiguration(false, false);
 	if (Access.bContextReady)
@@ -666,12 +685,13 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 		{{Steam != nullptr, Block::Unavailable}, {Web && Web->HasPlayerLogoutCredential(), Block::LogoutCredentialRequired},
 		DepartureStorage, NoPendingDeparture, NoAbandonment, NoActive, NoParty});
 	Enable(TEXT("ReloadCharactersButton"), View.bCanLoadCharacters, {Authenticated});
-	Enable(TEXT("CreateCharacterButton"), View.bCanCreateCharacter && GetSelectedCreationClass(),
+	Enable(TEXT("CreateCharacterButton"), bCharacterCreationOpen && PendingCreatedCharacterId.IsEmpty()
+		&& View.bCanCreateCharacter && GetSelectedCreationClass(),
 		{Authenticated, NoAbandonment, NoActive, {GetSelectedCreationClass() != nullptr, Block::CreationClassRequired}});
 	Enable(TEXT("ReloadCreationOptionsButton"), View.bCanCreateCharacter && !bLoadingCreationOptions,
 		{Authenticated, NoAbandonment, NoActive});
 	Enable(TEXT("ContinueWithCharacterButton"), View.bCanLoadCharacters && HasOwnedSelection() && !bPreparationOpen
-		&& bServerSelected && !GetCharacterOption(Flow->GetSelectedCharacterId()).IsEmpty(),
+		&& !bCharacterCreationOpen,
 		{Authenticated, Owned});
 	const bool bUnsavedConfiguration = ConfigurationPanel && ConfigurationPanel->HasUnsavedChanges();
 	Enable(TEXT("ChangeCharacterButton"), bPreparationOpen && View.bCanSelectCharacter && !bParty && !bUnsavedConfiguration && !bTutorialEntryActive,
@@ -755,6 +775,7 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 		Status = NSLOCTEXT("RPGOnlineLobby", "ConfirmingAbandonment", "아직 포기 요청을 보내지 않았습니다. 아래 내용을 확인한 뒤 포기하거나 취소하세요.");
 	else if (bLoggingIn || Auth->IsLoginRequestInFlight())
 		Status = NSLOCTEXT("RPGOnlineLobby", "LoginBusy", "계정을 확인하고 있습니다. 잠시 기다려 주세요.");
+	else if (bCreatingCharacter) Status = NSLOCTEXT("RPGOnlineLobby", "CreatingAdventurer", "캐릭터를 만들고 있습니다.");
 	else if (View.bBusy) Status = NSLOCTEXT("RPGOnlineLobby", "Busy", "요청 처리 / 이동 중...");
 	else if (!Web->HasAccessToken() && !Web->GetAuthenticatedSteamId().IsEmpty())
 		Status = NSLOCTEXT("RPGOnlineLobby", "AuthenticationExpired", "인증이 만료되었습니다. 같은 Steam 계정으로 다시 로그인하세요. 캐릭터와 던전 선택은 유지됩니다.");
@@ -798,6 +819,8 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 			: NSLOCTEXT("RPGOnlineLobby", "SteamLoginFailed", "로그인하지 못했습니다. Steam 실행 상태와 서버 연결을 확인한 뒤 다시 시도하세요.");
 	else if (Same(Error, TEXT("invalid_development_steam_id")))
 		Status = NSLOCTEXT("RPGOnlineLobby", "InvalidDevelopmentId", "개발 계정 ID는 17자리 숫자로 입력하세요.");
+	else if (Same(Error, TEXT("invalid_character_name")))
+		Status = NSLOCTEXT("RPGOnlineLobby", "InvalidCharacterName", "이름은 앞뒤 공백을 제외하고 2~20자로 입력하세요. 줄바꿈과 제어 문자는 사용할 수 없습니다.");
 	else if (Same(Error, TEXT("load_characters_failed")))
 		Status = NSLOCTEXT("RPGOnlineLobby", "CharacterListFailed", "캐릭터 목록을 불러오지 못했습니다. 목록 새로고침으로 다시 확인하세요.");
 	else if (Same(Error, TEXT("create_character_failed")))
@@ -809,9 +832,7 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 	else if (!Error.IsEmpty()) Status = FText::Format(NSLOCTEXT("RPGOnlineLobby", "Error", "요청 실패: {0} — 새로고침 또는 재시도하세요."), FText::FromString(Error));
 	else if (Web->HasAccessToken())
 	{
-		if (OwnedCharacters.IsEmpty()) Status = NSLOCTEXT("RPGOnlineLobby", "NoCharacters", "캐릭터를 생성하거나 목록을 새로고침하세요.");
-		else if (!HasOwnedSelection()) Status = NSLOCTEXT("RPGOnlineLobby", "SelectCharacter", "내 캐릭터를 선택하세요.");
-		else if (!bPreparationOpen) Status = NSLOCTEXT("RPGOnlineLobby", "ConfirmCharacter", "선택한 캐릭터를 확인한 뒤 접속을 누르세요.");
+		if (!bPreparationOpen) Status = FText::GetEmpty();
 		else if (View.bCanEnter) Status = NSLOCTEXT("RPGOnlineLobby", "ServerReady", "서버가 준비됐습니다. 던전에 입장할 수 있습니다.");
 		else if (Same(Session.State, TEXT("Waiting")))
 			Status = Session.LeaderCharacterId.IsEmpty()
@@ -833,9 +854,10 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 	if (bAbandonmentConfirmationOpen)
 		RPGMenuFocus::Update(*this, {Buttons.FindRef(TEXT("CancelDungeonAbandonmentButton"))});
 	else
-		RPGMenuFocus::Update(*this, {Buttons.FindRef(TEXT("SelectServerButton")), Buttons.FindRef(TEXT("StartTutorialButton")), DevelopmentSteamId, Buttons.FindRef(TEXT("LoginDevelopmentButton")),
+		RPGMenuFocus::Update(*this, {Buttons.FindRef(TEXT("StartTutorialButton")), DevelopmentSteamId, Buttons.FindRef(TEXT("LoginDevelopmentButton")),
 			Buttons.FindRef(TEXT("LoginSteamButton")), Buttons.FindRef(TEXT("ContinueWithCharacterButton")),
-			CharactersBox, CreationClassBox, CharacterName, DungeonsBox, DifficultyBox,
+			CreationClassBox, CharacterName, LineupSlotButtons.IsEmpty() ? nullptr : LineupSlotButtons[0].Get(),
+			Buttons.FindRef(TEXT("OpenCharacterCreationButton")), DungeonsBox, DifficultyBox,
 			Buttons.FindRef(TEXT("EnterDungeonButton")), Buttons.FindRef(TEXT("CreateDungeonSessionButton")),
 			Buttons.FindRef(TEXT("RequestDungeonDepartureButton")), Buttons.FindRef(TEXT("CancelDungeonDepartureButton")),
 			Buttons.FindRef(TEXT("RetryDungeonDepartureButton")),
@@ -848,9 +870,9 @@ void URPGOnlineLobbyWidget::RefreshEntryPresentation()
 {
 	const bool bAuthenticated = Web && Web->HasAccessToken();
 	const ESlateVisibility LoginVisibility = bAuthenticated ? ESlateVisibility::Collapsed : ESlateVisibility::Visible;
-	const bool bShowPreparation = bAuthenticated && bServerSelected && bPreparationOpen
+	const bool bShowPreparation = bAuthenticated && bPreparationOpen
 		&& (HasOwnedSelection() || bLoadingCharacters || bInitialCharacterLoadPending);
-	const ESlateVisibility CharacterVisibility = bAuthenticated && bServerSelected && !bShowPreparation ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+	const ESlateVisibility CharacterVisibility = bAuthenticated && !bShowPreparation ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
 	const bool bPageChanged = (LoginContent && LoginContent->GetVisibility() != LoginVisibility)
 		|| (CharacterContent && CharacterContent->GetVisibility() != CharacterVisibility);
 	auto* PC = GetOwningPlayer();
@@ -860,6 +882,7 @@ void URPGOnlineLobbyWidget::RefreshEntryPresentation()
 		Width->SetVisibility(LoginVisibility);
 	if (CharacterContent) CharacterContent->SetVisibility(CharacterVisibility);
 	if (LobbyContent) LobbyContent->SetVisibility(bShowPreparation ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	if (NextStepText) NextStepText->SetVisibility(bShowPreparation ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	// Expired credentials must still allow the existing confirmed logout path;
 	// hiding the preparation page must not trap the pinned account at login.
 	if (AccountSection) AccountSection->SetVisibility(Web && Web->HasPlayerLogoutCredential()
@@ -869,6 +892,7 @@ void URPGOnlineLobbyWidget::RefreshEntryPresentation()
 			IsDevelopmentUIEnabled() ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 	if (TitleText) TitleText->SetText(!bAuthenticated ? NSLOCTEXT("RPGOnlineLobby", "GameTitle", "PROJECT RPG")
 		: bShowPreparation ? NSLOCTEXT("RPGOnlineLobby", "PreparationTitle", "로비")
+		: bCharacterCreationOpen ? NSLOCTEXT("RPGOnlineLobby", "CreateCharacterTitle", "캐릭터 생성")
 		: NSLOCTEXT("RPGOnlineLobby", "CharacterSelectionTitle", "캐릭터 선택"));
 	if (LoginHintText)
 		LoginHintText->SetText(Web && !Web->GetAuthenticatedSteamId().IsEmpty()
@@ -877,7 +901,7 @@ void URPGOnlineLobbyWidget::RefreshEntryPresentation()
 				? NSLOCTEXT("RPGOnlineLobby", "DevelopmentEntryHint", "개발 계정으로 접속해 캐릭터와 던전 흐름을 확인할 수 있습니다. 아래에 개발 계정 ID를 입력하세요.")
 				: FParse::Param(FCommandLine::Get(), TEXT("nosteam"))
 					? NSLOCTEXT("RPGOnlineLobby", "SteamDisabledEntryHint", "이 실행에서는 Steam 접속이 꺼져 있습니다. Steam을 활성화해 게임을 다시 실행하세요.")
-				: NSLOCTEXT("RPGOnlineLobby", "LoginHint", "Steam 계정으로 접속한 뒤 캐릭터를 선택하세요. 친구들과 파티를 구성해 던전에 도전할 수 있습니다."));
+					: FText::GetEmpty());
 	// Return focus to this screen only if it already owned focus. The normal
 	// candidate update then selects a control on the newly visible page.
 	if (bRestoreFocus) SetUserFocus(PC);
@@ -942,6 +966,12 @@ FReply URPGOnlineLobbyWidget::NativeOnKeyDown(const FGeometry& InGeometry, const
 	// Bubble only: editable text and open combo lists get the first opportunity
 	// to cancel their own interaction. Authored Blueprint handlers keep priority.
 	const FReply Reply = Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+	if (!Reply.IsEventHandled() && RPGConfirmationInput::IsBack(InKeyEvent)
+		&& bCharacterCreationOpen && CharacterContent && CharacterContent->IsVisible())
+	{
+		if (!InKeyEvent.IsRepeat()) CloseCharacterCreation();
+		return FReply::Handled();
+	}
 	if (Reply.IsEventHandled() || !RPGConfirmationInput::IsBack(InKeyEvent)
 		|| bAbandonmentConfirmationOpen || !bPreparationOpen || !CharacterContent
 		|| !LobbyContent || !LobbyContent->IsVisible()) return Reply;
@@ -976,7 +1006,7 @@ void URPGOnlineLobbyWidget::PollSession()
 	AdvanceTutorialEntry();
 	if (bInitialCharacterLoadPending) BeginCharacterLoad();
 	RefreshPresentation();
-	if (bServerSelected && bPreparationOpen && ConfigurationPanel && !bTutorialEntryActive
+	if (bPreparationOpen && ConfigurationPanel && !bTutorialEntryActive
 		&& RPGOnlineLobbyDevelopmentProfile::Resolve(FCommandLine::Get(), IsDevelopmentUIEnabled()).bTraining)
 		ConfigurationPanel->EnsureInitialLoad();
 	if (Flow && Active(Flow->GetCurrentDungeonSession().State) && CurrentPresentation().bCanRefresh
@@ -1036,7 +1066,10 @@ void URPGOnlineLobbyWidget::HandleLogout(const bool bSuccess)
 	bLoggingOut = false;
 	if (!bSuccess) { UIError = TEXT("backend_logout_failed"); RefreshPresentation(); return; }
 	OwnedCharacters.Reset(); FoundParties.Reset(); PolledSessionId.Reset();
-	bServerSelected = bPreparationOpen = bHasLoadedCharacterList = false;
+	bPreparationOpen = bHasLoadedCharacterList = false;
+	bCharacterCreationOpen = false;
+	CharacterPage = 0;
+	PendingCreatedCharacterId.Reset();
 	bCreationOptionsReady = bLoadingCreationOptions = false;
 	CreationClasses.Reset();
 	if (CreationClassBox) CreationClassBox->ClearOptions();
@@ -1070,16 +1103,24 @@ void URPGOnlineLobbyWidget::CreateCharacter()
 void URPGOnlineLobbyWidget::SelectCharacter(FString Option, ESelectInfo::Type)
 {
 	if (bUpdatingOptions) return;
-	if (!CurrentPresentation().bCanSelectCharacter || (Steam && Steam->IsInPartyLobby())
-		|| (ConfigurationPanel && ConfigurationPanel->HasUnsavedChanges()))
-	{ RefreshPresentation(); return; }
 	const auto* Character = OwnedCharacters.FindByPredicate([&](const FRPGBackendCharacter& Candidate)
 		{ return Same(CharacterOption(Candidate), Option); });
 	int32 Matches = 0;
 	for (const auto& Candidate : OwnedCharacters) Matches += Same(CharacterOption(Candidate), Option) ? 1 : 0;
 	if (!Character || Matches != 1) { UIError = TEXT("character_not_in_owned_roster"); RefreshPresentation(); return; }
+	SelectOwnedCharacter(Character->CharacterId);
+}
+
+void URPGOnlineLobbyWidget::SelectOwnedCharacter(const FString& CharacterId)
+{
+	if (!CurrentPresentation().bCanSelectCharacter || (Steam && Steam->IsInPartyLobby())
+		|| (ConfigurationPanel && ConfigurationPanel->HasUnsavedChanges()))
+	{ RefreshPresentation(); return; }
+	if (CharacterId.IsEmpty() || !OwnedCharacters.ContainsByPredicate([&](const FRPGBackendCharacter& Candidate)
+		{ return Same(Candidate.CharacterId, CharacterId); })) return;
+	if (Same(Flow->GetSelectedCharacterId(), CharacterId)) return;
 	UIError.Reset();
-	if (Flow->SelectCharacter(Character->CharacterId))
+	if (Flow->SelectCharacter(CharacterId))
 	{
 		bPreparationOpen = false;
 		Flow->ResumeDungeonSession();
@@ -1195,16 +1236,31 @@ void URPGOnlineLobbyWidget::HandleCharacters(const TArray<FRPGBackendCharacter>&
 		if (HasOwnedSelection()) CharactersBox->SetSelectedOption(GetCharacterOption(Flow->GetSelectedCharacterId()));
 		bUpdatingOptions = false;
 	}
+	if (!PendingCreatedCharacterId.IsEmpty())
+	{
+		const int32 Index = OwnedCharacters.IndexOfByPredicate([this](const FRPGBackendCharacter& Candidate)
+			{ return Same(Candidate.CharacterId, PendingCreatedCharacterId); });
+		if (Index != INDEX_NONE)
+		{
+			PendingCreatedCharacterId.Reset();
+			CharacterPage = Index / ARPGCharacterLineupStage::SlotCount;
+			const FString CreatedId = OwnedCharacters[Index].CharacterId;
+			SelectOwnedCharacter(CreatedId);
+		}
+		else UIError = TEXT("load_characters_failed");
+	}
 	RefreshPresentation();
 }
 
-void URPGOnlineLobbyWidget::HandleCharacterCreated(const FRPGBackendCharacter&, bool bSuccess)
+void URPGOnlineLobbyWidget::HandleCharacterCreated(const FRPGBackendCharacter& Character, bool bSuccess)
 {
 	if (!bCreatingCharacter) return;
 	bCreatingCharacter = false;
 	if (!bSuccess) UIError = TEXT("create_character_failed");
 	else
 	{
+		PendingCreatedCharacterId = Character.CharacterId;
+		bCharacterCreationOpen = false;
 		if (CharacterName) CharacterName->SetText(FText::GetEmpty());
 		BeginCharacterLoad();
 	}

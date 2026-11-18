@@ -27,30 +27,17 @@
 #include "Engine/GameInstance.h"
 #include "GameFramework/PlayerController.h"
 
-void URPGOnlineLobbyWidget::BuildMenuContent(UVerticalBox& Parent, bool bServerPage)
+void URPGOnlineLobbyWidget::BuildMenuContent(UVerticalBox& Parent)
 {
-	auto& Target = bServerPage ? ServerContent : MenuContent;
-	Target = WidgetTree->ConstructWidget<UVerticalBox>();
-	Parent.AddChildToVerticalBox(Target);
-	auto* Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *Target,
-		bServerPage ? TEXT("ServerSelectionSection") : TEXT("LobbyMenuSection"),
-		bServerPage ? NSLOCTEXT("RPGFrontend", "ChooseServer", "플레이할 서버를 선택하세요")
-		: NSLOCTEXT("RPGFrontend", "Adventure", "모험"));
+	MenuContent = WidgetTree->ConstructWidget<UVerticalBox>();
+	Parent.AddChildToVerticalBox(MenuContent);
+	auto* Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *MenuContent,
+		TEXT("LobbyMenuSection"), NSLOCTEXT("RPGFrontend", "Adventure", "모험"));
 	auto Add = [&](FName Name, const FText& Text)
 	{
 		auto* Button = RPGOnlineLobbyLayout::Action(*WidgetTree, *Rows, Name, Text);
 		Buttons.Add(Name, Button); return Button;
 	};
-	if (bServerPage)
-	{
-		// Exactly the configured authenticated backend, never an invented region
-		// list or a selectable address with no real routing/character scope.
-		RPGOnlineLobbyLayout::Text(*WidgetTree, *Rows, TEXT("CurrentServerName"),
-			IsDevelopmentUIEnabled() ? NSLOCTEXT("RPGFrontend", "DevelopmentServer", "개발 서버")
-			: NSLOCTEXT("RPGFrontend", "CurrentServer", "게임 서버"));
-		Add(TEXT("SelectServerButton"), NSLOCTEXT("RPGFrontend", "SelectServer", "서버 선택"));
-		return;
-	}
 	Add(TEXT("StartTutorialButton"), NSLOCTEXT("RPGFrontend", "Tutorial", "튜토리얼 입장"))->SetBackgroundColor(FLinearColor(.08f, .38f, .43f));
 	Add(TEXT("ReloadTutorialProgressButton"), NSLOCTEXT("RPGFrontend", "ReloadProgress", "진행 정보 다시 확인"));
 	Add(TEXT("OpenDungeonMenuButton"), NSLOCTEXT("RPGFrontend", "Dungeons", "던전 · 파티"));
@@ -92,23 +79,11 @@ bool URPGOnlineLobbyWidget::CanStartTutorial() const
 	const bool bIntro1 = Profile.bIntro1 && Progress && (Progress->Milestones & 1) != 0;
 	return !IsServiceAdmissionBlocked(TEXT("StartTutorialButton")) && Profile.bTraining && Profile.Error.IsEmpty() && (!HasCompletedTutorial() || bIntro1) && Lobby && Lobby->IsLobbyController(GetOwningPlayer())
 		&& ConfigurationPanel && ConfigurationPanel->GetConfirmedProgression()
-		&& bServerSelected && bPreparationOpen && Web && Web->HasAccessToken() && !Web->GetAuthenticatedSteamId().IsEmpty()
+		&& bPreparationOpen && Web && Web->HasAccessToken() && !Web->GetAuthenticatedSteamId().IsEmpty()
 		&& Flow && HasOwnedSelection() && !Flow->IsRequestInFlight() && !Flow->HasUnresolvedDungeonAbandonment()
 		&& !Flow->HasDepartureRecoveryError() && !IsFrontendRequestInFlight()
 		&& (!Steam || (!Steam->IsInPartyLobby() && !Steam->IsLobbyRequestInFlight()))
 		&& (!ConfigurationPanel || !ConfigurationPanel->HasUnsavedChanges());
-}
-
-void URPGOnlineLobbyWidget::SelectServerPage()
-{
-	if (!CanUse(TEXT("SelectServerButton"))) return;
-	bServerSelected = true; UIError.Reset(); RefreshPresentation();
-}
-
-void URPGOnlineLobbyWidget::ShowServerPage()
-{
-	if (!CanUse(TEXT("BackToServersButton"))) return;
-	bServerSelected = bPreparationOpen = false; UIError.Reset(); RefreshPresentation();
 }
 
 void URPGOnlineLobbyWidget::OpenSkillMenu()
@@ -136,7 +111,7 @@ void URPGOnlineLobbyWidget::OpenEquipmentMenu()
 
 bool URPGOnlineLobbyWidget::CanUseTrading() const
 {
-	return bServerSelected && bPreparationOpen && !bTutorialEntryActive && CanUseCharacterConfiguration(false, false)
+	return bPreparationOpen && !bTutorialEntryActive && CanUseCharacterConfiguration(false, false)
 		&& Flow && !Flow->HasUnresolvedDeparture() && !Flow->HasDepartureRecoveryError() && !Flow->HasUnresolvedDungeonAbandonment()
 		&& (!ConfigurationPanel || (!ConfigurationPanel->IsRequestInFlight() && !ConfigurationPanel->HasUnresolvedSave() && !ConfigurationPanel->HasUnsavedChanges()))
 		&& (!EquipmentPanel || (!EquipmentPanel->IsBusy() && !EquipmentPanel->HasUnresolvedCommand()));
@@ -165,7 +140,7 @@ void URPGOnlineLobbyWidget::HandleTradeClosed()
 
 bool URPGOnlineLobbyWidget::CanOpenAuctionMenu() const
 {
-	return bServerSelected && bPreparationOpen && !bTutorialEntryActive && CanUseCharacterConfiguration(false,false);
+	return bPreparationOpen && !bTutorialEntryActive && CanUseCharacterConfiguration(false,false);
 }
 
 bool URPGOnlineLobbyWidget::CanUseRidingCollection() const { return CanUseTrading(); }
@@ -217,7 +192,7 @@ bool URPGOnlineLobbyWidget::CanOpenShopMenu() const
 {
 	// Recovery must stay reachable while this shop owns an unresolved command.
 	// Do not call CurrentPresentation/IsFrontendRequestInFlight from this context guard.
-	return bServerSelected && bPreparationOpen && !bTutorialEntryActive
+	return bPreparationOpen && !bTutorialEntryActive
 		&& CanUseCharacterConfiguration(false, false);
 }
 
@@ -250,7 +225,7 @@ void URPGOnlineLobbyWidget::HandleShopClosed()
 
 bool URPGOnlineLobbyWidget::CanOpenNarrativeDialogues() const
 {
-	return bServerSelected && bPreparationOpen && !bTutorialEntryActive
+	return bPreparationOpen && !bTutorialEntryActive
 		&& CanUseCharacterConfiguration(false, false) && !HasUnfinishedDungeonSelection()
 		&& Flow && !Flow->HasUnresolvedDeparture() && !Flow->HasDepartureRecoveryError()
 		&& !Flow->HasUnresolvedDungeonAbandonment()
@@ -343,9 +318,8 @@ void URPGOnlineLobbyWidget::AdvanceTutorialEntry()
 void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 {
 	const bool bAuth = Web && Web->HasAccessToken();
-	const bool bHome = bAuth && bServerSelected && bPreparationOpen;
+	const bool bHome = bAuth && bPreparationOpen;
 	const auto SetVisible = [](UWidget* Widget, bool bVisible) { if (Widget) Widget->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed); };
-	SetVisible(ServerContent, bAuth && !bServerSelected);
 	SetVisible(MenuContent, bHome);
 	SetVisible(ConfigurationSection, bHome && bSkillMenuOpen);
 	SetVisible(EquipmentSection, bHome && bEquipmentMenuOpen);
@@ -358,11 +332,6 @@ void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 	{
 		if (auto* Button = Buttons.FindRef(Name).Get()) { Button->SetIsEnabled(bEnabled); RPGOnlineLobbyLayout::SetControlVisibility(*Button, bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed); }
 	};
-	// This changes only the frontend page for the same configured endpoint. Keep recovery
-	// reachable after widget recreation even when an existing trade pins gameplay actions.
-	Control(TEXT("SelectServerButton"), bAuth && !bLoggingOut, bAuth && !bServerSelected);
-	Control(TEXT("BackToServersButton"), bAuth && CurrentPresentation().bCanSelectCharacter && !bTutorialEntryActive
-		&& (!Flow || !Flow->HasUnresolvedDeparture()) && (!Steam || !Steam->IsInPartyLobby()), bAuth && bServerSelected && !bPreparationOpen);
 	Control(TEXT("StartTutorialButton"), CanStartTutorial() && !bTutorialEntryActive, bHome && Profile.bTraining);
 	const auto* Progress = ConfigurationPanel ? ConfigurationPanel->GetConfirmedProgression() : nullptr;
 	const bool bIntro3Entry = Profile.bIntro3 && Progress && (Progress->Milestones & 4) != 0;
@@ -425,11 +394,5 @@ void URPGOnlineLobbyWidget::RefreshMenuPresentation()
 			: HasCompletedTutorial() ? NSLOCTEXT("RPGFrontend", "AfterTutorial", "다음 단계: 스킬 구성에서 새로 얻은 SP와 습득한 스킬을 확인하세요.")
 			: !Progress ? NSLOCTEXT("RPGFrontend", "ProgressRequired", "진행 정보가 확인되면 튜토리얼에 입장할 수 있습니다.")
 			: NSLOCTEXT("RPGFrontend", "TutorialNext", "튜토리얼 입장을 누르면 자동으로 이동합니다."));
-	}
-	if (bAuth && !bServerSelected)
-	{
-		if (TitleText) TitleText->SetText(NSLOCTEXT("RPGFrontend", "Servers", "서버 선택"));
-		if (StatusText) StatusText->SetText(NSLOCTEXT("RPGFrontend", "ServerPrompt", "플레이할 서버를 선택하세요."));
-		if (NextStepText) NextStepText->SetText(FText::GetEmpty());
 	}
 }

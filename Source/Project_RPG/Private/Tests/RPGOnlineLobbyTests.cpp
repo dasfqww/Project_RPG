@@ -259,9 +259,7 @@ bool FRPGOnlineLobbyWidgetTest::RunTest(const FString&)
 		auto* Configuration = Widget->GetCharacterConfigurationWidget();
 		Widget->Web->SetAccessToken(TEXT("entry-presentation-fixture"));
 		Widget->RefreshPresentation();
-		TestEqual(TEXT("Authentication waits for server selection"), CharacterContent->GetVisibility(), ESlateVisibility::Collapsed);
-		Widget->SelectServerPage();
-		TestEqual(TEXT("Server choice opens character selection"), CharacterContent->GetVisibility(), ESlateVisibility::Visible);
+		TestEqual(TEXT("Authentication opens the roster on the configured server"), CharacterContent->GetVisibility(), ESlateVisibility::Visible);
 		TestEqual(TEXT("Authentication alone does not open preparation"), LobbyContent->GetVisibility(), ESlateVisibility::Collapsed);
 		TestEqual(TEXT("Authentication hides login"), LoginContent->GetVisibility(), ESlateVisibility::Collapsed);
 		Widget->Flow = NewObject<URPGDungeonSessionSubsystem>(EntryGameInstance);

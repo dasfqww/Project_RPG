@@ -89,11 +89,12 @@ function Tick-TrainingLobbyUI {
             $state.stage=1
         }
         1 {
-            $server=Find-TrainingLobbyButton $nodes '서버 선택'
-            if($server){
-                Save-TrainingLobbySnapshot 'server-selection' $snapshot
-                Send-TrainingLobbyAction 'Click' @{ref=$server.ref;button='left'} 'SelectServer'
-                $state.serverSelected=$true
+            $emptySlot=Find-TrainingLobbyButton $nodes '+ 새 캐릭터'
+            if($emptySlot){
+                if(Find-TrainingLobbyButton $nodes '서버 선택'){throw 'Single configured server should open the roster directly'}
+                Save-TrainingLobbySnapshot 'empty-character-lineup' $snapshot
+                Send-TrainingLobbyAction 'Click' @{ref=$emptySlot.ref;button='left'} 'OpenCharacterCreation'
+                $state.openedCreationFromLineup=$true
                 return $false
             }
             $button=Find-TrainingLobbyButton $nodes '캐릭터 생성' -AllowDisabled
@@ -137,16 +138,15 @@ function Tick-TrainingLobbyUI {
             $roster=@(Expand-TrainingLobbyRoster (Api 'characters' 'Get' $state.player))
             if(!$roster.Count){return $false}
             if($roster.Count -ne 1 -or $roster[0].name -cne $state.name -or $roster[0].progression.classId -cne 'RPGPlayerClassDefinition:GreatSwordWarrior'){throw 'UI-created character differs from expected owner/class'}
-            $button=Find-TrainingLobbyButton $nodes '접속' -AllowDisabled
+            $button=Find-TrainingLobbyButton $nodes '로비 입장'
             if(!$button){return $false}
-            $field=Find-TrainingLobbyField $nodes $button 'combobox'
-            if(!$field){return $false}
-            Send-TrainingLobbyAction 'SelectOption' @{ref=$field.ref;value=$state.name} 'SelectCharacter'
+            if($snapshot -notmatch [regex]::Escape($state.name)){return $false}
+            Save-TrainingLobbySnapshot 'created-character-lineup' $snapshot
             $state.character=[string]$roster[0].characterId
             $state.stage=4
         }
         4 {
-            $button=Find-TrainingLobbyButton $nodes '접속'
+            $button=Find-TrainingLobbyButton $nodes '로비 입장'
             if(!$button){return $false}
             Send-TrainingLobbyAction 'Click' @{ref=$button.ref;button='left'} 'ConnectCharacterToLobby'
             $state.stage=5
@@ -155,7 +155,7 @@ function Tick-TrainingLobbyUI {
             $button=Find-TrainingLobbyButton $nodes '튜토리얼 입장'
             if(!$button){return $false}
             if($snapshot -notmatch '로비'){throw 'Character connect did not display the menu lobby'}
-            if(!$state.serverSelected){throw 'Menu flow skipped the real server-selection page'}
+            if(!$state.openedCreationFromLineup){throw 'Creation was not opened from the empty lineup'}
             Save-TrainingLobbySnapshot 'menu-lobby' $snapshot
             Send-TrainingLobbyAction 'Click' @{ref=$button.ref;button='left'} 'EnterTutorialOnce'
             $state.stage=6
@@ -188,7 +188,7 @@ function Complete-TrainingLobbyUI {
     if($state.stage -ne 9){throw 'Lobby UI entry did not finish'}
     $null=Invoke-TrainingLobbyTool 'StopPIE' @{} 'EditorToolset.EditorAppToolset' 55
     if(Invoke-TrainingLobbyTool 'IsPIERunning' @{} 'EditorToolset.EditorAppToolset'){throw 'Owned PIE did not stop after UI observation'}
-    [pscustomobject]@{passed=$true;character=$state.character;session=$state.session;actions=$state.actions.ToArray();actualSlateInput=$true;physicalInput=$false;characterSessionDepartureThroughUI=$true;serverSelected=$state.serverSelected;singleTutorialButton=$true;trainingGuideOnEntry=$true;completionAndReturnTested=$false}
+    [pscustomobject]@{passed=$true;character=$state.character;session=$state.session;actions=$state.actions.ToArray();actualSlateInput=$true;physicalInput=$false;characterSessionDepartureThroughUI=$true;openedCreationFromLineup=$state.openedCreationFromLineup;singleTutorialButton=$true;trainingGuideOnEntry=$true;completionAndReturnTested=$false}
 }
 function Save-TrainingLobbyUIFailure {
     Set-StrictMode -Off

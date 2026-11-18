@@ -547,11 +547,7 @@ bool URPGDungeonFlowE2EClient::TickProbe(float)
 		auto* Widget = Lobby ? Lobby->GetLobbyWidget() : nullptr;
 		if (Widget && Lobby->IsLobbyController(PC))
 		{
-			// Follow the new frontend through its real buttons before legacy
-			// configuration/session probes operate on the detail page.
-			auto* Server = Cast<UButton>(Widget->GetWidgetFromName(TEXT("SelectServerButton")));
-			if (Server && Server->IsVisible() && Server->GetIsEnabled())
-			{ Server->OnClicked.Broadcast(); return true; }
+			// Open the real detail page before the relevant probe acts on its controls.
 			if (!bLobbyCreationOnly && !bVerifyLobbyLogout)
 			{
 				auto* Section = Widget->GetWidgetFromName(bLobbyConfigurationOnly ? TEXT("OnlineLobbyConfigurationSection") : TEXT("OnlineLobbyDungeonSection"));
@@ -647,15 +643,18 @@ bool URPGDungeonFlowE2EClient::TickProbe(float)
 		if (bCreateCharacter && !bCharacterCreated)
 		{
 			if (bCharacterCreateStarted) return true;
+			auto* EmptySlot = Cast<UButton>(Widget->GetWidgetFromName(TEXT("CharacterLineupSlot0")));
 			auto* Input = Cast<UEditableTextBox>(Widget->GetWidgetFromName(TEXT("NewCharacterName")));
 			auto* Button = Cast<UButton>(Widget->GetWidgetFromName(TEXT("CreateCharacterButton")));
+			if (Button && !Button->GetIsEnabled() && EmptySlot && EmptySlot->GetIsEnabled() && EmptySlot->IsVisible())
+				EmptySlot->OnClicked.Broadcast();
 			if (!Input || !Button || !Button->GetIsEnabled()) return true; // roster HTTP must complete first
 			if (Selector->GetOptionCount() != 0) return Fail(TEXT("CharacterCreationRequiresEmptyRoster"));
 			for (const FString Invalid : {FString(TEXT("x")), FString::ChrN(21, TEXT('x')), FString(TEXT("a\tb"))})
 			{
 				Input->SetText(FText::FromString(Invalid));
 				Button->OnClicked.Broadcast();
-				if (!Button->GetIsEnabled() || !Widget->GetDisplayedStatus().ToString().Contains(TEXT("invalid_character_name")))
+				if (!Button->GetIsEnabled() || Widget->GetNextStepControlName() != TEXT("NewCharacterName"))
 					return Fail(TEXT("InvalidCharacterNameNotRejectedLocally"));
 			}
 			bCharacterCreateStarted = true;
@@ -678,7 +677,9 @@ bool URPGDungeonFlowE2EClient::TickProbe(float)
 				UE_LOG(LogTemp, Display, TEXT("DUNGEON_FLOW_E2E_LOBBY_CHARACTER_ROSTER OwnedCharacter=1 Refreshed=1 InputCleared=1"));
 			}
 			bCharacterSelected = true;
-			Selector->SetSelectedOption(Option); // live OnSelectionChanged -> selected character + real Resume HTTP
+			if (bCreateCharacter && !Same(Flow->GetSelectedCharacterId(), CharacterId))
+				return Fail(TEXT("CreatedCharacterWasNotSelectedFromRefreshedRoster"));
+			if (!bCreateCharacter) Selector->SetSelectedOption(Option);
 			return true;
 		}
 		if (!Same(Flow->GetSelectedCharacterId(), CharacterId)) return Fail(TEXT("LobbySelectionMismatch"));

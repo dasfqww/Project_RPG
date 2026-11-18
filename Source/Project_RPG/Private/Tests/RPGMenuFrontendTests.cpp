@@ -103,17 +103,21 @@ bool FRPGMenuFrontendTest::RunTest(const FString&)
 	const auto Slate = Widget->TakeWidget();
 	if (!TestNotNull(TEXT("Frontend auth dependency"), Widget->Web.Get())
 		|| !TestNotNull(TEXT("Frontend flow dependency"), Widget->Flow.Get())
-		|| !TestNotNull(TEXT("Server page"), Widget->ServerContent.Get())
 		|| !TestNotNull(TEXT("Menu page"), Widget->MenuContent.Get())) return false;
 	Widget->Web->SetAccessToken(TEXT("menu-presentation-fixture"));
 	Widget->bInitialCharacterLoadPending = false; Widget->bHasLoadedCharacterList = true;
-	Widget->bServerSelected = Widget->bPreparationOpen = false;
+	Widget->bPreparationOpen = false;
 	Widget->RefreshPresentation();
-	TestEqual(TEXT("Authenticated entry starts at server choice"), Widget->ServerContent->GetVisibility(), ESlateVisibility::Visible);
-	TestEqual(TEXT("Character page is not mixed into the server page"), Widget->CharacterContent->GetVisibility(), ESlateVisibility::Collapsed);
-	Widget->SelectServerPage();
-	TestEqual(TEXT("Server choice opens character selection"), Widget->CharacterContent->GetVisibility(), ESlateVisibility::Visible);
-	TestEqual(TEXT("Selected server page is removed"), Widget->ServerContent->GetVisibility(), ESlateVisibility::Collapsed);
+	TestEqual(TEXT("Single configured server opens the roster"), Widget->CharacterContent->GetVisibility(), ESlateVisibility::Visible);
+	TestNull(TEXT("Single configured server needs no confirmation"), Widget->GetWidgetFromName(TEXT("SelectServerButton")));
+	TestEqual(TEXT("Six visual slots are built"), Widget->LineupSlotButtons.Num(), 6);
+	TestEqual(TEXT("An empty account opens creation through its first slot"), Widget->LineupSlotButtons[0]->GetVisibility(), ESlateVisibility::Visible);
+	TestEqual(TEXT("Unoccupied spare slots preserve lineup spacing"), Widget->LineupSlotButtons[5]->GetVisibility(), ESlateVisibility::Hidden);
+	Widget->LineupSlotButtons[0]->OnClicked.Broadcast();
+	TestEqual(TEXT("Creation has its own screen"), Widget->CharacterCreationSection->GetVisibility(), ESlateVisibility::Visible);
+	TestEqual(TEXT("Roster actions are absent during creation"), Widget->CharacterSelectionSection->GetVisibility(), ESlateVisibility::Collapsed);
+	Widget->CloseCharacterCreation();
+	TestEqual(TEXT("Back restores the roster"), Widget->CharacterSelectionSection->GetVisibility(), ESlateVisibility::Visible);
 	FRPGBackendCharacter Character; Character.CharacterId = TEXT("owned-character"); Character.Name = TEXT("Hero");
 	Widget->OwnedCharacters = {Character};
 	// A presentation fixture uses the existing selection API without a network
@@ -130,8 +134,6 @@ bool FRPGMenuFrontendTest::RunTest(const FString&)
 	TestTrue(TEXT("Main page does not issue a session creation"), Widget->Flow->GetCurrentDungeonSession().DungeonSessionId.IsEmpty());
 	Widget->ChangeCharacter();
 	TestEqual(TEXT("Character change returns to its own page"), Widget->CharacterContent->GetVisibility(), ESlateVisibility::Visible);
-	Widget->ShowServerPage();
-	TestEqual(TEXT("Server back is UI navigation"), Widget->ServerContent->GetVisibility(), ESlateVisibility::Visible);
 	TestEqual(TEXT("Navigation does not clear selected server-owned identity"), Widget->Flow->GetSelectedCharacterId(), Character.CharacterId);
 	Widget->ConfigurationPanel = Configuration;
 	if (!TestNotNull(TEXT("Existing configuration owner"), Configuration)) return false;
@@ -139,7 +141,7 @@ bool FRPGMenuFrontendTest::RunTest(const FString&)
 	TestTrue(TEXT("Install presentation-only account binding without HTTP"), Widget->Web->PlayerAuth.AcceptLogin(
 		TEXT("confirmed-progression-fixture"), TEXT("76561198000000001"),
 		(Issued + FTimespan::FromMinutes(5)).ToIso8601(), Issued.ToIso8601(), Now, Now));
-	Widget->bServerSelected = Widget->bPreparationOpen = true;
+	Widget->bPreparationOpen = true;
 	Widget->RefreshPresentation();
 	TestNull(TEXT("No record is not a completed tutorial"), Configuration->GetConfirmedProgression());
 	FRPGCharacterProgressionSnapshot Completed;

@@ -71,7 +71,6 @@ bool FRPGOnlineLobbyBackInputTest::RunTest(const FString&)
 	// Presentation-only credential/selection. No authentication, HTTP, save,
 	// membership command, map travel or real user-focus assignment is performed.
 	Widget->Web->SetAccessToken(TEXT("back-input-presentation-fixture"));
-	Widget->bServerSelected = true; // This fixture starts after explicit server choice.
 	Widget->Flow = NewObject<URPGDungeonSessionSubsystem>(F.Instance.Get());
 	FRPGBackendCharacter Character;
 	Character.CharacterId = TEXT("back-input-character"); Character.Name = TEXT("Owned hero");

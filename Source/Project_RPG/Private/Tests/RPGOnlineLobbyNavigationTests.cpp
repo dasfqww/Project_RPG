@@ -195,16 +195,16 @@ bool FRPGOnlineLobbyNavigationNativeTest::RunTest(const FString&)
 	// HTTP or gameplay opt-out is performed by this fixture.
 	auto* Login = Widget->GetWidgetFromName(TEXT("LoginSteamButton"));
 	auto* Logout = Widget->GetWidgetFromName(TEXT("LogoutBackendButton"));
-	auto* Characters = Widget->GetWidgetFromName(TEXT("OwnedCharacters"));
+	auto* Characters = Widget->GetWidgetFromName(TEXT("CharacterLineupSlot0"));
 	auto* Parties = Widget->GetWidgetFromName(TEXT("FindSteamPartiesButton"));
 	if (!TestNotNull(TEXT("Login control"), Login) || !TestNotNull(TEXT("Account control"), Logout)
 		|| !TestNotNull(TEXT("Character control"), Characters) || !TestNotNull(TEXT("Steam party control"), Parties)) return false;
 	for (auto* Control : {Login, Logout, Characters, Parties}) Enable(Control);
 	Widget->RefreshInputNavigation();
-	TestTrue(TEXT("Native refresh connects the login/account controls"), PointsTo(Login, EUINavigation::Next, Logout));
-	TestTrue(TEXT("Native refresh crosses into character selection"), PointsTo(Logout, EUINavigation::Next, Characters));
+	TestTrue(TEXT("Native refresh crosses into character selection"), PointsTo(Login, EUINavigation::Next, Characters));
 	TestTrue(TEXT("Steam party navigation is not omitted from the native cycle"), PointsTo(Characters, EUINavigation::Next, Parties)
-		&& PointsTo(Parties, EUINavigation::Next, Login));
+		&& PointsTo(Parties, EUINavigation::Next, Logout));
+	TestTrue(TEXT("The footer account action wraps to the beginning"), PointsTo(Logout, EUINavigation::Next, Login));
 	auto* Confirm = Widget->GetWidgetFromName(TEXT("ConfirmDungeonAbandonmentButton"));
 	auto* Cancel = Widget->GetWidgetFromName(TEXT("CancelDungeonAbandonmentButton"));
 	if (!TestNotNull(TEXT("Native confirm"), Confirm) || !TestNotNull(TEXT("Native cancel"), Cancel)) return false;

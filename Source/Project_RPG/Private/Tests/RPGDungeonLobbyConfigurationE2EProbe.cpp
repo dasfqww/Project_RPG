@@ -86,6 +86,12 @@ bool URPGDungeonFlowE2EClient::TickLobbyConfigurationProbe(UWorld*, APlayerContr
 			auto* Reload = Cast<UButton>(Widget->GetWidgetFromName(TEXT("ReloadCreationOptionsButton")));
 			auto* Notice = Cast<UTextBlock>(Widget->GetWidgetFromName(TEXT("CharacterCreationClassStatus")));
 			if (!Classes || !Name || !Create || !Reload || !Notice) return Fail(TEXT("ReadFailuresCreationControlsMissing"));
+			if (Stage == 40)
+			{
+				auto* Open = Cast<UButton>(Widget->GetWidgetFromName(TEXT("OpenCharacterCreationButton")));
+				auto* Panel = Widget->GetWidgetFromName(TEXT("OnlineLobbyCharacterCreationSection"));
+				if (Panel && !Panel->IsVisible() && Open && Open->GetIsEnabled()) Open->OnClicked.Broadcast();
+			}
 			if (Stage == 41 || Stage == 43 || Stage == 45)
 			{
 				const TCHAR* Gate = Stage == 41 ? TEXT("catalog-ready.ready") : Stage == 43 ? TEXT("catalog-empty.ready") : TEXT("catalog-release.ready");
@@ -130,6 +136,9 @@ bool URPGDungeonFlowE2EClient::TickLobbyConfigurationProbe(UWorld*, APlayerContr
 				}
 				else
 				{
+					auto* BackToRoster = Cast<UButton>(Widget->GetWidgetFromName(TEXT("CloseCharacterCreationButton")));
+					if (!BackToRoster || !BackToRoster->GetIsEnabled()) return Fail(TEXT("ReadFailuresRosterReturnUnavailable"));
+					BackToRoster->OnClicked.Broadcast();
 					Stage = 2;
 					Characters->SetSelectedOption(Widget->GetCharacterOption(CharacterId));
 				}

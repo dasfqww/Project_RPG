@@ -11,9 +11,12 @@
 #include "UI/Lobby/RPGOnlineLobbyActionAvailability.h"
 #include "RPGOnlineLobbyWidget.generated.h"
 
+class ARPGCharacterLineupStage;
 class UButton;
 class UComboBoxString;
 class UEditableTextBox;
+class UImage;
+class UHorizontalBox;
 class UTextBlock;
 class UVerticalBox;
 class URPGSteamAuthSubsystem;
@@ -136,15 +139,13 @@ private:
 	friend struct FRPGDungeonSelectionTestAccess;
 	friend class FRPGOnlineLobbyWidgetTest;
 	friend class FRPGMenuFrontendTest;
-	void BuildMenuContent(UVerticalBox& Parent, bool bServerPage);
+	void BuildMenuContent(UVerticalBox& Parent);
 	void RefreshMenuPresentation();
 	bool CanStartTutorial() const;
 	FString GetPracticeEntryDungeonId() const;
 	bool HasCompletedTutorial() const;
 	void AdvanceTutorialEntry();
 	void StopTutorialEntry();
-	UFUNCTION() void SelectServerPage();
-	UFUNCTION() void ShowServerPage();
 	UFUNCTION() void OpenSkillMenu();
 	UFUNCTION() void OpenEquipmentMenu();
 	UFUNCTION() void OpenTradeMenu();
@@ -167,7 +168,6 @@ private:
 	UFUNCTION() void CloseLobbyDetails();
 	UFUNCTION() void StartTutorial();
 	UFUNCTION() void ReloadTutorialProgress();
-	UPROPERTY(Transient) TObjectPtr<UVerticalBox> ServerContent;
 	UPROPERTY(Transient) TObjectPtr<UVerticalBox> MenuContent;
 	UPROPERTY(Transient) TObjectPtr<UWidget> ConfigurationSection;
 	UPROPERTY(Transient) TObjectPtr<UWidget> EquipmentSection;
@@ -176,7 +176,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UWidget> DevelopmentSessionSection;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> TutorialStatusText;
 	// Presentation and user intent only; selected identity/session stay in Flow.
-	bool bServerSelected = false, bSkillMenuOpen = false, bDungeonMenuOpen = false, bEquipmentMenuOpen = false;
+	bool bSkillMenuOpen = false, bDungeonMenuOpen = false, bEquipmentMenuOpen = false;
 	bool bTutorialEntryActive = false, bTutorialResolvingSession = false, bAdvancingTutorial = false;
 	FString TutorialAccount, TutorialCharacter, TutorialDungeonId;
 	FText TutorialEntryFailure;
@@ -190,6 +190,21 @@ private:
 	void RefreshInputNavigation();
 	void BuildCharacterContent(UVerticalBox& Parent);
 	void RefreshCharacterPresentation();
+	UImage* BuildLineupImage(UVerticalBox& Parent, bool bInteractive);
+	void RefreshLineupStage(bool bShowStage);
+	void SelectOwnedCharacter(const FString& CharacterId);
+	void ActivateCharacterSlot(int32 SlotIndex);
+	void MoveCharacterPage(int32 Direction);
+	UFUNCTION() void ActivateCharacterSlot0();
+	UFUNCTION() void ActivateCharacterSlot1();
+	UFUNCTION() void ActivateCharacterSlot2();
+	UFUNCTION() void ActivateCharacterSlot3();
+	UFUNCTION() void ActivateCharacterSlot4();
+	UFUNCTION() void ActivateCharacterSlot5();
+	UFUNCTION() void PreviousCharacterPage();
+	UFUNCTION() void NextCharacterPage();
+	UFUNCTION() void OpenCharacterCreation();
+	UFUNCTION() void CloseCharacterCreation();
 	FText GetCharacterProgressionText(const FRPGBackendCharacter& Character) const;
 	const FRPGCharacterCreationOption* GetSelectedCreationClass() const;
 	void BeginCreationOptionsLoad();
@@ -271,6 +286,14 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> LoginHintText;
 	UPROPERTY(Transient) TObjectPtr<UVerticalBox> LoginContent;
 	UPROPERTY(Transient) TObjectPtr<UVerticalBox> CharacterContent;
+	UPROPERTY(Transient) TObjectPtr<UWidget> CharacterSelectionSection;
+	UPROPERTY(Transient) TObjectPtr<UWidget> CharacterCreationSection;
+	UPROPERTY(Transient) TObjectPtr<UHorizontalBox> LineupSlots;
+	UPROPERTY(Transient) TArray<TObjectPtr<UButton>> LineupSlotButtons;
+	UPROPERTY(Transient) TArray<TObjectPtr<UTextBlock>> LineupSlotLabels;
+	UPROPERTY(Transient) TObjectPtr<UImage> LineupImage;
+	UPROPERTY(Transient) TObjectPtr<UImage> TitleImage;
+	UPROPERTY(Transient) TObjectPtr<ARPGCharacterLineupStage> LineupStage;
 	UPROPERTY(Transient) TObjectPtr<UVerticalBox> LobbyContent;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> CharacterListText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> SelectedCharacterText;
@@ -304,6 +327,9 @@ private:
 	FString PolledSessionId;
 	FString ConfirmAbandonmentSessionId;
 	FString ConfirmAbandonmentCharacterId;
+	FString PendingCreatedCharacterId;
+	int32 CharacterPage = 0;
+	bool bCharacterCreationOpen = false;
 	FString ConfirmAbandonmentSteamId;
 	bool bAbandonmentConfirmationOpen = false;
 	double PollUntil = 0.0;
