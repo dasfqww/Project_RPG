@@ -15,6 +15,8 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Components/WrapBox.h"
+#include "Components/WrapBoxSlot.h"
 #include "Engine/GameInstance.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
@@ -51,6 +53,7 @@ UImage* URPGOnlineLobbyWidget::BuildLineupImage(UVerticalBox& Parent, bool bInte
 	Background->SetContent(Photo);
 	if (!bInteractive) return Photo;
 
+	LineupFrame = Scale;
 	LineupSlots = WidgetTree->ConstructWidget<UHorizontalBox>();
 	auto* SlotsOverlay = Overlay->AddChildToOverlay(LineupSlots);
 	SlotsOverlay->SetHorizontalAlignment(HAlign_Fill);
@@ -134,18 +137,67 @@ void URPGOnlineLobbyWidget::BuildCharacterContent(UVerticalBox& Parent)
 		*AddActionColumn(*PageActions), TEXT("PreviousCharacterPage"), LOCTEXT("PreviousPage", "← 이전")));
 	Buttons.Add(TEXT("NextCharacterPage"), RPGOnlineLobbyLayout::Action(*WidgetTree,
 		*AddActionColumn(*PageActions), TEXT("NextCharacterPage"), LOCTEXT("NextPage", "다음 →")));
-	Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *CharacterContent, TEXT("OnlineLobbyCharacterCreationSection"),
-		NSLOCTEXT("RPGOnlineLobby", "CharacterCreationSection", "새 캐릭터 만들기"));
-	CharacterCreationSection = Rows->GetParent();
+	auto* CreationFrame = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("OnlineLobbyCharacterCreationSection"));
+	CreationFrame->SetWidthOverride(744.f);
+	CharacterContent->AddChildToVerticalBox(CreationFrame);
+	CharacterCreationSection = CreationFrame;
+	auto* Columns = WidgetTree->ConstructWidget<UWrapBox>();
+	Columns->SetInnerSlotPadding(FVector2D(20.f, 12.f));
+	Columns->SetHorizontalAlignment(HAlign_Center);
+	CreationFrame->SetContent(Columns);
+
+	CreationPreviewColumn = WidgetTree->ConstructWidget<UVerticalBox>();
+	Columns->AddChildToWrapBox(CreationPreviewColumn);
+	auto* PortraitFrame = WidgetTree->ConstructWidget<USizeBox>();
+	PortraitFrame->SetWidthOverride(320.f);
+	PortraitFrame->SetHeightOverride(400.f);
+	CreationPreviewColumn->AddChildToVerticalBox(PortraitFrame);
+	CreationPortrait = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("CreationPortrait"));
+	CreationPortrait->SetVisibility(ESlateVisibility::HitTestInvisible);
+	PortraitFrame->SetContent(CreationPortrait);
+	auto* TurnActions = WidgetTree->ConstructWidget<UHorizontalBox>();
+	CreationPreviewColumn->AddChildToVerticalBox(TurnActions)->SetPadding(FMargin(0, 6, 0, 0));
+	auto StyleCreationAction = [](UButton* Button, const FLinearColor& Color)
+	{
+		FButtonStyle Style = Button->GetStyle();
+		Style.Normal.TintColor = Color;
+		Style.Hovered.TintColor = FLinearColor::LerpUsingHSV(Color, FLinearColor::White, .16f);
+		Style.Pressed.TintColor = Color * .7f;
+		Button->SetStyle(Style);
+		return Button;
+	};
+	const FLinearColor Secondary(.09f, .15f, .21f);
+	auto* Left = RPGOnlineLobbyLayout::Action(*WidgetTree, *AddActionColumn(*TurnActions),
+		TEXT("TurnCreationPreviewLeft"), LOCTEXT("TurnLeft", "왼쪽 회전"));
+	auto* Right = RPGOnlineLobbyLayout::Action(*WidgetTree, *AddActionColumn(*TurnActions),
+		TEXT("TurnCreationPreviewRight"), LOCTEXT("TurnRight", "오른쪽 회전"));
+	Buttons.Add(TEXT("TurnCreationPreviewLeft"), StyleCreationAction(Left, Secondary));
+	Buttons.Add(TEXT("TurnCreationPreviewRight"), StyleCreationAction(Right, Secondary));
+
+	auto* FormFrame = WidgetTree->ConstructWidget<USizeBox>();
+	FormFrame->SetWidthOverride(400.f);
+	Columns->AddChildToWrapBox(FormFrame)->SetVerticalAlignment(VAlign_Top);
+	auto* Form = WidgetTree->ConstructWidget<UVerticalBox>();
+	FormFrame->SetContent(Form);
+	Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *Form, TEXT("CreationForm"), LOCTEXT("CreationClass", "직업"));
 	CreationClassBox = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(), TEXT("CharacterCreationClass"));
 	RPGOnlineLobbyLayout::Control(*WidgetTree, *Rows, *CreationClassBox);
-	RPGOnlineLobbyLayout::Text(*WidgetTree, *Rows, TEXT("CharacterCreationClassName"), LOCTEXT("GreatSwordWarrior", "대검 전사"), 23);
+	RPGOnlineLobbyLayout::Text(*WidgetTree, *Rows, TEXT("CharacterCreationClassName"), FText::GetEmpty(), 23);
 	CreationClassText = RPGOnlineLobbyLayout::Text(*WidgetTree, *Rows, TEXT("CharacterCreationClassStatus"), FText::GetEmpty());
-	AddAction(TEXT("ReloadCreationOptionsButton"), NSLOCTEXT("RPGOnlineLobby", "ReloadCreationClasses", "생성 가능한 직업 새로고침"));
+	StyleCreationAction(AddAction(TEXT("ReloadCreationOptionsButton"),
+		NSLOCTEXT("RPGOnlineLobby", "ReloadCreationClasses", "생성 가능한 직업 새로고침")), Secondary);
+	Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *Form, TEXT("CreationNameForm"), LOCTEXT("CreationNameLabel", "캐릭터 이름"));
 	CharacterName = RPGOnlineLobbyLayout::Input(*WidgetTree, *Rows, TEXT("NewCharacterName"),
 		NSLOCTEXT("RPGOnlineLobby", "CharacterName", "새 캐릭터 이름 (2~20자)"));
-	AddAction(TEXT("CreateCharacterButton"), NSLOCTEXT("RPGOnlineLobby", "CreateCharacter", "캐릭터 생성"));
-	AddAction(TEXT("CloseCharacterCreationButton"), LOCTEXT("BackToLineup", "캐릭터 선택으로"));
+	FEditableTextBoxStyle NameStyle = CharacterName->GetWidgetStyle();
+	NameStyle.SetBackgroundColor(FLinearColor(.045f, .063f, .085f));
+	NameStyle.SetForegroundColor(FLinearColor::White).SetFocusedForegroundColor(FLinearColor::White);
+	NameStyle.SetPadding(FMargin(10, 5));
+	NameStyle.TextStyle.Font.Size = 17;
+	CharacterName->SetWidgetStyle(NameStyle);
+	StyleCreationAction(AddAction(TEXT("CreateCharacterButton"),
+		NSLOCTEXT("RPGOnlineLobby", "CreateCharacter", "캐릭터 생성")), FLinearColor(.055f, .31f, .34f));
+	StyleCreationAction(AddAction(TEXT("CloseCharacterCreationButton"), LOCTEXT("BackToLineup", "캐릭터 선택으로")), Secondary);
 	Rows = CharacterContent;
 	AddAction(TEXT("ReloadCharactersButton"), LOCTEXT("RetryRoster", "캐릭터 목록 다시 시도"));
 }
@@ -187,6 +239,7 @@ void URPGOnlineLobbyWidget::RefreshCharacterPresentation()
 		Label->SetColorAndOpacity(FSlateColor(bSelected ? FLinearColor(1.f, .78f, .43f) : FLinearColor(.88f, .94f, 1.f)));
 	}
 	if (LineupSlots) LineupSlots->SetVisibility(bCharacterCreationOpen ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
+	if (LineupFrame) LineupFrame->SetVisibility(bCharacterCreationOpen ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
 	if (CharacterSelectionSection) CharacterSelectionSection->SetVisibility(bCharacterCreationOpen ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 	if (CharacterCreationSection) CharacterCreationSection->SetVisibility(bCharacterCreationOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	auto Control = [this](const FName Name, bool bEnabled, bool bVisible)
@@ -201,6 +254,11 @@ void URPGOnlineLobbyWidget::RefreshCharacterPresentation()
 	Control(TEXT("PreviousCharacterPage"), CharacterPage > 0, LastPage > 0);
 	Control(TEXT("NextCharacterPage"), CharacterPage < LastPage, LastPage > 0);
 	Control(TEXT("CloseCharacterCreationButton"), !bCreatingCharacter, true);
+	const auto* CreationClass = GetSelectedCreationClass();
+	const bool bHasPortrait = CreationClass && CreationClass->ClassId == TEXT("RPGPlayerClassDefinition:GreatSwordWarrior");
+	if (CreationPreviewColumn) CreationPreviewColumn->SetVisibility(bHasPortrait ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+	Control(TEXT("TurnCreationPreviewLeft"), bCharacterCreationOpen && bHasPortrait && !bCreatingCharacter, bHasPortrait);
+	Control(TEXT("TurnCreationPreviewRight"), bCharacterCreationOpen && bHasPortrait && !bCreatingCharacter, bHasPortrait);
 	if (auto* Button = Buttons.FindRef(TEXT("ReloadCharactersButton")).Get())
 		RPGOnlineLobbyLayout::SetControlVisibility(*Button, UIError == TEXT("load_characters_failed")
 			|| UIError == TEXT("create_character_failed") ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
@@ -211,16 +269,15 @@ void URPGOnlineLobbyWidget::RefreshCharacterPresentation()
 		CreationClasses.Num() > 1 ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	if (auto* ClassName = Cast<UTextBlock>(GetWidgetFromName(TEXT("CharacterCreationClassName"))))
 	{
-		const auto* Class = GetSelectedCreationClass();
-		ClassName->SetText(Class ? FText::FromString(Class->DisplayName) : FText::GetEmpty());
-		ClassName->SetVisibility(Class ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		ClassName->SetText(CreationClass ? FText::FromString(CreationClass->DisplayName) : FText::GetEmpty());
+		ClassName->SetVisibility(CreationClass && CreationClasses.Num() == 1 ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
 
 	const bool bTitle = LoginContent && LoginContent->IsVisible();
-	RefreshLineupStage(bTitle || (CharacterContent && CharacterContent->IsVisible()));
+	RefreshLineupStage(bTitle || (CharacterContent && CharacterContent->IsVisible() && (!bCharacterCreationOpen || bHasPortrait)));
 	if (LineupStage && LineupStage->IsActorTickEnabled())
-		LineupStage->Present(OccupiedSlots, SelectedSlot, bTitle || bCharacterCreationOpen,
-			bTitle || GetSelectedCreationClass() != nullptr);
+		LineupStage->Present(OccupiedSlots, SelectedSlot, bTitle ? ERPGLineupView::Title :
+			bCharacterCreationOpen ? ERPGLineupView::Creation : ERPGLineupView::Roster, CreationPreviewYaw);
 
 	FText ListStatus;
 	if (bLoadingCharacters)
@@ -287,12 +344,14 @@ void URPGOnlineLobbyWidget::RefreshLineupStage(bool bShowStage)
 		LineupStage = World->SpawnActor<ARPGCharacterLineupStage>(FVector(0, 0, 24000), FRotator::ZeroRotator, Spawn);
 		if (LineupStage)
 		{
-			for (UImage* Image : {LineupImage.Get(), TitleImage.Get()})
+			for (UImage* Image : {LineupImage.Get(), TitleImage.Get(), CreationPortrait.Get()})
 			{
 				if (!Image) continue;
 				FSlateBrush Brush;
 				Brush.SetResourceObject(LineupStage->GetImage());
-				Brush.ImageSize = FVector2D(ARPGCharacterLineupStage::ImageWidth, ARPGCharacterLineupStage::ImageHeight);
+				Brush.ImageSize = Image == CreationPortrait
+					? FVector2D(ARPGCharacterLineupStage::PortraitWidth, ARPGCharacterLineupStage::PortraitHeight)
+					: FVector2D(ARPGCharacterLineupStage::ImageWidth, ARPGCharacterLineupStage::ImageHeight);
 				Image->SetBrush(Brush);
 			}
 		}
@@ -302,7 +361,7 @@ void URPGOnlineLobbyWidget::RefreshLineupStage(bool bShowStage)
 	{
 		LineupStage->SetActorTickEnabled(bShowStage);
 		LineupStage->SetActorHiddenInGame(!bShowStage);
-		if (!bShowStage) LineupStage->Present(0, INDEX_NONE, false, false);
+		if (!bShowStage) LineupStage->Present(0, INDEX_NONE, ERPGLineupView::Roster);
 	}
 }
 
@@ -337,6 +396,7 @@ void URPGOnlineLobbyWidget::OpenCharacterCreation()
 	if (!CharacterContent || !CharacterContent->IsVisible() || bCharacterCreationOpen
 		|| !bHasLoadedCharacterList || !PendingCreatedCharacterId.IsEmpty() || !CurrentPresentation().bCanCreateCharacter) return;
 	bCharacterCreationOpen = true;
+	CreationPreviewYaw = 0.f;
 	UIError.Reset();
 	RefreshPresentation();
 }
@@ -346,6 +406,18 @@ void URPGOnlineLobbyWidget::CloseCharacterCreation()
 	if (!bCharacterCreationOpen || bCreatingCharacter) return;
 	bCharacterCreationOpen = false;
 	RefreshPresentation();
+}
+
+void URPGOnlineLobbyWidget::TurnCreationPreviewLeft() { TurnCreationPreview(-45.f); }
+void URPGOnlineLobbyWidget::TurnCreationPreviewRight() { TurnCreationPreview(45.f); }
+
+void URPGOnlineLobbyWidget::TurnCreationPreview(float Degrees)
+{
+	if (!bCharacterCreationOpen || bCreatingCharacter || !CharacterContent || !CharacterContent->IsVisible()
+		|| !CreationPreviewColumn || !CreationPreviewColumn->IsVisible()) return;
+	CreationPreviewYaw = FRotator::NormalizeAxis(CreationPreviewYaw + Degrees);
+	if (LineupStage && LineupStage->IsActorTickEnabled())
+		LineupStage->Present(0, INDEX_NONE, ERPGLineupView::Creation, CreationPreviewYaw);
 }
 
 FText URPGOnlineLobbyWidget::GetCharacterProgressionText(const FRPGBackendCharacter& Character) const

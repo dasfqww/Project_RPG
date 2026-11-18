@@ -14,7 +14,9 @@ namespace
 {
 	constexpr float SlotSpacing = 178.f;
 	const FVector LineupCamera(950, 0, 118);
-	const FVector PortraitCamera(410, 0, 130);
+	const FVector TitleCamera(410, 0, 130);
+	const FVector CreationCamera(355, 0, 92);
+	constexpr float FacingCameraYaw = -78.f;
 
 	float SlotCenter(int32 Index)
 	{
@@ -129,7 +131,7 @@ ARPGCharacterLineupStage::ARPGCharacterLineupStage()
 		SlotLights.Add(AddLight(FName(*FString::Printf(TEXT("SlotKey%d"), Index)),
 			FVector(115, Center, 170), FLinearColor(1.f, .72f, .42f), 3.5f, 265.f));
 	}
-	CloseupCharacter = AddCharacter(SlotCount, FVector::ZeroVector, -78.f);
+	CloseupCharacter = AddCharacter(SlotCount, FVector::ZeroVector, FacingCameraYaw);
 }
 
 void ARPGCharacterLineupStage::BeginPlay()
@@ -143,9 +145,24 @@ void ARPGCharacterLineupStage::BeginPlay()
 	Capture->ShowOnlyActorComponents(this);
 }
 
-void ARPGCharacterLineupStage::Present(uint8 OccupiedSlots, int32 SelectedSlot, bool bCloseup, bool bShowCharacter)
+void ARPGCharacterLineupStage::Present(uint8 OccupiedSlots, int32 SelectedSlot, ERPGLineupView View, float PortraitYaw)
 {
-	CameraTarget = bCloseup ? PortraitCamera : LineupCamera;
+	const bool bCreation = View == ERPGLineupView::Creation;
+	const bool bCloseup = View != ERPGLineupView::Roster;
+	CameraTarget = bCreation ? CreationCamera : bCloseup ? TitleCamera : LineupCamera;
+	TargetYaw = bCreation ? -108.f + PortraitYaw : FacingCameraYaw;
+	if (View != ActiveView)
+	{
+		if (bCreation || ActiveView == ERPGLineupView::Creation)
+		{
+			if (Image) Image->ResizeTarget(bCreation ? PortraitWidth : ImageWidth, bCreation ? PortraitHeight : ImageHeight);
+			Capture->FOVAngle = bCreation ? 35.f : 60.f;
+			Capture->SetRelativeLocation(CameraTarget);
+			Capture->bCameraCutThisFrame = true;
+		}
+		CloseupCharacter->SetRelativeRotation(FRotator(0, TargetYaw, 0));
+		ActiveView = View;
+	}
 	for (int32 Index = 0; Index < Characters.Num(); ++Index)
 	{
 		const bool bVisible = !bCloseup && (OccupiedSlots & (1 << Index)) != 0;
@@ -155,14 +172,20 @@ void ARPGCharacterLineupStage::Present(uint8 OccupiedSlots, int32 SelectedSlot, 
 		Characters[Index]->SetRelativeLocation(FVector(bSelected ? 23.f : 0.f, SlotCenter(Index), 0));
 		SlotLights[Index]->SetVisibility(bSelected);
 	}
-	CloseupCharacter->SetVisibility(bCloseup && bShowCharacter, true);
-	CloseupCharacter->SetComponentTickEnabled(bCloseup && bShowCharacter);
-	if (bCloseup) SlotLights[2]->SetVisibility(bShowCharacter);
+	CloseupCharacter->SetVisibility(bCloseup, true);
+	CloseupCharacter->SetComponentTickEnabled(bCloseup);
+	if (bCloseup) SlotLights[2]->SetVisibility(true);
 }
 
 void ARPGCharacterLineupStage::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	if (ActiveView == ERPGLineupView::Creation)
+	{
+		const FRotator Facing = FMath::RInterpTo(CloseupCharacter->GetRelativeRotation(),
+			FRotator(0, TargetYaw, 0), DeltaSeconds, 12.f);
+		CloseupCharacter->SetRelativeRotation(Facing);
+	}
 	Capture->SetRelativeLocation(FMath::VInterpTo(Capture->GetRelativeLocation(), CameraTarget, DeltaSeconds, 8.f));
 	if (Image) Capture->CaptureScene();
 }

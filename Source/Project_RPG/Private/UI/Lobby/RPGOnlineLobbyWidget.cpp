@@ -364,6 +364,8 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 	BIND_ACTION("LogoutBackendButton", LogoutBackend);
 	BIND_ACTION("OpenCharacterCreationButton", OpenCharacterCreation);
 	BIND_ACTION("CloseCharacterCreationButton", CloseCharacterCreation);
+	BIND_ACTION("TurnCreationPreviewLeft", TurnCreationPreviewLeft);
+	BIND_ACTION("TurnCreationPreviewRight", TurnCreationPreviewRight);
 	BIND_ACTION("PreviousCharacterPage", PreviousCharacterPage);
 	BIND_ACTION("NextCharacterPage", NextCharacterPage);
 	BIND_ACTION("ReloadCharactersButton", ReloadCharacters);
@@ -443,6 +445,7 @@ void URPGOnlineLobbyWidget::NativeDestruct()
 	if (LineupStage) LineupStage->Destroy();
 	LineupStage = nullptr;
 	if (LineupImage) LineupImage->SetBrush(FSlateBrush());
+	if (CreationPortrait) CreationPortrait->SetBrush(FSlateBrush());
 	if (TitleImage) TitleImage->SetBrush(FSlateBrush());
 	UnbindServiceStatus();
 	if (NarrativePanel) NarrativePanel->CloseScreen();

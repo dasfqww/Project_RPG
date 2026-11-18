@@ -5,6 +5,7 @@
 #include "Online/RPGOnlineLobbySubsystem.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
+#include "Components/EditableTextBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Engine/Engine.h"
@@ -116,6 +117,39 @@ bool FRPGMenuFrontendTest::RunTest(const FString&)
 	Widget->LineupSlotButtons[0]->OnClicked.Broadcast();
 	TestEqual(TEXT("Creation has its own screen"), Widget->CharacterCreationSection->GetVisibility(), ESlateVisibility::Visible);
 	TestEqual(TEXT("Roster actions are absent during creation"), Widget->CharacterSelectionSection->GetVisibility(), ESlateVisibility::Collapsed);
+	TestFalse(TEXT("The wide roster image leaves the creation layout"), Widget->LineupFrame->IsVisible());
+	TestFalse(TEXT("Missing catalog has no model or rotation controls"), Widget->CreationPreviewColumn->IsVisible());
+	FRPGCharacterCreationOption Warrior;
+	Warrior.ClassId = TEXT("RPGPlayerClassDefinition:GreatSwordWarrior");
+	Warrior.DisplayName = TEXT("대검 전사");
+	Widget->bLoadingCreationOptions = true;
+	Widget->HandleCreationOptions({Warrior}, true);
+	TestTrue(TEXT("The authored class has a portrait"), Widget->CreationPreviewColumn->IsVisible());
+	Widget->CharacterName->SetText(FText::FromString(TEXT("DraftHero")));
+	auto* TurnRight = Widget->Buttons.FindRef(TEXT("TurnCreationPreviewRight")).Get();
+	auto* TurnLeft = Widget->Buttons.FindRef(TEXT("TurnCreationPreviewLeft")).Get();
+	if (!TestNotNull(TEXT("Rotate right"), TurnRight) || !TestNotNull(TEXT("Rotate left"), TurnLeft)) return false;
+	TurnLeft->OnClicked.Broadcast();
+	TestEqual(TEXT("Left rotates the creation model"), Widget->CreationPreviewYaw, -45.f);
+	TurnRight->OnClicked.Broadcast();
+	TestEqual(TEXT("Right returns to the initial angle"), Widget->CreationPreviewYaw, 0.f);
+	for (int32 Turn = 0; Turn < 9; ++Turn) TurnRight->OnClicked.Broadcast();
+	TestEqual(TEXT("Rotation wraps after a full turn"), Widget->CreationPreviewYaw, 45.f);
+	TestEqual(TEXT("Inspecting the model preserves the draft"), Widget->CharacterName->GetText().ToString(), FString(TEXT("DraftHero")));
+	TestTrue(TEXT("Inspecting the model does not select an owned character"), Widget->Flow->GetSelectedCharacterId().IsEmpty());
+	FRPGCharacterCreationOption Other;
+	Other.ClassId = TEXT("RPGPlayerClassDefinition:Other");
+	Other.DisplayName = TEXT("Other");
+	Widget->bLoadingCreationOptions = true;
+	Widget->HandleCreationOptions({Other}, true);
+	TestFalse(TEXT("A class without authored art does not preview the warrior"), Widget->CreationPreviewColumn->IsVisible());
+	TestTrue(TEXT("The catalog class can still be created"), Widget->Buttons.FindRef(TEXT("CreateCharacterButton"))->GetIsEnabled());
+	TurnLeft->OnClicked.Broadcast();
+	TestEqual(TEXT("Hidden rotation controls cannot change the angle"), Widget->CreationPreviewYaw, 45.f);
+	Widget->CloseCharacterCreation();
+	TestTrue(TEXT("The lineup returns when leaving creation"), Widget->LineupFrame->IsVisible());
+	Widget->OpenCharacterCreation();
+	TestEqual(TEXT("A new visit starts facing forward"), Widget->CreationPreviewYaw, 0.f);
 	Widget->CloseCharacterCreation();
 	TestEqual(TEXT("Back restores the roster"), Widget->CharacterSelectionSection->GetVisibility(), ESlateVisibility::Visible);
 	FRPGBackendCharacter Character; Character.CharacterId = TEXT("owned-character"); Character.Name = TEXT("Hero");

@@ -205,6 +205,9 @@ private:
 	UFUNCTION() void NextCharacterPage();
 	UFUNCTION() void OpenCharacterCreation();
 	UFUNCTION() void CloseCharacterCreation();
+	UFUNCTION() void TurnCreationPreviewLeft();
+	UFUNCTION() void TurnCreationPreviewRight();
+	void TurnCreationPreview(float Degrees);
 	FText GetCharacterProgressionText(const FRPGBackendCharacter& Character) const;
 	const FRPGCharacterCreationOption* GetSelectedCreationClass() const;
 	void BeginCreationOptionsLoad();
@@ -292,6 +295,9 @@ private:
 	UPROPERTY(Transient) TArray<TObjectPtr<UButton>> LineupSlotButtons;
 	UPROPERTY(Transient) TArray<TObjectPtr<UTextBlock>> LineupSlotLabels;
 	UPROPERTY(Transient) TObjectPtr<UImage> LineupImage;
+	UPROPERTY(Transient) TObjectPtr<UWidget> LineupFrame;
+	UPROPERTY(Transient) TObjectPtr<UVerticalBox> CreationPreviewColumn;
+	UPROPERTY(Transient) TObjectPtr<UImage> CreationPortrait;
 	UPROPERTY(Transient) TObjectPtr<UImage> TitleImage;
 	UPROPERTY(Transient) TObjectPtr<ARPGCharacterLineupStage> LineupStage;
 	UPROPERTY(Transient) TObjectPtr<UVerticalBox> LobbyContent;
@@ -329,6 +335,7 @@ private:
 	FString ConfirmAbandonmentCharacterId;
 	FString PendingCreatedCharacterId;
 	int32 CharacterPage = 0;
+	float CreationPreviewYaw = 0.f;
 	bool bCharacterCreationOpen = false;
 	FString ConfirmAbandonmentSteamId;
 	bool bAbandonmentConfirmationOpen = false;
