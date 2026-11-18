@@ -21,9 +21,10 @@ await game.UpsertAccountAsync(new(owner, owner, false, false), clock.Now, defaul
 var character = await game.CreateCharacterAsync(owner, "ChapterOne", clock.Now, default);
 var alt = await game.CreateCharacterAsync(owner, "ChapterAlt", clock.Now, default);
 async Task<NarrativeView> View() => await Flow().LoadAsync(character.CharacterId, owner, default);
-async Task Choose(string dialogue, string choice = "accept") {
-    var view = await View(); clock.Advance();
-    await Flow().ChooseAsync(character.CharacterId, owner, new(Guid.NewGuid(), view.State.Revision, catalog.Version, dialogue, choice), default);
+async Task Choose(string dialogue, string choice = "accept", Guid? subject = null) {
+    Guid characterId = subject ?? character.CharacterId;
+    var view = await Flow().LoadAsync(characterId, owner, default); clock.Advance();
+    await Flow().ChooseAsync(characterId, owner, new(Guid.NewGuid(), view.State.Revision, catalog.Version, dialogue, choice), default);
 }
 async Task<Guid> Clear(string dungeon) {
     var session = await game.CreateDungeonSessionAsync(owner, character.CharacterId, dungeon, "Normal", clock.Now, clock.Now.AddHours(1), default);
@@ -45,6 +46,7 @@ async Task Reject(Func<Task> action, string code) {
 }
 var training = await Clear("Progression.Training");
 await Reject(() => Choose("CH01.M03.Offer"), "dialogue_not_available");
+await Reject(() => Choose("CH01.S01.Offer"), "dialogue_not_available");
 await Choose("CH01.M01.Offer");
 await Reject(() => Choose("CH01.D02", "confirm"), "dialogue_choice_not_available");
 await Choose("CH01.D01", "confirm"); await Choose("CH01.D02", "confirm");
@@ -57,12 +59,13 @@ await Choose("CH01.M03.Offer");
 var session = await game.CreateDungeonSessionAsync(owner, character.CharacterId, "Progression.Intro1", "Normal", clock.Now, clock.Now.AddHours(1), default);
 await game.AssignDungeonServerAsync(session.DungeonSessionId, server,"127.0.0.1:7777",clock.Now,clock.Now.AddHours(1),default);
 await game.StartDungeonSessionAsync(session.DungeonSessionId, server,clock.Now,clock.Now.AddHours(1),default);
-async Task<long> Admit() {
+async Task<long> Admit(Guid? subject = null) {
+    Guid characterId = subject ?? character.CharacterId;
     var ticket=new AccessTokenService(clock).Issue(TimeSpan.FromMinutes(5));
-    await game.StoreJoinTicketAsync(ticket.TokenHash,owner,character.CharacterId,session.DungeonSessionId,ticket.ExpiresAt,default);
+    await game.StoreJoinTicketAsync(ticket.TokenHash,owner,characterId,session.DungeonSessionId,ticket.ExpiresAt,default);
     var admitted=await game.ConsumeJoinTicketAsync(ticket.TokenHash,server,session.DungeonSessionId,clock.Now,default);
     Check(admitted is not null,"Admission consumed");
-    Check(await game.ConfirmDungeonMemberAdmissionAsync(session.DungeonSessionId,server,owner,character.CharacterId,admitted!.ConnectionGeneration,clock.Now,default),"Admission confirmed");
+    Check(await game.ConfirmDungeonMemberAdmissionAsync(session.DungeonSessionId,server,owner,characterId,admitted!.ConnectionGeneration,clock.Now,default),"Admission confirmed");
     return admitted.ConnectionGeneration;
 }
 long generation=await Admit();
@@ -88,6 +91,39 @@ Check((await Record(signal)).Revision==result.Revision&&(await Record(Event(3)))
 Check(view.State.CompletedChapters.IsEmpty,"M03 does not fabricate full chapter completion or skip eligibility");
 Check((await Flow().LoadAsync(alt.CharacterId,owner,default)).State.Quests.IsEmpty,"Alt progress isolated");
 Check(growth==JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(character.CharacterId,clock.Now,default)),"Narrative investigations do not grant growth or duplicate settlement");
+
+NarrativeInteractionCommand SideClue(string target, long currentGeneration) =>
+    new(Guid.NewGuid(), "CH01.S01." + target, currentGeneration, clock.Now);
+var earlyGlove = SideClue("Glove", generation);
+Check((await Record(earlyGlove)).AppliedObjectives.IsEmpty, "An investigation before S01 acceptance does not count");
+await Reject(() => Choose("CH01.S01.Offer.After"), "dialogue_not_available");
+await Reject(() => Choose("CH01.S01.Offer.Skipped"), "dialogue_not_available");
+await Choose("CH01.S01.Offer");
+await Reject(() => Choose("CH01.D12", "report"), "dialogue_not_available");
+Check((await Record(earlyGlove)).AppliedObjectives.IsEmpty, "Replaying the early glove event does not backfill S01");
+await Record(SideClue("Nameplate", generation));
+await Reject(() => Choose("CH01.D12", "report"), "dialogue_not_available");
+await game.RecordDungeonMemberDisconnectionAsync(session.DungeonSessionId, server, owner, character.CharacterId, generation, clock.Now, default);
+generation = await Admit(); clock.Advance();
+Check((await View()).State.Quests.Single(q => q.QuestId == "CH01.S01").CompletedObjectives.SequenceEqual(["nameplate"]),
+    "One side clue is restored after reconnect");
+var glove = SideClue("Glove", generation);
+var gloveResults = await Task.WhenAll(Record(glove), Record(glove));
+Check(gloveResults[0].Revision == gloveResults[1].Revision && gloveResults[0].AppliedObjectives.Single().ObjectiveId == "glove",
+    "Both unordered clues are required and duplicate glove observations are idempotent");
+var beforeYuna = await View();
+Check(beforeYuna.State.Quests.Single(q => q.QuestId == "CH01.S01").Status == QuestStatus.ReadyToReport,
+    "The two observations make S01 ready for Yuna's report");
+var yunaReport = new NarrativeCommand(Guid.NewGuid(), beforeYuna.State.Revision, catalog.Version, "CH01.D12", "report");
+var yunaReports = await Task.WhenAll(Flow().ChooseAsync(character.CharacterId, owner, yunaReport, default),
+    Flow().ChooseAsync(character.CharacterId, owner, yunaReport, default));
+Check(yunaReports.All(r => r.State.Revision == beforeYuna.State.Revision + 1 && r.State.CompletedChapters.IsEmpty),
+    "Yuna's report is saved once and does not advance the chapter");
+view = await View();
+Check(view.AvailableDialogues.Where(d => d.Id.StartsWith("CH01.S01.Epilogue", StringComparison.Ordinal)).Select(d => d.Id)
+    .SequenceEqual(["CH01.S01.Epilogue"]), "Before M08 Yuna leaves Taeo's fate open");
+Check(growth == JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(character.CharacterId, clock.Now, default)),
+    "S01 report does not grant growth");
 await Choose("CH01.M04.Offer");
 Check((await View()).State.Quests.Single(q=>q.QuestId=="CH01.M04").Status==QuestStatus.Active,"M04 still requires actual Intro1 evidence");
 view=await View();
@@ -225,6 +261,12 @@ Check(reports.All(r => r.State.Revision == view.State.Revision + 1 && r.State.Co
 await Reject(() => Choose("CH01.D08.Report", "report"), "dialogue_not_available");
 
 var ending = await View();
+Check(ending.AvailableDialogues.Where(d => d.Id.StartsWith("CH01.S01.Epilogue", StringComparison.Ordinal)).Select(d => d.Id)
+    .SequenceEqual(["CH01.S01.Epilogue.After"]), "Direct M08 switches Yuna's epilogue to the direct-rescue reply");
+var freshSide = ending.State with { Quests = ending.State.Quests.RemoveAll(q => q.QuestId == "CH01.S01") };
+Check(new DialogueManager(quests).GetAvailable(freshSide, catalog)
+    .Where(d => d.Id.StartsWith("CH01.S01.Offer", StringComparison.Ordinal)).Select(d => d.Id)
+    .SequenceEqual(["CH01.S01.Offer.After"]), "An unstarted side quest after direct M08 receives only the resolved opening");
 var aftermath = ending.AvailableDialogues.Single(d => d.Id == "CH01.D09");
 Check(aftermath.EntryPoint && aftermath.Choices.Single(c => c.Id == "survivors").NextDialogueId == "CH01.A01"
     && aftermath.Choices.Single(c => c.Id == "cause").NextDialogueId == "CH01.A02"
@@ -250,7 +292,25 @@ Check(skipped.State.CompletedChapters.SequenceEqual(["CH01"]) && skipped.State.Q
 Check(altGrowth == JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(alt.CharacterId, clock.Now, default))
     && (await History().LoadAsync(alt.CharacterId, owner, default)).Chapters.Single() == directHistory,
     "Story skip preserves alt growth and does not add direct account history");
-Console.WriteLine("PASS Chapter One M01-M08 integration");
+Check(skipped.AvailableDialogues.Where(d => d.Id.StartsWith("CH01.S01", StringComparison.Ordinal)).Select(d => d.Id)
+    .SequenceEqual(["CH01.S01.Offer.Skipped"]), "An alt after a skip still gets the optional side quest with the correct opening");
+await Reject(() => Choose("CH01.S01.Offer.After", subject: alt.CharacterId), "dialogue_not_available");
+await Choose("CH01.S01.Offer.Skipped", subject: alt.CharacterId);
+session = await game.CreateDungeonSessionAsync(owner, alt.CharacterId, "Progression.Intro1", "Normal", clock.Now, clock.Now.AddHours(1), default);
+await game.AssignDungeonServerAsync(session.DungeonSessionId, server, "127.0.0.1:7777", clock.Now, clock.Now.AddHours(1), default);
+await game.StartDungeonSessionAsync(session.DungeonSessionId, server, clock.Now, clock.Now.AddHours(1), default);
+long altGeneration = await Admit(alt.CharacterId);
+foreach (string target in new[] { "Glove", "Nameplate" })
+    await Events().RecordAsync(session.DungeonSessionId, alt.CharacterId, server, SideClue(target, altGeneration), default);
+await Choose("CH01.D12", "report", alt.CharacterId);
+var altSide = await Flow().LoadAsync(alt.CharacterId, owner, default);
+Check(altSide.State.Quests.Single().Status == QuestStatus.Completed
+    && altSide.AvailableDialogues.Where(d => d.Id.StartsWith("CH01.S01.Epilogue", StringComparison.Ordinal)).Select(d => d.Id)
+        .SequenceEqual(["CH01.S01.Epilogue.Skipped"]), "A skipped character can investigate and report, then sees only the skip epilogue");
+await Reject(() => Choose("CH01.S01.Epilogue.After", "close", alt.CharacterId), "dialogue_not_available");
+Check(altGrowth == JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(alt.CharacterId, clock.Now, default)),
+    "Side report after a story skip does not alter growth");
+Console.WriteLine("PASS Chapter One M01-M08 and S01 integration");
 var content = new ProjectRpg.Backend.Application.DungeonContentCatalog(new ProjectRpg.Backend.Configuration.DungeonContentOptions {
     Entries=[new(){DungeonId="Story.ChapterOneReturn",MapPackage="/Game/Maps/Progression/L_ChapterOneReturn",Difficulties=["Normal"]},
         new(){DungeonId="Progression.FirstBoss",MapPackage="/Game/Maps/Progression/L_ChapterOneBoss",Difficulties=["Normal","Hard"]}] });

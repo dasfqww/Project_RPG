@@ -11,6 +11,14 @@ public sealed class DialogueManager(QuestManager quests)
     {
         if (!definition.CompletionRequirements.All(id => state.Quests.Any(q => q.QuestId == id && q.Status == QuestStatus.Completed)))
             return false;
+        if (definition.RequiredChapterProgress is { } requirement)
+        {
+            var chapterStatus = state.StorySkips.Any(skip => skip.ChapterId == requirement.ChapterId)
+                ? ChapterProgressStatus.Skipped
+                : state.CompletedChapters.Contains(requirement.ChapterId)
+                    ? ChapterProgressStatus.Completed : ChapterProgressStatus.Unresolved;
+            if (chapterStatus != requirement.Status) return false;
+        }
         if (definition.Informational) return true;
         if (state.WasStorySkipped(definition.QuestId!)) return false;
         QuestProgress? progress = state.Quests.SingleOrDefault(q => q.QuestId == definition.QuestId);

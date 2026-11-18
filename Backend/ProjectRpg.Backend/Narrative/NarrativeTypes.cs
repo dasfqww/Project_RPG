@@ -8,6 +8,7 @@ namespace ProjectRpg.Backend.Narrative;
 public enum QuestStatus { Active, ReadyToReport, Completed }
 public enum QuestCategory { Unspecified, Main, Side }
 public enum DialogueEffect { AcceptQuest, RecordObjective, ReportQuest, None }
+public enum ChapterProgressStatus { Unresolved, Completed, Skipped }
 
 public sealed record QuestDefinition(string Id, int Version, ImmutableArray<string> Prerequisites,
     ImmutableArray<string> Objectives, string? Title = null, ImmutableDictionary<string, string>? ObjectiveTexts = null,
@@ -30,9 +31,10 @@ public sealed record ChapterDefinition(string Id, ImmutableArray<string> Require
     ImmutableArray<string> StoryUnlocks, string? Title = null, bool AllowStorySkip = false);
 public sealed record DialogueChoice(string Id, string Text, DialogueEffect Effect, string? ObjectiveId = null,
     string? NextDialogueId = null);
+public sealed record ChapterProgressCondition(string ChapterId, ChapterProgressStatus Status);
 public sealed record DialogueDefinition(string Id, string Speaker, string Text, string? QuestId,
     QuestStatus? RequiredStatus, ImmutableArray<DialogueChoice> Choices, bool Informational = false, bool EntryPoint = true,
-    ImmutableArray<string> RequiredCompletedQuests = default)
+    ImmutableArray<string> RequiredCompletedQuests = default, ChapterProgressCondition? RequiredChapterProgress = null)
 {
     internal ImmutableArray<string> CompletionRequirements => RequiredCompletedQuests.IsDefault ? [] : RequiredCompletedQuests;
 }

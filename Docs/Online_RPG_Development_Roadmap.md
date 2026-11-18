@@ -296,6 +296,8 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 ## 12. 현재 현황과 다음 작업 체크리스트 (2026-10-20)
 
+- [x] **2026-11-19 S01 남겨진 장갑 / chapter-s01-20261119** — 입문 1 외곽에서 장갑·작업대 이름표를 조사해 유나에게 개인 보고한다. 진행 중·직접 완료·스킵별 수락/후일담을 JSON으로 저작했다. 백엔드 4종과 사설 Unreal 맵 저장·새 프로세스 재로드 통과. 실제 조작 플레이는 별도이며 유나와 작업대는 블록아웃이다. 자기 임시 최소 114,448,347 bytes 폐기. [플레이와 검증](CHAPTER_ONE_PLAYABLE.md#s01-남겨진-장갑).
+
 - [x] **2026-11-19 M08 돌아온 사람들 / chapter-m08-20261119** — M07 반출 뒤 현장 거점 연락소 또는 로비 이야기에서 미라에게 개인 보고한다. 챕터 직접 완료·계정 스킵 자격과 선택 후일담을 연결했다. 대사 JSON v5, 백엔드 4종 통과, 사설 Unreal Editor 저장·새 프로세스 재로드 성공. 실제 연락소 조작 플레이는 별도이며 후일담 선택은 읽기 대화다. 자기 임시 130,348,839 bytes 폐기. [플레이와 검증](CHAPTER_ONE_PLAYABLE.md#m08-돌아온-사람들).
 
 - [x] 2026-11-19 캐릭터 생성 전신 프리뷰 완료. 대검 전사의 머리·발과 무기를 함께 표시하고 45도 회전 중 이름 초안을 유지한다. 최종 Editor·로비 native 13건(검사 중 오류 0), D3D11/개발 Memory에서 정면·회전·좁은 창 재배치·Seren 생성 및 소유 목록 자동 선택을 확인했다. 임시 390999815 bytes 정리. [생성 화면 계약](ONLINE_LOBBY_UI.md#3d-캐릭터-선택과-생성--2026-11-18).
@@ -987,6 +989,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| S01 남겨진 장갑 / chapter-s01-20261119 | 두 개인 조사와 유나 보고, 챕터 상태별 수락/후일담 | backend 카탈로그/공통 대화 조건 5경로·ChapterOneTests, `CreateChapterSideOneContent.py`, `L_ProgressionIntro1.umap`, `CHAPTER_ONE_PLAYABLE.md`·`NARRATIVE_CONTENT_AUTHORING.md`, 로드맵 본인 두 조각 | 백엔드 4종과 사설 맵 저장·별도 재로드 성공. 처음 backend 지역 변수 충돌 수정, 처음 UE 종료 제한과 파일 잠금 재시도 후 자기 임시 최소 114,448,347 bytes 폐기. `Saved/BuildChecks/ChapterS01-20261119/` 작은 근거. 공유 DLL·DB 쓰기 및 실제 조작 플레이 없음 | 구현·검증·정리 완료. 다른 index 사용이 없음을 재확인한 뒤 main Git index/ref·본인 11경로만 스테이징/커밋/origin/main 푸시 예약. 이 행을 포함한 커밋이 원격과 일치하면 본인 예약 해제 |
 | M08 돌아온 사람들 / chapter-m08-20261119 | 반출 지점 거점 연락소와 기존 로비 이야기에서 미라에게 개인 보고, 1장 직접 완료·부캐 스킵 자격·선택 후일담 | `chapter01.json`, `DungeonStoryAdmission.cs`, `ChapterOneTests/Program.cs`, `CreateChapterEightContent.py`, `L_ChapterOneReturn.umap`, `CHAPTER_ONE_PLAYABLE.md`, 로드맵 본인 두 조각 | 백엔드 4종 및 사설 Unreal 맵 저장·별도 재로드 성공. 처음 백엔드에서 스킵자 반출 현장 자격을 발견해 수정했고 처음 맵 검증의 해시 대소문자 판정을 보정했다. 임시 130,348,839 bytes 폐기. 작은 `Saved/BuildChecks/ChapterM08-20261119/` 결과만 로컬 유지. 공유 DLL·DB 쓰기 및 실제 조작 플레이 없음 | 구현·검증·정리 완료. 다른 index 사용이 없음을 재확인한 뒤 main Git index/ref·본인 7경로만 스테이징/커밋/origin/main 푸시 예약. 이 행을 포함한 커밋이 원격과 일치하면 본인 예약 해제 |
 | 캐릭터 생성 전신 프리뷰 / creation-portrait-20261119 | 생성 전용 전신 구도와 회전·직업/이름 반응형 배치 | 로비 위젯·생성·무대 소스5, MenuFrontend 회귀, ONLINE_LOBBY_UI 계약 및 본인 조율 기록 | 최종 Editor·로비 native 13건 통과. D3D11 1440×900 회전·이름 유지·새 캐릭터 생성/자동 선택, 280×900 세로 배치 확인. 근거 Saved/BuildChecks/CreationPortrait-20261119. | 구현·검증·정리 완료. 이 행의 커밋이 origin/main에 반영되면 본인 소스·검증·Git 예약 해제. |
 | 캐릭터 선택 무대 / character-lineup-20261118 | 6자리 3D 캐릭터 선택·별도 생성·단일 서버 자동 진행 | Private/UI/Lobby/RPGOnlineLobby{Widget,Characters,Menu}.cpp, 신규 RPGCharacterLineupStage.h/.cpp, Public/UI/Lobby/RPGOnlineLobbyWidget.h, Private/Tests/RPG{MenuFrontendTests,DungeonFlowE2EProbe,DungeonLobbyConfigurationE2EProbe,OnlineLobbyTests,OnlineLobbyBackInputTests,OnlineLobbyNavigationTests}.cpp, Scripts/Tests/TrainingLobbyUIObservation.ps1·Docs/ONLINE_LOBBY_UI.md·자기 로드맵 행/완료 단락. 기존 대검/무대 콘텐츠 읽기. | D3D11 1440×900 6인·키보드 선택, 전체 Editor, native13·Memory HTTP 생성/조회 실패 복구 통과. 본인 검증 프로세스·캐시 정리, 원본 출력 유지. 근거 Saved/BuildChecks/CharacterLineup-20261118. | 구현·검증·정리 완료. 이 행을 포함한 커밋이 origin/main과 일치하면 본인 소스·검증·Git 예약 해제. |

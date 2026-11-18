@@ -109,6 +109,11 @@ public sealed class NarrativeCatalog
             Require(requirements.Length <= 256 && requirements.Length == requirements.Distinct().Count()
                 && requirements.All(NarrativeCommand.ValidId) && requirements.All(Quests.ContainsKey)
                 && (d.Informational || requirements.IsEmpty), "invalid_dialogue_requirements");
+            if (d.RequiredChapterProgress is { } progress)
+                Require(NarrativeCommand.ValidId(progress.ChapterId) && Enum.IsDefined(progress.Status)
+                    && Chapters.TryGetValue(progress.ChapterId, out var chapter)
+                    && (progress.Status != ChapterProgressStatus.Skipped || chapter.AllowStorySkip),
+                    "invalid_dialogue_chapter_progress");
             Require(NarrativeCommand.ValidId(d.Id)
                 && (d.Informational ? d.QuestId is null && d.RequiredStatus is null
                     : d.EntryPoint && d.QuestId is not null && Quests.ContainsKey(d.QuestId))
@@ -137,7 +142,8 @@ public sealed class NarrativeCatalog
                             ? d.RequiredStatus is null : d.RequiredStatus == QuestStatus.ReadyToReport)),
                     "invalid_dialogue_choice");
                 if (d.Informational && c.NextDialogueId is { } next)
-                    Require(requirements.ToHashSet(StringComparer.Ordinal).SetEquals(Dialogues[next].CompletionRequirements),
+                    Require(requirements.ToHashSet(StringComparer.Ordinal).SetEquals(Dialogues[next].CompletionRequirements)
+                        && d.RequiredChapterProgress == Dialogues[next].RequiredChapterProgress,
                         "inconsistent_information_requirements");
             }
         }

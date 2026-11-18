@@ -17,7 +17,8 @@ public static class NarrativeCatalogLoader
         MaxDepth = 16,
         Converters = { new JsonStringEnumConverter<QuestStatus>(allowIntegerValues: false),
             new JsonStringEnumConverter<QuestCategory>(allowIntegerValues: false),
-            new JsonStringEnumConverter<DialogueEffect>(allowIntegerValues: false) }
+            new JsonStringEnumConverter<DialogueEffect>(allowIntegerValues: false),
+            new JsonStringEnumConverter<ChapterProgressStatus>(allowIntegerValues: false) }
     };
 
     public static NarrativeCatalog LoadConfigured(IConfiguration configuration, IHostEnvironment environment)

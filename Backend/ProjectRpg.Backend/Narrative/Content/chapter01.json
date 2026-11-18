@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": 5,
+  "catalogVersion": 6,
   "quests": [
     {
       "id": "CH01.M01",
@@ -258,6 +258,30 @@
       "objectives": ["debrief"],
       "objectiveTexts": {
         "debrief": "로비의 ‘인물과 이야기’에서 미라에게 구조 결과를 전하기"
+      }
+    },
+    {
+      "id": "CH01.S01",
+      "version": 1,
+      "title": "남겨진 장갑",
+      "category": "Side",
+      "prerequisites": ["CH01.M02"],
+      "objectives": ["glove", "nameplate"],
+      "objectiveTexts": {
+        "glove": "폐광 외곽에서 장갑 끈의 이중 매듭 조사",
+        "nameplate": "폐광 외곽에서 작업대 이름표 조사"
+      },
+      "interactionObjectives": {
+        "glove": {
+          "dungeonId": "Progression.Intro1",
+          "difficulty": "Normal",
+          "targetId": "CH01.S01.Glove"
+        },
+        "nameplate": {
+          "dungeonId": "Progression.Intro1",
+          "difficulty": "Normal",
+          "targetId": "CH01.S01.Nameplate"
+        }
       }
     }
   ],
@@ -547,6 +571,88 @@
       "informational": true,
       "entryPoint": false,
       "requiredCompletedQuests": ["CH01.M08"],
+      "choices": [
+        { "id": "close", "text": "대화를 마친다", "effect": "None" }
+      ]
+    },
+    {
+      "id": "CH01.S01.Offer",
+      "speaker": "유나",
+      "text": "동생 태오는 장갑 끈을 두 번 묶어요. 일터에 남은 장갑이 누구 것인지, 작업대 이름표도 함께 봐줄 수 있나요?",
+      "questId": "CH01.S01",
+      "requiredStatus": null,
+      "requiredChapterProgress": { "chapterId": "CH01", "status": "Unresolved" },
+      "choices": [
+        { "id": "accept", "text": "남겨진 장갑을 조사한다", "effect": "AcceptQuest" }
+      ]
+    },
+    {
+      "id": "CH01.S01.Offer.After",
+      "speaker": "유나",
+      "text": "태오는 돌아왔어요. 일터를 정리하다 장갑이 나왔는데, 태오 것인지 확인해 주실래요? 태오는 끈을 두 번 묶어요.",
+      "questId": "CH01.S01",
+      "requiredStatus": null,
+      "requiredChapterProgress": { "chapterId": "CH01", "status": "Completed" },
+      "choices": [
+        { "id": "accept", "text": "남겨진 장갑을 조사한다", "effect": "AcceptQuest" }
+      ]
+    },
+    {
+      "id": "CH01.S01.Offer.Skipped",
+      "speaker": "유나",
+      "text": "폐광에서 구조된 사람들 중에 제 동생 태오도 있었어요. 일터에 남은 장갑이 태오 것인지, 매듭과 작업대 이름표를 확인해 주실래요?",
+      "questId": "CH01.S01",
+      "requiredStatus": null,
+      "requiredChapterProgress": { "chapterId": "CH01", "status": "Skipped" },
+      "choices": [
+        { "id": "accept", "text": "남겨진 장갑을 조사한다", "effect": "AcceptQuest" }
+      ]
+    },
+    {
+      "id": "CH01.D12",
+      "speaker": "유나",
+      "text": "이 매듭, 태오가 묶은 게 맞아요. 제 장갑도 늘 이렇게 묶어줬죠. 누구의 것인지 확인해 줘서 고마워요.",
+      "questId": "CH01.S01",
+      "requiredStatus": "ReadyToReport",
+      "choices": [
+        { "id": "report", "text": "장갑의 주인을 확인했다고 보고한다", "effect": "ReportQuest" }
+      ]
+    },
+    {
+      "id": "CH01.S01.Epilogue",
+      "speaker": "유나",
+      "text": "태오의 것이 맞다니 다른 사람들에게도 물어볼게요. 아직 그 애가 어떻게 됐는지는 모르지만요.",
+      "questId": null,
+      "requiredStatus": null,
+      "informational": true,
+      "requiredCompletedQuests": ["CH01.S01"],
+      "requiredChapterProgress": { "chapterId": "CH01", "status": "Unresolved" },
+      "choices": [
+        { "id": "close", "text": "대화를 마친다", "effect": "None" }
+      ]
+    },
+    {
+      "id": "CH01.S01.Epilogue.After",
+      "speaker": "유나",
+      "text": "태오가 돌아왔어요. 장갑 얘기를 했더니, 제 끈부터 다시 묶어주더군요. 데려와 줘서 고마워요.",
+      "questId": null,
+      "requiredStatus": null,
+      "informational": true,
+      "requiredCompletedQuests": ["CH01.S01"],
+      "requiredChapterProgress": { "chapterId": "CH01", "status": "Completed" },
+      "choices": [
+        { "id": "close", "text": "대화를 마친다", "effect": "None" }
+      ]
+    },
+    {
+      "id": "CH01.S01.Epilogue.Skipped",
+      "speaker": "유나",
+      "text": "태오는 구조된 사람들과 돌아왔어요. 이제 장갑 끈을 다시 묶을 수 있겠죠. 누구 것인지 확인해 줘서 고마워요.",
+      "questId": null,
+      "requiredStatus": null,
+      "informational": true,
+      "requiredCompletedQuests": ["CH01.S01"],
+      "requiredChapterProgress": { "chapterId": "CH01", "status": "Skipped" },
       "choices": [
         { "id": "close", "text": "대화를 마친다", "effect": "None" }
       ]
