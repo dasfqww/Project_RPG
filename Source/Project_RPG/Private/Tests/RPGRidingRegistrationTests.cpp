@@ -139,8 +139,8 @@ bool FRidingRegistrationLifetime::RunTest(const FString&)
     TestFalse(TEXT("Shutdown rejects sends"), F.Reader->Read()); TestNull(TEXT("Shutdown suppresses callbacks"), F.Reader->GetOptions());
     return true;
 }
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingRegistrationFailures, "ProjectRPG.Riding.RegistrationClient.Failures", Flags)
-bool FRidingRegistrationFailures::RunTest(const FString&)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingRegistrationClientFailures, "ProjectRPG.Riding.RegistrationClient.Failures", Flags)
+bool FRidingRegistrationClientFailures::RunTest(const FString&)
 {
     FReader F; if (!F.Reader) return false;
     F.Transport->bAccept = false; TestFalse(TEXT("Dispatch rejection reported"), F.Reader->Read());

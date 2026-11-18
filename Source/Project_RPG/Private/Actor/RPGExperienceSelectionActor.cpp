@@ -15,7 +15,9 @@ ARPGExperienceSelectionActor::ARPGExperienceSelectionActor(const FObjectInitiali
 {
 	// AInfo already disables ticking, collision, spatial loading and data-layer membership.
 	bNetLoadOnClient = false;
+#if WITH_EDITORONLY_DATA
 	bIsMainWorldOnly = true;
+#endif
 }
 
 const ARPGExperienceSelectionActor* ARPGExperienceSelectionActor::FindForWorld(
