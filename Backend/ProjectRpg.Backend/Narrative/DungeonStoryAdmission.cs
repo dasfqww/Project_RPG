@@ -23,7 +23,7 @@ public sealed class DungeonStoryAdmission
     {
         var required = content.GetRequiredStoryUnlocks(dungeonId);
         // Existing repeat/skip combat remains governed by its original growth
-        // requirements. Only the new story scene needs the personal M06 gate.
+        // requirements. The extraction scene is for characters doing it directly.
         bool chapterRoute = narrative.Quests.ContainsKey("CH01.M07")
             && dungeonId == "Story.ChapterOneReturn";
         if (required.IsEmpty && !chapterRoute) return null;
@@ -31,7 +31,8 @@ public sealed class DungeonStoryAdmission
         {
             NarrativeState state = await ((INarrativeRepository)repository).LoadNarrativeAsync(characterId, steamId, cancellationToken);
             NarrativeCoordinator.ValidateState(state, narrative);
-            if (chapterRoute && !state.SatisfiesStoryQuest("CH01.M06")) return "story_prerequisite_not_met";
+            if (chapterRoute && (!state.SatisfiesStoryQuest("CH01.M06") || state.WasStorySkipped("CH01.M07")))
+                return "story_prerequisite_not_met";
             return required.All(state.StoryUnlocks.Contains) ? null : "story_prerequisite_not_met";
         }
         catch (NarrativeConflictException)

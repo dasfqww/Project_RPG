@@ -14,6 +14,8 @@ NarrativeCoordinator Flow() => new((INarrativeRepository)game, catalog, quests, 
 DungeonObjectiveCoordinator Goals() => new((INarrativeRepository)game, (INarrativeDungeonEvidenceRepository)game,
     catalog, quests, new(), Flow(), clock);
 NarrativeInteractionCoordinator Events() => new((INarrativeInteractionRepository)game, catalog, quests, new(), clock);
+NarrativeStorySkip Skip() => new((INarrativeStorySkipRepository)game, catalog, Flow(), clock);
+NarrativeAccountHistory History() => new((INarrativeHistoryRepository)game, catalog);
 const string owner = "76561198000000381", server = "chapter-one-test";
 await game.UpsertAccountAsync(new(owner, owner, false, false), clock.Now, default);
 var character = await game.CreateCharacterAsync(owner, "ChapterOne", clock.Now, default);
@@ -196,18 +198,65 @@ session=await game.CreateDungeonSessionAsync(owner,character.CharacterId,"Story.
 await game.AssignDungeonServerAsync(session.DungeonSessionId,server,"127.0.0.1:7777",clock.Now,clock.Now.AddHours(1),default);
 await game.StartDungeonSessionAsync(session.DungeonSessionId,server,clock.Now,clock.Now.AddHours(1),default);generation=await Admit();clock.Advance();
 Check((await Record(Operation("safe"))).AppliedObjectives.IsEmpty,"New instance does not duplicate saved safety");
+await Reject(() => Choose("CH01.M08.Offer"), "dialogue_not_available");
 var export=Operation("export");await Record(export);await Record(export);
 var m07=(await View()).State.Quests.Single(q=>q.QuestId=="CH01.M07");
 Check(m07.Status==QuestStatus.Completed&&m07.DungeonObjectives!["boss"].DungeonSessionId==bossReceipt,"Only ordered approved final export completes M07 with original combat anchor");
 Check((await View()).State.CompletedChapters.IsEmpty,"M07 is not M08/chapter completion or account skip entitlement");
 Check(growth==JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(character.CharacterId,clock.Now,default)),"Extraction/recovery never duplicates growth rewards");
-Console.WriteLine("PASS Chapter One M01-M07 integration");
+Check((await View()).AvailableDialogues.Any(d => d.Id == "CH01.M08.Offer"), "Final extraction exposes Mira's offer");
+Check((await History().LoadAsync(alt.CharacterId, owner, default)).Chapters.IsEmpty, "Extraction alone makes no account history");
+await Reject(() => Skip().PreviewAsync(alt.CharacterId, owner, "CH01", default), "story_skip_not_eligible");
+
+// The station can take the report while the return scene is still open.
+await Choose("CH01.M08.Offer");
+await Reject(() => Choose("CH01.D08.Report", "report"), "dialogue_not_available");
+await Choose("CH01.D08", "debrief");
+view = await View();
+Check(view.State.Quests.Single(q => q.QuestId == "CH01.M08").Status == QuestStatus.ReadyToReport
+    && view.State.CompletedChapters.IsEmpty && view.AvailableDialogues.All(d => d.Id != "CH01.D09"),
+    "Debrief survives a fresh coordinator but completion and epilogue wait for the final report");
+await Reject(() => Choose("CH01.D09", "survivors"), "dialogue_not_available");
+var report = new NarrativeCommand(Guid.NewGuid(), view.State.Revision, catalog.Version, "CH01.D08.Report", "report");
+var reports = await Task.WhenAll(Flow().ChooseAsync(character.CharacterId, owner, report, default),
+    Flow().ChooseAsync(character.CharacterId, owner, report, default));
+Check(reports.All(r => r.State.Revision == view.State.Revision + 1 && r.State.CompletedChapters.SequenceEqual(["CH01"])),
+    "Concurrent report delivery commits the chapter exactly once");
+await Reject(() => Choose("CH01.D08.Report", "report"), "dialogue_not_available");
+
+var ending = await View();
+var aftermath = ending.AvailableDialogues.Single(d => d.Id == "CH01.D09");
+Check(aftermath.EntryPoint && aftermath.Choices.Single(c => c.Id == "survivors").NextDialogueId == "CH01.A01"
+    && aftermath.Choices.Single(c => c.Id == "cause").NextDialogueId == "CH01.A02"
+    && ending.AvailableDialogues.Count(d => (d.Id is "CH01.A01" or "CH01.A02") && !d.EntryPoint) == 2,
+    "Direct completion exposes both authored follow-up replies through the epilogue");
+await Reject(() => Choose("CH01.D09", "survivors"), "informational_dialogue_not_mutable");
+Check((await View()).State.Revision == ending.State.Revision, "Reopening and reading the epilogue does not write progress");
+Check(growth == JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(character.CharacterId, clock.Now, default)),
+    "M08 report and replay grant no additional growth");
+
+var directHistory = (await History().LoadAsync(alt.CharacterId, owner, default)).Chapters.Single();
+Check(directHistory is { ChapterId: "CH01", CompletedOnOtherCharacter: true, CompletedOnSelectedCharacter: false },
+    "Mira's report creates direct account history without completing an alt");
+var altGrowth = JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(alt.CharacterId, clock.Now, default));
+var plan = await Skip().PreviewAsync(alt.CharacterId, owner, "CH01", default);
+Check(plan.Quests.Length == 8 && plan is { Cost: 0, GrantsQuestRewards: false, RequiresOriginalTraining: true },
+    "Alt preview offers the eight main quests with the original training requirement");
+var skipped = await Skip().ApplyAsync(alt.CharacterId, owner, new(Guid.NewGuid(), long.Parse(plan.ExpectedRevision),
+    catalog.Version, plan.ChapterId, plan.PreviewHash, true), default);
+Check(skipped.State.CompletedChapters.SequenceEqual(["CH01"]) && skipped.State.Quests.IsEmpty
+    && skipped.AvailableDialogues.All(d => d.Id is not ("CH01.M08.Offer" or "CH01.D08.Report" or "CH01.D09")),
+    "A story skip never fabricates a personal report or its epilogue");
+Check(altGrowth == JsonSerializer.Serialize(await ((ICharacterProgressionRepository)game).LoadProgressionAsync(alt.CharacterId, clock.Now, default))
+    && (await History().LoadAsync(alt.CharacterId, owner, default)).Chapters.Single() == directHistory,
+    "Story skip preserves alt growth and does not add direct account history");
+Console.WriteLine("PASS Chapter One M01-M08 integration");
 var content = new ProjectRpg.Backend.Application.DungeonContentCatalog(new ProjectRpg.Backend.Configuration.DungeonContentOptions {
     Entries=[new(){DungeonId="Story.ChapterOneReturn",MapPackage="/Game/Maps/Progression/L_ChapterOneReturn",Difficulties=["Normal"]},
         new(){DungeonId="Progression.FirstBoss",MapPackage="/Game/Maps/Progression/L_ChapterOneBoss",Difficulties=["Normal","Hard"]}] });
 var admission=new DungeonStoryAdmission(content,catalog);
 Check(await admission.GetErrorAsync(game,character.CharacterId,owner,"Story.ChapterOneReturn",default) is null,"M06-complete character may resume the story scene");
-Check(await admission.GetErrorAsync(game,alt.CharacterId,owner,"Story.ChapterOneReturn",default)=="story_prerequisite_not_met","Story scene rejects an unqualified alt independently of party leader");
+Check(await admission.GetErrorAsync(game,alt.CharacterId,owner,"Story.ChapterOneReturn",default)=="story_prerequisite_not_met","An alt who skipped M07 cannot enter the direct extraction scene");
 Check(await admission.GetErrorAsync(game,alt.CharacterId,owner,"Progression.FirstBoss",default) is null,"Existing repeat/skip combat adds no narrative gate; original growth admission retains authority");
 
 sealed class Clock(DateTimeOffset now):TimeProvider { public DateTimeOffset Now=now; public override DateTimeOffset GetUtcNow()=>Now; public void Advance()=>Now=Now.AddSeconds(2); }

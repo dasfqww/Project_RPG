@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": 4,
+  "catalogVersion": 5,
   "quests": [
     {
       "id": "CH01.M01",
@@ -248,9 +248,28 @@
           "targetId": "CH01.M07.export"
         }
       }
+    },
+    {
+      "id": "CH01.M08",
+      "version": 1,
+      "title": "돌아온 사람들",
+      "category": "Main",
+      "prerequisites": ["CH01.M07"],
+      "objectives": ["debrief"],
+      "objectiveTexts": {
+        "debrief": "로비의 ‘인물과 이야기’에서 미라에게 구조 결과를 전하기"
+      }
     }
   ],
-  "chapters": [],
+  "chapters": [
+    {
+      "id": "CH01",
+      "title": "폐광의 실종자",
+      "requiredQuests": ["CH01.M01", "CH01.M02", "CH01.M03", "CH01.M04", "CH01.M05", "CH01.M06", "CH01.M07", "CH01.M08"],
+      "storyUnlocks": [],
+      "allowStorySkip": true
+    }
+  ],
   "dialogues": [
     {
       "id": "CH01.M01.Offer",
@@ -460,6 +479,76 @@
           "text": "반출 순서를 확인한다",
           "effect": "None"
         }
+      ]
+    },
+    {
+      "id": "CH01.M08.Offer",
+      "speaker": "미라",
+      "text": "돌아왔군요. 안에 있던 사람들은… 무사한가요?",
+      "questId": "CH01.M08",
+      "requiredStatus": null,
+      "choices": [
+        { "id": "accept", "text": "귀환 보고를 시작한다", "effect": "AcceptQuest" }
+      ]
+    },
+    {
+      "id": "CH01.D08",
+      "speaker": "미라",
+      "text": "다온이 부상자들을 살피고 있어요. 갱도에서 무슨 일이 있었는지 들려주세요.",
+      "questId": "CH01.M08",
+      "requiredStatus": "Active",
+      "choices": [
+        { "id": "debrief", "text": "통로를 열어 부상자들을 광산 밖으로 옮겼습니다.", "effect": "RecordObjective", "objectiveId": "debrief" }
+      ]
+    },
+    {
+      "id": "CH01.D08.Report",
+      "speaker": "미라",
+      "text": "주갱도를 확보했고, 부상자들은 광산 밖으로 나왔군요. 이대로 기록해도 될까요?",
+      "questId": "CH01.M08",
+      "requiredStatus": "ReadyToReport",
+      "choices": [
+        { "id": "report", "text": "귀환 보고를 마친다", "effect": "ReportQuest" }
+      ]
+    },
+    {
+      "id": "CH01.D09",
+      "speaker": "미라",
+      "text": "채굴과 운송은 멈추겠어요. 길을 지켜준 사람들을 두고 수레부터 보낼 수는 없죠. 먼저 돌아온 사람들을 돌볼게요.",
+      "questId": null,
+      "requiredStatus": null,
+      "informational": true,
+      "requiredCompletedQuests": ["CH01.M08"],
+      "choices": [
+        { "id": "survivors", "text": "남은 사람들도 살펴야 합니다.", "effect": "None", "nextDialogueId": "CH01.A01" },
+        { "id": "cause", "text": "원인을 더 조사해야 합니다.", "effect": "None", "nextDialogueId": "CH01.A02" },
+        { "id": "close", "text": "대화를 마친다", "effect": "None" }
+      ]
+    },
+    {
+      "id": "CH01.A01",
+      "speaker": "미라",
+      "text": "돌아온 뒤가 더 막막할 수도 있겠죠. 오늘은 쉴 자리부터 마련할게요.",
+      "questId": null,
+      "requiredStatus": null,
+      "informational": true,
+      "entryPoint": false,
+      "requiredCompletedQuests": ["CH01.M08"],
+      "choices": [
+        { "id": "close", "text": "대화를 마친다", "effect": "None" }
+      ]
+    },
+    {
+      "id": "CH01.A02",
+      "speaker": "미라",
+      "text": "같은 일이 또 생기면 안 되죠. 다만 다시 들어가기 전에는 사람부터 안전한 곳으로 옮길게요.",
+      "questId": null,
+      "requiredStatus": null,
+      "informational": true,
+      "entryPoint": false,
+      "requiredCompletedQuests": ["CH01.M08"],
+      "choices": [
+        { "id": "close", "text": "대화를 마친다", "effect": "None" }
       ]
     }
   ]
