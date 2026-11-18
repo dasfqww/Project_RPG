@@ -14,6 +14,14 @@ public sealed partial class InMemoryGameRepository : INarrativeRepository
             throw new NarrativeConflictException("character_not_owned");
     }
 
+    // Callers hold the character gate through state, retry receipt and achievement recording.
+    private void SaveNarrativeResult(NarrativeState state, Guid requestId, string fingerprint, DateTimeOffset now)
+    {
+        _narrative[state.CharacterId] = state;
+        _narrativeCommands[(state.CharacterId, requestId)] = (fingerprint, state);
+        RecordChapterAchievementFacts(state, now);
+    }
+
     public Task<NarrativeState> LoadNarrativeAsync(Guid characterId, string steamId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -45,8 +53,7 @@ public sealed partial class InMemoryGameRepository : INarrativeRepository
             if (updated.CharacterId != characterId || updated.Revision != state.Revision + 1)
                 throw new NarrativeConflictException("invalid_narrative_transition");
             cancellationToken.ThrowIfCancellationRequested();
-            _narrative[characterId] = updated;
-            _narrativeCommands[(characterId, command.RequestId)] = (fingerprint, updated);
+            SaveNarrativeResult(updated, command.RequestId, fingerprint, now);
             return Task.FromResult(updated);
         }
     }

@@ -39,8 +39,7 @@ public sealed partial class InMemoryGameRepository : INarrativeInteractionReposi
                 || next.Revision == current.Revision && !ReferenceEquals(next, current))
                 throw new NarrativeConflictException("invalid_narrative_transition");
             cancellationToken.ThrowIfCancellationRequested();
-            _narrative[characterId] = next;
-            _narrativeCommands[(characterId, command.EventId)] = (fingerprint, next);
+            SaveNarrativeResult(next, command.EventId, fingerprint, now);
             return Task.FromResult(next);
         }
     }

@@ -65,6 +65,7 @@ public static class PostgresSchemaMigrations
         string riding = await File.ReadAllTextAsync(Path.Combine(baseDirectory,"Database","Migrations","0015_riding_registration.sql"),cancellationToken);
         string ridingPreferences = await File.ReadAllTextAsync(Path.Combine(baseDirectory,"Database","Migrations","0016_riding_preferences.sql"),cancellationToken);
         string shop = await File.ReadAllTextAsync(Path.Combine(baseDirectory,"Database","Migrations","0017_shop_transactions.sql"),cancellationToken);
+        string achievements = await File.ReadAllTextAsync(Path.Combine(baseDirectory, "Database", "Migrations", "0018_roster_achievements.sql"), cancellationToken);
         return [new PostgresSchemaMigration(1, "baseline", sql),
             new PostgresSchemaMigration(2, "item_equipment_progression", equipment),
             new PostgresSchemaMigration(3, "character_narrative", narrative),
@@ -81,7 +82,8 @@ public static class PostgresSchemaMigrations
             new PostgresSchemaMigration(14, "auction_claims", auctionClaims),
             new PostgresSchemaMigration(15, "riding_registration", riding),
             new PostgresSchemaMigration(16, "riding_preferences", ridingPreferences),
-            new PostgresSchemaMigration(17, "shop_transactions", shop)];
+            new PostgresSchemaMigration(17, "shop_transactions", shop),
+            new PostgresSchemaMigration(18, "roster_achievements", achievements)];
     }
 
     // Development/Testing replays the current idempotent catalog under the existing

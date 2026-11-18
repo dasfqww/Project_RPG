@@ -13,6 +13,7 @@ using ProjectRpg.Backend.Data;
 using ProjectRpg.Backend.Domain;
 using ProjectRpg.Backend.Validation;
 using ProjectRpg.Backend.Shop;
+using ProjectRpg.Backend.Achievements;
 
 const string migrateSchemaArgument = "--migrate-schema";
 const string validateNarrativeArgument = "--validate-narrative-catalog";
@@ -186,6 +187,7 @@ builder.Services.AddShopServices(builder.Configuration);
 builder.Services.AddSingleton(narrativeCatalog);
 builder.Services.AddSingleton<INarrativeRepository>(provider =>
     (INarrativeRepository)provider.GetRequiredService<IGameRepository>());
+builder.Services.AddSingleton<IAchievementRepository>(provider => (IAchievementRepository)provider.GetRequiredService<IGameRepository>());
 builder.Services.AddSingleton<INarrativeHistoryRepository>(provider =>
     (INarrativeHistoryRepository)provider.GetRequiredService<IGameRepository>());
 builder.Services.AddSingleton<ProjectRpg.Backend.Narrative.NarrativeAccountHistory>();
@@ -1255,6 +1257,7 @@ app.MapSecurityTelemetryApi();
 app.MapDungeonRewardSnapshotApi();
 app.MapCharacterProgressionApi();
 app.MapNarrativeApi();
+app.MapAchievements();
 app.MapEquipmentProgressionApi();
 app.MapRidingApi();
 app.MapTradeApi();

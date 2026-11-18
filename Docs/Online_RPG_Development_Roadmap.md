@@ -296,6 +296,8 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 ## 12. 현재 현황과 다음 작업 체크리스트 (2026-10-20)
 
+- [x] **2026-11-19 원정대 업적** — 폐광 일반 첫·10회와 1장 직접 완료를 원정대에 공유한다. PostgreSQL 17에서 과거 영수증 소급·중복 정산·월드 격리·DB 재시작 후 API 재조회를 검증했다. 독립 UE 클라이언트에서 부캐의 로비 업적창이 9/10에서 10/10이 되고 알림이 뜨는 것을 확인했다. 개발 인증과 서버 정산 fixture 사용. 본인 임시 7,389,097,853 bytes 정리. [인정 기준과 조회](ROSTER_ACHIEVEMENTS.md).
+
 - [x] 2026-11-19 캐릭터 선택 페이지 복원 완료. 최초 소유 목록에서 선택한 캐릭터가 속한 페이지를 열며, 목록을 둘러보는 중의 새로고침은 현 페이지를 유지한다. Editor·로비 네이티브 15건 성공. 임시 140737562 bytes 정리. [로비 화면 계약](ONLINE_LOBBY_UI.md#3d-캐릭터-선택과-생성--2026-11-18).
 
 - [x] 2026-11-19 캐릭터 선택 전용 레벨과 전체 화면 배치 완료. Pawn 없이 CharacterSelection에서 인증·선택·생성, 선택 ID를 유지해 LobbyMap에 입장하고 돌아간다. 최종 모듈 DCCDAC61에서 HTTP 생성·로비 왕복/NoPawn·오류 0 및 D3D11 1440×900·1280×720 화면 확인. 임시 708847066 bytes 정리. [로비 화면 계약](ONLINE_LOBBY_UI.md#3d-캐릭터-선택과-생성--2026-11-18).
@@ -998,6 +1000,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
 | 캐릭터 선택 페이지 복원 / selection-page-return-20261119 | 복귀 후 선택 캐릭터가 있는 페이지 열기·수동 탐색 중 새로고침 유지 | 로비 위젯·MenuFrontend 회귀·로비 계약·이 표 | Editor·로비 집중 검사 15건 성공, 검사 중 오류 0. 근거 Saved/BuildChecks/SelectionPageReturn-20261119. | 구현·검증·정리 완료. 이 커밋의 origin/main 반영을 확인하면 본인 예약 해제. |
+| 원정대 업적 / achievements-20261119 | 폐광 일반 첫·10회와 1장 직접 완료 | 백엔드 업적 카탈로그·영수증 저장·API·검사와 마이그레이션 18, UE 업적 서브시스템·로비 메뉴·패널, 업적 계약 및 본인 로드맵 항목 | Memory·PostgreSQL 17 소급/재시작/HTTP·실제 M08 보고, UE Editor 링크·native 및 D3D11 로비 9→10/달성 알림 성공. 사설 산출물 7,389,097,853 bytes와 콘텐츠 링크 7개 정리. 작은 근거 Saved/BuildChecks/Achievements-20261119/Result.json | 구현·검증·정리 완료. 빈 index와 원격을 확인해 main index/ref·본인 22경로 및 로드맵 두 조각만 커밋·푸시 예약. 이 변경이 origin/main과 일치하면 본인 예약 해제 |
 | 캐릭터 선택 전용 레벨 / character-selection-level-20261119 | Pawn 없는 기본 레벨과 뷰포트 전체 선택 무대, 기존 로비 입장·복귀 | CharacterSelection.umap·게임 모드·로비 UI와 이동, DefaultEngine/DefaultGame, 실행/회귀 코드, 로비 계약·본인 부분 | 최종 Editor와 Memory HTTP 로비 왕복 통과. D3D11 1440×900·1280×720에서 여섯 캐릭터 및 전체 뷰포트 배치 확인. 근거 Saved/BuildChecks/CharacterSelectionLevel-20261119. | 구현·검증·정리 완료. 이 행의 커밋의 origin/main 반영을 확인하면 본인 소스·검증·Git 예약 해제. |
 | S02 장부 속의 부탁 / chapter-s02-20261119 | 입문 1 운송 기록 조사·개인 퀘스트 장부 전달·미라 후일담 | backend 카탈로그/전달물 5경로와 ChapterOneTests, `CreateChapterSideTwoContent.py`, `L_ProgressionIntro1.umap`, `CHAPTER_ONE_PLAYABLE.md`·`NARRATIVE_CONTENT_AUTHORING.md` 및 본인 조율/완료 항목 | 사설 backend 4종과 Unreal 작성·별도 재로드 성공, 조사·대화 ID/저장 SHA 확인, 자기 임시 76,448,703 bytes 폐기. `Saved/BuildChecks/ChapterS02-20261119/` 작은 근거. 공유 모듈 쓰기·실제 캐릭터 조작·PG 재시작 없음 | 구현·검증·정리 완료. 다른 index 사용이 없음을 재확인한 뒤 main index/ref·본인 11경로만 스테이징/커밋/origin/main 푸시 예약. 이 행을 포함한 커밋이 원격과 일치하면 본인 예약 해제 |
 | 폐광 샛길 보급 상자 / chapter-cache-20261119 | 입문 1 샛길에 기존 서버 월드 드롭 상자 1개 배치 | `CreateChapterOneSupplyChest.py`, `L_ProgressionIntro1.umap`, `DT_ChapterOneSupplyChest.uasset`, `CHAPTER_ONE_PLAYABLE.md` 및 로드맵 본인 두 조각 | 사설 Unreal 작성·별도 재로드 맵/표 동일 SHA, LootSources native 4 Success 오류/경고0, 자기 임시 29,837,851 bytes 폐기. `Saved/BuildChecks/ChapterCache-20261119/` 작은 근거. 공유 모듈·빌드·DB 쓰기 및 실제 조작 플레이 없음 | 구현·검증·정리 완료. 다른 index 사용이 없음을 재확인한 뒤 main index/ref·본인 5경로만 스테이징/커밋/origin/main 푸시 예약. 이 행을 포함한 커밋이 원격과 일치하면 본인 예약 해제 |

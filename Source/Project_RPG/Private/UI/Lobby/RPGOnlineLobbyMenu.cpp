@@ -1,5 +1,6 @@
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
 #include "Blueprint/WidgetTree.h"
+#include "Achievements/RPGAchievementPanel.h"
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -44,6 +45,8 @@ void URPGOnlineLobbyWidget::BuildMenuContent(UVerticalBox& Parent)
 	Add(TEXT("OpenSkillMenuButton"), NSLOCTEXT("RPGFrontend", "Skills", "스킬 구성"));
 	Add(TEXT("OpenEquipmentMenuButton"), NSLOCTEXT("RPGFrontend", "Equipment", "장비 성장 · 제작"));
 	Add(TEXT("OpenStoryMenuButton"), NSLOCTEXT("RPGFrontend", "Story", "인물과 이야기"));
+	if (auto* Achievements = CreateWidget<URPGAchievementPanel>(GetOwningPlayer(), URPGAchievementPanel::StaticClass()))
+		Rows->AddChildToVerticalBox(Achievements);
 	Add(TEXT("OpenShopMenuButton"), NSLOCTEXT("RPGFrontend", "Shop", "상점"));
 	Add(TEXT("OpenTradeMenuButton"), NSLOCTEXT("RPGFrontend", "Trade", "거래 내역"));
 	Add(TEXT("OpenAuctionMenuButton"), NSLOCTEXT("RPGFrontend", "Auction", "경매 내역 · 처리 결과"));

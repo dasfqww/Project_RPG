@@ -43,7 +43,7 @@ public sealed partial class InMemoryGameRepository : INarrativeStorySkipReposito
             if (updated.CharacterId != characterId || updated.Revision != checked(state.Revision + 1))
                 throw new NarrativeConflictException("invalid_narrative_transition");
             ct.ThrowIfCancellationRequested();
-            _narrative[characterId] = updated; _narrativeCommands[(characterId, command.RequestId)] = (fingerprint, updated);
+            SaveNarrativeResult(updated, command.RequestId, fingerprint, now);
             return Task.FromResult(updated);
         }
     }

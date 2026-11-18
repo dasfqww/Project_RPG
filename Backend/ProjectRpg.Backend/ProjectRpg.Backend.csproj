@@ -59,4 +59,10 @@
   <ItemGroup><Content Include="../Database/Migrations/0015_riding_registration.sql" Link="Database/Migrations/0015_riding_registration.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup><Content Include="../Database/Migrations/0016_riding_preferences.sql" Link="Database/Migrations/0016_riding_preferences.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup><Content Include="../Database/Migrations/0017_shop_transactions.sql" Link="Database/Migrations/0017_shop_transactions.sql" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Achievements/catalog.json" LogicalName="Achievements.catalog.json" />
+    <Content Remove="Achievements/catalog.json" />
+    <Content Include="../Database/Migrations/0018_roster_achievements.sql" Link="Database/Migrations/0018_roster_achievements.sql"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

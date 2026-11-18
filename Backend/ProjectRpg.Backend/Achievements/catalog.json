@@ -1,0 +1,5 @@
+[
+  { "id": "mine.first", "title": "폐광 일반 첫 클리어", "kind": "DungeonClear", "subject": "Progression.FirstBoss", "difficulty": "Normal", "target": 1 },
+  { "id": "mine.ten", "title": "폐광 일반 10회 클리어", "kind": "DungeonClear", "subject": "Progression.FirstBoss", "difficulty": "Normal", "target": 10 },
+  { "id": "chapter.one", "title": "폐광의 실종자 직접 완료", "kind": "ChapterCompleted", "subject": "CH01", "difficulty": "", "target": 1 }
+]

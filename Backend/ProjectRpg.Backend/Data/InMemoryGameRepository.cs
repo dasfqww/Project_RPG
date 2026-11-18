@@ -1025,6 +1025,7 @@ public sealed partial class InMemoryGameRepository(TimeProvider? connectionClock
                 now,
                 null);
             _dungeonRewardSettlements[dungeonSessionId] = settlement;
+            RecordDungeonAchievementFacts(session, settlement);
             _dungeonSessions[dungeonSessionId] = session with
             {
                 State = DungeonSessionState.SettlementPending,
