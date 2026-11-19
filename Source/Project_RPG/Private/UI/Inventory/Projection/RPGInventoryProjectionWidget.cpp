@@ -1,4 +1,5 @@
 #include "UI/Inventory/Projection/RPGInventoryProjectionWidget.h"
+#include "RPGEquipmentPortrait.h"
 #include "RPGInventoryArt.h"
 
 #include "Blueprint/WidgetTree.h"
@@ -7,6 +8,9 @@
 #include "Components/Button.h"
 #include "Components/EditableTextBox.h"
 #include "Components/HorizontalBox.h"
+#include "Components/Image.h"
+#include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
 #include "Components/PanelWidget.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
@@ -15,7 +19,10 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Controller/RPGPlayerController.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "GameFramework/Character.h"
 #include "Item/Policy/RPGItemInventoryPolicy.h"
+#include "Misc/App.h"
 #include "UI/Inventory/Projection/RPGInventoryProjectionItemSlotWidget.h"
 #include "UI/MVVM/RPGInventoryProjectionViewModel.h"
 #include "UI/RPGConfirmationInput.h"
@@ -341,6 +348,76 @@ void URPGInventoryProjectionWidget::NativeConstruct()
 
 	BindViewModel();
 	RefreshFromViewModel();
+	InitializeEquipmentPortrait();
+}
+
+void URPGInventoryProjectionWidget::InitializeEquipmentPortrait()
+{
+	if (EquipmentPortraitImage || IsDesignTime() || !WidgetTree) return;
+
+	// The authored equipment layout owns the center slot and its fallback art.
+	auto* Layers = Cast<UOverlay>(WidgetTree->FindWidget(TEXT("EquipmentSilhouetteLayers")));
+	if (!Layers) return;
+
+	EquipmentPortraitImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("EquipmentCharacterPortrait"));
+	EquipmentPortraitImage->SetVisibility(ESlateVisibility::Collapsed);
+	auto* PortraitSlot = Layers->AddChildToOverlay(EquipmentPortraitImage);
+	PortraitSlot->SetHorizontalAlignment(HAlign_Fill);
+	PortraitSlot->SetVerticalAlignment(VAlign_Fill);
+}
+
+void URPGInventoryProjectionWidget::ReleaseEquipmentPortrait()
+{
+	if (EquipmentPortraitImage)
+	{
+		EquipmentPortraitImage->SetBrush(FSlateBrush());
+		EquipmentPortraitImage->SetVisibility(ESlateVisibility::Collapsed);
+		if (UWidget* Silhouette = WidgetTree->FindWidget(TEXT("EquipmentSilhouette")))
+			Silhouette->SetVisibility(ESlateVisibility::HitTestInvisible);
+		if (UWidget* Placeholder = WidgetTree->FindWidget(TEXT("PreviewText")))
+			Placeholder->SetVisibility(ESlateVisibility::HitTestInvisible);
+	}
+	EquipmentPortrait.Reset();
+	TimeUntilPortraitUpdate = 0.f;
+}
+
+void URPGInventoryProjectionWidget::NativeTick(const FGeometry& Geometry, float DeltaSeconds)
+{
+	Super::NativeTick(Geometry, DeltaSeconds);
+	if (!EquipmentPortraitImage || !IsActivated() || !IsVisible() || !FApp::CanEverRender()) return;
+
+	TimeUntilPortraitUpdate -= DeltaSeconds;
+	if (TimeUntilPortraitUpdate > 0.f) return;
+	TimeUntilPortraitUpdate = 1.f / 15.f;
+
+	auto* Character = Cast<ACharacter>(GetOwningPlayerPawn());
+	const USkeletalMeshComponent* Mesh = IsValid(Character) ? Character->GetMesh() : nullptr;
+	if (!IsValid(Mesh) || !Mesh->IsRegistered() || !Mesh->GetSkeletalMeshAsset())
+	{
+		if (EquipmentPortrait) ReleaseEquipmentPortrait();
+		return;
+	}
+
+	const FVector2D Size = EquipmentPortraitImage->GetParent()->GetCachedGeometry().GetLocalSize();
+	if (Size.X <= 0.f || Size.Y <= 0.f) return;
+
+	if (!EquipmentPortrait) EquipmentPortrait = MakeShared<FRPGEquipmentPortrait>();
+	if (auto* Texture = EquipmentPortrait->Draw(*Character, Size.X / Size.Y))
+	{
+		if (EquipmentPortraitImage->GetBrush().GetResourceObject() != Texture)
+		{
+			EquipmentPortraitImage->SetBrushResourceObject(Texture);
+			EquipmentPortraitImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+			if (UWidget* Silhouette = WidgetTree->FindWidget(TEXT("EquipmentSilhouette")))
+				Silhouette->SetVisibility(ESlateVisibility::Hidden);
+			if (UWidget* Placeholder = WidgetTree->FindWidget(TEXT("PreviewText")))
+				Placeholder->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+	else
+	{
+		ReleaseEquipmentPortrait();
+	}
 }
 
 FKey URPGInventoryProjectionWidget::GetWindowDragMouseButton() const
@@ -371,6 +448,7 @@ TOptional<FSlateRect> URPGInventoryProjectionWidget::GetWindowDragScreenBounds()
 
 void URPGInventoryProjectionWidget::NativeDestruct()
 {
+	ReleaseEquipmentPortrait();
 	if (CloseWindowButton) CloseWindowButton->OnClicked.RemoveDynamic(this, &ThisClass::RequestCloseWindow);
 	CancelSplitQuantitySelection();
 	if (SplitQuantityPanel) SplitQuantityPanel->RemoveFromParent();
@@ -425,6 +503,7 @@ void URPGInventoryProjectionWidget::NativeDestruct()
 
 void URPGInventoryProjectionWidget::NativeOnDeactivated()
 {
+	ReleaseEquipmentPortrait();
 	CancelSplitQuantitySelection();
 	Super::NativeOnDeactivated();
 	OnWindowClosed.Broadcast();

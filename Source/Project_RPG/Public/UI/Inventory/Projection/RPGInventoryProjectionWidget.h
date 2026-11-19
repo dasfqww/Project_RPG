@@ -12,7 +12,9 @@ class UButton;
 class UUniformGridPanel;
 class UVerticalBox;
 class UEditableTextBox;
+class UImage;
 class URPGInventoryProjectionViewModel;
+class FRPGEquipmentPortrait;
 
 /**
  * Thin item view that renders the owner-only authoritative projection.
@@ -66,6 +68,7 @@ protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	virtual void NativeOnDeactivated() override;
+	virtual void NativeTick(const FGeometry& Geometry, float DeltaSeconds) override;
 	virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event) override;
 	virtual FKey GetWindowDragMouseButton() const override;
 	virtual TOptional<FSlateRect> GetWindowDragScreenBounds() const override;
@@ -111,6 +114,15 @@ protected:
 private:
 	friend struct FRPGInventoryTabsTestAccess;
 	friend struct FRPGInventorySplitQuantityTestFixture;
+	void InitializeEquipmentPortrait();
+	void ReleaseEquipmentPortrait();
+
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> EquipmentPortraitImage;
+
+	TSharedPtr<FRPGEquipmentPortrait> EquipmentPortrait;
+	float TimeUntilPortraitUpdate = 0.f;
+
 	bool EnsureSplitQuantityControls();
 	bool IsSplitSnapshotValid() const;
 	bool TryReadSplitQuantity(int32& OutQuantity) const;
