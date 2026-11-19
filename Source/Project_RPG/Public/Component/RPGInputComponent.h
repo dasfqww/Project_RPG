@@ -78,11 +78,8 @@ inline void URPGInputComponent::BindNativeInputActions(const UDataAsset_InputCon
 		{
 			if (TagString == TEXT("InputTag.PickUp.Items"))
 			{
-				// One interaction per press, with a release even when input is cancelled.
-				// Supply explicit button state; Started/Completed values depend on engine input settings.
+				// Start once per press, independent of the action value supplied on Started.
 				BindAction(Config.InputAction, ETriggerEvent::Started, this, &ThisClass::ExecuteReflectionButtonHandler, FuncName, (UObject*)ContextObject, true);
-				BindAction(Config.InputAction, ETriggerEvent::Completed, this, &ThisClass::ExecuteReflectionButtonHandler, FuncName, (UObject*)ContextObject, false);
-				BindAction(Config.InputAction, ETriggerEvent::Canceled, this, &ThisClass::ExecuteReflectionButtonHandler, FuncName, (UObject*)ContextObject, false);
 				continue;
 			}
 			// 3. 함수가 존재하면 바인딩 (범용 래퍼 함수 이용)

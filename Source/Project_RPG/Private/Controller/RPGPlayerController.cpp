@@ -954,7 +954,6 @@ void ARPGPlayerController::Input_SwitchTarget(const FInputActionValue& InputActi
 void ARPGPlayerController::Input_PickUp_Items(const FInputActionValue& InputActionValue)
 {
 	if (InputActionValue.Get<bool>()) BeginInteract();
-	else EndInteract();
 }
 
 void ARPGPlayerController::Input_ToggleMenu(const FInputActionValue& Value)

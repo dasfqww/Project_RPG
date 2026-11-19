@@ -1092,6 +1092,8 @@ Temp/프로세스 잔여·정리 예외0이며 원본 Binaries/Intermediate·공
 
 ## 2026-11-03 — 상호작용 입력의 시작·해제 연결 수정
 
+2026-11-20부터 상호작용은 한 번 누르면 시작한다. 즉시형은 바로 실행되고, 시간형은 키를 떼어도 진행 표시가 유지되며 지정 시간이 지나면 서버 확인 후 실행된다. 시간형의 대상 소멸·범위 이탈·플레이어 상태 변화 중단 조건은 기존 서버 검증을 사용한다. 아래 해제 취소 기록은 2026-11-03 검증 당시 동작이다.
+
 실제 `DA_InputConfig`의 `InputTag.PickUp.Items`가 기존 자동 바인딩에서
 `Input_PickUp.Items`로 변환돼 native 함수 `Input_PickUp_Items`를 찾지 못했다.
 또한 Triggered만 연결해 버튼 해제/입력 취소가 Controller의 EndInteract에 도달하지 않았다.

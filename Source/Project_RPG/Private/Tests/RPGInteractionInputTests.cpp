@@ -15,7 +15,7 @@
 #include "Tests/RPGTestWorldCleanup.h"
 #include "UObject/StrongObjectPtr.h"
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGInteractionInputTest, "ProjectRPG.UI.InteractionInput.ReflectionAndReleaseRouting",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGInteractionInputTest, "ProjectRPG.UI.InteractionInput.TapRouting",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FRPGInteractionInputTest::RunTest(const FString&)
 {
@@ -43,11 +43,11 @@ bool FRPGInteractionInputTest::RunTest(const FString&)
     Config->NativeInputActions.Add(Entry);
     Input->BindNativeInputActions(Config, PC);
     const auto& Bindings = Input->GetActionEventBindings();
-    if (!TestEqual(TEXT("Nested pickup tag binds press, release and cancellation"), Bindings.Num(), 3)) return false;
+    if (!TestEqual(TEXT("Nested pickup tag binds only the press"), Bindings.Num(), 1)) return false;
     auto Dispatch = [&](ETriggerEvent Event)
     {
         int32 Count = 0;
-        // Deliberately empty action data: button routing must not depend on raw Started/Completed values.
+        // Started can arrive with empty action data.
         const FInputActionInstance Empty(Action);
         for (const auto& Binding : Bindings)
             if (Binding->GetAction() == Action && Binding->GetTriggerEvent() == Event) { Binding->Execute(Empty); ++Count; }
@@ -58,13 +58,9 @@ bool FRPGInteractionInputTest::RunTest(const FString&)
     TestEqual(TEXT("Started runs once"), Dispatch(ETriggerEvent::Started), 1);
     TestTrue(TEXT("Started receives true, not an empty action value that would cancel"), UI->GetActionProgressSnapshot().bActive);
     TestEqual(TEXT("No repeated Triggered interaction"), Dispatch(ETriggerEvent::Triggered), 0);
-    TestEqual(TEXT("Completed routes release"), Dispatch(ETriggerEvent::Completed), 1);
-    TestTrue(TEXT("Real controller EndInteract cancels the display"), !UI->GetActionProgressSnapshot().bActive
-        && UI->GetActionProgressSnapshot().EndReason == ERPGActionProgressEndReason::Cancelled);
-    Producer->BeginInteraction(Pawn, Target, FText::FromString(TEXT("Cancellation fixture")), 2.f);
-    TestEqual(TEXT("Canceled also routes release"), Dispatch(ETriggerEvent::Canceled), 1);
-    TestTrue(TEXT("Cancelled input cannot retain interaction UI"), !UI->GetActionProgressSnapshot().bActive
-        && UI->GetActionProgressSnapshot().EndReason == ERPGActionProgressEndReason::Cancelled);
+    TestEqual(TEXT("Completed ignores release"), Dispatch(ETriggerEvent::Completed), 0);
+    TestEqual(TEXT("Canceled ignores release"), Dispatch(ETriggerEvent::Canceled), 0);
+    TestTrue(TEXT("Interaction progress survives release"), UI->GetActionProgressSnapshot().bActive);
     return true;
 }
 #endif
