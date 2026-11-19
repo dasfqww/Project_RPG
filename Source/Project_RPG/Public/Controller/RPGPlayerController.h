@@ -43,6 +43,9 @@ class URPGRewardMailWidget;
 class UQuickSlotComponent;
 class URPGItemCommandComponent;
 class URPGWidgetBase;
+class URPGContentEntryWidget;
+class URPGMessageBox;
+class UWidget;
 class URPGDungeonResultActionsWidget;
 class URPGDungeonPartyCombatWidget;
 class URPGSkillWindowComponent;
@@ -204,6 +207,9 @@ public:
 
 	/** Window preview routing keeps UI hotkeys available while a child has focus. */
 	bool HandlePlayerWindowKeyDown(UUserWidget* SourceWindow, const FKeyEvent& Event);
+	void ShowContentEntry(TSubclassOf<URPGContentEntryWidget> WidgetClass);
+	bool ShowContentEntryConfirmation(URPGContentEntryWidget& Entry, TSubclassOf<URPGMessageBox> WidgetClass,
+		FGameplayTag LevelTag);
 
 protected:
 	virtual void SetupInputComponent() override;
@@ -320,6 +326,13 @@ private:
 	void FocusProjectionWindow(URPGInventoryProjectionWidget* Widget);
 	bool IsProjectionWindow(const UUserWidget* Widget) const;
 	bool CloseTopPlayerWindow();
+	bool AttachContentEntryModal(URPGWidgetBase& Widget, int32 Layer);
+	void CloseContentEntryModal(URPGWidgetBase& Widget);
+	void OnContentEntryModalRemoved(UWidget* Widget);
+	UPROPERTY(Transient)
+	TObjectPtr<URPGContentEntryWidget> ContentEntryPopup;
+	UPROPERTY(Transient)
+	TObjectPtr<URPGMessageBox> ContentEntryConfirmation;
 	bool ToggleInventoryProjection();
 	void HandleProjectionWindowClosed(URPGInventoryProjectionWidget* Widget);
 	TSharedPtr<FRPGWindowInputState> WindowInputState;

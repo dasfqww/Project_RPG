@@ -4,17 +4,14 @@
 #include "Actor/Content/RPGContentEntryActor.h"
 #include "Components/BoxComponent.h"
 #include "Engine/DataTable.h"
+#include "Controller/RPGPlayerController.h"
 #include "UI/Content/RPGContentEntryWidget.h"
-#include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/WidgetComponent.h"
-#include "Manager/UIManager.h"
 #include "Riding/RPGRidingLocalInteractionComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "Engine/World.h"
-
-#include "RPGDebugHelper.h"
 
 // Sets default values
 ARPGContentEntryActor::ARPGContentEntryActor()
@@ -65,8 +62,8 @@ void ARPGContentEntryActor::EndInteract()
 
 void ARPGContentEntryActor::Interact(APlayerController* PlayerController)
 {
-	if (!CanApproveRidingLocalInteraction(PlayerController) || !PlayerController->IsLocalController()
-		|| !PlayerController->GetLocalPlayer() || !UUIManager::Get(PlayerController->GetLocalPlayer())) return;
+	ARPGPlayerController* Controller = Cast<ARPGPlayerController>(PlayerController);
+	if (!CanApproveRidingLocalInteraction(Controller) || !Controller->GetLocalPlayer()) return;
 	if (URPGRidingLocalInteractionComponent::NeedsApproval(PlayerController))
 	{
 		if (auto* Gate = PlayerController->FindComponentByClass<URPGRidingLocalInteractionComponent>())
@@ -74,20 +71,7 @@ void ARPGContentEntryActor::Interact(APlayerController* PlayerController)
 				{ if (Self.IsValid() && Owner.IsValid()) Self->Interact(Owner.Get()); });
 		return;
 	}
-	if (ContentEntryWidgetClass)
-	{
-		Debug::Print("interact..");
-		EntryWidget = CreateWidget<URPGContentEntryWidget>(PlayerController, ContentEntryWidgetClass);
-		if (EntryWidget)
-		{
-			UUIManager::Get(PlayerController->GetLocalPlayer())->PushUI(EntryWidget);
-		}
-		
-		/*if (EntryWidget)
-		{
-			EntryWidget->AddToViewport();
-		}*/
-	}
+	Controller->ShowContentEntry(ContentEntryWidgetClass);
 }
 
 FGuid ARPGContentEntryActor::GetRidingLocalInteractionIdentity() const

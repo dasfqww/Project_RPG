@@ -2,6 +2,7 @@
 
 
 #include "UI/Content/RPGContentEntryWidget.h"
+#include "Controller/RPGPlayerController.h"
 #include "Components/WidgetSwitcher.h"
 #include "DataTable/DropItemData.h"
 #include "Item/RPGItemBase.h"
@@ -12,7 +13,6 @@
 #include "UI/MessageBox/RPGMessageBox.h"
 #include "GameInstance/RPGGameInstance.h"
 #include "FunctionLibrary/RPGCoreFunctionLibrary.h"
-#include "Manager/UIManager.h"
 
 URPGContentEntryWidget::URPGContentEntryWidget(const FObjectInitializer& ObjectInitializer)
 	:Super(ObjectInitializer),
@@ -21,13 +21,11 @@ URPGContentEntryWidget::URPGContentEntryWidget(const FObjectInitializer& ObjectI
 
 }
 
-void URPGContentEntryWidget::NativeConstruct()
+FReply URPGContentEntryWidget::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)
 {
-	Super::NativeConstruct();
-
-	URPGCoreFunctionLibrary::ToggleInputMode(GetWorld(), ERPGInputMode::UIOnly);
-
-	//UpdateRewardUIByDifficulty(GameDifficulty);
+	if (auto* Controller = GetOwningPlayer<ARPGPlayerController>();
+		Controller && Controller->HandlePlayerWindowKeyDown(this, Event)) return FReply::Handled();
+	return Super::NativeOnPreviewKeyDown(Geometry, Event);
 }
 
 void URPGContentEntryWidget::OnDifficultyButtonClicked(ERPGGameDifficulty InGameDifficulty)
@@ -128,14 +126,8 @@ void URPGContentEntryWidget::OnDifficultyButtonClicked(ERPGGameDifficulty InGame
 
 void URPGContentEntryWidget::OnEntryButtonClicked()
 {
-	URPGMessageBox* MessageBox = CreateWidget<URPGMessageBox>(GetWorld(), MessageBoxClass);
-	
-	if (MessageBox)
-	{
-		MessageBox->SetGameLevelTag(LevelTag);
-
-		MessageBox->AddToViewport();
-	}
+	if (auto* Controller = GetOwningPlayer<ARPGPlayerController>())
+		Controller->ShowContentEntryConfirmation(*this, MessageBoxClass, LevelTag);
 	
 	URPGGameInstance* GI = URPGCoreFunctionLibrary::GetRPGGameInstance(GetWorld());
 
@@ -147,7 +139,5 @@ void URPGContentEntryWidget::OnEntryButtonClicked()
 
 void URPGContentEntryWidget::OnCloseButtonClicked()
 {
-	UUIManager::Get()->RemoveUI(this);
-
-	URPGCoreFunctionLibrary::ToggleInputMode(GetWorld(), ERPGInputMode::GameOnly);
+	RemoveFromParent();
 }

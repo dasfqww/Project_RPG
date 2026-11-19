@@ -3,6 +3,7 @@
 
 #include "UI/MessageBox/RPGMessageBox.h"
 #include "Components/TextBlock.h"
+#include "Controller/RPGPlayerController.h"
 #include "GameInstance/RPGGameInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "FunctionLibrary/RPGCoreFunctionLibrary.h"
@@ -34,4 +35,11 @@ void URPGMessageBox::OnConfirm()
 void URPGMessageBox::OnCancel()
 {
 	RemoveFromParent();
+}
+
+FReply URPGMessageBox::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)
+{
+	if (auto* Controller = GetOwningPlayer<ARPGPlayerController>();
+		Controller && Controller->HandlePlayerWindowKeyDown(this, Event)) return FReply::Handled();
+	return Super::NativeOnPreviewKeyDown(Geometry, Event);
 }

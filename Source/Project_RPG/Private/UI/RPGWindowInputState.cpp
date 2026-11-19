@@ -14,14 +14,18 @@ bool FRPGWindowInputState::ContainsWindow(const UUserWidget& Window) const
 
 UUserWidget* FRPGWindowInputState::GetTopWindow() const
 {
-	UUserWidget* Top = nullptr;
-	int32 TopLayer = MIN_int32;
+	const FWindowEntry* Top = GetTopEntry();
+	return Top ? Top->Window.Get() : nullptr;
+}
+
+const FRPGWindowInputState::FWindowEntry* FRPGWindowInputState::GetTopEntry() const
+{
+	const FWindowEntry* Top = nullptr;
 	for (const FWindowEntry& Entry : Windows)
 	{
-		if (Entry.Window.IsValid() && Entry.Layer >= TopLayer)
+		if (Entry.Window.IsValid() && (!Top || Entry.Layer >= Top->Layer))
 		{
-			Top = Entry.Window.Get();
-			TopLayer = Entry.Layer;
+			Top = &Entry;
 		}
 	}
 	return Top;
@@ -64,7 +68,7 @@ void FRPGWindowInputState::RefreshZOrder()
 	}
 }
 
-bool FRPGWindowInputState::BeginWindow(APlayerController& Controller, UUserWidget& Window, const int32 Layer)
+bool FRPGWindowInputState::BeginWindow(APlayerController& Controller, UUserWidget& Window, const int32 Layer, const bool bUIOnly)
 {
 	if (bInputLocksApplied && Owner.Get() != &Controller) return false;
 	if (ContainsWindow(Window)) return true;
@@ -85,7 +89,7 @@ bool FRPGWindowInputState::BeginWindow(APlayerController& Controller, UUserWidge
 		Controller.SetIgnoreLookInput(true);
 		bInputLocksApplied = true;
 	}
-	Windows.Add({&Window, Layer});
+	Windows.Add({&Window, Layer, bUIOnly});
 	Controller.SetShowMouseCursor(true);
 	if (bFirstWindow) OnFirstWindowOpened.Broadcast();
 	return ContainsWindow(Window);
@@ -97,18 +101,31 @@ void FRPGWindowInputState::FocusWindow(UUserWidget& Window)
 	if (!Controller || !ContainsWindow(Window)) return;
 	const int32 Index = Windows.IndexOfByPredicate(
 		[&Window](const FWindowEntry& Entry) { return Entry.Window.Get() == &Window; });
-	const FWindowEntry Entry = Windows[Index];
-	Windows.RemoveAt(Index);
-	Windows.Add(Entry);
-	// A normal window never takes keyboard focus away from a higher modal layer.
+	const FWindowEntry* PreviousTop = GetTopEntry();
+	// Preserve the previous window order while a UI-only modal owns input.
+	if (!PreviousTop || !PreviousTop->bUIOnly || PreviousTop->Layer <= Windows[Index].Layer)
+	{
+		const FWindowEntry Entry = Windows[Index];
+		Windows.RemoveAt(Index);
+		Windows.Add(Entry);
+	}
 	UUserWidget* Top = GetTopWindow();
 	if (!Top) return;
 	// TakeWidget may construct a widget and synchronously close it.
 	const TSharedRef<SWidget> Focus = Top->TakeWidget();
 	if (GetTopWindow() != Top || Owner.Get() != Controller) return;
+	const bool bUIOnly = GetTopEntry()->bUIOnly;
 	RefreshZOrder();
 	Controller->SetShowMouseCursor(true);
-	if (Controller->GetLocalPlayer())
+	if (!Controller->GetLocalPlayer()) return;
+	if (bUIOnly)
+	{
+		FInputModeUIOnly Mode;
+		Mode.SetWidgetToFocus(Focus);
+		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		Controller->SetInputMode(Mode);
+	}
+	else
 	{
 		FInputModeGameAndUI Mode;
 		Mode.SetWidgetToFocus(Focus);
@@ -116,6 +133,9 @@ void FRPGWindowInputState::FocusWindow(UUserWidget& Window)
 		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 		Controller->SetInputMode(Mode);
 	}
+	// Slate can handle a popup's close key before the viewport sees the event.
+	// Apply focus now, with UMG's deferred fallback if the widget is not ready yet.
+	if (FSlateApplication::IsInitialized() && Top->IsFocusable()) Top->SetUserFocus(Controller);
 }
 
 void FRPGWindowInputState::EndWindow(UUserWidget& Window)

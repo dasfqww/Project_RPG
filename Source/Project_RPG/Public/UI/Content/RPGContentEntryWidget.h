@@ -26,7 +26,6 @@ class PROJECT_RPG_API URPGContentEntryWidget : public URPGWidgetBase
 public:
 	URPGContentEntryWidget(const FObjectInitializer& ObjectInitializer);
 
-	virtual void NativeConstruct() override;
 
 	UFUNCTION(BlueprintCallable)
 	void OnDifficultyButtonClicked(ERPGGameDifficulty InGameDifficulty);
@@ -40,6 +39,7 @@ public:
 	//void CreateAndAddRewardItemWidget(const FRPGItemData& ItemData, int32 Quantity);
 
 protected:
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event) override;
 	
 	UFUNCTION(BlueprintCallable)
 	void OnEntryButtonClicked();

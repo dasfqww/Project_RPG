@@ -30,6 +30,7 @@ public:
 	
 
 protected:
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event) override;
 	UPROPERTY(EditDefaultsOnly, Category = "Message")
 	FText Message;
 

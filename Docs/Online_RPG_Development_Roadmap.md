@@ -296,6 +296,8 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 ## 12. 현재 현황과 다음 작업 체크리스트 (2026-10-20)
 
+- [x] 2026-11-20 인벤토리 위 콘텐츠 입장 팝업의 입력 우선순위 연결. Esc로 입장 확인창과 입장 팝업을 순서대로 닫고 원래 가방 포커스를 복원한다. Editor 빌드·Slate 회귀 3건 성공. [인벤토리 창 계약](ITEM_INVENTORY_PROJECTION.md#콘텐츠-입장-팝업과-인벤토리-포커스-2026-11-20).
+
 - [x] **2026-11-19 원정대 업적** — 폐광 일반 첫·10회와 1장 직접 완료를 원정대에 공유한다. PostgreSQL 17에서 과거 영수증 소급·중복 정산·월드 격리·DB 재시작 후 API 재조회를 검증했다. 독립 UE 클라이언트에서 부캐의 로비 업적창이 9/10에서 10/10이 되고 알림이 뜨는 것을 확인했다. 개발 인증과 서버 정산 fixture 사용. 본인 임시 7,389,097,853 bytes 정리. [인정 기준과 조회](ROSTER_ACHIEVEMENTS.md).
 
 - [x] 2026-11-19 캐릭터 선택 페이지 복원 완료. 최초 소유 목록에서 선택한 캐릭터가 속한 페이지를 열며, 목록을 둘러보는 중의 새로고침은 현 페이지를 유지한다. Editor·로비 네이티브 15건 성공. 임시 140737562 bytes 정리. [로비 화면 계약](ONLINE_LOBBY_UI.md#3d-캐릭터-선택과-생성--2026-11-18).
@@ -999,6 +1001,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| 콘텐츠 입장 팝업 / content-entry-focus-20261120 | 인벤토리와 콘텐츠 입장 팝업의 Esc·포커스 복원 | Public/Private Actor/Content/RPGContentEntryActor, Public/Private Controller/RPGPlayerController 및 UI/{RPGWindowInputState,Content/RPGContentEntryWidget,MessageBox/RPGMessageBox} h/cpp, Private/Tests/RPGItemWindowTests.cpp, Docs/ITEM_INVENTORY_PROJECTION.md 및 본인 로드맵 두 조각 | UE 5.8 Editor 증분 83단계 성공 및 Slate native 3건 오류0. 기존 입장 BP·확인창과 가방 포커스·Esc 복귀 확인. 기존 에셋 경고 140건. 사설 임시 2,962,072,891 bytes 및 링크 7개 폐기. 근거 Saved/BuildChecks/ContentEntryFocus-20261120. | 구현·검증·정리 완료. 원본 UBT/DLL 예약 해제. main index/ref·본인 12파일과 로드맵 두 조각만 커밋·푸시 예약. 이 커밋의 origin/main 일치 확인 시 본인 Git/소스 예약 해제. |
 | SwordMan 공격 조기 종료 / swordman-attack-idle-20261120 | 콤보 세 타의 몽타주 후속 동작이 잘리는 문제 수정 | GA_GreatswordSlash1~3.uasset, Scripts/Editor/AssembleRaidSwordManCombo.py, 본인 이 행 | 저장값 재로드와 실제 bossmap의 NullRHI 서버·클라이언트 2 PIE 비교. 세 타 모두 조기 종료에서 정상 블렌드아웃으로 바뀌었고 서버 피해 확인. 임시 3,250,901,775 bytes와 링크 67개 정리. 근거 Saved/BuildChecks/SwordManAttackIdle-20261120/Result.json | 검증·정리 완료. 본인 4경로 및 이 행만 main index/ref·origin/main 게시 예약. 이 커밋의 원격 반영 확인 시 예약 해제 |
 | 플레이어 타격점 적중 VFX / player-contact-effect-20261120 | 기본 공격·회오리에 `NS_VampireSlash_Hit`, 점프 강타에 `NS_LightningSlash_Hit` 배치. 충돌점이 없는 적중은 공격자 방향의 몸통 캡슐 표면 사용 | `RPGComboSkillAbility.cpp`, `RPGCombatReactionComponent.cpp`, `GA_Player_JumpSmash.uasset`, `GA_Player_WhirlWind.uasset`, 본인 행 | UE 5.8 Editor 빌드 및 새 프로세스의 3개 HitEffect 재로드 성공. 서버 실제 기본 공격 피해 1회, NullRHI 두 Iris 클라이언트에 새 Niagara와 좌표 각각 1회 일치. D3D12는 셰이더 초기화 제한 시간으로 화면 미확인. 임시 1,388,064 bytes 정리. 근거 `Saved/BuildChecks/PlayerContactEffect-20261120` | main index/ref·origin/main 게시 예약. 원격 일치 시 전체 예약 해제 |
 | 투사체 멀티플레이 검증 / projectile-net-20261120 | Glacer 투사체의 서버 풀 재사용과 클라이언트 비행·이펙트 복제 | `RPGProjectileBase.h/.cpp`, 본인 조율 행 2개 | UE 5.8.4 사설 UHT/컴파일/링크. Iris 전용 서버와 D3D11 클라이언트에서 같은 서버 액터 두 번 발사·피해 각각 1회, 클라이언트 X/Y 이동 및 발사/비행/피격 Niagara 각 2회. 렌더링 자산 워밍업 뒤 검증. native 회귀 5개 성공. `Saved/CP/combat-pooling-20261120` 7,039,728,097 bytes와 링크 64개 정리 완료. 근거 `Saved/BuildChecks/CombatPooling-20261120/Network.json` | 구현·검증·정리 완료. 본인 소스 2경로와 조율 행 2개만 main index/ref·origin/main 게시 예약. 원격 일치 확인 시 본인 예약 해제 |
