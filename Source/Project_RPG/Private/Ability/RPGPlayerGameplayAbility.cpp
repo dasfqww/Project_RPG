@@ -11,6 +11,7 @@
 #include "AbilitySystemGlobals.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
 #include "Component/Combat/PlayerCombatComponent.h"
+#include "Component/Combat/RPGCombatReactionComponent.h"
 #include "Component/UI/PlayerUIComponent.h"
 #include "Attribute/RPGAttributeSet.h"
 #include "DataTable/SkillData.h"
@@ -21,7 +22,7 @@
 #include "Sound/SoundClass.h"
 #include "GameInstance/RPGGameInstance.h"
 #include "GameplayEffect/GE_CoolDown.h"
-#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 #include "AI/RPGBossAIComponent.h"
 #include "AI/RPGBossThreatComponent.h"
 #include "EngineUtils.h"
@@ -514,10 +515,16 @@ void URPGPlayerGameplayAbility::HandleApplyDamage(const FGameplayEventData& InGa
 
 	//ERPGSuccessType SuccessType;
 
+	FHitResult VisualHit = ServerHit;
+	if (const auto* Combat = SourceActor->FindComponentByClass<UPlayerCombatComponent>())
+	{
+		Combat->TryGetCurrentServerWeaponHit(CachedTargetActor, VisualHit);
+	}
 	if (!ApplyLegacyDamageToServerHit(ServerHit, GameplayEffectSpecHandle))
 	{
 		return;
 	}
+	URPGCombatReactionComponent::PresentApprovedImpact(SourceActor, VisualHit, HitEffect);
 
 	FGameplayEffectContextHandle EmptyContext;
 	K2_ExecuteGameplayCue(WeaponHitSoundCueTag, EmptyContext);
@@ -659,11 +666,7 @@ void URPGPlayerGameplayAbility::HandleApplyAOEDamage(const FGameplayEventData& I
 		++AppliedTargetCount;
 		FGameplayEffectContextHandle EmptyContext;
 		K2_ExecuteGameplayCue(WeaponHitSoundCueTag, EmptyContext);
-		if (HitEffect)
-		{
-			UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-				GetWorld(), HitEffect, HitActor->GetActorLocation());
-		}
+		URPGCombatReactionComponent::PresentApprovedImpact(SourceActor, Hit, HitEffect);
 	}
 
 	if (AppliedTargetCount > 0 && IsActive() && ActivationSerial == LegacyDamageActivationSerial)

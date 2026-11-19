@@ -2,6 +2,7 @@
 
 
 #include "Item/Weapon/RPGWeaponBase.h"
+#include "Item/Weapon/RPGPlayerWeapon.h"
 #include "Components/BoxComponent.h"
 #include "FunctionLibrary/RPGCombatFunctionLibrary.h"
 #include "NiagaraFunctionLibrary.h"
@@ -42,8 +43,11 @@ void ARPGWeaponBase::OnCollisionBoxBeginOverlap(UPrimitiveComponent* OverlappedC
 		{
 			OnWeaponHitTarget.ExecuteIfBound(OtherActor);
 
-			UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), HitEffect, OtherActor->GetActorLocation());
-			//URPGCombatFunctionLibrary::SpawnHitEffect(GetWorld(), HitEffect, SweepResult);
+			// Player weapons wait for the ability to confirm damage before showing an impact.
+			if (HitEffect && !IsA<ARPGPlayerWeapon>() && GetNetMode() != NM_DedicatedServer)
+			{
+				UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), HitEffect, OtherActor->GetActorLocation());
+			}
 		}
 	}
 }

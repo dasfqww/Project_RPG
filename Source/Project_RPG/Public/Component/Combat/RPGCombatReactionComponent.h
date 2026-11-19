@@ -6,6 +6,7 @@
 #include "RPGCombatReactionComponent.generated.h"
 
 class UAnimInstance;
+class UNiagaraSystem;
 class URPGHitReactionProfile;
 
 /** Shared Player/NPC receiver. A presentation profile declares cosmetic support.
@@ -25,6 +26,9 @@ public:
 	ERPGHitReactionRoute PresentApprovedDamageHit(AActor* Source, const FHitResult& ServerHit,
 		const FGuid& ApprovedHitId);
 
+	/** One cosmetic impact per server-approved hit, independent of reaction montages. */
+	static void PresentApprovedImpact(const AActor* Source, const FHitResult& ServerHit, UNiagaraSystem* System);
+
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 		FActorComponentTickFunction* ThisTickFunction) override;
@@ -38,6 +42,10 @@ private:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastPresentHit(uint32 Sequence, ERPGHitReactionDirection Direction,
 		UAnimMontage* Montage, FName Section, double ExpiresAtServerTime, uint32 RecoveryRevision);
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastPresentImpact(const TSoftObjectPtr<UNiagaraSystem>& System, FVector_NetQuantize Location,
+		FVector_NetQuantizeNormal Normal);
 
 	bool IsLivingReceiver() const;
 	bool ReadServerTime(double& OutTime) const;

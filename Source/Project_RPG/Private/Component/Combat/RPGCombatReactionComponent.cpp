@@ -11,19 +11,78 @@
 #include "Animation/AnimSequence.h"
 #include "Attribute/RPGAttributeSet.h"
 #include "Character/RPGBaseCharacter.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/AssetManager.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/StreamableManager.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/GameStateBase.h"
 #include "Engine/World.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 #include "RPGGameplayTags.h"
 #include "Security/RPGDungeonGameplayAuthority.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogRPGCombatImpact, Log, All);
 
 URPGCombatReactionComponent::URPGCombatReactionComponent()
 {
 	SetIsReplicatedByDefault(true);
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.bStartWithTickEnabled = false;
+}
+
+void URPGCombatReactionComponent::PresentApprovedImpact(const AActor* Source, const FHitResult& ServerHit,
+	UNiagaraSystem* System)
+{
+	AActor* Target = ServerHit.GetActor();
+	if (!IsValid(Source) || !Source->HasAuthority() || !IsValid(Target) || !IsValid(System)) return;
+	URPGCombatReactionComponent* Receiver = Target->FindComponentByClass<URPGCombatReactionComponent>();
+	if (!Receiver) return;
+
+	FVector Location = Target->GetActorLocation();
+	FVector Normal = (Source->GetActorLocation() - Location).GetSafeNormal();
+	if ((ServerHit.bBlockingHit || ServerHit.Time > 0.f) && !ServerHit.bStartPenetrating
+		&& !ServerHit.ImpactPoint.ContainsNaN())
+	{
+		Location = ServerHit.ImpactPoint;
+		Normal = ServerHit.ImpactNormal.GetSafeNormal();
+	}
+	else if (const ACharacter* Character = Cast<ACharacter>(Target))
+	{
+		Location.Z += Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 0.2f;
+	}
+	Receiver->MulticastPresentImpact(TSoftObjectPtr<UNiagaraSystem>(System), Location, Normal);
+}
+
+void URPGCombatReactionComponent::MulticastPresentImpact_Implementation(const TSoftObjectPtr<UNiagaraSystem>& System,
+	FVector_NetQuantize Location, FVector_NetQuantizeNormal Normal)
+{
+	const UWorld* World = GetWorld();
+	if (!World || World->bIsTearingDown || World->GetNetMode() == NM_DedicatedServer || System.IsNull()) return;
+
+	const double ReceivedAt = FPlatformTime::Seconds();
+	const auto Spawn = [this, System, Location, Normal, ReceivedAt]()
+	{
+		UWorld* PlaybackWorld = GetWorld();
+		UNiagaraSystem* LoadedSystem = System.Get();
+		if (!PlaybackWorld || PlaybackWorld->bIsTearingDown || !LoadedSystem
+			|| FPlatformTime::Seconds() - ReceivedAt > 0.5) return;
+		const UNiagaraComponent* Effect = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			PlaybackWorld, LoadedSystem, Location, Normal.Rotation());
+		UE_LOG(LogRPGCombatImpact, VeryVerbose, TEXT("Impact %s at %s on %s Spawned=%d"),
+			*LoadedSystem->GetName(), *Location.ToString(), *GetNameSafe(GetOwner()), Effect != nullptr);
+	};
+	if (System.IsValid())
+	{
+		Spawn();
+	}
+	else
+	{
+		UAssetManager::GetStreamableManager().RequestAsyncLoad(System.ToSoftObjectPath(),
+			FStreamableDelegate::CreateWeakLambda(this, Spawn));
+	}
 }
 
 bool URPGCombatReactionComponent::IsLivingReceiver() const

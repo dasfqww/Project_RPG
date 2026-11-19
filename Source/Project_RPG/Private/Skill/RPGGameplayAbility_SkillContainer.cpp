@@ -45,6 +45,7 @@
 #include "Skill/RPGSkillTargetingPolicy.h"
 #include "TimerManager.h"
 #include "Component/Combat/RPGCombatContributionComponent.h"
+#include "Component/Combat/RPGCombatReactionComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RPGGameplayAbility_SkillContainer)
@@ -1398,6 +1399,7 @@ bool URPGGameplayAbility_SkillContainer::ExecuteAuthorizedSkillDamageInternal(
 			LastError))
 		{
 			OutAppliedHits.Add(ServerHit);
+			URPGCombatReactionComponent::PresentApprovedImpact(SourceActor, ServerHit.HitResult, HitEffect);
 			if (OutReactionContexts) OutReactionContexts->Add(ReactionContext);
 			++OutAppliedTargetCount;
 			if (bDeliverContributions && ContributionReceiver.IsValid() && IsActive() && !bIsAbilityEnding && SkillDamageActivationSerial == ActivationSerial)
@@ -1533,10 +1535,6 @@ void URPGGameplayAbility_SkillContainer::ApplyPolicySkillDamageEvent(const bool 
 			Reaction.Instigator = CurrentActorInfo ? CurrentActorInfo->OwnerActor.Get() : Source;
 			Reaction.Target = Hit.TargetActor;
 			UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(Hit.TargetActor, HitReactTag, Reaction);
-		}
-		if (HitEffect && Source->GetNetMode() != NM_DedicatedServer)
-		{
-			UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), HitEffect, Hit.TargetActor->GetActorLocation());
 		}
 	}
 	if (IsActive() && !bIsAbilityEnding && SkillDamageActivationSerial == ActivationSerial) GainIdentity();

@@ -18,6 +18,8 @@
 #include "EngineUtils.h"
 #include "GameFramework/Controller.h"
 #include "Item/Weapon/RPGPlayerWeapon.h"
+#include "NiagaraSystem.h"
+#include "UObject/ConstructorHelpers.h"
 #include <DataTable/SkillData.h>
 #include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "RPGGameplayTags.h"
@@ -27,6 +29,9 @@
 URPGComboSkillAbility::URPGComboSkillAbility()
 {
 	CurrentComboCount = InitComboCount;
+	static ConstructorHelpers::FObjectFinder<UNiagaraSystem> DefaultImpact(
+		TEXT("/Game/Assets/Niagara/Impact/NS_BlockImpact.NS_BlockImpact"));
+	HitEffect = DefaultImpact.Object;
 }
 
 void URPGComboSkillAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
