@@ -30,7 +30,7 @@ URPGComboSkillAbility::URPGComboSkillAbility()
 {
 	CurrentComboCount = InitComboCount;
 	static ConstructorHelpers::FObjectFinder<UNiagaraSystem> DefaultImpact(
-		TEXT("/Game/Assets/Niagara/Impact/NS_BlockImpact.NS_BlockImpact"));
+		TEXT("/Game/MixedVFX/Particles/Slashes/SeparateParts/Hits/NS_VampireSlash_Hit.NS_VampireSlash_Hit"));
 	HitEffect = DefaultImpact.Object;
 }
 

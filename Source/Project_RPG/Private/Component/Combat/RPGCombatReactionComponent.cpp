@@ -47,11 +47,16 @@ void URPGCombatReactionComponent::PresentApprovedImpact(const AActor* Source, co
 		&& !ServerHit.ImpactPoint.ContainsNaN())
 	{
 		Location = ServerHit.ImpactPoint;
-		Normal = ServerHit.ImpactNormal.GetSafeNormal();
+		Normal = ServerHit.ImpactNormal.GetSafeNormal(UE_SMALL_NUMBER, Normal);
 	}
 	else if (const ACharacter* Character = Cast<ACharacter>(Target))
 	{
-		Location.Z += Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 0.2f;
+		// Area hits can have no collision point. Put the burst on the attack-facing side of the torso.
+		const UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
+		Location = Capsule->GetComponentLocation();
+		Normal = (Source->GetActorLocation() - Location).GetSafeNormal2D(UE_SMALL_NUMBER, Character->GetActorForwardVector());
+		Location.Z += Capsule->GetScaledCapsuleHalfHeight() * 0.2f;
+		Location += Normal * Capsule->GetScaledCapsuleRadius();
 	}
 	Receiver->MulticastPresentImpact(TSoftObjectPtr<UNiagaraSystem>(System), Location, Normal);
 }
