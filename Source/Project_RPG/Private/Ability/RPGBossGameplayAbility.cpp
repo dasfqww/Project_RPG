@@ -6,9 +6,12 @@
 #include "AI/RPGBossThreatComponent.h"
 #include "AI/RPGBossPatternExecutor.h"
 #include "Combat/HitQuery/RPGHitQuerySubsystem.h"
+#include "Component/Combat/RPGCombatReactionComponent.h"
 #include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Controller.h"
+#include "NiagaraSystem.h"
+#include "UObject/ConstructorHelpers.h"
 
 URPGBossGameplayAbility::URPGBossGameplayAbility()
 {
@@ -18,6 +21,9 @@ URPGBossGameplayAbility::URPGBossGameplayAbility()
 	bRetriggerInstancedAbility = false;
 	AbilityActivationPolicy = ERPGAbilityActivationPolicy::OnTriggered;
 	ActivationPolicy = ERPGGladiatorAbilityActivationPolicy::Manual;
+	static ConstructorHelpers::FObjectFinder<UNiagaraSystem> DefaultImpact(
+		TEXT("/Game/MixedVFX/Particles/Slashes/SeparateParts/Hits/NS_VampireSlash_Hit.NS_VampireSlash_Hit"));
+	HitEffect = DefaultImpact.Object;
 }
 
 bool URPGBossGameplayAbility::ValidatePatternSettings(const URPGBossPatternSettings* Settings, FText& OutError) const
@@ -242,13 +248,15 @@ bool URPGBossGameplayAbility::ExecuteTargetedServerDamage(const FTransform& Quer
 	// GE application invokes synchronous callbacks, which may re-enter or restart this ability.
 	TGuardValue<bool> ApplyingGuard(bApplyingDamage, true);
 	const uint64 ApplyingSerial = ExecutionSerial;
+	APawn* const Source = BossPawn.Get();
 	if (!URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
-		BossPawn.Get(), TargetHit->HitResult, Spec, SecurityProfile))
+		Source, TargetHit->HitResult, Spec, SecurityProfile))
 	{
 		return false;
 	}
 	if (ExecutionSerial == ApplyingSerial) { bDamageAppliedThisExecution = true; }
 	OutHit = *TargetHit;
+	URPGCombatReactionComponent::PresentApprovedImpact(Source, TargetHit->HitResult, GetAttackHitEffect());
 	return true;
 }
 
@@ -304,10 +312,12 @@ int32 URPGBossGameplayAbility::ExecuteAreaServerDamage(const FTransform& QueryTr
 			Threat->GetThreatForTarget(Participant) <= 0.0) { continue; }
 		Visited.Add(Participant);
 		const FGameplayEffectSpecHandle Spec(new FGameplayEffectSpec(*Template.Data));
-		if (URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(BossPawn.Get(), Hit.HitResult, Spec, SecurityProfile))
+		APawn* const Source = BossPawn.Get();
+		if (URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(Source, Hit.HitResult, Spec, SecurityProfile))
 		{
 			if (ExecutionSerial == ApplyingSerial) { bDamageAppliedThisExecution = true; }
 			OutHits.Add(Hit);
+			URPGCombatReactionComponent::PresentApprovedImpact(Source, Hit.HitResult, GetAttackHitEffect());
 		}
 	}
 	return OutHits.Num();

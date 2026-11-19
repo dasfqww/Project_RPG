@@ -9,6 +9,7 @@
 class APawn;
 class AController;
 class UGameplayEffect;
+class UNiagaraSystem;
 class URPGBossThreatComponent;
 
 /** Interruptible server-only boss action, targeted by default. Timing, commit and presentation remain the concrete ability's job. */
@@ -18,6 +19,8 @@ class PROJECT_RPG_API URPGBossGameplayAbility : public URPGNPCGameplayAbility
 	GENERATED_BODY()
 public:
 	URPGBossGameplayAbility();
+
+	UNiagaraSystem* GetAttackHitEffect() const { return HitEffect.Get(); }
 
 	/** Optional GAS cooldown starting at CommitAbility. Zero preserves the authored legacy cooldown. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Ability|Cooldown", meta = (ClampMin = "0.0", ClampMax = "600.0", Units = "s"))
@@ -63,6 +66,10 @@ public:
 	virtual bool CanBeCanceled() const override final { return true; }
 
 protected:
+	/** Cosmetic burst emitted at each server-approved damage contact. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Ability|Presentation")
+	TObjectPtr<UNiagaraSystem> HitEffect;
+
 	UFUNCTION(BlueprintPure, Category = "Boss|Ability")
 	const URPGBossPatternSettings* GetBossPatternSettings() const { return PatternExecution.Settings; }
 	const URPGBossPatternSettings* GetPendingPatternSettings(FGameplayAbilitySpecHandle Handle,

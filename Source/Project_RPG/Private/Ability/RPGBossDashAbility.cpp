@@ -6,6 +6,7 @@
 #include "AbilitySystemComponent.h"
 #include "AIController.h"
 #include "Combat/HitQuery/RPGHitQuerySubsystem.h"
+#include "Component/Combat/RPGCombatReactionComponent.h"
 #include "Engine/World.h"
 #include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "GameFramework/Character.h"
@@ -237,7 +238,12 @@ void URPGBossDashAbility::ResolveSegment(FVector Start, FVector End, uint64 Seri
 			Pawn->GetController() != Controllers[Index].Get() || HitParticipants.Contains(Pawn) || TargetSelection->GetThreatForTarget(Pawn) <= 0.0) { continue; }
 		HitParticipants.Add(Pawn); // Consume before synchronous GE callbacks; no reentrant duplicate.
 		const FGameplayEffectSpecHandle Spec(new FGameplayEffectSpec(*Template.Data));
-		URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(SourceCharacter.Get(), Hits[Index].HitResult, Spec, FrozenSecurity);
+		ACharacter* const Source = SourceCharacter.Get();
+		const FHitResult& Hit = Hits[Index].HitResult;
+		if (URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(Source, Hit, Spec, FrozenSecurity))
+		{
+			URPGCombatReactionComponent::PresentApprovedImpact(Source, Hit, GetAttackHitEffect());
+		}
 	}
 }
 

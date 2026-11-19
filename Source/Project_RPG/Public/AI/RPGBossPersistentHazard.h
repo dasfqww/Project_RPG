@@ -13,6 +13,7 @@ class AController;
 class UAbilitySystemComponent;
 class UDecalComponent;
 class UMaterialInstanceDynamic;
+class UNiagaraSystem;
 class URPGBossAIComponent;
 class URPGBossThreatComponent;
 class URPGBossPersistentHazardAbility;
@@ -57,6 +58,7 @@ protected:
 private:
 	UPROPERTY(ReplicatedUsing = OnRep_State) FRPGBossHazardState State;
 	UPROPERTY() FGameplayEffectSpecHandle DamageTemplate;
+	UPROPERTY(Transient) TObjectPtr<UNiagaraSystem> HitEffect;
 	UPROPERTY(Transient) TObjectPtr<UDecalComponent> Indicator;
 	UPROPERTY(Transient) TObjectPtr<UMaterialInstanceDynamic> IndicatorMaterial;
 	TWeakObjectPtr<URPGBossAIComponent> SourceState;

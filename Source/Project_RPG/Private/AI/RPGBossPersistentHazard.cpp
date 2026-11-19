@@ -6,6 +6,7 @@
 #include "AI/RPGBossTelegraphPresentationComponent.h"
 #include "AbilitySystemComponent.h"
 #include "Component/RPGAbilitySystemComponent.h"
+#include "Component/Combat/RPGCombatReactionComponent.h"
 #include "Combat/HitQuery/RPGHitQuerySubsystem.h"
 #include "Components/DecalComponent.h"
 #include "Components/SceneComponent.h"
@@ -18,6 +19,7 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
+#include "NiagaraSystem.h"
 #include "RPGGameplayTags.h"
 
 ARPGBossPersistentHazard::ARPGBossPersistentHazard()
@@ -87,6 +89,7 @@ bool ARPGBossPersistentHazard::InitializeFromCast(const URPGBossPersistentHazard
 	SourceASC = ASC;
 	FrozenSecurity = Caster->SecurityProfile;
 	DamageTemplate = FGameplayEffectSpecHandle(new FGameplayEffectSpec(*DamageSpec.Data));
+	HitEffect = Caster->GetAttackHitEffect();
 	// Delayed pulses carry their immutable area identity, not a subsequent reuse of the caster instance.
 	FGameplayEffectContextHandle Context = DamageSpec.Data->GetContext().Duplicate();
 	Context.AddSourceObject(this);
@@ -160,7 +163,11 @@ void ARPGBossPersistentHazard::Pulse()
 			SourceThreat->GetThreatForTarget(Participant) <= 0.0) { continue; }
 		Visited.Add(Participant);
 		const FGameplayEffectSpecHandle Spec(new FGameplayEffectSpec(*Template.Data));
-		URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(State.SourcePawn, Hit.HitResult, Spec, FrozenSecurity);
+		APawn* const Source = State.SourcePawn.Get();
+		if (URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(Source, Hit.HitResult, Spec, FrozenSecurity))
+		{
+			URPGCombatReactionComponent::PresentApprovedImpact(Source, Hit.HitResult, HitEffect);
+		}
 	}
 	if (IsServerContextValid() && State.PulseCount < FMath::Min(128, FrozenSecurity.MaximumHitsPerActivation))
 	{
