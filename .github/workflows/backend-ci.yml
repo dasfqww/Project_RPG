@@ -1,0 +1,56 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'Backend/**'
+      - '.github/workflows/backend-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Release build and regression tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: Backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: Backend
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Build backend
+        run: |
+          dotnet new globaljson --sdk-version 9.0.100 --roll-forward latestFeature
+          dotnet restore ProjectRpg.Backend --locked-mode
+          dotnet build ProjectRpg.Backend --configuration Release --no-restore
+
+      # These projects are console test runners. Each returns a nonzero exit code on failure.
+      - name: Authentication tokens
+        run: dotnet run --project ProjectRpg.Backend.TokenTests --configuration Release
+
+      - name: Dungeon reward planning
+        run: dotnet run --project ProjectRpg.Backend.RewardPlanningTests --configuration Release
+
+      - name: Inventory tabs (in-memory HTTP)
+        run: dotnet run --project ProjectRpg.Backend.InventoryTabsTests --configuration Release
+
+      - name: Migration catalog
+        run: dotnet run --project ProjectRpg.Backend.MigrationTests --configuration Release
+
+      - name: Chapter one progression
+        run: dotnet run --project ProjectRpg.Backend.ChapterOneTests --configuration Release -- "$GITHUB_WORKSPACE/Backend/ProjectRpg.Backend/Narrative/Content/chapter01.json"
