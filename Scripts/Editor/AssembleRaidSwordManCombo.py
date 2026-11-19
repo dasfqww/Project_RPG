@@ -25,6 +25,7 @@ ATTACKS = (("Boss_Attack_Swing_RM", 2.05, 1.2),
            ("Boss_Attack_SwingAndSlam_RM", 1.644185, 1.6))
 MINIMUM_RECOVERY_SECONDS = 0.35
 MAXIMUM_RECOVERY_SECONDS = 5.0
+FINISHER_FOLLOW_THROUGH_RATE = 1.5
 NAMES = {"boss": "BP_RaidSwordManCombo", "controller": "AIC_RaidSwordManCombo",
          "definition": "DA_RaidSwordManCombo", "startup": "DA_RaidSwordManComboStartUp",
          "summon": "GA_RaidSwordManComboSummon", "blackboard": "BB_RaidSwordManCombo",
@@ -177,6 +178,40 @@ def create_tree(bundle, attacks, tree=None):
     return tree
 
 
+def set_finisher_follow_through(montage):
+    _, hit_time, _ = ATTACKS[-1]
+    tracks = list(montage.get_editor_property("slot_anim_tracks"))
+    check(len(tracks) == 1, "Expected one SwordMan finisher slot")
+    track = tracks[0].get_editor_property("anim_track")
+    segments = list(track.get_editor_property("anim_segments"))
+    check(len(segments) == 1, "Expected the original unsplit SwordMan finisher")
+    windup = segments[0].copy()
+    follow_through = windup.copy()
+    seq = windup.get_editor_property("anim_reference")
+    length = seq.get_play_length()
+    check(hit_time < length and seq.get_editor_property("rate_scale") == 1.0 and
+          montage.get_editor_property("rate_scale") == 1.0 and
+          windup.get_editor_property("anim_start_time") == 0.0 and
+          abs(windup.get_editor_property("anim_end_time") - length) < .001 and
+          windup.get_editor_property("anim_play_rate") == 1.0 and
+          windup.get_editor_property("looping_count") == 1, "Unexpected SwordMan finisher source timing")
+
+    # Keep the source pose at impact unchanged and accelerate only the remaining frames.
+    windup.set_editor_property("anim_end_time", hit_time)
+    # StartPos is visible but read-only through set_editor_property.
+    check(follow_through.import_text(f"(StartPos={hit_time})"), "Could not place the finisher follow-through")
+    follow_through.set_editor_property("anim_start_time", hit_time)
+    follow_through.set_editor_property("anim_play_rate", FINISHER_FOLLOW_THROUGH_RATE)
+    track.set_editor_property("anim_segments", [windup, follow_through])
+    tracks[0].set_editor_property("anim_track", track)
+    montage.modify()
+    montage.set_editor_property("slot_anim_tracks", tracks)
+    expected_length = hit_time + (length - hit_time) / FINISHER_FOLLOW_THROUGH_RATE
+    frame_rate = montage.get_editor_property("data_model_interface").get_frame_rate()
+    frames = round(expected_length * frame_rate.numerator / frame_rate.denominator)
+    montage.get_editor_property("controller").set_number_of_frames(unreal.FrameNumber(value=frames))
+
+
 def montage_recovery_seconds(montage, play_rate, windup):
     effective_rate = play_rate * montage.get_editor_property("rate_scale")
     check(math.isfinite(effective_rate) and effective_rate > 0.0, "Combo montage needs a positive finite play rate")
@@ -201,6 +236,8 @@ def create_attacks(tools):
         factory.set_editor_property("target_skeleton", seq.get_editor_property("skeleton"))
         montage = tools.create_asset("AM_GreatswordSlash" + str(i), folder, unreal.AnimMontage, factory)
         check(montage, "Could not create combo montage")
+        if i == len(ATTACKS):
+            set_finisher_follow_through(montage)
         bp = tools.duplicate_asset("GA_GreatswordSlash" + str(i), ROOT + "/GameplayAbility", load(BASE + "/GameplayAbility/GA_RaidSwordMan_Strike"))
         check(bp, "Could not create combo ability")
         cdo = default(bp)
@@ -238,14 +275,36 @@ def verify(bundle, attacks):
           boss.get_editor_property("boss_ai_component").get_editor_property("definition") == bundle["definition"] and
           default(bundle["controller"]).get_editor_property("BTAsset") == bundle["tree"], "Boss bundle is not connected")
     skeleton = boss.get_editor_property("mesh").get_editor_property("skeletal_mesh_asset").get_editor_property("skeleton")
-    for bp in attacks:
+    for i, bp in enumerate(attacks, 1):
         cdo = default(bp)
         montage = cdo.get_editor_property("presentation_montage")
         seq = montage.get_first_anim_reference()
         check(seq.get_editor_property("skeleton") == skeleton and not seq.get_editor_property("enable_root_motion") and
               seq.get_editor_property("force_root_lock") and not unreal.AnimationLibrary.get_animation_notify_events(seq) and
               not unreal.AnimationLibrary.get_animation_notify_events(montage), "Unsafe combo animation")
-        check(abs(montage.get_play_length() - seq.get_play_length()) < .02 and cdo.get_editor_property("PatternCooldownSeconds") == 0.0,
+        expected_length = seq.get_play_length()
+        if i == len(ATTACKS):
+            _, hit_time, windup = ATTACKS[-1]
+            tracks = montage.get_editor_property("slot_anim_tracks")
+            check(len(tracks) == 1, "Expected one SwordMan finisher slot")
+            segments = tracks[0].get_editor_property("anim_track").get_editor_property("anim_segments")
+            check(len(segments) == 2, "Expected separate finisher windup and follow-through segments")
+            lead, tail = segments
+            for segment, start, end, rate in ((lead, 0.0, hit_time, 1.0),
+                                               (tail, hit_time, expected_length, FINISHER_FOLLOW_THROUGH_RATE)):
+                check(segment.get_editor_property("anim_reference") == seq and
+                      segment.get_editor_property("looping_count") == 1 and
+                      abs(segment.get_editor_property("start_pos") - start) < .001 and
+                      abs(segment.get_editor_property("anim_start_time") - start) < .001 and
+                      abs(segment.get_editor_property("anim_end_time") - end) < .001 and
+                      abs(segment.get_editor_property("anim_play_rate") - rate) < .001,
+                      "SwordMan finisher segment timing mismatch")
+            check(abs(cdo.get_editor_property("windup_seconds") - windup) < .001 and
+                  abs(cdo.get_editor_property("presentation_play_rate") * montage.get_editor_property("rate_scale") *
+                      seq.get_editor_property("rate_scale") * windup - hit_time) < .001,
+                  "SwordMan finisher impact no longer matches damage timing")
+            expected_length = hit_time + (expected_length - hit_time) / FINISHER_FOLLOW_THROUGH_RATE
+        check(abs(montage.get_play_length() - expected_length) < .02 and cdo.get_editor_property("PatternCooldownSeconds") == 0.0,
               "Combo length/cooldown mismatch")
         minimum_recovery = montage_recovery_seconds(montage, cdo.get_editor_property("presentation_play_rate"),
                                                     cdo.get_editor_property("windup_seconds"))
