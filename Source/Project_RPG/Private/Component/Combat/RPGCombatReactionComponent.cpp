@@ -18,6 +18,7 @@
 #include "Engine/StreamableManager.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/GameStateBase.h"
+#include "GameFramework/Pawn.h"
 #include "Engine/World.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
@@ -74,10 +75,15 @@ void URPGCombatReactionComponent::MulticastPresentImpact_Implementation(const TS
 		UNiagaraSystem* LoadedSystem = System.Get();
 		if (!PlaybackWorld || PlaybackWorld->bIsTearingDown || !LoadedSystem
 			|| FPlatformTime::Seconds() - ReceivedAt > 0.5) return;
+		const APawn* HitPawn = Cast<APawn>(GetOwner());
+		const bool bOwnPlayerView = HitPawn && HitPawn->IsLocallyControlled() && HitPawn->IsPlayerControlled();
+		// Lift the burst above the locally controlled mesh while keeping the server's contact point.
+		const FVector Direction = bOwnPlayerView ? Normal.GetSafeNormal2D() + FVector::UpVector * 0.75 : FVector(Normal);
+		const float Scale = bOwnPlayerView ? 1.75f : 1.f;
 		const UNiagaraComponent* Effect = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-			PlaybackWorld, LoadedSystem, Location, Normal.Rotation());
-		UE_LOG(LogRPGCombatImpact, VeryVerbose, TEXT("Impact %s at %s on %s Spawned=%d"),
-			*LoadedSystem->GetName(), *Location.ToString(), *GetNameSafe(GetOwner()), Effect != nullptr);
+			PlaybackWorld, LoadedSystem, Location, Direction.Rotation(), FVector(Scale));
+		UE_LOG(LogRPGCombatImpact, VeryVerbose, TEXT("Impact %s at %s on %s Spawned=%d Scale=%.2f"),
+			*LoadedSystem->GetName(), *Location.ToString(), *GetNameSafe(GetOwner()), Effect != nullptr, Scale);
 	};
 	if (System.IsValid())
 	{
