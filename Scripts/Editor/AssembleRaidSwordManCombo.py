@@ -8,6 +8,8 @@ Generated runtime nodes are saved before opening a graph. For first graph
 creation, use the editor's select-all/copy ownership reset before saving, then
 reload and verify: otherwise generated child nodes can retain transient flags.
 """
+import math
+
 import unreal
 
 ROOT = "/Game/Blueprints/Character/NPC/Raid/SwordManCombo"
@@ -21,6 +23,8 @@ ANIMATIONS = "/Game/Assets/BossyEnemy/Animations/RootMotion/Attacks/"
 ATTACKS = (("Boss_Attack_Swing_RM", 2.05, 1.2),
            ("Boss_Attack_Uppercut_RM", 2.896176, 1.4),
            ("Boss_Attack_SwingAndSlam_RM", 1.644185, 1.6))
+MINIMUM_RECOVERY_SECONDS = 0.35
+MAXIMUM_RECOVERY_SECONDS = 5.0
 NAMES = {"boss": "BP_RaidSwordManCombo", "controller": "AIC_RaidSwordManCombo",
          "definition": "DA_RaidSwordManCombo", "startup": "DA_RaidSwordManComboStartUp",
          "summon": "GA_RaidSwordManComboSummon", "blackboard": "BB_RaidSwordManCombo",
@@ -173,6 +177,16 @@ def create_tree(bundle, attacks, tree=None):
     return tree
 
 
+def montage_recovery_seconds(montage, play_rate, windup):
+    effective_rate = play_rate * montage.get_editor_property("rate_scale")
+    check(math.isfinite(effective_rate) and effective_rate > 0.0, "Combo montage needs a positive finite play rate")
+    # GAS stops its montage when windup + recovery elapses. Leave time for the follow-through.
+    follow_through = montage.get_play_length() / effective_rate - windup
+    recovery = max(MINIMUM_RECOVERY_SECONDS, math.ceil(follow_through * 1000.0) / 1000.0)
+    check(recovery <= MAXIMUM_RECOVERY_SECONDS, "Combo follow-through exceeds the strike recovery limit")
+    return recovery
+
+
 def create_attacks(tools):
     attacks = []
     for i, (source_name, hit_time, windup) in enumerate(ATTACKS, 1):
@@ -190,8 +204,9 @@ def create_attacks(tools):
         bp = tools.duplicate_asset("GA_GreatswordSlash" + str(i), ROOT + "/GameplayAbility", load(BASE + "/GameplayAbility/GA_RaidSwordMan_Strike"))
         check(bp, "Could not create combo ability")
         cdo = default(bp)
-        for name, value in {"presentation_montage": montage, "presentation_play_rate": hit_time / windup,
-                            "windup_seconds": windup, "recovery_seconds": .35,
+        play_rate = hit_time / windup
+        for name, value in {"presentation_montage": montage, "presentation_play_rate": play_rate,
+                            "windup_seconds": windup, "recovery_seconds": montage_recovery_seconds(montage, play_rate, windup),
                             "PatternCooldownSeconds": 0.0, "MinimumActivationDistance": 0.0,
                             "MaximumActivationDistance": 400.0, "base_damage": unreal.ScalableFloat(value=12.0 + (i - 1) * 3.0)}.items():
             cdo.set_editor_property(name, value)
@@ -232,6 +247,11 @@ def verify(bundle, attacks):
               not unreal.AnimationLibrary.get_animation_notify_events(montage), "Unsafe combo animation")
         check(abs(montage.get_play_length() - seq.get_play_length()) < .02 and cdo.get_editor_property("PatternCooldownSeconds") == 0.0,
               "Combo length/cooldown mismatch")
+        minimum_recovery = montage_recovery_seconds(montage, cdo.get_editor_property("presentation_play_rate"),
+                                                    cdo.get_editor_property("windup_seconds"))
+        recovery = cdo.get_editor_property("recovery_seconds")
+        check(minimum_recovery - .0001 <= recovery <= MAXIMUM_RECOVERY_SECONDS,
+              bp.get_name() + " ends before the combo montage completes or exceeds the strike recovery limit")
     check(bundle["tree"].get_editor_property("blackboard_asset") == bundle["blackboard"], "Wrong combo blackboard")
     grants = list(bundle["startup"].get_editor_property("NPCStartUpAbilities"))
     phases = list(bundle["definition"].get_editor_property("phases"))
