@@ -14,6 +14,7 @@
 #include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "FunctionLibrary/RPGCombatFunctionLibrary.h"
 #include "Manager/PoolManager.h"
+#include "Net/UnrealNetwork.h"
 #include "RPGGameplayTags.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "TimerManager.h"
@@ -55,7 +56,8 @@ ARPGProjectileBase* ARPGProjectileBase::LaunchPooledProjectile(TSubclassOf<ARPGP
 {
 	UWorld* World = IsValid(ShootingPawn) ? ShootingPawn->GetWorld() : nullptr;
 	const ARPGProjectileBase* Defaults = ProjectileClass.GetDefaultObject();
-	if (!World || World->bIsTearingDown || !Defaults || Location.ContainsNaN() || Rotation.ContainsNaN())
+	if (!World || World->bIsTearingDown || World->GetNetMode() == NM_Client || !Defaults
+		|| Location.ContainsNaN() || Rotation.ContainsNaN())
 	{
 		return nullptr;
 	}
@@ -79,9 +81,19 @@ ARPGProjectileBase* ARPGProjectileBase::LaunchPooledProjectile(TSubclassOf<ARPGP
 		ProjectileClass, Transform, ShootingPawn, ShootingPawn, ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
 	if (!IsValid(Projectile)) { return nullptr; }
 	Projectile->ProjectileDamageEffectSpecHandle = DamageEffectSpec;
+	if (!PoolName.IsNone() && World->GetNetMode() != NM_Standalone)
+	{
+		Projectile->NetworkFlight.Sequence = 1;
+		Projectile->NetworkFlight.bActive = true;
+	}
 	Projectile->FinishSpawning(Transform);
 	if (!IsValid(Projectile)) { return nullptr; }
-	if (!PoolName.IsNone() && !Projectile->GetIsReplicated() && Pools->TrackActorForPool(PoolName, Projectile))
+	if (Projectile->NetworkFlight.Sequence != 0)
+	{
+		Projectile->SetReplicates(true);
+		Projectile->SetReplicateMovement(true);
+	}
+	if (!PoolName.IsNone() && Pools->TrackActorForPool(PoolName, Projectile))
 	{
 		Projectile->OwningPoolName = PoolName;
 	}
@@ -96,7 +108,12 @@ void ARPGProjectileBase::BeginPlay()
 		ProjectileCollisionBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 	}
 	Super::BeginPlay();
-	if (IsValid(this) && !bImpactHandled)
+	if (!IsValid(this) || bImpactHandled) { return; }
+	if (!HasAuthority() && NetworkFlight.Sequence != 0)
+	{
+		OnRep_NetworkFlight();
+	}
+	else if (GetNetMode() != NM_DedicatedServer)
 	{
 		OnProjectileLaunched();
 	}
@@ -107,6 +124,12 @@ void ARPGProjectileBase::Relaunch(const FVector& Location, const FRotator& Rotat
 {
 	const ARPGProjectileBase* Defaults = GetClass()->GetDefaultObject<ARPGProjectileBase>();
 	const UProjectileMovementComponent* DefaultMovement = Defaults->ProjectileMovementComp;
+	if (NetworkFlight.Sequence != 0)
+	{
+		SetNetDormancy(DORM_Awake);
+		NetworkFlight.Sequence = NetworkFlight.Sequence == MAX_uint32 ? 1 : NetworkFlight.Sequence + 1;
+		NetworkFlight.bActive = true;
+	}
 	SetOwner(ShootingPawn);
 	SetInstigator(ShootingPawn);
 	ProjectileDamageEffectSpecHandle = DamageEffectSpec;
@@ -154,8 +177,47 @@ void ARPGProjectileBase::Relaunch(const FVector& Location, const FRotator& Rotat
 
 	if (IsValid(this) && !bImpactHandled)
 	{
-		if (ProjectileNiagaraComponent->bAutoActivate) { ProjectileNiagaraComponent->Activate(true); }
-		OnProjectileLaunched();
+		if (NetworkFlight.Sequence != 0) { ForceNetUpdate(); }
+		if (GetNetMode() != NM_DedicatedServer)
+		{
+			if (ProjectileNiagaraComponent->bAutoActivate) { ProjectileNiagaraComponent->Activate(true); }
+			OnProjectileLaunched();
+		}
+	}
+}
+
+void ARPGProjectileBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ARPGProjectileBase, NetworkFlight);
+}
+
+void ARPGProjectileBase::OnRep_NetworkFlight()
+{
+	if (!HasActorBegunPlay() && !IsActorBeginningPlay()) { return; }
+	SetActorEnableCollision(false);
+	SetActorHiddenInGame(!NetworkFlight.bActive);
+	StopFlightPresentation();
+	if (!NetworkFlight.bActive)
+	{
+		ProjectileMovementComp->Deactivate();
+		return;
+	}
+
+	PostNetReceiveVelocity(GetReplicatedMovement().LinearVelocity);
+	ProjectileMovementComp->ResetInterpolation();
+	ProjectileMovementComp->Activate(true);
+	if (ProjectileNiagaraComponent->bAutoActivate) { ProjectileNiagaraComponent->Activate(true); }
+	OnProjectileLaunched();
+}
+
+void ARPGProjectileBase::PostNetReceiveVelocity(const FVector& NewVelocity)
+{
+	Super::PostNetReceiveVelocity(NewVelocity);
+	if (!HasAuthority() && NetworkFlight.bActive)
+	{
+		ProjectileMovementComp->Velocity = NewVelocity;
+		ProjectileMovementComp->UpdateComponentVelocity();
 	}
 }
 
@@ -175,7 +237,7 @@ void ARPGProjectileBase::EndFlight()
 	{
 		return;
 	}
-	if (OwningPoolName.IsNone() || GetIsReplicated())
+	if (OwningPoolName.IsNone())
 	{
 		Destroy();
 		return;
@@ -187,14 +249,24 @@ void ARPGProjectileBase::EndFlight()
 	ProjectileMovementComp->Deactivate();
 	ProjectileMovementComp->SetUpdatedComponent(nullptr);
 	ProjectileMovementComp->Velocity = FVector::ZeroVector;
-	ProjectileNiagaraComponent->DeactivateImmediate();
-	if (UAudioComponent* Audio = FlightAudio.Get()) { Audio->Stop(); }
-	FlightAudio.Reset();
+	StopFlightPresentation();
 	ProjectileDamageEffectSpecHandle.Clear();
 	SetOwner(nullptr);
 	SetInstigator(nullptr);
+	if (NetworkFlight.Sequence != 0)
+	{
+		NetworkFlight.bActive = false;
+		ForceNetUpdate();
+	}
 	// Movement and ability callbacks can still be unwinding after an impact.
 	GetWorldTimerManager().SetTimerForNextTick(this, &ThisClass::ReturnToPool);
+}
+
+void ARPGProjectileBase::StopFlightPresentation()
+{
+	ProjectileNiagaraComponent->DeactivateImmediate();
+	if (UAudioComponent* Audio = FlightAudio.Get()) { Audio->Stop(); }
+	FlightAudio.Reset();
 }
 
 void ARPGProjectileBase::ReturnToPool()
@@ -202,6 +274,18 @@ void ARPGProjectileBase::ReturnToPool()
 	if (!UPoolManager::Get(this)->TryReleaseToPool(OwningPoolName, this, MaxIdleProjectilesPerClass))
 	{
 		Destroy();
+	}
+	else if (NetworkFlight.Sequence != 0)
+	{
+		SetNetDormancy(DORM_DormantAll);
+	}
+}
+
+void ARPGProjectileBase::MulticastFlightImpact_Implementation(FVector_NetQuantize ImpactPoint)
+{
+	if (GetNetMode() != NM_DedicatedServer)
+	{
+		BP_OnSpawnProjectileHitFX(ImpactPoint);
 	}
 }
 
@@ -248,7 +332,14 @@ void ARPGProjectileBase::ProcessProjectileImpact(
 		ImpactPoint,
 		ImpactNormal);
 
-	BP_OnSpawnProjectileHitFX(ImpactPoint);
+	if (HasAuthority() && NetworkFlight.Sequence != 0)
+	{
+		MulticastFlightImpact(ImpactPoint);
+	}
+	else
+	{
+		BP_OnSpawnProjectileHitFX(ImpactPoint);
+	}
 	if (!IsValid(this)) { return; }
 	if (!HasAuthority() || GetNetMode() == NM_Client)
 	{
