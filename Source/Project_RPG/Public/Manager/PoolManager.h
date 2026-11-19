@@ -13,8 +13,10 @@ public:
     Pool(TSubclassOf<AActor> InActorClass, int32 InitialSize = 10, UWorld* InWorld = nullptr);
     void WarmUp(int32 InitialSize);
     AActor* Acquire();
+    AActor* TakeAvailableActor();
+    bool TrackActor(AActor* Actor);
     UClass* GetActorClass() const { return ActorClass.Get(); }
-    bool Release(AActor* Actor);
+    bool Release(AActor* Actor, int32 MaxAvailableActors);
     void Reset();
 
 private:
@@ -55,8 +57,12 @@ public:
     void RegisterPool(FName PoolName, TSubclassOf<AActor> ActorClass, int32 InitialSize = 10);
     void UnregisterPool(FName PoolName);
     AActor* AcquireFromPool(FName PoolName);
+    /** Lifecycle-aware callers set up an idle actor before making it visible or collidable. */
+    AActor* AcquireInactiveFromPool(FName PoolName);
+    /** Tracks an actor spawned with the caller's required transform and spawn parameters. */
+    bool TrackActorForPool(FName PoolName, AActor* Actor);
     void ReleaseToPool(FName PoolName, AActor* Actor);
-    bool TryReleaseToPool(FName PoolName, AActor* Actor);
+    bool TryReleaseToPool(FName PoolName, AActor* Actor, int32 MaxAvailableActors = MAX_int32);
 
 protected:
     virtual bool DoesSupportWorldType(EWorldType::Type WorldType) const override;

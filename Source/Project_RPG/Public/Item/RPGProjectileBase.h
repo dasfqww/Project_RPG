@@ -9,6 +9,7 @@
 #include "RPGProjectileBase.generated.h"
 
 class UBoxComponent;
+class UAudioComponent;
 class UNiagaraComponent;
 class UProjectileMovementComponent;
 struct FGameplayEventData;
@@ -29,9 +30,22 @@ public:
 	// Sets default values for this actor's properties
 	ARPGProjectileBase();
 
+	/** The calling ability retains its existing execution policy. Replicated classes spawn normally. */
+	UFUNCTION(BlueprintCallable, Category = "Projectile")
+	static ARPGProjectileBase* LaunchPooledProjectile(TSubclassOf<ARPGProjectileBase> ProjectileClass,
+		FVector Location, FRotator Rotation, APawn* ShootingPawn, FGameplayEffectSpecHandle DamageEffectSpec);
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	virtual void LifeSpanExpired() override;
+
+	/** Per-flight presentation, including the first launch. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Projectile")
+	void OnProjectileLaunched();
+
+	UFUNCTION(BlueprintCallable, Category = "Projectile")
+	void SetProjectileFlightAudio(UAudioComponent* Audio);
 
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Projectile")
 		TObjectPtr<UBoxComponent> ProjectileCollisionBox;
@@ -66,6 +80,10 @@ protected:
 		void BP_OnSpawnProjectileHitFX(const FVector& HitLocation);
 
 private:
+	void Relaunch(const FVector& Location, const FRotator& Rotation, APawn* ShootingPawn,
+		const FGameplayEffectSpecHandle& DamageEffectSpec);
+	void EndFlight();
+	void ReturnToPool();
 	void ProcessProjectileImpact(
 		AActor* OtherActor,
 		UPrimitiveComponent* OtherComponent,
@@ -76,4 +94,6 @@ private:
 		const FGameplayEventData& InPayload);
 
 	bool bImpactHandled = false;
+	FName OwningPoolName;
+	TWeakObjectPtr<UAudioComponent> FlightAudio;
 };

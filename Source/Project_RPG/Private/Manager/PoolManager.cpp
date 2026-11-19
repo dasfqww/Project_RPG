@@ -34,11 +34,21 @@ AActor* Pool::SpawnActor()
         if (IsValid(Actor)) { Actor->Destroy(); }
         return nullptr;
     }
-    if (IsValid(Actor)) { ActorPool.Add(Actor); }
-    return IsValid(Actor) ? Actor : nullptr;
+    return TrackActor(Actor) ? Actor : nullptr;
 }
 
 AActor* Pool::Acquire()
+{
+    if (AActor* Actor = TakeAvailableActor())
+    {
+        Actor->SetActorHiddenInGame(false);
+        Actor->SetActorEnableCollision(true);
+        return Actor;
+    }
+    return SpawnActor();
+}
+
+AActor* Pool::TakeAvailableActor()
 {
     UWorld* OwnerWorld = World.Get();
     if (!OwnerWorld || OwnerWorld->bIsTearingDown) { return nullptr; }
@@ -47,14 +57,22 @@ AActor* Pool::Acquire()
     {
         AActor* Actor = AvailableActors.Pop().Get();
         if (!IsValid(Actor) || Actor->GetWorld() != OwnerWorld) { continue; }
-        Actor->SetActorHiddenInGame(false);
-        Actor->SetActorEnableCollision(true);
         return Actor;
     }
-    return SpawnActor();
+    return nullptr;
 }
 
-bool Pool::Release(AActor* Actor)
+bool Pool::TrackActor(AActor* Actor)
+{
+    if (!IsValid(Actor) || Actor->GetWorld() != World.Get() || Actor->GetClass() != ActorClass.Get())
+    {
+        return false;
+    }
+    ActorPool.AddUnique(Actor);
+    return true;
+}
+
+bool Pool::Release(AActor* Actor, int32 MaxAvailableActors)
 {
     const TWeakObjectPtr<AActor> Reference(Actor);
     if (!IsValid(Actor) || Actor->GetWorld() != World.Get() || !ActorPool.Contains(Reference))
@@ -63,9 +81,14 @@ bool Pool::Release(AActor* Actor)
     }
     if (!AvailableActors.Contains(Reference))
     {
+        if (AvailableActors.Num() >= MaxAvailableActors)
+        {
+            ActorPool.RemoveSingleSwap(Reference);
+            return false;
+        }
         Actor->SetActorHiddenInGame(true);
-        Actor->SetActorLocation(FVector::ZeroVector);
         Actor->SetActorEnableCollision(false);
+        Actor->SetActorLocation(FVector::ZeroVector);
         AvailableActors.Add(Reference);
     }
     return true;
@@ -159,14 +182,28 @@ AActor* UPoolManager::AcquireFromPool(FName PoolName)
     return Found ? Found->Acquire() : nullptr;
 }
 
+AActor* UPoolManager::AcquireInactiveFromPool(FName PoolName)
+{
+    if (!CanProcessRequests()) { return nullptr; }
+    TSharedPtr<Pool> Found = PoolMap.FindRef(PoolName);
+    return Found ? Found->TakeAvailableActor() : nullptr;
+}
+
+bool UPoolManager::TrackActorForPool(FName PoolName, AActor* Actor)
+{
+    if (!CanProcessRequests()) { return false; }
+    TSharedPtr<Pool> Found = PoolMap.FindRef(PoolName);
+    return Found && Found->TrackActor(Actor);
+}
+
 void UPoolManager::ReleaseToPool(FName PoolName, AActor* Actor)
 {
     TryReleaseToPool(PoolName, Actor);
 }
 
-bool UPoolManager::TryReleaseToPool(FName PoolName, AActor* Actor)
+bool UPoolManager::TryReleaseToPool(FName PoolName, AActor* Actor, int32 MaxAvailableActors)
 {
     if (!CanProcessRequests()) { return false; }
     TSharedPtr<Pool> Found = PoolMap.FindRef(PoolName);
-    return Found && Found->Release(Actor);
+    return Found && Found->Release(Actor, MaxAvailableActors);
 }
