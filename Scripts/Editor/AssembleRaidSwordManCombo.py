@@ -26,6 +26,8 @@ ATTACKS = (("Boss_Attack_Swing_RM", 2.05, 1.2),
 MINIMUM_RECOVERY_SECONDS = 0.35
 MAXIMUM_RECOVERY_SECONDS = 5.0
 FINISHER_FOLLOW_THROUGH_RATE = 1.5
+# Start of the slam collision window in the original SwordMan montage.
+FINISHER_SLAM_SOURCE_TIME = 3.919738
 NAMES = {"boss": "BP_RaidSwordManCombo", "controller": "AIC_RaidSwordManCombo",
          "definition": "DA_RaidSwordManCombo", "startup": "DA_RaidSwordManComboStartUp",
          "summon": "GA_RaidSwordManComboSummon", "blackboard": "BB_RaidSwordManCombo",
@@ -247,6 +249,12 @@ def create_attacks(tools):
                             "PatternCooldownSeconds": 0.0, "MinimumActivationDistance": 0.0,
                             "MaximumActivationDistance": 400.0, "base_damage": unreal.ScalableFloat(value=12.0 + (i - 1) * 3.0)}.items():
             cdo.set_editor_property(name, value)
+        if i == len(ATTACKS):
+            cdo.set_editor_property("second_impact_delay_seconds", (FINISHER_SLAM_SOURCE_TIME - hit_time) /
+                                    (FINISHER_FOLLOW_THROUGH_RATE * play_rate * montage.get_editor_property("rate_scale")))
+            security = cdo.get_editor_property("security_profile")
+            security.set_editor_property("maximum_hits_per_activation", max(2, security.get_editor_property("maximum_hits_per_activation")))
+            cdo.set_editor_property("security_profile", security)
         compile_bp(bp)
         for asset in (seq, montage, bp):
             save(asset)
@@ -303,6 +311,11 @@ def verify(bundle, attacks):
                   abs(cdo.get_editor_property("presentation_play_rate") * montage.get_editor_property("rate_scale") *
                       seq.get_editor_property("rate_scale") * windup - hit_time) < .001,
                   "SwordMan finisher impact no longer matches damage timing")
+            delay = (FINISHER_SLAM_SOURCE_TIME - hit_time) / (FINISHER_FOLLOW_THROUGH_RATE *
+                cdo.get_editor_property("presentation_play_rate") * montage.get_editor_property("rate_scale"))
+            check(abs(cdo.get_editor_property("second_impact_delay_seconds") - delay) < .001 and
+                  cdo.get_editor_property("security_profile").get_editor_property("maximum_hits_per_activation") >= 2 and
+                  not cdo.get_editor_property("hit_all_threat_participants"), "SwordMan slam damage window mismatch")
             expected_length = hit_time + (expected_length - hit_time) / FINISHER_FOLLOW_THROUGH_RATE
         check(abs(montage.get_play_length() - expected_length) < .02 and cdo.get_editor_property("PatternCooldownSeconds") == 0.0,
               "Combo length/cooldown mismatch")

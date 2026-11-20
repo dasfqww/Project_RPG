@@ -98,6 +98,7 @@ protected:
 	bool ExecuteTargetedServerDamage(const FTransform& QueryTransform, const FRPGHitQueryProfile& HitProfile,
 		TSubclassOf<UGameplayEffect> DamageEffectClass, const FScalableFloat& BaseDamage,
 		const FRPGSkillSecurityProfile& SecurityProfile, FRPGHitQueryResult& OutHit);
+	bool BeginAdditionalTargetedDamageWindow();
 
 	/** One server query per execution; each living threat participant in the area can be hit once.
 	 * Commit first. A miss consumes the area strike too. Reset/cancellation/phase change stops the loop.

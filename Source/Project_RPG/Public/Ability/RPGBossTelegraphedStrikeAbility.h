@@ -57,6 +57,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Strike|Presentation", meta = (ClampMin = "0.0", ClampMax = "5.0", Units = "s"))
 	float RecoverySeconds = 0.f;
 
+	/** Optional second targeted impact during the existing recovery, in seconds after the first. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Strike", meta = (ClampMin = "0.0", ClampMax = "5.0", Units = "s"))
+	float SecondImpactDelaySeconds = 0.f;
+
 protected:
 	virtual bool CanActivateAbility(FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr,
@@ -76,5 +80,5 @@ private:
 	int32 LockedEncounterId = 0;
 	TWeakObjectPtr<UAnimMontage> ExecutionMontage;
 	void StopStrikePresentation();
-	void ResolveStrike(uint64 StartedSerial);
+	void ResolveStrike(uint64 StartedSerial, bool bSecondImpact = false);
 };

@@ -62,6 +62,9 @@ bool URPGBossTelegraphedStrikeAbility::CanActivateAbility(FGameplayAbilitySpecHa
 		WindupSeconds <= 120.f && BuildStrikeHitProfile(Profile) &&
 		FMath::IsFinite(Damage) && Damage > 0.f && SecurityProfile.bRequireAuthorityHitQuery &&
 		FMath::IsFinite(RecoverySeconds) && RecoverySeconds >= 0.f && RecoverySeconds <= 5.f &&
+		FMath::IsFinite(SecondImpactDelaySeconds) && (SecondImpactDelaySeconds == 0.f ||
+			(!bHitAllThreatParticipants && SecondImpactDelaySeconds >= .01f &&
+			 SecondImpactDelaySeconds < RecoverySeconds && SecurityProfile.MaximumHitsPerActivation >= 2)) &&
 		(!PresentationMontage || (!PresentationMontage->HasRootMotion() &&
 			FMath::IsFinite(PresentationPlayRate) && PresentationPlayRate >= .01f && PresentationPlayRate <= 10.f)) &&
 		SecurityProfile.IsValid(&ProfileError) && Damage <= SecurityProfile.MaximumDamagePerHit &&
@@ -126,7 +129,7 @@ void URPGBossTelegraphedStrikeAbility::ActivateAbility(FGameplayAbilitySpecHandl
 	}
 }
 
-void URPGBossTelegraphedStrikeAbility::ResolveStrike(uint64 StartedSerial)
+void URPGBossTelegraphedStrikeAbility::ResolveStrike(uint64 StartedSerial, bool bSecondImpact)
 {
 	if (!IsActive() || GetBossExecutionSerial() != StartedSerial) { return; }
 	APawn* Avatar = Cast<APawn>(GetAvatarActorFromActorInfo());
@@ -140,6 +143,11 @@ void URPGBossTelegraphedStrikeAbility::ResolveStrike(uint64 StartedSerial)
 	}
 	// End listeners may cancel or restart this per-actor ability. Never hit on behalf of the old execution.
 	if (!IsActive() || GetBossExecutionSerial() != StartedSerial || !IsBossExecutionValid()) { return; }
+	if (bSecondImpact && !BeginAdditionalTargetedDamageWindow())
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
 	if (bHitAllThreatParticipants)
 	{
 		TArray<FRPGHitQueryResult> Hits;
@@ -154,14 +162,28 @@ void URPGBossTelegraphedStrikeAbility::ResolveStrike(uint64 StartedSerial)
 	}
 	if (IsActive() && GetBossExecutionSerial() == StartedSerial)
 	{
-		if (RecoverySeconds > 0.f && IsBossExecutionValid())
+		if (!bSecondImpact && SecondImpactDelaySeconds > 0.f && IsBossExecutionValid())
+		{
+			const int32 Sequence = StartBossTelegraphForHitQuery(ActionTag, LockedQueryTransform, LockedHitProfile, SecondImpactDelaySeconds);
+			if (!IsActive() || GetBossExecutionSerial() != StartedSerial) return;
+			if (Sequence != 0)
+			{
+				LockedTelegraphSequence = Sequence;
+				GetWorld()->GetTimerManager().SetTimer(StrikeTimer,
+					FTimerDelegate::CreateWeakLambda(this, [this, StartedSerial]() { ResolveStrike(StartedSerial, true); }),
+					SecondImpactDelaySeconds, false);
+				return;
+			}
+		}
+		const float RemainingRecovery = RecoverySeconds - (bSecondImpact ? SecondImpactDelaySeconds : 0.f);
+		if (RemainingRecovery > 0.f && IsBossExecutionValid())
 		{
 			GetWorld()->GetTimerManager().SetTimer(StrikeTimer,
 				FTimerDelegate::CreateWeakLambda(this, [this, StartedSerial]()
 				{
 					if (IsActive() && GetBossExecutionSerial() == StartedSerial)
 						EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, !IsBossExecutionValid());
-				}), RecoverySeconds, false);
+				}), RemainingRecovery, false);
 			return;
 		}
 		// A completed swing may miss; BT completion is not a hit confirmation.

@@ -260,6 +260,13 @@ bool URPGBossGameplayAbility::ExecuteTargetedServerDamage(const FTransform& Quer
 	return true;
 }
 
+bool URPGBossGameplayAbility::BeginAdditionalTargetedDamageWindow()
+{
+	if (bApplyingDamage || bAreaDamageResolvedThisExecution || !IsBossExecutionValid()) return false;
+	bDamageAppliedThisExecution = false;
+	return true;
+}
+
 int32 URPGBossGameplayAbility::ExecuteAreaServerDamage(const FTransform& QueryTransform,
 	const FRPGHitQueryProfile& HitProfile, TSubclassOf<UGameplayEffect> DamageEffectClass,
 	const FScalableFloat& BaseDamage, const FRPGSkillSecurityProfile& SecurityProfile,
