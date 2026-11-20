@@ -10,8 +10,7 @@ class URPGSkillSlotViewModel;
 class URPGSkillRefinementButton;
 
 /**
- * 스킬 연마 선택 보드 (고정형 3-3-2 구조)
- * - WBP에서 8개의 버튼을 미리 배치하고 BindWidget으로 연결
+ * 스킬 연마 선택 보드. 기존 3열 보드와 첫 단계 4열 보드를 지원한다.
  */
 UCLASS(meta = (DisplayName = "스킬 연마 보드"))
 class PROJECT_RPG_API URPGSkillRefinementBoard : public URPGWidgetBase
@@ -27,10 +26,11 @@ protected:
 	virtual void NativePreConstruct() override;
 	virtual void NativeDestruct() override;
 
-	// 티어 1 (3개 선택지)
+	// 티어 1
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<URPGSkillRefinementButton> Btn_1_1;
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<URPGSkillRefinementButton> Btn_1_2;
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<URPGSkillRefinementButton> Btn_1_3;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<URPGSkillRefinementButton> Btn_1_4;
 
 	// 티어 2 (3개 선택지)
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<URPGSkillRefinementButton> Btn_2_1;

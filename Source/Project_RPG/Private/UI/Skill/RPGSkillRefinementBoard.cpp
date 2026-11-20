@@ -11,7 +11,7 @@ void URPGSkillRefinementBoard::NativeOnInitialized()
 
 	// 버튼들을 티어별 배열로 정리
 	RefinementTiers.Empty();
-	RefinementTiers.Add({ Btn_1_1, Btn_1_2, Btn_1_3 }); // Tier 0
+	RefinementTiers.Add({ Btn_1_1, Btn_1_2, Btn_1_3, Btn_1_4 }); // Tier 0
 	RefinementTiers.Add({ Btn_2_1, Btn_2_2, Btn_2_3 }); // Tier 1
 	RefinementTiers.Add({ Btn_3_1, Btn_3_2 });          // Tier 2
 
@@ -58,7 +58,7 @@ void URPGSkillRefinementBoard::NativePreConstruct()
 	{
 		// 디자인 모드에서 더미 데이터 세팅 (레이아웃 확인용)
 		TArray<TArray<URPGSkillRefinementButton*>> DesignTiers;
-		DesignTiers.Add({ Btn_1_1, Btn_1_2, Btn_1_3 });
+		DesignTiers.Add({ Btn_1_1, Btn_1_2, Btn_1_3, Btn_1_4 });
 		DesignTiers.Add({ Btn_2_1, Btn_2_2, Btn_2_3 });
 		DesignTiers.Add({ Btn_3_1, Btn_3_2 });
 
