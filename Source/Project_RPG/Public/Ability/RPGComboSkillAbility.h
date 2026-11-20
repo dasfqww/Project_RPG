@@ -57,6 +57,9 @@ private:
 	TWeakObjectPtr<APawn> BossAttackSource;
 	TWeakObjectPtr<AController> BossAttackController;
 	void WaitForNextInputTransition();
+	void SetPlayingComboStep();
+	UFUNCTION()
+	void OnComboAdvanceEvent(FGameplayEventData Payload);
 	void RecordResolveComboHit(int32 Step, uint64 Serial, bool bApplied);
 	TSet<int32> ResolveComboHitSteps;
 	TWeakObjectPtr<UAnimMontage> ResolveComboMontage;
@@ -87,6 +90,8 @@ private:
 	bool bComboInputHeld = false;
 	bool bAdvanceBuffered = false;
 	bool bHasNextComboSection = false;
+	bool bAdvanceNotifyReached = false;
+	const FMultipleSectionData* ActiveAttackSectionData = nullptr;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UAbilityTask_WaitInputPress> WaitInputPressTask;

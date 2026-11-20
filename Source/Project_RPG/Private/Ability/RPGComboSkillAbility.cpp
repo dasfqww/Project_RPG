@@ -6,6 +6,8 @@
 #include "Abilities/Tasks/AbilityTask_WaitInputPress.h"
 #include "Abilities/Tasks/AbilityTask_WaitInputRelease.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
+#include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
+#include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Component/Combat/PlayerCombatComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
@@ -62,6 +64,12 @@ void URPGComboSkillAbility::ActivateAbility(const FGameplayAbilitySpecHandle Han
 	bComboInputHeld = Spec && Spec->InputPressed;
 	bAdvanceBuffered = false;
 	WaitForNextInputTransition();
+	const FGameplayTag AdvanceTag = FGameplayTag::RequestGameplayTag(
+		TEXT("GameplayEvent.Skill.Combo.Advance"));
+	auto* AdvanceTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(
+		this, AdvanceTag, nullptr, false, true);
+	AdvanceTask->EventReceived.AddDynamic(this, &ThisClass::OnComboAdvanceEvent);
+	AdvanceTask->ReadyForActivation();
 	PlaySkillMontage();
 	if (IsActive())
 	{
@@ -80,6 +88,8 @@ void URPGComboSkillAbility::EndAbility(const FGameplayAbilitySpecHandle Handle,
 	bComboInputHeld = false;
 	bAdvanceBuffered = false;
 	bHasNextComboSection = false;
+	bAdvanceNotifyReached = false;
+	ActiveAttackSectionData = nullptr;
 	WaitInputPressTask = nullptr;
 	WaitInputReleaseTask = nullptr;
 	BossAttackEncounters.Reset();
@@ -139,8 +149,6 @@ void URPGComboSkillAbility::PlaySkillMontage()
 			if (!Section || !SelectedAttackData->MontageToPlay->IsValidSectionName(*Section)) { ResolveStepCount = 0; break; }
 		}
 	}
-	ResolveCurrentStep = CurrentComboCount;
-
 	UAbilityTask_PlayMontageAndWait* PlayAttackTask =
 		UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
 			this,
@@ -158,12 +166,65 @@ void URPGComboSkillAbility::PlaySkillMontage()
 
 	PlayAttackTask->OnCompleted.AddDynamic(this, &ThisClass::OnComboMontageCompleted);
 	PlayAttackTask->OnInterrupted.AddDynamic(this, &URPGPlayerGameplayAbility::OnInterruptedCallback);
+	PlayAttackTask->OnCancelled.AddDynamic(this, &URPGPlayerGameplayAbility::OnInterruptedCallback);
+	ActiveAttackSectionData = SelectedAttackData;
+	SetPlayingComboStep();
+	PlayAttackTask->ReadyForActivation();
+}
+
+void URPGComboSkillAbility::SetPlayingComboStep()
+{
+	ResolveCurrentStep = CurrentComboCount;
+	bAdvanceNotifyReached = false;
 	bHasNextComboSection =
-		SelectedAttackData->SectionNamesToPlay.Contains(CurrentComboCount + 1);
+		ActiveAttackSectionData->SectionNamesToPlay.Contains(CurrentComboCount + 1);
 	CurrentComboCount = bHasNextComboSection
 		? CurrentComboCount + 1
 		: InitComboCount;
-	PlayAttackTask->ReadyForActivation();
+}
+
+void URPGComboSkillAbility::OnComboAdvanceEvent(FGameplayEventData Payload)
+{
+	if (!IsActive() || !ActiveAttackSectionData || !bHasNextComboSection || bAdvanceNotifyReached)
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+	UAnimInstance* Anim = CurrentActorInfo ? CurrentActorInfo->GetAnimInstance() : nullptr;
+	UAnimMontage* Montage = ActiveAttackSectionData->MontageToPlay;
+	const FName* CurrentSection = ActiveAttackSectionData->SectionNamesToPlay.Find(ResolveCurrentStep);
+	if (!ASC || ASC->GetAnimatingAbility() != this || ASC->GetCurrentMontage() != Montage ||
+		!Anim || !Anim->Montage_IsPlaying(Montage) || !CurrentSection ||
+		Anim->Montage_GetCurrentSection(Montage) != *CurrentSection)
+	{
+		return;
+	}
+
+	bAdvanceNotifyReached = true;
+	if (!bComboInputHeld && !bAdvanceBuffered)
+	{
+		return;
+	}
+
+	const FName NextSection = ActiveAttackSectionData->SectionNamesToPlay.FindChecked(CurrentComboCount);
+	if (!Montage->IsValidSectionName(NextSection))
+	{
+		return;
+	}
+
+	bAdvanceBuffered = false;
+	SetPlayingComboStep();
+	// The server consumes its own input state and publishes the jump. The owning
+	// client predicts visually without sending a second, unchecked section RPC.
+	if (ASC->IsOwnerActorAuthoritative())
+	{
+		ASC->CurrentMontageJumpToSection(NextSection);
+	}
+	else
+	{
+		Anim->Montage_JumpToSection(NextSection, Montage);
+	}
 }
 
 void URPGComboSkillAbility::OnComboMontageCompleted()
@@ -181,9 +242,8 @@ void URPGComboSkillAbility::OnComboMontageCompleted()
 		if (!IsActive() || ResolveDamageSerial != CompletionSerial) return;
 	}
 
-	// This legacy montage has no combo-advance notify; its section end is the
-	// authored transition point. Never restart the chain from a held input.
-	if (bHasNextComboSection && (bComboInputHeld || bAdvanceBuffered))
+	// Older montages without a combo notify advance at the end of the section.
+	if (bHasNextComboSection && !bAdvanceNotifyReached && (bComboInputHeld || bAdvanceBuffered))
 	{
 		bAdvanceBuffered = false;
 		PlaySkillMontage();
