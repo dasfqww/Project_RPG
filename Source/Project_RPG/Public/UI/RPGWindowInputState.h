@@ -13,6 +13,8 @@ public:
 	/** Consumers can release held gameplay inputs without coupling this state to GAS. */
 	FSimpleMulticastDelegate OnFirstWindowOpened;
 	bool BeginWindow(APlayerController& Controller, UUserWidget& Window, int32 Layer = 20, bool bUIOnly = false);
+	/** Pointer routing supplies focus and capture while this updates the window order. */
+	void RaiseWindow(UUserWidget& Window);
 	void FocusWindow(UUserWidget& Window);
 	void EndWindow(UUserWidget& Window);
 	void Reset();
@@ -28,6 +30,7 @@ private:
 		bool bUIOnly = false;
 	};
 	const FWindowEntry* GetTopEntry() const;
+	bool UpdateWindowOrder(UUserWidget& Window);
 	void RefreshZOrder();
 	TWeakObjectPtr<APlayerController> Owner;
 	TArray<FWindowEntry> Windows;

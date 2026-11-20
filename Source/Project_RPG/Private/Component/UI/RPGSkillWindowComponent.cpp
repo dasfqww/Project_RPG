@@ -133,7 +133,7 @@ bool URPGSkillWindowComponent::ShowWindow()
 
 	bWindowOpen = true;
 	Window->OnWindowClosed.AddUObject(this, &ThisClass::CloseWindow);
-	Window->OnWindowInteraction.AddUObject(this, &ThisClass::FocusWindow);
+	Window->OnWindowInteraction.AddUObject(this, &ThisClass::RaiseWindow);
 	Window->SetIsFocusable(true);
 	if (!WindowInputState->BeginWindow(*Controller, *Window))
 	{
@@ -171,9 +171,9 @@ void URPGSkillWindowComponent::CloseWindow()
 	}
 }
 
-void URPGSkillWindowComponent::FocusWindow()
+void URPGSkillWindowComponent::RaiseWindow()
 {
-	if (bWindowOpen && Window) WindowInputState->FocusWindow(*Window);
+	if (bWindowOpen && Window) WindowInputState->RaiseWindow(*Window);
 }
 
 void URPGSkillWindowComponent::ReleaseHeldAbilityInputs()

@@ -1225,7 +1225,7 @@ void ARPGPlayerController::DisplayInventoryProjection(
 	Widget->OnWindowClosed.RemoveAll(this);
 	Widget->OnWindowClosed.AddUObject(this, &ThisClass::HandleProjectionWindowClosed, Widget);
 	Widget->OnWindowInteraction.RemoveAll(this);
-	Widget->OnWindowInteraction.AddUObject(this, &ThisClass::FocusProjectionWindow, Widget);
+	Widget->OnWindowInteraction.AddUObject(this, &ThisClass::RaiseProjectionWindow, Widget);
 	Widget->SetIsFocusable(true);
 	if (!WindowInputState->BeginWindow(*this, *Widget)) return;
 	if (bItemPresentationEnded || !WindowInputState->ContainsWindow(*Widget)) return;
@@ -1245,9 +1245,9 @@ bool ARPGPlayerController::IsProjectionWindow(const UUserWidget* Widget) const
 	return Widget && (Widget == InventoryProjectionWidget || Widget == EquipmentProjectionWidget || Widget == RewardMailWidget);
 }
 
-void ARPGPlayerController::FocusProjectionWindow(URPGInventoryProjectionWidget* Widget)
+void ARPGPlayerController::RaiseProjectionWindow(URPGInventoryProjectionWidget* Widget)
 {
-	if (!bItemPresentationEnded && Widget && Widget->IsActivated()) WindowInputState->FocusWindow(*Widget);
+	if (!bItemPresentationEnded && Widget && Widget->IsActivated()) WindowInputState->RaiseWindow(*Widget);
 }
 
 void ARPGPlayerController::CloseProjectionWindow(URPGInventoryProjectionWidget* Widget)

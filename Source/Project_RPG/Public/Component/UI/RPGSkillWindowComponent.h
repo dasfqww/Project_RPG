@@ -49,7 +49,7 @@ protected:
 private:
 	void UnbindInput();
 	void ReleaseHeldAbilityInputs();
-	void FocusWindow();
+	void RaiseWindow();
 
 	UPROPERTY(EditDefaultsOnly, Category = "RPG|Skill|UI")
 	TSoftClassPtr<URPGSkillWindow> WindowClass;

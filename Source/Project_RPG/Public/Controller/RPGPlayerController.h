@@ -323,7 +323,7 @@ private:
 	bool EnsureInventoryProjectionWidget(bool bEquipment);
 	void DisplayInventoryProjection(URPGInventoryProjectionWidget* Widget);
 	void CloseProjectionWindow(URPGInventoryProjectionWidget* Widget);
-	void FocusProjectionWindow(URPGInventoryProjectionWidget* Widget);
+	void RaiseProjectionWindow(URPGInventoryProjectionWidget* Widget);
 	bool IsProjectionWindow(const UUserWidget* Widget) const;
 	bool CloseTopPlayerWindow();
 	bool AttachContentEntryModal(URPGWidgetBase& Widget, int32 Layer);

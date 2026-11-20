@@ -88,6 +88,13 @@ struct FRPGItemWindowTestAccess
 		PC.DisplayInventoryProjection(Inventory);
 		return Inventory;
 	}
+	static URPGRewardMailWidget* OpenEquipment(ARPGPlayerController& PC)
+	{
+		auto* Equipment = CreateWidget<URPGRewardMailWidget>(&PC);
+		PC.EquipmentProjectionWidget = Equipment;
+		PC.DisplayInventoryProjection(Equipment);
+		return Equipment;
+	}
 };
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGIndependentItemWindowRoutingTest,
@@ -225,8 +232,57 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	if (!TestNotNull(TEXT("Content entry reopens"), Entry)) return false;
 	Entry->RemoveFromParent();
 	TestTrue(TEXT("Direct removal also restores the active inventory window"), !FAccess::Entry(*PC) && HasFocus(*Bag));
-	TestTrue(TEXT("Last Escape closes inventory and restores gameplay input"),
-		Escape() && !FAccess::Top(*PC) && !PC->bShowMouseCursor && !PC->IsMoveInputIgnored() && !PC->IsLookInputIgnored());
+
+	auto* Equipment = FAccess::OpenEquipment(*PC);
+	if (!TestNotNull(TEXT("Equipment window"), Equipment)) return false;
+	TestTrue(TEXT("Equipment starts above the bag"), FAccess::Top(*PC) == Equipment);
+	const auto ClickClose = [&](URPGInventoryProjectionWidget& Panel)
+	{
+		auto* Close = Cast<UButton>(Panel.GetWidgetFromName(TEXT("CloseWindowButton")));
+		if (!TestNotNull(TEXT("Close button"), Close)) return false;
+		FWidgetPath ViewportPath;
+		FWidgetPath GeometryPath;
+		Window->SlatePrepass();
+		if (!TestTrue(TEXT("Viewport and close button have valid Slate paths"),
+			Slate.GeneratePathToWidgetUnchecked(GameWidget, ViewportPath)
+			&& Slate.GeneratePathToWidgetUnchecked(Close->TakeWidget(), GeometryPath))) return false;
+		// Focus paths lack the per-widget pointer entries that pointer routing requires.
+		TArray<FWidgetAndPointer> PointerWidgets;
+		for (int32 Index = 0; Index < GeometryPath.Widgets.Num(); ++Index)
+		{
+			PointerWidgets.Emplace(GeometryPath.Widgets[Index], TOptional<FVirtualPointerPosition>());
+		}
+		const FWidgetPath ButtonPath(PointerWidgets);
+		const auto ApplyPendingInputMode = [&]()
+		{
+			FReply& Pending = Player->GetSlateOperations();
+			Slate.ProcessExternalReply(ViewportPath, Pending, User->GetUserIndex());
+			Pending = FReply::Unhandled();
+		};
+		const FArrangedWidget& Button = ButtonPath.Widgets.Last();
+		const FVector2D Point = Button.Geometry.GetAbsolutePosition() + Button.Geometry.GetAbsoluteSize() * 0.5;
+		const FPointerEvent Press(User->GetUserIndex(), FSlateApplication::CursorPointerIndex,
+			Point, Point, {EKeys::LeftMouseButton}, EKeys::LeftMouseButton, 0.f, FModifierKeysState());
+		const FPointerEvent Release(User->GetUserIndex(), FSlateApplication::CursorPointerIndex,
+			Point, Point, {}, EKeys::LeftMouseButton, 0.f, FModifierKeysState());
+		ApplyPendingInputMode();
+		Button.Widget->OnMouseEnter(Button.Geometry, Press);
+		Slate.RoutePointerDownEvent(ButtonPath, Press);
+		TestTrue(TEXT("Press brings the clicked panel to the front"), FAccess::Top(*PC) == &Panel);
+		TestTrue(TEXT("Button owns the pointer after press"), Button.Widget->HasMouseCapture());
+		// Slate applies queued viewport operations on a frame between press and release.
+		ApplyPendingInputMode();
+		TestTrue(TEXT("Button keeps its pointer capture until release"), Button.Widget->HasMouseCapture());
+		Slate.RoutePointerUpEvent(ButtonPath, Release);
+		Button.Widget->OnMouseLeave(Release);
+		return TestFalse(TEXT("One click closes the panel"), Panel.IsActivated());
+	};
+	if (!ClickClose(*Bag)) return false;
+	TestTrue(TEXT("Closing the bag restores equipment focus and retains the input locks"),
+		HasFocus(*Equipment) && PC->bShowMouseCursor && PC->IsMoveInputIgnored() && PC->IsLookInputIgnored());
+	if (!ClickClose(*Equipment)) return false;
+	TestTrue(TEXT("The last close restores gameplay input"),
+		!FAccess::Top(*PC) && !PC->bShowMouseCursor && !PC->IsMoveInputIgnored() && !PC->IsLookInputIgnored());
 	return true;
 }
 

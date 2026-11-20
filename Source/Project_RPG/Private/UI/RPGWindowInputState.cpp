@@ -95,12 +95,11 @@ bool FRPGWindowInputState::BeginWindow(APlayerController& Controller, UUserWidge
 	return ContainsWindow(Window);
 }
 
-void FRPGWindowInputState::FocusWindow(UUserWidget& Window)
+bool FRPGWindowInputState::UpdateWindowOrder(UUserWidget& Window)
 {
-	APlayerController* Controller = Owner.Get();
-	if (!Controller || !ContainsWindow(Window)) return;
 	const int32 Index = Windows.IndexOfByPredicate(
 		[&Window](const FWindowEntry& Entry) { return Entry.Window.Get() == &Window; });
+	if (Index == INDEX_NONE) return false;
 	const FWindowEntry* PreviousTop = GetTopEntry();
 	// Preserve the previous window order while a UI-only modal owns input.
 	if (!PreviousTop || !PreviousTop->bUIOnly || PreviousTop->Layer <= Windows[Index].Layer)
@@ -109,6 +108,20 @@ void FRPGWindowInputState::FocusWindow(UUserWidget& Window)
 		Windows.RemoveAt(Index);
 		Windows.Add(Entry);
 	}
+	return true;
+}
+
+void FRPGWindowInputState::RaiseWindow(UUserWidget& Window)
+{
+	// Reapplying the input mode here queues a capture release that can cancel
+	// a child button press before it receives mouse-up.
+	if (Owner.IsValid() && UpdateWindowOrder(Window)) RefreshZOrder();
+}
+
+void FRPGWindowInputState::FocusWindow(UUserWidget& Window)
+{
+	APlayerController* Controller = Owner.Get();
+	if (!Controller || !UpdateWindowOrder(Window)) return;
 	UUserWidget* Top = GetTopWindow();
 	if (!Top) return;
 	// TakeWidget may construct a widget and synchronously close it.
