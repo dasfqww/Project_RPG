@@ -1005,6 +1005,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| 좌측 스킬 퀵슬롯 확장 / left-skill-slots-20261120 | 2줄 8칸, 기존 Q/E/F/R 및 새 기본키 5~8 | WBP_PlayerHUD, WBP_PlayerSkillBar, DA_InputConfig, IMC_Default, IA_QuickSkill5~8, HUD 계약 문서와 본인 행 | UE 5.8.4 새 프로세스 에셋 8개 재로드 및 스킬·HUD native 27건 통과(경고 포함 2건). 실제 PIE 위젯 8개 생성 확인. 렌더·물리 키 발동은 미확인. 검증 종료. 자동 정책이 삭제를 차단한 본인 Temp 2592268365 bytes 로컬 보존. Saved/BuildChecks/LeftSkillSlots-20261120/Result.json | 본인 10경로만 main index/ref·origin/main 게시 예약. 원격 해시 일치 시 본인 예약 해제 |
 | 차별점 후보 보관 / rpg-ideas-nov20 | 기획 회의 후보 보관 | Docs/RPG_DIFFERENTIATION_IDEAS.md 및 본인 행 | 문서 확인, main Git 쓰기 | 문서 보관 완료·예약 해제 |
 | 일반 전투 차별점 회의 / encounter-ideas-nov20 | 일반 전투 후보 세 가지 기록 | Docs/RPG_DIFFERENTIATION_IDEAS.md 및 본인 행 | 문서 확인, main index/ref 및 origin/main | 기록 완료·예약 해제 |
 | 대검 기본 공격 콤보 / basic-attack-notify | 타격 이후 AN에서 다음 타로 전환. 일반 0.90/0.80초, 분노 0.80/0.65초 (각 섹션 기준) | RPGComboSkillAbility.h/.cpp, AM_GreatSword_DefaultAttack 및 _Rage, 본인 행 | UE 5.8 Editor 11단계, 두 몽타주 재로드, 일반 전용 서버·Iris 2클라이언트의 조기 전환 2회·홀드 피해 3회·탭 피해 1회 및 정상 종료 확인. 분노는 에셋 검증. 자동 정책이 Temp 삭제 차단으로 12,162,278 bytes 로컬 보존. Saved/BuildChecks/BasicAttackNotify/Result.json | 구현·검증 완료. main index/ref·origin/main의 본인 5경로 게시 예약. 원격 일치 시 본인 예약 해제 |
