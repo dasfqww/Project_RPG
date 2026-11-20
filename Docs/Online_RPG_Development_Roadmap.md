@@ -1005,6 +1005,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| 회복 물약 단축키 / potion-key-v-20261121 | 물약 기본 V 및 기존 물약 X 설정 이관 | RPGQuickSlotInputBindings.cpp, RPGItemQuickSlotBarTests.cpp, ITEM_QUICK_SLOTS.md, 본인 행 | UE 5.8 Editor 증분 빌드 5단계 성공, 네이티브 회귀 19건 통과. 초기 기동 시간 초과는 재시도로 해소. 실제 물리 키 미검증. 정리 명령 정책 차단으로 Temp 2,847,004 bytes 로컬 보존. Saved/BuildChecks/PotionKeyV-20261121/Result.json | 본인 4경로 main index/ref 및 origin/main 게시 예약. 원격 해시 일치 시 해제 |
 | 아이온2 참고 좌측 단축키 / left-skill-keys-20261120 | 확장 네 칸 1~4, 윗줄 Q/E/F/R | IMC_Default.uasset, HUD 계약 문서, 본인 행 | 새 에디터에서 매핑 4개 변경 및 기존 나머지 순서 확인. testmap PIE 좌측 8개와 우측 X/F1~F8 현재 바인딩 확인. 물리 키 발동 미검증. 명령 정책이 검증 Temp 22,825,013 bytes 삭제 차단. Saved/BuildChecks/LeftSkillKeys-20261120/Result.json | main index/ref와 origin/main 본인 3경로 게시 예약. 원격 해시 일치 시 해제 |
 | 좌측 스킬 퀵슬롯 확장 / left-skill-slots-20261120 | 2줄 8칸, 기존 Q/E/F/R 및 새 기본키 5~8 | WBP_PlayerHUD, WBP_PlayerSkillBar, DA_InputConfig, IMC_Default, IA_QuickSkill5~8, HUD 계약 문서와 본인 행 | UE 5.8.4 새 프로세스 에셋 8개 재로드 및 스킬·HUD native 27건 통과(경고 포함 2건). 실제 PIE 위젯 8개 생성 확인. 렌더·물리 키 발동은 미확인. 검증 종료. 자동 정책이 삭제를 차단한 본인 Temp 2592268365 bytes 로컬 보존. Saved/BuildChecks/LeftSkillSlots-20261120/Result.json | 본인 10경로만 main index/ref·origin/main 게시 예약. 원격 해시 일치 시 본인 예약 해제 |
 | 차별점 후보 보관 / rpg-ideas-nov20 | 기획 회의 후보 보관 | Docs/RPG_DIFFERENTIATION_IDEAS.md 및 본인 행 | 문서 확인, main Git 쓰기 | 문서 보관 완료·예약 해제 |

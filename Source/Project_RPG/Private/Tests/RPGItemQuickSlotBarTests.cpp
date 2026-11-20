@@ -28,7 +28,7 @@ bool FRPGItemQuickSlotDefaultsTest::RunTest(const FString&)
     Row.InputTag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.QuickSkill.1")); Row.InputAction = Skill;
     Config->NativeInputActions.Add(Row); Config->DefaultMappingContext->MapKey(Skill, EKeys::Q);
     FRPGQuickSlotInputBindings::ConfigureItemDefaults(*Config);
-    const FKey Keys[] = {EKeys::F1, EKeys::F2, EKeys::F3, EKeys::F4, EKeys::F5, EKeys::F6, EKeys::F7, EKeys::F8, EKeys::X};
+    const FKey Keys[] = {EKeys::F1, EKeys::F2, EKeys::F3, EKeys::F4, EKeys::F5, EKeys::F6, EKeys::F7, EKeys::F8, EKeys::V};
     auto Validate = [&]
     {
         const auto Bindings = FRPGQuickSlotInputBindings::Read(Config.Get());
@@ -63,6 +63,18 @@ bool FRPGItemQuickSlotDefaultsTest::RunTest(const FString&)
     FRPGQuickSlotInputBindings::MigrateSavedItemBindings(*Old, *Config, Saved);
     TestEqual(TEXT("An explicit new-default setting wins"), Saved.Num(), 1);
     TestEqual(TEXT("New setting is never overwritten by old numeric setting"), Saved[0].Key, EKeys::V);
+    FRPGKeyMapping Potion;
+    Potion.InputTag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.QuickItem.9"));
+    Potion.DefaultKey = EKeys::X;
+    Potion.Key = EKeys::X;
+    Saved = {Potion};
+    FRPGQuickSlotInputBindings::MigrateSavedItemBindings(*Old, *Config, Saved);
+    TestEqual(TEXT("Old potion default rebases even without an authored potion action"), Saved[0].DefaultKey, EKeys::V);
+    TestEqual(TEXT("Old potion key frees X for identity"), Saved[0].Key, EKeys::V);
+    Potion.Key = EKeys::Z;
+    Saved = {Potion};
+    FRPGQuickSlotInputBindings::MigrateSavedItemBindings(*Old, *Config, Saved);
+    TestEqual(TEXT("Custom potion key survives the default move"), Saved[0].Key, EKeys::Z);
     TestEqual(TEXT("Legacy F1 alias resolves canonical first item"),
         Config->FindNativeInputActionByTag(FGameplayTag::RequestGameplayTag(TEXT("InputTag.QuickItem.F1"))),
         Config->FindNativeInputActionByTag(FGameplayTag::RequestGameplayTag(TEXT("InputTag.QuickItem.1"))));

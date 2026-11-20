@@ -39,7 +39,7 @@ void FRPGQuickSlotInputBindings::ConfigureItemDefaults(UDataAsset_InputConfig& C
 		bool bSkill = false; int32 Index = INDEX_NONE;
 		return ParseTag(Entry.InputTag, bSkill, Index) && !bSkill;
 	});
-	const FKey Keys[] = {EKeys::F1, EKeys::F2, EKeys::F3, EKeys::F4, EKeys::F5, EKeys::F6, EKeys::F7, EKeys::F8, EKeys::X};
+	const FKey Keys[] = {EKeys::F1, EKeys::F2, EKeys::F3, EKeys::F4, EKeys::F5, EKeys::F6, EKeys::F7, EKeys::F8, EKeys::V};
 	for (int32 Index = 0; Index < UQuickSlotComponent::ItemSlotCount; ++Index)
 	{
 		const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*FString::Printf(TEXT("InputTag.QuickItem.%d"), Index + 1)));
@@ -71,14 +71,18 @@ void FRPGQuickSlotInputBindings::MigrateSavedItemBindings(const UDataAsset_Input
 	{
 		FRPGKeyMapping Candidate = Record;
 		bool bSkill = false; int32 Index = INDEX_NONE;
-		if (Record.DefaultKey.IsValid() && ParseTag(Record.InputTag, bSkill, Index) && !bSkill)
+		if (ParseTag(Record.InputTag, bSkill, Index) && !bSkill)
 		{
+			const bool bPotion = Index == UQuickSlotComponent::PotionSlotIndex;
+			// X belongs to the identity skill. Move old potion bindings that still use it.
+			if (bPotion && Candidate.Key == EKeys::X) Candidate.Key = EKeys::V;
+			const bool bLegacyPotionDefault = bPotion && Record.DefaultKey == EKeys::X;
 			const auto* OldAction = OldDefaults.FindNativeInputActionByTag(Record.InputTag);
 			const FGameplayTag NewTag = FindTag(&NewDefaults, false, Index);
 			const auto* NewAction = NewDefaults.FindNativeInputActionByTag(NewTag);
-			const bool bKnownOldBinding = OldAction && OldDefaults.DefaultMappingContext->GetMappings().ContainsByPredicate(
+			const bool bKnownOldBinding = Record.DefaultKey.IsValid() && OldAction && OldDefaults.DefaultMappingContext->GetMappings().ContainsByPredicate(
 				[&](const auto& M) { return M.Action == OldAction && M.Key == Record.DefaultKey; });
-			if (bKnownOldBinding && NewAction)
+			if ((bKnownOldBinding || bLegacyPotionDefault) && NewAction)
 			{
 				const auto* Mapping = NewDefaults.DefaultMappingContext->GetMappings().FindByPredicate(
 					[&](const auto& M) { return M.Action == NewAction; });
