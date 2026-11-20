@@ -9,6 +9,7 @@
 
 class UQuickSlotComponent;
 class UTexture2D;
+struct FStreamableHandle;
 
 /**
  * 퀵슬롯 개별 칸의 데이터를 관리하고 UI에 전달하는 뷰모델입니다.
@@ -49,6 +50,8 @@ private:
 	/** 데이터를 UI용 정보로 변환 (통합 처리) */
 	void UpdateFromContent(const FRPGQuickSlotContent& InContent);
 	void UnbindFromComponent();
+	void CancelItemIconLoad();
+	void RefreshItemIcon(const TSoftObjectPtr<UTexture2D>& Icon);
 
 private:
 	// --- UI 바인딩용 프로퍼티 (FieldNotify) ---
@@ -87,6 +90,8 @@ private:
 	bool bIsSkillSlotViewModel = false;
 	float CooldownRemaining = 0.0f;
 	float CooldownDuration = 0.0f;
+	TSoftObjectPtr<UTexture2D> ItemIconReference;
+	TSharedPtr<FStreamableHandle> ItemIconLoadHandle;
 
 	UPROPERTY()
 	TWeakObjectPtr<UQuickSlotComponent> LinkedComponent;

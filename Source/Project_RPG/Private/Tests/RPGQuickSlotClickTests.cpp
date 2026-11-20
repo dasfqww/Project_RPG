@@ -18,6 +18,7 @@
 #include "Misc/AutomationTest.h"
 #include "UI/Inventory/Projection/RPGItemIdDragDropOperation.h"
 #include "UI/MVVM/RPGInventoryProjectionViewModel.h"
+#include "UI/MVVM/RPGQuickSlotViewModel.h"
 #include "UI/RPGQuickSlotWidget.h"
 #include "UObject/Package.h"
 #include "Widgets/SWidget.h"
@@ -341,6 +342,36 @@ bool FRPGQuickSlotCommandPresentationTest::RunTest(const FString&)
 	F.Model->bHasInventoryRecovery = true;
 	F.Model->BroadcastFieldValueChanged(Fields::bHasInventoryRecovery);
 	TestEqual(TEXT("Destruction removes the notification binding"), Icon->GetColorAndOpacity().A, 1.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGQuickSlotViewModelRefreshTest,
+	"ProjectRPG.Item.QuickSlot.ViewModel.KeepsActiveStateOnQuantityRefresh",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGQuickSlotViewModelRefreshTest::RunTest(const FString&)
+{
+	RPGQuickSlotClickTests::FFixture F;
+	if (!TestNotNull(TEXT("Item quickslot widget"), F.Widget)) return false;
+	TStrongObjectPtr<URPGQuickSlotViewModel> Model(NewObject<URPGQuickSlotViewModel>());
+	Model->Initialize(0, F.QuickSlots, false);
+	TestTrue(TEXT("Assigned item is active"), Model->IsSlotActive());
+
+	int32 ActiveChanges = 0;
+	using FFields = URPGQuickSlotViewModel::FFieldNotificationClassDescriptor;
+	const FDelegateHandle Handle = Model->AddFieldValueChangedDelegate(FFields::bIsSlotActive,
+		INotifyFieldValueChanged::FFieldValueChangedDelegate::CreateLambda(
+			[&ActiveChanges](UObject*, UE::FieldNotification::FFieldId) { ++ActiveChanges; }));
+
+	TestTrue(TEXT("Projection accepts the reduced stack"), F.Projection->ApplyAuthoritativeRecords(F.Owner,
+		{F.Record(F.ItemId, 0, 2, 9007199254740994LL), F.Record(F.OtherItemId, 1)}));
+	TestEqual(TEXT("Quantity label follows the projection"), Model->GetQuantityLabel().ToString(), FText::AsNumber(2).ToString());
+	TestTrue(TEXT("Item stays active"), Model->IsSlotActive());
+	TestEqual(TEXT("Quantity change does not transiently deactivate the slot"), ActiveChanges, 0);
+
+	Model->Initialize(INDEX_NONE, nullptr, false);
+	TestFalse(TEXT("Unbound slot is inactive"), Model->IsSlotActive());
+	TestTrue(TEXT("Unbound slot clears quantity and icon"), Model->GetQuantityLabel().IsEmpty() && !Model->GetIcon());
+	Model->RemoveFieldValueChangedDelegate(FFields::bIsSlotActive, Handle);
 	return true;
 }
 

@@ -106,23 +106,28 @@ void URPGQuickSlotWidget::CancelItemIconLoad()
 
 void URPGQuickSlotWidget::ApplyItemIcon(UTexture2D* Icon)
 {
-	if (SlotItemImage) SlotItemImage->SetBrushFromTexture(Icon);
+	if (SlotItemImage && SlotItemImage->GetBrush().GetResourceObject() != Icon)
+		SlotItemImage->SetBrushFromTexture(Icon);
 	RefreshItemCommandState();
 }
 
 void URPGQuickSlotWidget::RefreshItemIcon(TSoftObjectPtr<UTexture2D> Icon)
 {
+	UTexture2D* Loaded = Icon.Get();
 	if (Icon == ItemIconReference && SlotItemImage &&
-		(ItemIconLoadHandle || (Icon.Get() && SlotItemImage->GetBrush().GetResourceObject() == Icon.Get()))) return;
-	CancelItemIconLoad();
-	ItemIconReference = Icon;
-	ApplyItemIcon(nullptr);
-	if (!SlotItemImage || !SlotItemId.IsValid() || Icon.IsNull()) return;
-	if (UTexture2D* Loaded = Icon.Get())
+		(ItemIconLoadHandle || (Loaded && SlotItemImage->GetBrush().GetResourceObject() == Loaded)))
 	{
-		ApplyItemIcon(Loaded);
+		RefreshItemCommandState();
 		return;
 	}
+	CancelItemIconLoad();
+	ItemIconReference = Icon;
+	if (!SlotItemImage || !SlotItemId.IsValid() || Icon.IsNull() || Loaded)
+	{
+		ApplyItemIcon(SlotItemId.IsValid() ? Loaded : nullptr);
+		return;
+	}
+	ApplyItemIcon(nullptr);
 	const auto Generation = ItemIconLoadGeneration;
 	const FGuid ExpectedItemId = SlotItemId;
 	const TWeakObjectPtr<URPGQuickSlotWidget> WeakThis(this);
@@ -299,9 +304,8 @@ void URPGQuickSlotWidget::HandleSlotChanged(
 			DataManager->GetItemDefinitionViewCatalog().TryFindDefinitionView(Entry.GetDefinitionId(), View) &&
 			View.IsValid() && View.Snapshot.DefinitionId == Entry.GetDefinitionId() &&
 			View.Snapshot.DefinitionVersion == Entry.GetDefinitionVersion();
-		RefreshItemIcon(bMatchingView ? View.Icon : TSoftObjectPtr<UTexture2D>());
 		if (SlotItemCountText) SlotItemCountText->SetText(FText::AsNumber(Entry.GetQuantity()));
-		RefreshItemCommandState();
+		RefreshItemIcon(bMatchingView ? View.Icon : TSoftObjectPtr<UTexture2D>());
 		return;
 	}
 

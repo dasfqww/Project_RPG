@@ -2,7 +2,10 @@
 
 
 #include "UI/MVVM/RPGQuickSlotViewModel.h"
+#include "Engine/AssetManager.h"
 #include "Engine/GameInstance.h"
+#include "Engine/StreamableManager.h"
+#include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "Manager/DataManager.h"
 #include "Component/UI/QuickSlotComponent.h"
@@ -78,6 +81,7 @@ void URPGQuickSlotViewModel::BeginDestroy()
 
 void URPGQuickSlotViewModel::UnbindFromComponent()
 {
+	CancelItemIconLoad();
 	if (UQuickSlotComponent* Component = LinkedComponent.Get())
 	{
 		Component->OnSkillSlotChanged.RemoveDynamic(
@@ -87,6 +91,40 @@ void URPGQuickSlotViewModel::UnbindFromComponent()
 	}
 
 	LinkedComponent.Reset();
+}
+
+void URPGQuickSlotViewModel::CancelItemIconLoad()
+{
+	if (ItemIconLoadHandle)
+	{
+		ItemIconLoadHandle->CancelHandle();
+		ItemIconLoadHandle.Reset();
+	}
+	ItemIconReference.Reset();
+}
+
+void URPGQuickSlotViewModel::RefreshItemIcon(const TSoftObjectPtr<UTexture2D>& Icon)
+{
+	if (Icon == ItemIconReference && ItemIconLoadHandle) return;
+	CancelItemIconLoad();
+	ItemIconReference = Icon;
+	UTexture2D* Loaded = Icon.Get();
+	if (!Loaded && !Icon.IsNull())
+	{
+		const TWeakObjectPtr<URPGQuickSlotViewModel> WeakThis(this);
+		ItemIconLoadHandle = UAssetManager::GetStreamableManager().RequestAsyncLoad(Icon.ToSoftObjectPath(),
+			FStreamableDelegate::CreateLambda([WeakThis, Icon]()
+			{
+				if (auto* Self = WeakThis.Get(); Self && Self->LinkedComponent.IsValid() &&
+					Self->ItemIconReference == Icon)
+				{
+					// Keep the handle alive while publishing the texture to the bound view.
+					const auto Completed = MoveTemp(Self->ItemIconLoadHandle);
+					Self->SetItemIcon(Icon.Get());
+				}
+			}));
+	}
+	SetItemIcon(Loaded);
 }
 
 void URPGQuickSlotViewModel::HandleSlotChanged(int32 SlotIndex, const FRPGQuickSlotContent& NewContent)
@@ -102,6 +140,7 @@ void URPGQuickSlotViewModel::UpdateFromContent(const FRPGQuickSlotContent& InCon
 	CooldownRemaining = CooldownDuration = 0.0f;
 	if (!InContent.ItemId.IsValid() && InContent.AbilityTag.IsValid() && bIsSkillSlotViewModel)
 	{
+		CancelItemIconLoad();
 		const FRPGSkillQuickSlotPresentation Skill = LinkedComponent.IsValid()
 			? LinkedComponent->ReadSkillPresentation(InContent.AbilityTag) : FRPGSkillQuickSlotPresentation();
 		CooldownRemaining = Skill.CooldownRemaining;
@@ -113,43 +152,31 @@ void URPGQuickSlotViewModel::UpdateFromContent(const FRPGQuickSlotContent& InCon
 		SetQuantityText(CooldownRemaining > 0.0f ? FText::AsNumber(CooldownRemaining, &Format) : FText::GetEmpty());
 		return;
 	}
-	SetItemIcon(nullptr);
-	SetQuantityText(FText::GetEmpty());
-	SetIsSlotActive(false);
-
-	if (InContent.IsEmpty())
-	{
-		SetQuantityText(FText::GetEmpty());
-		SetIsSlotActive(false);
-		return;
-	}
-
 	if (InContent.ItemId.IsValid())
 	{
 		FRPGInventoryProjectionEntry Entry;
 		UQuickSlotComponent* Component = LinkedComponent.Get();
-		if (!Component || !Component->FindAssignedItem(TargetSlotIndex, Entry)) return;
-		UDataManager* DataManager = Component->GetWorld() && Component->GetWorld()->GetGameInstance()
-			? Component->GetWorld()->GetGameInstance()->GetSubsystem<UDataManager>() : nullptr;
-		FRPGItemDefinitionView View;
-		if (DataManager && DataManager->GetItemDefinitionViewCatalog().TryFindDefinitionView(
-			Entry.GetDefinitionId(), View))
+		if (Component && Component->FindAssignedItem(TargetSlotIndex, Entry))
 		{
-			SetItemIcon(View.Icon.LoadSynchronous());
+			UWorld* World = Component->GetWorld();
+			UGameInstance* Instance = World ? World->GetGameInstance() : nullptr;
+			UDataManager* DataManager = Instance ? Instance->GetSubsystem<UDataManager>() : nullptr;
+			FRPGItemDefinitionView View;
+			const bool bHasView = DataManager &&
+				DataManager->GetItemDefinitionViewCatalog().TryFindDefinitionView(Entry.GetDefinitionId(), View);
+			RefreshItemIcon(bHasView ? View.Icon : TSoftObjectPtr<UTexture2D>());
+			SetQuantityText(FText::AsNumber(Entry.GetQuantity()));
+			SetIsSlotActive(true);
+			return;
 		}
+	}
 
-		SetQuantityText(FText::AsNumber(Entry.GetQuantity()));
-		SetIsSlotActive(true);
-	}
-	else if (InContent.AbilityTag.IsValid())
-	{
-		SetItemIcon(
-			LinkedComponent.IsValid()
-				? LinkedComponent->GetSkillIcon(InContent.AbilityTag)
-				: nullptr);
-		SetQuantityText(FText::GetEmpty());
-		SetIsSlotActive(true);
-	}
+	CancelItemIconLoad();
+	UQuickSlotComponent* Component = LinkedComponent.Get();
+	const bool bLegacyAbilitySlot = !InContent.ItemId.IsValid() && InContent.AbilityTag.IsValid();
+	SetItemIcon(bLegacyAbilitySlot && Component ? Component->GetSkillIcon(InContent.AbilityTag) : nullptr);
+	SetQuantityText(FText::GetEmpty());
+	SetIsSlotActive(bLegacyAbilitySlot);
 }
 
 void URPGQuickSlotViewModel::RefreshSkillState()
