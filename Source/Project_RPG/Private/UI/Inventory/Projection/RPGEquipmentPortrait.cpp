@@ -74,7 +74,10 @@ FRPGEquipmentPortrait::FRPGEquipmentPortrait()
 	Post.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
 	Post.AutoExposureApplyPhysicalCameraExposure = false;
 	Post.bOverride_AutoExposureBias = true;
-	Post.AutoExposureBias = 1.f;
+	Post.AutoExposureBias = .35f;
+	// Balance the portrait's warm highlights without replacing the character's materials.
+	Post.bOverride_ColorGain = true;
+	Post.ColorGain = FVector4(.92f, .97f, 1.08f, 1.f);
 	Post.bOverride_FilmGrainIntensity = true;
 	Post.FilmGrainIntensity = 0.f;
 	// Metallic armor needs an environment to reflect in the isolated scene.
