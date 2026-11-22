@@ -31,11 +31,9 @@ FString ToolTipText(const TSharedRef<SRPGActionBarCell>& Cell)
 }
 FString KeyText(const TSharedRef<SRPGActionBarCell>& Cell)
 {
-    // The key/cooldown text precedes the progress row in the actual button content.
     auto Button = FindWidget(Cell, TEXT("SButton"));
-    auto Row = Button ? FindWidget(Button.ToSharedRef(), TEXT("SVerticalBox")) : nullptr;
-    if (!Row || Row->GetChildren()->Num() < 3) return {};
-    return StaticCastSharedRef<STextBlock>(Row->GetChildren()->GetChildAt(2))->GetText().ToString();
+    auto Text = Button ? FindWidget(Button.ToSharedRef(), TEXT("STextBlock")) : nullptr;
+    return Text ? StaticCastSharedPtr<STextBlock>(Text)->GetText().ToString() : FString();
 }
 }
 
@@ -68,6 +66,7 @@ bool FRPGActionBarLiveFeedbackTest::RunTest(const FString&)
 {
     using namespace RPGActionBarCellTests;
     FRPGActionBarActionView View;
+    View.KeyLabel = FText::FromString(TEXT("Space"));
     View.UnavailableReason = FText::FromString(TEXT("Waiting for server"));
     auto Cell = SNew(SRPGActionBarCell).Label(FText::FromString(TEXT("Dash"))).View_Lambda([&] { return View; });
     auto Tip = Cell->GetToolTip();
@@ -77,6 +76,7 @@ bool FRPGActionBarLiveFeedbackTest::RunTest(const FString&)
     TestTrue(TEXT("No tooltip rebuild needed"), Cell->GetToolTip() == Tip);
     View.bAvailable = true;
     TestEqual(TEXT("Available action hides stale reason"), ToolTipText(Cell), FString(TEXT("Dash")));
+    TestEqual(TEXT("Cell shows the binding while the action name is in the tooltip"), KeyText(Cell), FString(TEXT("Space")));
     View.bAvailable = false;
     View.UnavailableReason = FText::GetEmpty();
     const FString Fallback = ToolTipText(Cell);

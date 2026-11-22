@@ -24,7 +24,7 @@
 - Riding 전용 IMC/추가 키 제공자는 `PressAction(Source, ActionId, Context->GetRevision())` / `ReleaseInput(Source)`로 단일 경로에 합류한다. Source는 물리 입력별로 고유해야 한다. 동일 물리 키를 기존 슬롯과 전용 IMC 양쪽에서 실행하지 않는다.
 - 여러 입력이 같은 ActionId를 누르면 첫 Press와 마지막 Release만 제공자에 전달한다. 전환 후 누른 키를 새 동작으로 재생하지 않는다. 이전 위젯의 revision은 새로운 액션을 실행할 수 없다.
 - Press마다 Source의 입력 토큰을 고정하고 입력 취소 세대를 확인한다. 제공자의 읽기 콜백 도중 `ReleaseAll`(물리 상태 보존 포함)이나 같은 Source의 Release/새 Press가 발생하면 이전 판정은 실행·Release 소유권을 다시 쓰지 않는다. `ReadAction`은 읽기 전후의 동일한 로컬 소유 Controller와 창 차단 상태도 재확인한다. 취소가 프로필을 재설치하거나 HUD revision을 변경할 필요는 없다.
-- 제공자의 ReadAction은 실제 사용 가능 여부/쿨타임/현재 키 이름을 읽는다. 키 이름 미제공 시 기존 SkillSlot의 현재 설정으로 표시한다.
+- 제공자의 ReadAction은 실제 사용 가능 여부/쿨타임/현재 키 이름을 읽는다. 키 이름 미제공 시 기존 SkillSlot의 현재 설정으로 표시한다. 탑승 시 native 셀 본문에는 아이콘·단축키·쿨타임을 표시하고 기능 이름은 마우스 호버 툴팁에서 보여 준다.
 - `FRPGActionBarActionView::UnavailableReason`은 제공자가 정한 지역화 표시 문구다. native 셀은 비활성 상태에서 액션 이름과 사유를 툴팁으로 표시하며, 사유가 비어 있으면 공통 사용 불가 문구를 표시한다. 활성 상태에서는 이전 사유를 숨긴다. 서버 내부 오류 문자열 대신 기능의 결과 enum을 표시 문구로 변환해 제공한다.
 - 기본 좌측은 native 버튼 바, 별도 저작 위젯은 URPGActionBarWidget 파생 클래스. 중앙 클래스가 없으면 기존 직업 아이덴티티를 숨긴다. 새 중앙/좌측 위젯은 같은 context를 읽는다.
 - `URPGActionBarIdentityWidget`은 중앙 Title/Status/Detail을 표시하는 네이티브 위젯이다. 값 갱신 때문에 프로필을 재설치하지 않으며, 저작 위젯도 같은 읽기 API를 사용할 수 있다.

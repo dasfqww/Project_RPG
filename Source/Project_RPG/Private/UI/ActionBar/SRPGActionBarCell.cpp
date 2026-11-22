@@ -53,7 +53,6 @@ void SRPGActionBarCell::Construct(const FArguments& Args)
                 + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[
                     SNew(SImage).Image_Lambda([Icon] { return FDeferredCleanupSlateBrush::TrySlateBrush(Icon); })
                 ]
-                + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[SNew(STextBlock).Text(Label)]
                 + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[
                     SNew(STextBlock).Text_Lambda([WeakCell] {
                         const auto Cell = WeakCell.Pin();
