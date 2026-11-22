@@ -36,7 +36,7 @@ void URPGRidingTestReentryAnim::NativeInitializeAnimation()
 
 struct FRPGRidingActorTestAccess
 {
-    static void Configure(URPGRidingSessionComponent& S)
+    static void Configure(URPGRidingSessionComponent& S, const FRPGRidingSelector& Shortcut = {})
     {
         S.Policy = NewObject<URPGRidingPolicy>(&S);
         S.Policy->Values.GameplayHash = FString::ChrN(64, TEXT('a'));
@@ -48,6 +48,7 @@ struct FRPGRidingActorTestAccess
         Snapshot.RosterId = FGuid::NewGuid(); Snapshot.ProtocolVersion = 1; Snapshot.CatalogVersion = 1;
         Snapshot.GameplayHash = S.Policy->Values.GameplayHash; Snapshot.OwnedMountIds = {TEXT("horse"), TEXT("wolf")};
         Snapshot.SelectedMountId = TEXT("horse"); Snapshot.Favorites = {TEXT("horse"), TEXT("wolf")};
+        Snapshot.Shortcut = Shortcut;
         const auto Ticket = S.Runtime->BeginSnapshot(FPlatformTime::Seconds());
         check(S.Runtime->ApplySnapshot(Ticket, Snapshot, FPlatformTime::Seconds()));
         S.PublishOwnerState();
@@ -110,7 +111,7 @@ namespace
         ARPGRidingTestPawn* Pawn;
         URPGRidingSessionComponent* Session;
         URPGRidingComponent* Riding;
-        FActors()
+        explicit FActors(const FRPGRidingSelector& Shortcut = {})
         {
             const auto Init = UWorld::InitializationValues().AllowAudioPlayback(false).CreatePhysicsScene(false).CreateNavigation(false).CreateAISystem(false).ShouldSimulatePhysics(false);
             World = UWorld::CreateWorld(EWorldType::Game, false, NAME_None, nullptr, true, ERHIFeatureLevel::Num, &Init);
@@ -120,7 +121,7 @@ namespace
             PlayerState = World->SpawnActor<APlayerState>();
             Controller->SetPlayerState(PlayerState); PlayerState->SetOwner(Controller);
             Session = NewObject<URPGRidingSessionComponent>(PlayerState); Session->RegisterComponent();
-            FRPGRidingActorTestAccess::Configure(*Session);
+            FRPGRidingActorTestAccess::Configure(*Session, Shortcut);
             Pawn = SpawnPawn(); Controller->Possess(Pawn);
             Riding = Pawn->FindComponentByClass<URPGRidingComponent>();
             Riding->RefreshBinding();
@@ -166,6 +167,26 @@ bool FRidingActorTransitions::RunTest(const FString&)
     F.Pawn->ASC->ClearActorInfo();
     FRPGRidingActorTestAccess::Send(*F.Riding, F.Command(4, false));
     TestTrue(TEXT("Unready ASC still permits manual dismount"), F.Riding->GetRidingState().Mode == ERPGRidingMode::OnFoot);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingSavedMountShortcut, "ProjectRPG.Riding.MountToggle.SavedShortcut", Flags)
+bool FRidingSavedMountShortcut::RunTest(const FString&)
+{
+    FRPGRidingSelector Saved;
+    Saved.Kind = ERPGRidingSelectorKind::Specific;
+    Saved.MountId = TEXT("wolf");
+    FActors F(Saved);
+
+    auto Mount = F.Command(1);
+    Mount.Selector.Kind = ERPGRidingSelectorKind::SavedShortcut;
+    Mount.Selector.MountId = TEXT("horse");
+    TestFalse(TEXT("Saved shortcut cannot carry a client-selected ID"), RPGRiding::IsValidCommand(Mount));
+    Mount.Selector.MountId.Reset();
+    FRPGRidingActorTestAccess::Send(*F.Riding, Mount);
+    TestEqual(TEXT("Server uses saved specific mount instead of the selected mount"), F.Riding->GetRidingState().MountId, FString(TEXT("wolf")));
+    FRPGRidingActorTestAccess::Send(*F.Riding, F.Command(2, false));
+    TestTrue(TEXT("Standard dismount request returns to foot"), F.Riding->GetRidingState().Mode == ERPGRidingMode::OnFoot);
     return true;
 }
 

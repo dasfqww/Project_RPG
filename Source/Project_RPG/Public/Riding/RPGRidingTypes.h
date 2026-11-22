@@ -9,7 +9,13 @@ enum class ERPGRidingMode : uint8 { OnFoot, Mounted };
 UENUM(BlueprintType)
 enum class ERPGRidingAction : uint8 { None, Dash, Emote };
 UENUM(BlueprintType)
-enum class ERPGRidingSelectorKind : uint8 { Specific, Selected, RandomFavorites };
+enum class ERPGRidingSelectorKind : uint8
+{
+    Specific,
+    Selected,
+    RandomFavorites,
+    SavedShortcut UMETA(Hidden), // Command-only: resolve the saved preference from the server snapshot.
+};
 UENUM(BlueprintType)
 enum class ERPGRidingResultCode : uint8
 {

@@ -21,6 +21,7 @@
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/WorldSettings.h"
 #include "InputAction.h"
+#include "InputKeyEventArgs.h"
 #include "InputMappingContext.h"
 #include "Misc/AutomationTest.h"
 #include "UObject/StrongObjectPtr.h"
@@ -88,6 +89,11 @@ namespace
             return Pawn->IsLocallyControlled() && Pawn->GetCharacterMovement()->IsMovingOnGround();
         }
         bool Mount() { Riding->RequestSetMounted(true, {}); return Context->HasOverride() && Riding->CanRequestDash(); }
+        void SendKey(const FKey& Key, EInputEvent Event)
+        {
+            PC->InputKey(FInputKeyEventArgs(nullptr, FInputDeviceId::CreateFromInternalId(0), Key, Event, FPlatformTime::Cycles64()));
+            Tick();
+        }
         int32 Dispatch(ETriggerEvent Event)
         {
             int32 Count = 0; const FInputActionInstance Value(Action);
@@ -130,6 +136,39 @@ bool FRidingDashInputRouting::RunTest(const FString&)
     TestTrue(TEXT("Held Dash remains consumed across dismount"), F.Context->PressTag(Roll));
     F.Dispatch(ETriggerEvent::Completed);
     TestFalse(TEXT("Fresh foot dodge input passes through after release"), F.Context->PressTag(Roll)); F.Context->ReleaseTag(Roll);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingToggleKeyInput, "ProjectRPG.Riding.MountToggle.KeyInput", Flags)
+bool FRidingToggleKeyInput::RunTest(const FString&)
+{
+    FFixture F;
+    if (!TestTrue(TEXT("Local controller and real physics fixture"), F.Initialize())) return false;
+
+    F.SendKey(EKeys::F9, IE_Pressed);
+    if (!TestTrue(TEXT("F9 mounts through the controller input stack"), F.Context->HasOverride())) return false;
+    TestEqual(TEXT("Dismount slot shows the toggle key"), F.Context->ReadAction(TEXT("Dismount")).KeyLabel.ToString(),
+        EKeys::F9.GetDisplayName(false).ToString());
+    F.SendKey(EKeys::F9, IE_Repeat);
+    TestTrue(TEXT("Held key does not dismount"), F.Context->HasOverride());
+    F.SendKey(EKeys::F9, IE_Released);
+    F.Context->PressSlot(3);
+    TestTrue(TEXT("Old skill binding no longer dismounts"), F.Context->HasOverride());
+    F.Context->ReleaseSlot(3);
+
+    auto* WindowComponent = F.PC->FindComponentByClass<URPGSkillWindowComponent>();
+    TStrongObjectPtr<URPGActionBarWidget> Window(CreateWidget<URPGActionBarWidget>(F.PC));
+    if (!TestTrue(TEXT("Actual window boundary"), WindowComponent && Window.IsValid())) return false;
+    const auto Windows = WindowComponent->GetWindowInputState();
+    Windows->BeginWindow(*F.PC, *Window.Get());
+    F.SendKey(EKeys::F9, IE_Pressed);
+    TestTrue(TEXT("Open window blocks the toggle"), F.Context->HasOverride());
+    F.SendKey(EKeys::F9, IE_Released);
+    Windows->EndWindow(*Window.Get());
+
+    F.SendKey(EKeys::F9, IE_Pressed);
+    TestFalse(TEXT("Fresh F9 press dismounts and restores the class bar"), F.Context->HasOverride());
+    F.SendKey(EKeys::F9, IE_Released);
     return true;
 }
 

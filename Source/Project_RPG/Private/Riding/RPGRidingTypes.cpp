@@ -31,7 +31,8 @@ bool RPGRiding::IsValidCommand(const FRPGRidingSetCommand& Command)
     {
     case ERPGRidingSelectorKind::Specific: return IsValidMountId(Command.Selector.MountId);
     case ERPGRidingSelectorKind::Selected:
-    case ERPGRidingSelectorKind::RandomFavorites: return Command.Selector.MountId.IsEmpty();
+    case ERPGRidingSelectorKind::RandomFavorites:
+    case ERPGRidingSelectorKind::SavedShortcut: return Command.Selector.MountId.IsEmpty();
     default: return false;
     }
 }

@@ -301,8 +301,10 @@ void URPGRidingComponent::ServerSetRiding_Implementation(FRPGRidingSetCommand Co
         FRPGRidingAdmissionSnapshot Owned;
         if (Command.bDesiredMounted && S->Runtime->CopySnapshot(Owned))
         {
-            FString Id = Command.Selector.Kind == ERPGRidingSelectorKind::Specific ? Command.Selector.MountId : Owned.SelectedMountId;
-            if (Command.Selector.Kind == ERPGRidingSelectorKind::RandomFavorites)
+            const auto& Selector = Command.Selector.Kind == ERPGRidingSelectorKind::SavedShortcut
+                ? Owned.Shortcut : Command.Selector;
+            FString Id = Selector.Kind == ERPGRidingSelectorKind::Specific ? Selector.MountId : Owned.SelectedMountId;
+            if (Selector.Kind == ERPGRidingSelectorKind::RandomFavorites)
             {
                 TArray<FString> Eligible;
                 for (const auto& Favorite : Owned.Favorites)

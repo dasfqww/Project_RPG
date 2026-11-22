@@ -81,6 +81,7 @@
 #include "Component/UI/RPGInteractionProgressComponent.h"
 #include "Narrative/RPGNarrativeInvestigationComponent.h"
 #include "Narrative/RPGNarrativeProgressComponent.h"
+#include "Riding/RPGRidingComponent.h"
 #include "Riding/RPGRidingLocalInteractionComponent.h"
 #include "Riding/RPGRidingTimedInteractionComponent.h"
 #include "Widgets/Layout/Anchors.h"
@@ -394,6 +395,36 @@ bool ARPGPlayerController::IsInteracting() const
 	return GetWorldTimerManager().IsTimerActive(TimerHandle_Interaction) || (Gate && Gate->IsPending()) || (Timed && Timed->HasRequest());
 }
 
+FKey ARPGPlayerController::GetRidingToggleKey() const
+{
+	const auto* EnhancedInput = Cast<UEnhancedPlayerInput>(PlayerInput);
+	if (EnhancedInput && EnhancedInput->GetEnhancedActionMappingsView().ContainsByPredicate(
+		[](const FEnhancedActionKeyMapping& Mapping) { return Mapping.Key == EKeys::F9; }))
+	{
+		return FKey();
+	}
+	return EKeys::F9;
+}
+
+void ARPGPlayerController::ToggleRiding()
+{
+	if (!IsLocalController() || !GetLocalPlayer() || bItemPresentationEnded
+		|| ContentEntryPopup || GameplayAbandonmentWidget || WindowInputState->HasOpenWindows()
+		|| (HUD && (HUD->bIsMenuVisible || HUD->bIsOptionMenuVisible))
+		|| (FSlateApplication::IsInitialized() && FSlateApplication::Get().AnyMenusVisible())
+		|| !GetRidingToggleKey().IsValid()) return;
+
+	APawn* CurrentPawn = GetPawn();
+	auto* Riding = CurrentPawn ? CurrentPawn->FindComponentByClass<URPGRidingComponent>() : nullptr;
+	if (!IsValid(Riding) || !Riding->IsRegistered()) return;
+	const auto State = Riding->GetRidingState();
+	if (!RPGRiding::IsCanonical(State)) return;
+
+	FRPGRidingSelector Selector;
+	Selector.Kind = ERPGRidingSelectorKind::SavedShortcut;
+	Riding->RequestSetMounted(State.Mode == ERPGRidingMode::OnFoot, Selector);
+}
+
 void ARPGPlayerController::PressSkillSlot(const int32 SlotIndex)
 {
 	if (WindowInputState->HasOpenWindows()) return;
@@ -462,7 +493,10 @@ void ARPGPlayerController::SetupInputComponent()
 		});
 	}
 	if (InputComponent)
+	{
 		InputComponent->BindKey(EKeys::P, IE_Pressed, this, &ThisClass::ToggleEquipmentProjection).bConsumeInput = true;
+		InputComponent->BindKey(EKeys::F9, IE_Pressed, this, &ThisClass::ToggleRiding).bConsumeInput = false;
+	}
 	if (!InputConfigDataAsset || !GetLocalPlayer()) return;
 	const auto ObservePartyInputSetup = [this](const TCHAR* Phase)
 	{

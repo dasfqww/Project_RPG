@@ -45,8 +45,6 @@ public:
         FRPGActionBarEntry Entry;
         Entry.ActionId = TEXT("Dismount");
         Entry.Label = LOCTEXT("Dismount", "내리기");
-        // Reuse the current fourth skill binding; never overwrite the player's physical key mapping.
-        Entry.SkillSlot = 3;
         Entry.DisplaySlot = 7;
         Profile->Actions.Add(Entry);
         RefreshIdentity();
@@ -66,6 +64,7 @@ public:
         if (Id == TEXT("Dash") || Id == TEXT("Emote"))
         {
             auto View = ReadAction(TEXT("Dismount"));
+            View.KeyLabel = FText::GetEmpty();
             if (!View.bAvailable) return View;
             const bool IsDash = Id == TEXT("Dash");
             if (IsDash) if (const auto* PC = Cast<ARPGPlayerController>(Controller.Get()))
@@ -103,6 +102,11 @@ public:
             const auto State = C->GetRidingState();
             View.bAvailable = RPGRiding::IsCanonical(State) && State.Mode == ERPGRidingMode::Mounted
                 && Epoch.IsValid() && State.Key.RiderEpoch == Epoch;
+            if (const auto* RPGController = Cast<ARPGPlayerController>(PC))
+            {
+                const FKey Key = RPGController->GetRidingToggleKey();
+                if (Key.IsValid()) View.KeyLabel = Key.GetDisplayName(false);
+            }
         }
         if (!View.bAvailable) View.UnavailableReason = LOCTEXT("StateChanged", "탑승 상태를 다시 확인 중입니다.");
         return View;
