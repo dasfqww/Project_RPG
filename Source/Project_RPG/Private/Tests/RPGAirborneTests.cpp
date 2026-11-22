@@ -53,6 +53,11 @@ struct FRPGAirborneTestAccess
 		C.AirborneState=State; C.AirbornePoseRevision=0; C.OnRep_AirborneState();
 	}
 	static void Refresh(URPGCombatControlComponent& C) { C.ApplyAirborneMotion(); C.UpdateAirbornePose(); }
+	static void ReceivePhase(URPGCombatControlComponent& C, const FRPGAirborneState& State)
+	{
+		C.AirborneState = State;
+		C.OnRep_AirborneState();
+	}
 };
 namespace RPGAirborneTests
 {
@@ -384,10 +389,12 @@ bool FRPGAirborneClockTest::RunTest(const FString&)
 	TestEqual(TEXT("Clock correction preserves the server start time"),Control->GetAirborneState().StartServerTime,State.StartServerTime);
 	State.Phase=ERPGAirbornePhase::Downed; ++State.PhaseRevision; State.bMotionActive=false;
 	State.PhaseStartServerTime=W.World->GetTimeSeconds(); State.PhaseEndServerTime=State.PhaseStartServerTime+4.;
-	FRPGAirborneTestAccess::Snapshot(*Control,State);
+	const int32 AirInstance = FRPGAirborneTestAccess::PoseId(*Control);
+	FRPGAirborneTestAccess::ReceivePhase(*Control,State);
 	auto* Montage=FRPGAirborneTestAccess::Pose(*Control);
-	if (!TestNotNull(TEXT("Down pose is playing"),Montage)) return false;
+	if (!TestNotNull(TEXT("Landing starts the down pose on the phase-change frame"),Montage)) return false;
 	const int32 Instance=FRPGAirborneTestAccess::PoseId(*Control);
+	TestTrue(TEXT("Down takes over from the owned airborne instance"), AirInstance != INDEX_NONE && Instance != AirInstance);
 	const float Original=Anim->Montage_GetPosition(Montage);
 	W.World->TimeSeconds+=.4;
 	FRPGAirborneTestAccess::Refresh(*Control);
@@ -413,6 +420,23 @@ bool FRPGAirborneClockTest::RunTest(const FString&)
 	FRPGAirborneTestAccess::End(*Control);
 	TestTrue(TEXT("Sequence cleanup preserves the foreign montage"),Anim->Montage_IsPlaying(Montage));
 	Anim->StopAllMontages(0);
+	// A proxy can receive the next phase after its local estimate of the down timer expires.
+	FRPGAirborneTestAccess::Snapshot(*Control,State);
+	const int32 DownInstance = FRPGAirborneTestAccess::PoseId(*Control);
+	W.World->TimeSeconds = State.PhaseEndServerTime + .1;
+	FRPGAirborneTestAccess::Refresh(*Control);
+	TestTrue(TEXT("An already displayed down pose bridges a delayed get-up snapshot"),
+		DownInstance != INDEX_NONE && FRPGAirborneTestAccess::PoseId(*Control) == DownInstance);
+	auto GetUp = State;
+	GetUp.Phase = ERPGAirbornePhase::GettingUp;
+	++GetUp.PhaseRevision;
+	GetUp.PhaseStartServerTime = State.PhaseEndServerTime;
+	GetUp.PhaseEndServerTime = GetUp.PhaseStartServerTime + GetUp.GetUpDuration;
+	FRPGAirborneTestAccess::ReceivePhase(*Control,GetUp);
+	TestTrue(TEXT("The delayed get-up takes over immediately at its elapsed time"),
+		FRPGAirborneTestAccess::PoseId(*Control) != DownInstance && FRPGAirborneTestAccess::Pose(*Control)
+		&& Anim->Montage_GetPosition(FRPGAirborneTestAccess::Pose(*Control)) > 0.f);
+	FRPGAirborneTestAccess::End(*Control);
 	// The real common NPC Blueprint starts its entry montage from BeginPlay.
 	// Initial control replication must win even before ASC tags arrive.
 	auto* NPCClass=LoadClass<ARPGNonPlayerCharacter>(nullptr,TEXT("/Game/Blueprints/Character/NPC/Gruntling/Guardian/BP_Gruntling_Guardian.BP_Gruntling_Guardian_C"));

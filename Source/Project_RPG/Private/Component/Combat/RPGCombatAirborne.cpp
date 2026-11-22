@@ -13,6 +13,7 @@
 #include "Component/RPGSecurityValidationComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "GameplayEffect/RPGAirborneEffect.h"
+#include "Misc/ScopeExit.h"
 
 using namespace RPGCombatMotion;
 namespace
@@ -162,7 +163,6 @@ bool URPGCombatControlComponent::ChangeAirbornePhase(ERPGAirbornePhase Phase)
 	OwnedAirbornePhase = Handle;
 	if (auto* Removed = ASC->OnGameplayEffectRemoved_InfoDelegate(Handle)) Removed->AddUObject(this, &ThisClass::HandleAirborneRemoved);
 	if (auto* Inhibited = ASC->OnGameplayEffectInhibitionChangedDelegate(Handle)) Inhibited->AddUObject(this, &ThisClass::HandleAirborneInhibited);
-	StopAirbornePose();
 	AirborneState.Phase = Phase; ++AirborneState.PhaseRevision;
 	AirborneState.PhaseStartServerTime = ServerNow(GetWorld());
 	AirborneState.PhaseEndServerTime = Phase == ERPGAirbornePhase::Airborne
@@ -345,7 +345,7 @@ void URPGCombatControlComponent::TickAirborne()
 		}
 	}
 	else if (!IsLivingAvatar(GetOwner()) || AirborneState.RecoveryRevision != RecoveryRevision() || ServerNow(GetWorld()) >= AirborneState.PhaseEndServerTime)
-	{ StopAirborneMotion(); StopAirbornePose(); return; }
+	{ StopAirborneMotion(); }
 	else ApplyAirborneMotion();
 	UpdateAirbornePose();
 }
@@ -353,7 +353,6 @@ void URPGCombatControlComponent::TickAirborne()
 void URPGCombatControlComponent::OnRep_AirborneState()
 {
 	if (!AirborneState.IsActive() || !AirborneState.bMotionActive || AirborneMotionName != AirMotionName(AirborneState)) StopAirborneMotion();
-	if (AirbornePoseRevision != AirborneState.PhaseRevision) StopAirbornePose();
 	if (AirborneState.IsActive()) ApplyAirborneMotion();
 	SetComponentTickEnabled(AirborneState.IsActive() || StunState.bActive || KnockbackState.bActive || SlowState.bActive || BurnState.Stacks > 0 || StaggerState.bActive || !OwnedDefenseReductions.IsEmpty() || !OwnedDamageTakenIncreases.IsEmpty());
 	OnAirborneStateChanged.Broadcast(AirborneState); UpdateAirbornePose();
@@ -371,9 +370,25 @@ void URPGCombatControlComponent::StopAirbornePose()
 void URPGCombatControlComponent::UpdateAirbornePose()
 {
 	if (!GetWorld() || GetWorld()->GetNetMode() == NM_DedicatedServer) return;
+	const int32 OutgoingId = AirbornePoseRevision != AirborneState.PhaseRevision ? AirborneMontageInstanceId : INDEX_NONE;
+	// If the new phase cannot play, retire only the instance tracked for the old phase.
+	ON_SCOPE_EXIT
+	{
+		if (OutgoingId != INDEX_NONE && AirborneMontageInstanceId == OutgoingId) StopAirbornePose();
+	};
 	const double Now = ServerNow(GetWorld());
-	if (bEnding || !AirborneState.IsActive() || !IsLivingAvatar(GetOwner()) || AirborneState.RecoveryRevision != RecoveryRevision()
-		|| Now >= AirborneState.PhaseEndServerTime) { StopAirbornePose(); return; }
+	if (bEnding || !AirborneState.IsActive() || !IsLivingAvatar(GetOwner()) || AirborneState.RecoveryRevision != RecoveryRevision())
+	{ StopAirbornePose(); return; }
+	if (Now >= AirborneState.PhaseEndServerTime)
+	{
+		// The get-up snapshot can arrive after the down timer. Keep an existing down loop
+		// through that gap, at most until recovery itself was due to finish.
+		const bool bAwaitingGetUp = AirborneState.Phase == ERPGAirbornePhase::Downed
+			&& AirbornePoseRevision == AirborneState.PhaseRevision && AirborneMontageInstanceId != INDEX_NONE
+			&& Now < AirborneState.PhaseEndServerTime + AirborneState.GetUpDuration;
+		if (!bAwaitingGetUp) StopAirbornePose();
+		return;
+	}
 	if (Now < AirborneState.PhaseStartServerTime) return;
 	auto* Character = Cast<ACharacter>(GetOwner()); auto* Mesh = Character ? Character->GetMesh() : nullptr;
 	auto* Anim = Mesh ? Mesh->GetAnimInstance() : nullptr;
@@ -385,7 +400,11 @@ void URPGCombatControlComponent::UpdateAirbornePose()
 	}
 	const bool bSamePhase = AirbornePoseRevision == AirborneState.PhaseRevision;
 	const auto* Profile = AirbornePresentationProfile.Get();
-	if (!Profile || !Anim || !Mesh->GetSkeletalMeshAsset() || (!bSamePhase && Anim->IsAnyMontagePlaying())) return;
+	if (!Profile || !Anim || !Mesh->GetSkeletalMeshAsset()) return;
+	const bool bHandoff = OutgoingId != INDEX_NONE && AirborneAnimInstance.Get() == Anim
+		&& Anim->MontageInstances.Num() == 1 && Anim->MontageInstances[0]
+		&& Anim->MontageInstances[0]->GetInstanceID() == OutgoingId && Anim->MontageInstances[0]->IsActive();
+	if (!bSamePhase && Anim->IsAnyMontagePlaying() && !bHandoff) return;
 	const auto* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(GetOwner());
 	if (ASC && ASC->GetAnimatingAbility()) return;
 	const auto& Selected = AirborneState.Phase == ERPGAirbornePhase::Airborne ? Profile->Airborne
@@ -411,7 +430,17 @@ void URPGCombatControlComponent::UpdateAirbornePose()
 		if (Error > .1f && Start + Offset < End) Anim->Montage_SetPosition(Selected.Montage, Start + Offset);
 		return;
 	}
-	if (Start + Offset >= End || Anim->Montage_Play(Selected.Montage, Rate, EMontagePlayReturnType::MontageLength, Start + Offset, false) <= 0.f) return;
+	if (Start + Offset >= End) return;
+	if (bHandoff)
+	{
+		// Match the two blend curves so the slot never falls back to locomotion between phases.
+		FMontageBlendSettings Blend;
+		Blend.Blend = Selected.Montage->BlendIn;
+		Blend.BlendMode = Selected.Montage->BlendModeIn;
+		Blend.BlendProfile = Selected.Montage->BlendProfileIn;
+		Anim->Montage_StopWithBlendSettings(Blend, AirborneMontage.Get());
+	}
+	if (Anim->Montage_Play(Selected.Montage, Rate, EMontagePlayReturnType::MontageLength, Start + Offset, false) <= 0.f) return;
 	const FName SectionName = Selected.Montage->GetSectionName(Section);
 	Anim->Montage_SetNextSection(SectionName, bLoop ? SectionName : NAME_None, Selected.Montage);
 	if (const auto* Instance = Anim->GetActiveInstanceForMontage(Selected.Montage))
