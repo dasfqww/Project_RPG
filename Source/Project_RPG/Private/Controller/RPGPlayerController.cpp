@@ -9,6 +9,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedPlayerInput.h"
 #include "Input/RPGInputBindingRestoreView.h"
+#include "Input/RPGPanelShortcutComponent.h"
 #include "UI/Option/RPGInputOptionsRuntime.h"
 #include "Misc/ScopeExit.h"
 #include "Misc/CommandLine.h"
@@ -116,6 +117,7 @@ ARPGPlayerController::ARPGPlayerController()
 	ItemCommandComponent = CreateDefaultSubobject<URPGItemCommandComponent>(
 		TEXT("ItemCommands"));
 	SkillWindowComponent = CreateDefaultSubobject<URPGSkillWindowComponent>(TEXT("SkillWindow"));
+	CreateDefaultSubobject<URPGPanelShortcutComponent>(TEXT("PanelShortcuts"));
 	WindowInputState = MakeShared<FRPGWindowInputState>();
 	SkillWindowComponent->SetWindowInputState(WindowInputState.ToSharedRef());
 #if !UE_BUILD_SHIPPING
@@ -434,6 +436,31 @@ void ARPGPlayerController::EnableCameraZoom()
 void ARPGPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
+	if (URPGPanelShortcutComponent* Shortcuts = FindComponentByClass<URPGPanelShortcutComponent>())
+	{
+		Shortcuts->Start([this](ERPGPanelShortcutAction Action)
+		{
+			if (bItemPresentationEnded || ContentEntryPopup || GameplayAbandonmentWidget
+				|| (HUD && (HUD->bIsMenuVisible || HUD->bIsOptionMenuVisible)))
+			{
+				return false;
+			}
+
+			switch (Action)
+			{
+			case ERPGPanelShortcutAction::Inventory: ToggleInventory(); break;
+			case ERPGPanelShortcutAction::Equipment: ToggleEquipmentProjection(); break;
+			case ERPGPanelShortcutAction::Skills: ToggleSkillWindow(); break;
+			case ERPGPanelShortcutAction::RewardMail:
+				if (RewardMailWidget && WindowInputState->ContainsWindow(*RewardMailWidget))
+					CloseProjectionWindow(RewardMailWidget);
+				else
+					ShowRewardMail();
+				break;
+			}
+			return true;
+		});
+	}
 	if (InputComponent)
 		InputComponent->BindKey(EKeys::P, IE_Pressed, this, &ThisClass::ToggleEquipmentProjection).bConsumeInput = true;
 	if (!InputConfigDataAsset || !GetLocalPlayer()) return;

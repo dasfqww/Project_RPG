@@ -13,6 +13,8 @@
 #include "Framework/Application/SlateUser.h"
 #include "GameFramework/Pawn.h"
 #include "Input/Events.h"
+#include "Input/RPGPanelShortcutComponent.h"
+#include "Input/RPGPanelShortcutConfig.h"
 #include "InputActionValue.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/ScopeExit.h"
@@ -21,6 +23,7 @@
 #include "UI/Inventory/Projection/RPGRewardMailWidget.h"
 #include "UI/MessageBox/RPGMessageBox.h"
 #include "UI/RPGWindowInputState.h"
+#include "Widgets/Input/SEditableText.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/SViewport.h"
 #include "Widgets/SVirtualWindow.h"
@@ -76,6 +79,10 @@ struct FRPGItemWindowTestAccess
 	static URPGContentEntryWidget* Entry(const ARPGPlayerController& PC) { return PC.ContentEntryPopup; }
 	static URPGMessageBox* Confirmation(const ARPGPlayerController& PC) { return PC.ContentEntryConfirmation; }
 	static UUserWidget* Top(const ARPGPlayerController& PC) { return PC.WindowInputState->GetTopWindow(); }
+	static bool IsMailOpen(const ARPGPlayerController& PC)
+	{
+		return PC.RewardMailWidget && PC.WindowInputState->ContainsWindow(*PC.RewardMailWidget);
+	}
 	static void Interact(ARPGPlayerController& PC, AActor& Entry)
 	{
 		PC.FoundInteractable(&Entry);
@@ -96,6 +103,38 @@ struct FRPGItemWindowTestAccess
 		return Equipment;
 	}
 };
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGPanelShortcutConfigTest,
+	"ProjectRPG.Item.UI.PanelShortcuts.EditableBindings",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRPGPanelShortcutConfigTest::RunTest(const FString&)
+{
+	auto* Config = NewObject<URPGPanelShortcutConfig>();
+	const FInputChord AltM(EKeys::M, EModifierKey::Alt);
+	const FInputChord CtrlM(EKeys::M, EModifierKey::Control);
+	Config->Shortcuts.Add({AltM, ERPGPanelShortcutAction::RewardMail});
+	Config->Shortcuts.Add({CtrlM, ERPGPanelShortcutAction::Inventory});
+
+	TMap<FInputChord, ERPGPanelShortcutAction> Map;
+	FText Error;
+	TestTrue(TEXT("The same key can serve two distinct combinations"), Config->BuildShortcutMap(Map, Error) && Map.Num() == 2);
+	TestTrue(TEXT("Alt+M targets reward mail"), Map.Contains(AltM) && Map.FindRef(AltM) == ERPGPanelShortcutAction::RewardMail);
+	Config->Shortcuts.RemoveAt(0);
+	TestTrue(TEXT("Removing a row removes only its combination"),
+		Config->BuildShortcutMap(Map, Error) && !Map.Contains(AltM) && Map.Contains(CtrlM));
+
+	Config->Shortcuts.Add({CtrlM, ERPGPanelShortcutAction::Equipment});
+	TestFalse(TEXT("The exact same combination cannot be assigned twice"), Config->BuildShortcutMap(Map, Error));
+	TestTrue(TEXT("An invalid list leaves no partially registered bindings"), Map.IsEmpty() && !Error.IsEmpty());
+	Config->Shortcuts = {{FInputChord(EKeys::M), ERPGPanelShortcutAction::RewardMail}};
+	TestFalse(TEXT("A bare key is not a panel combination"), Config->BuildShortcutMap(Map, Error));
+	Config->Shortcuts = {{FInputChord(EKeys::Enter, EModifierKey::Alt), ERPGPanelShortcutAction::RewardMail}};
+	TestFalse(TEXT("The fullscreen combination is reserved"), Config->BuildShortcutMap(Map, Error));
+	Config->Shortcuts.Reset();
+	TestTrue(TEXT("An empty list disables all panel combinations"), Config->BuildShortcutMap(Map, Error) && Map.IsEmpty());
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGIndependentItemWindowRoutingTest,
 	"ProjectRPG.Item.UI.IndependentWindows.BagToggleAndTopClose",
@@ -173,6 +212,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	{
 		if (PC)
 		{
+			if (auto* Shortcuts = PC->FindComponentByClass<URPGPanelShortcutComponent>()) Shortcuts->DestroyComponent();
 			if (auto* Entry = FAccess::Entry(*PC)) Entry->RemoveFromParent();
 			if (auto* Top = FAccess::Top(*PC)) Top->RemoveFromParent();
 		}
@@ -198,9 +238,41 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	{
 		return Slate.GetUserFocusedWidget(User->GetUserIndex()) == Widget.GetCachedWidget();
 	};
+	const auto MailEvent = [&](bool bAlt, bool bCtrl = false, bool bRepeat = false)
+	{
+		const FModifierKeysState Modifiers(false, false, bCtrl, false, bAlt, false, false, false, false);
+		return FKeyEvent(EKeys::M, Modifiers, User->GetUserIndex(), bRepeat, 0, 0);
+	};
+	Slate.SetUserFocus(User->GetUserIndex(), GameWidget, EFocusCause::SetDirectly);
+	TestTrue(TEXT("The game viewport has keyboard focus before opening mail"),
+		Slate.GetUserFocusedWidget(User->GetUserIndex()) == GameWidget);
+	Slate.ProcessKeyDownEvent(MailEvent(false));
+	Slate.ProcessKeyUpEvent(MailEvent(false));
+	TestFalse(TEXT("Plain M does not open mail"), FAccess::IsMailOpen(*PC));
+	Slate.ProcessKeyDownEvent(MailEvent(true, true));
+	Slate.ProcessKeyUpEvent(MailEvent(true, true));
+	TestFalse(TEXT("An extra modifier does not match Alt+M"), FAccess::IsMailOpen(*PC));
+	TestTrue(TEXT("Alt+M opens mail from the game viewport"),
+		Slate.ProcessKeyDownEvent(MailEvent(true)) && FAccess::IsMailOpen(*PC));
+	TestTrue(TEXT("Holding Alt+M consumes repeats without closing mail"),
+		Slate.ProcessKeyDownEvent(MailEvent(true, false, true)) && FAccess::IsMailOpen(*PC));
+	TestTrue(TEXT("Releasing Alt first still consumes the matching M release"), Slate.ProcessKeyUpEvent(MailEvent(false)));
+
 	auto* Bag = FAccess::OpenInventory(*PC);
 	if (!TestNotNull(TEXT("Inventory window"), Bag)) return false;
 	TestTrue(TEXT("Inventory starts focused"), Bag->IsInViewport() && HasFocus(*Bag));
+	TestTrue(TEXT("Alt+M from a focused bag closes mail and keeps the bag"),
+		Slate.ProcessKeyDownEvent(MailEvent(true)) && !FAccess::IsMailOpen(*PC) && HasFocus(*Bag));
+	Slate.ProcessKeyUpEvent(MailEvent(true));
+	const auto TextEntry = SNew(SEditableText);
+	Overlay->AddSlot()[TextEntry];
+	Slate.SetUserFocus(User->GetUserIndex(), TextEntry, EFocusCause::SetDirectly);
+	TestTrue(TEXT("Text input has keyboard focus"), Slate.GetUserFocusedWidget(User->GetUserIndex()) == TextEntry);
+	Slate.ProcessKeyDownEvent(MailEvent(true));
+	Slate.ProcessKeyUpEvent(MailEvent(true));
+	TestFalse(TEXT("Alt+M leaves mail closed while editing text"), FAccess::IsMailOpen(*PC));
+	Slate.SetUserFocus(User->GetUserIndex(), Bag->GetCachedWidget(), EFocusCause::SetDirectly);
+	Overlay->RemoveSlot(TextEntry);
 	const auto EntryActorClass = LoadClass<ARPGContentEntryActor>(nullptr,
 		TEXT("/Game/Blueprints/Content/BP_SurvivalEntry.BP_SurvivalEntry_C"));
 	if (!TestNotNull(TEXT("Authored content entrance class"), EntryActorClass)) return false;
@@ -212,6 +284,9 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	auto* Entry = FAccess::Entry(*PC);
 	if (!TestNotNull(TEXT("Content entry popup"), Entry)) return false;
 	TestTrue(TEXT("Content entry takes focus and selects UI-only mode"), HasFocus(*Entry) && Viewport->IgnoreInput());
+	Slate.ProcessKeyDownEvent(MailEvent(true));
+	Slate.ProcessKeyUpEvent(MailEvent(true));
+	TestFalse(TEXT("Alt+M cannot open mail over a content entry modal"), FAccess::IsMailOpen(*PC));
 	FAccess::Interact(*PC, *EntryActor);
 	TestTrue(TEXT("Reopening preserves the existing content entry"), FAccess::Entry(*PC) == Entry);
 	TestTrue(TEXT("Repeated Escape is handled and keeps the entry open"), Escape(true) && Entry->IsInViewport());
