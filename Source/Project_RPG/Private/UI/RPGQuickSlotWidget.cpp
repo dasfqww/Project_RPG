@@ -622,7 +622,7 @@ void URPGQuickSlotWidget::BuildNativeItemCell()
 {
 	if (!WidgetTree) WidgetTree = NewObject<UWidgetTree>(this, TEXT("WidgetTree"));
 	auto* Size = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ItemCellSize"));
-	Size->SetWidthOverride(44.f); Size->SetHeightOverride(44.f);
+	Size->SetWidthOverride(52.f); Size->SetHeightOverride(52.f);
 	WidgetTree->RootWidget = Size;
 	auto* Border = WidgetTree->ConstructWidget<UBorder>();
 	Border->SetBrushColor(FLinearColor(.36f, .27f, .16f, 1.f)); Border->SetPadding(FMargin(1.f));
@@ -635,11 +635,11 @@ void URPGQuickSlotWidget::BuildNativeItemCell()
 	Overlay->AddChildToOverlay(SlotItemImage)->SetPadding(FMargin(3.f));
 	SetImageAlpha(SlotItemImage, 0.f);
 	InputKeyText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("InputKeyText"));
-	InputKeyText->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 10));
+	InputKeyText->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 12));
 	InputKeyText->SetColorAndOpacity(FSlateColor(FLinearColor(.95f, .82f, .61f)));
 	auto* KeySlot = Overlay->AddChildToOverlay(InputKeyText); KeySlot->SetHorizontalAlignment(HAlign_Left); KeySlot->SetVerticalAlignment(VAlign_Top);
 	SlotItemCountText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("SlotItemCountText"));
-	SlotItemCountText->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 10));
+	SlotItemCountText->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 12));
 	auto* CountSlot = Overlay->AddChildToOverlay(SlotItemCountText); CountSlot->SetHorizontalAlignment(HAlign_Right); CountSlot->SetVerticalAlignment(VAlign_Bottom);
 	auto* Status = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ItemStatusText"));
 	Status->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 10));

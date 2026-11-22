@@ -219,7 +219,7 @@ void ARPGHUD::RefreshPlayerHUD()
 				{
 					auto* Slot = ItemCanvas->AddChildToCanvas(ItemQuickSlotBar);
 					Slot->SetAnchors(FAnchors(.5f, 1.f)); Slot->SetAlignment(FVector2D(0.f, 1.f));
-					Slot->SetPosition(FVector2D(84.f, -24.f)); Slot->SetSize(FVector2D(264.f, 92.f)); Slot->SetZOrder(3);
+					Slot->SetPosition(FVector2D(76.f, -45.f)); Slot->SetAutoSize(true); Slot->SetZOrder(3);
 					Original->SetVisibility(ESlateVisibility::Collapsed);
 				}
 			}
