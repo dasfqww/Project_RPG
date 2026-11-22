@@ -361,7 +361,7 @@ struct FProbe
             if (bMovingPlatform && Player->IsLocallyControlled() && (State.Phase==ERPGAirbornePhase::Downed || State.Phase==ERPGAirbornePhase::GettingUp))
                 Player->AddMovementInput(FVector::RightVector,1.f,true);
             if (State.Phase==ERPGAirbornePhase::Airborne && (!FMath::IsNearlyEqual(State.Distance,240.f) || !FMath::IsNearlyEqual(State.Height,180.f)
-                || !FMath::IsNearlyEqual(State.DownDuration,.6f) || !FMath::IsNearlyEqual(State.GetUpDuration,.8f))) { Fail(TEXT("AuthoredSpecChanged")); return false; }
+                || !FMath::IsWithinInclusive(State.DownDuration,1.f,1.6f) || !FMath::IsNearlyEqual(State.GetUpDuration,.8f))) { Fail(TEXT("AuthoredSpecChanged")); return false; }
             if ((Phases&2) && State.Phase==ERPGAirbornePhase::None)
             {
                 if (!CompleteAt) CompleteAt=FPlatformTime::Seconds()+.5;

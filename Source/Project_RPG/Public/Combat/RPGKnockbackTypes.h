@@ -20,6 +20,9 @@ struct PROJECT_RPG_API FRPGKnockbackSettings
 	float Height = 0.f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0.1", ClampMax="4", Units="s", EditCondition="Height > 0"))
 	float DownDuration = .8f;
+	/** Optional upper bound for the down time. Zero uses DownDuration as a fixed time. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0", ClampMax="4", Units="s", EditCondition="Height > 0"))
+	float MaxDownDuration = 0.f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0.1", ClampMax="3", Units="s", EditCondition="Height > 0"))
 	float GetUpDuration = 1.2f;
 	bool IsValid() const;

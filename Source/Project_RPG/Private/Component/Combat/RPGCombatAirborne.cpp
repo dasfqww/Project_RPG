@@ -101,7 +101,10 @@ bool URPGCombatControlComponent::ApplyApprovedDamageAirborne(AActor* Source, con
 	AirborneState.Yaw = AwayDirection.Rotation().Yaw;
 	AirborneState.ArcDuration = Duration;
 	AirborneState.MaximumFlightDuration = Duration + 2.f;
-	AirborneState.DownDuration = Settings.DownDuration; AirborneState.GetUpDuration = Settings.GetUpDuration;
+	// Resolve once on the authority; the chosen duration travels with the airborne state.
+	AirborneState.DownDuration = Settings.MaxDownDuration > Settings.DownDuration
+		? FMath::FRandRange(Settings.DownDuration, Settings.MaxDownDuration) : Settings.DownDuration;
+	AirborneState.GetUpDuration = Settings.GetUpDuration;
 	AirborneState.StartServerTime = ServerNow(GetWorld());
 	AirborneState.MovementStartClientTime = -1.f;
 	AirborneState.EndReason = ERPGAirborneEndReason::None;

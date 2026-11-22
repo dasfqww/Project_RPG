@@ -154,8 +154,10 @@ def tick(_delta):
             if current==1:
                 STATE['had_hit']=True
                 snapshot=c.get_airborne_state()
-                for field,expected in [('distance',240.),('height',180.),('down_duration',.6),('get_up_duration',.8)]:
+                for field,expected in [('distance',240.),('height',180.),('get_up_duration',.8)]:
                     require(abs(float(snapshot.get_editor_property(field))-expected)<.001,'Original grant lost authored '+field)
+                require(1.0 <= snapshot.down_duration <= 1.6001, 'Original grant lost authored down duration range')
+                RESULT['selectedDownDuration'] = snapshot.down_duration
                 RESULT['authoredSettingsObserved']=True
             if STATE['had_hit'] and current==0:
                 require(all(x in RESULT['observedPhases'] for x in [1,2,3]),'Missing airborne/down/getup transition')

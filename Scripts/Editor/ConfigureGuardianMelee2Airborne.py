@@ -14,18 +14,21 @@ FIRST = ATTACK.replace('Melee2', 'Melee1')
 PROPERTIES = ('activate_on_given_abilities', 'reactive_abilities', 'start_up_gameplay_effects',
               'npc_start_up_abilities', 'attack_hit_reaction_policies', 'attack_stun_durations',
               'attack_knockbacks', 'attack_slows', 'attack_burns', 'attack_staggers', 'ability_immunities')
-SETTINGS = dict(distance=240., duration=.4, height=180., down_duration=.6, get_up_duration=.8)
+SETTINGS = dict(distance=240., duration=.4, height=180., down_duration=1., max_down_duration=1.6, get_up_duration=.8)
+PREVIOUS_SETTINGS = dict(SETTINGS, down_duration=.6, max_down_duration=0.)
 
 
-def configured(value):
-    return value is not None and all(abs(float(value.get_editor_property(k))-v)<.00001 for k,v in SETTINGS.items())
+def configured(value, settings=SETTINGS):
+    return value is not None and all(abs(float(value.get_editor_property(k))-v)<.00001 for k,v in settings.items())
 
 
 def preserve(properties, original):
     for name in PROPERTIES:
         if name != 'attack_knockbacks':
             assert properties[name] == original[name], 'Preserve '+name
-    assert {k:v for k,v in properties['attack_knockbacks'].items() if k != ATTACK} == original['attack_knockbacks'], 'Preserve other knockback entries'
+    assert {k:v for k,v in properties['attack_knockbacks'].items() if k != ATTACK} == {
+        k:v for k,v in original['attack_knockbacks'].items() if k != ATTACK
+    }, 'Preserve other knockback entries'
 
 
 def encode(value):
@@ -41,7 +44,7 @@ def encode(value):
 
 
 def main():
-    root = Path(unreal.Paths.project_dir()).resolve()
+    root = Path(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())).resolve()
     output = root / 'Saved/CombatGuardianMelee2'
     output.mkdir(parents=True, exist_ok=True)
     assert unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_game_world() is None, 'Preserve PIE'
@@ -68,7 +71,7 @@ def main():
         saves = 0
         if changed:
             assert apply and not reload, 'Reload must find the authored entry'
-            assert current is None and not entries, 'Preserve existing or inherited configuration'
+            assert (current is None and not entries) or configured(current, PREVIOUS_SETTINGS), 'Preserve customized configuration'
             file = root/'Content'/ (DATA.removeprefix('/Game/')+'.uasset')
             assert hashlib.sha256(file.read_bytes()).hexdigest().upper() == baseline['assetSHA256'], 'Asset changed since inspection'
             assert DATA not in {str(p.get_name()) for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()}, 'Preserve unsaved target changes'

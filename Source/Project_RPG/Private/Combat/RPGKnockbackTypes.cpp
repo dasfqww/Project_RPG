@@ -10,6 +10,7 @@ namespace
 	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_KnockbackDuration, "Ability.Data.Control.KnockbackSeconds");
 	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_AirborneHeight, "Ability.Data.Control.AirborneHeight");
 	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_DownDuration, "Ability.Data.Control.DownSeconds");
+	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_MaxDownDuration, "Ability.Data.Control.MaxDownSeconds");
 	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_GetUpDuration, "Ability.Data.Control.GetUpSeconds");
 }
 
@@ -20,6 +21,7 @@ bool FRPGKnockbackSettings::IsValid() const
 		&& FMath::IsFinite(Height) && (Height == 0.f || (Height >= 50.f && Height <= 600.f))
 		&& (Height > 0.f || Distance / Duration <= 2500.f)
 		&& FMath::IsFinite(DownDuration) && DownDuration >= .1f && DownDuration <= 4.f
+		&& (MaxDownDuration == 0.f || (FMath::IsFinite(MaxDownDuration) && MaxDownDuration >= DownDuration && MaxDownDuration <= 4.f))
 		&& FMath::IsFinite(GetUpDuration) && GetUpDuration >= .1f && GetUpDuration <= 3.f;
 }
 
@@ -33,6 +35,7 @@ bool RPGKnockback::SetGrantedSettings(FGameplayAbilitySpec& Spec, const FRPGKnoc
 	Spec.SetByCallerTagMagnitudes.Remove(TAG_KnockbackDuration);
 	Spec.SetByCallerTagMagnitudes.Remove(TAG_AirborneHeight);
 	Spec.SetByCallerTagMagnitudes.Remove(TAG_DownDuration);
+	Spec.SetByCallerTagMagnitudes.Remove(TAG_MaxDownDuration);
 	Spec.SetByCallerTagMagnitudes.Remove(TAG_GetUpDuration);
 	if (Settings.IsEnabled())
 	{
@@ -42,6 +45,8 @@ bool RPGKnockback::SetGrantedSettings(FGameplayAbilitySpec& Spec, const FRPGKnoc
 		{
 			Spec.SetByCallerTagMagnitudes.Add(TAG_AirborneHeight, Settings.Height);
 			Spec.SetByCallerTagMagnitudes.Add(TAG_DownDuration, Settings.DownDuration);
+			if (Settings.MaxDownDuration > 0.f)
+				Spec.SetByCallerTagMagnitudes.Add(TAG_MaxDownDuration, Settings.MaxDownDuration);
 			Spec.SetByCallerTagMagnitudes.Add(TAG_GetUpDuration, Settings.GetUpDuration);
 		}
 	}
@@ -58,11 +63,13 @@ FRPGKnockbackSettings RPGKnockback::GetGrantedSettings(const FGameplayAbilitySpe
 	Result.Distance = *Distance; Result.Duration = *Duration;
 	const float* Height = Spec->SetByCallerTagMagnitudes.Find(TAG_AirborneHeight);
 	const float* Down = Spec->SetByCallerTagMagnitudes.Find(TAG_DownDuration);
+	const float* MaxDown = Spec->SetByCallerTagMagnitudes.Find(TAG_MaxDownDuration);
 	const float* GetUp = Spec->SetByCallerTagMagnitudes.Find(TAG_GetUpDuration);
-	if (Height || Down || GetUp)
+	if (Height || Down || MaxDown || GetUp)
 	{
 		if (!Height || !Down || !GetUp || *Height <= 0.f) return FRPGKnockbackSettings();
 		Result.Height = *Height; Result.DownDuration = *Down; Result.GetUpDuration = *GetUp;
+		if (MaxDown) Result.MaxDownDuration = *MaxDown;
 	}
 	return Result.IsValid() ? Result : FRPGKnockbackSettings();
 }

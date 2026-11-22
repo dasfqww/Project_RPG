@@ -123,6 +123,12 @@ bool FRPGAirborneDataTest::RunTest(const FString&)
 	using namespace RPGAirborneTests;
 	auto S = Settings(); FGameplayAbilitySpec Spec;
 	TestTrue(TEXT("Freeze shared displacement"), RPGKnockback::SetGrantedSettings(Spec, S));
+	TestEqual(TEXT("Legacy grants keep fixed down time"), RPGKnockback::GetGrantedSettings(&Spec).MaxDownDuration, 0.f);
+	S.MaxDownDuration = 1.5f;
+	TestTrue(TEXT("Freeze configurable down range"), RPGKnockback::SetGrantedSettings(Spec, S));
+	TestEqual(TEXT("Down range survives ability grant"), RPGKnockback::GetGrantedSettings(&Spec).MaxDownDuration, 1.5f);
+	TestTrue(TEXT("Regrant fixed time clears range"), RPGKnockback::SetGrantedSettings(Spec, Settings()));
+	TestEqual(TEXT("No stale upper bound"), RPGKnockback::GetGrantedSettings(&Spec).MaxDownDuration, 0.f);
 	S.Height = 0; TestEqual(TEXT("Frozen height"), RPGKnockback::GetGrantedSettings(&Spec).Height, 180.f);
 	Spec.SetByCallerTagMagnitudes.Remove(FGameplayTag::RequestGameplayTag(TEXT("Ability.Data.Control.DownSeconds")));
 	TestFalse(TEXT("Partial airborne metadata is disabled"), RPGKnockback::GetGrantedSettings(&Spec).IsEnabled());
@@ -130,6 +136,9 @@ bool FRPGAirborneDataTest::RunTest(const FString&)
 	S.Height = 49; TestFalse(TEXT("Reject tiny unusable arc"), S.IsValid());
 	S.Height = std::numeric_limits<float>::quiet_NaN(); TestFalse(TEXT("Reject nonfinite height"), S.IsValid());
 	S = Settings(); S.GetUpDuration = 4; TestFalse(TEXT("Recovery is bounded"), S.IsValid());
+	S = Settings(); S.MaxDownDuration = .2f; TestFalse(TEXT("Reject inverted down range"), S.IsValid());
+	S.MaxDownDuration = 5.f; TestFalse(TEXT("Reject excessive down duration"), S.IsValid());
+	S.MaxDownDuration = std::numeric_limits<float>::quiet_NaN(); TestFalse(TEXT("Reject nonfinite down duration"), S.IsValid());
 	auto* NPC = NewObject<UDataAsset_NPCStartUpData>(); NPC->AttackKnockbacks.Add(URPGNPCGameplayAbility::StaticClass(), Settings());
 	TestTrue(TEXT("NPC reuses existing GA grant"), NPC->BuildAttackAbilitySpec(URPGNPCGameplayAbility::StaticClass(), 1, NPC, Spec));
 	TestEqual(TEXT("NPC frozen airborne height"), RPGKnockback::GetGrantedSettings(&Spec).Height, 180.f);
@@ -145,14 +154,32 @@ bool FRPGAirborneLandingTest::RunTest(const FString&)
 	auto* S = W.Spawn(FVector(-1000, 0, 300)); auto* T = W.Spawn(FVector(0, 0, 300)); W.Tick(1.f);
 	auto* C = T->GetCombatControlComponent(); auto* M = T->GetCharacterMovement(); const float Ground = T->GetActorLocation().Z;
 	TestTrue(TEXT("Fixture on actual floor"), M->IsMovingOnGround());
-	TestTrue(TEXT("Start arc"), Apply(S, T));
+	auto Config = Settings();
+	Config.DownDuration = 1.f;
+	Config.MaxDownDuration = 1.6f;
+	if (!TestTrue(TEXT("Start arc with configurable down time"), Apply(S, T, Config))) return false;
+	const float SelectedDuration = C->GetAirborneState().DownDuration;
+	TestTrue(TEXT("Selected time is within the attack's range"),
+		FMath::IsWithinInclusive(SelectedDuration, Config.DownDuration, Config.MaxDownDuration));
 	const auto Root = FRPGAirborneTestAccess::Root(*C); bool bRose = false, bDown = false, bUp = false;
+	double DownStarted = 0.;
 	for (int i = 0; i < 240; ++i)
 	{
 		W.Tick(1.f / 60); const auto State = C->GetAirborneState();
 		bRose |= T->GetActorLocation().Z > Ground + 100;
-		if (State.Phase == ERPGAirbornePhase::Downed) { bDown = true; TestTrue(TEXT("Down only on physical ground"), M->IsMovingOnGround()); }
-		if (State.Phase == ERPGAirbornePhase::GettingUp) bUp = true;
+		if (State.Phase == ERPGAirbornePhase::Downed && !bDown)
+		{
+			bDown = true;
+			DownStarted = State.PhaseStartServerTime;
+			TestTrue(TEXT("Down only on physical ground"), M->IsMovingOnGround());
+			TestEqual(TEXT("Landing preserves selected down time"), State.DownDuration, SelectedDuration);
+		}
+		if (State.Phase == ERPGAirbornePhase::GettingUp && !bUp)
+		{
+			bUp = true;
+			TestTrue(TEXT("Get up waits for the full down time after landing"),
+				FMath::IsNearlyEqual(State.PhaseStartServerTime - DownStarted, double(SelectedDuration), .04));
+		}
 		if (State.IsActive()) { TestTrue(TEXT("No input gap across phases"), RPGCombatControl::IsActionBlocked(T)); TestNotNull(TEXT("One continuous root GE"), T->GetRPGAbilitySystemComponent()->GetActiveGameplayEffect(Root)); }
 	}
 	TestTrue(TEXT("Character actually rose"), bRose); TestTrue(TEXT("Observed real landing/down"), bDown); TestTrue(TEXT("Observed automatic get-up"), bUp);
