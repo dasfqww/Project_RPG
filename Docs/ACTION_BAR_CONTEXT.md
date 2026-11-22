@@ -7,7 +7,7 @@
 - `UQuickSlotComponent::GetActionBarContext()`는 현재 Pawn에 귀속되는 공통 전환기다.
 - `IRPGActionBarProvider`는 C++ 어댑터다. `GetActionBarPawn`, `GetActionBarProfile`, `ReadAction`, `PressAction`, `ReleaseAction`을 구현한다. Pawn/feature component는 weak pointer로 참조한다.
 - `URPGActionBarProfile` Data Asset에는 ProfileId, Actions(최대 8개), LeftWidgetClass, CenterWidgetClass가 있다. 각 액션은 안정 ActionId, Label/Icon과 선택적 SkillSlot/InputTag를 가진다.
-- native 배치는 액션의 `DisplaySlot`(0~7, -1은 자동)과 프로필의 `NativeSlotCount`(0은 자동, 고정1~8)로 정한다. 명시한 위치를 먼저 예약하고 나머지 액션을 배열 순서대로 빈 위치에 채운다. 고정 칸 수의 빈 위치는 클릭/키/제공자 호출이 없는 자리 표시다. 중복 위치·범위 초과·고정 칸 부족은 활성화 전에 거절한다. 기본값은 기존의 조밀한 순서 배치와 같다.
+- native 배치는 액션의 `DisplaySlot`(0~7, -1은 자동)과 프로필의 `NativeSlotCount`(0은 자동, 고정1~8)로 정한다. 명시한 위치를 먼저 예약하고 나머지 액션을 배열 순서대로 빈 위치에 채운다. 고정 칸 수의 빈 위치는 클릭/키/제공자 호출이 없는 자리 표시다. 중복 위치·범위 초과·고정 칸 부족은 활성화 전에 거절한다. 기본값은 기존의 조밀한 순서 배치와 같다. NativeColumnCount에 양수를 지정하면 같은 표시 순서를 지정한 열 수로 줄바꿈한다.
 - 서버 확정 상태를 수신한 feature가 `Context->Activate(Provider)`를 호출한다. 같은 provider/profile은 멱등. 교체는 먼저 기존 입력을 해제한다.
 - 하차/강제 종료 때 `Context->Deactivate(Provider)`. 다른 provider로 교체된 뒤 늦은 이전 해제는 무시한다. Pawn 종료는 공통 Shutdown.
 - 상태를 중복 복제하지 않는다. 공통 전환기는 승인을 발급하거나 RPC를 보내지 않는다. Riding의 서버 상태/복제/리비전 가드가 유효할 때만 설치한다.
@@ -45,9 +45,9 @@
 
 `URPGRidingActionBarSubsystem`은 로컬 플레이어에 자동 생성되는 UI 어댑터다. 현재 Controller/Pawn의 `URPGRidingComponent::OnChanged`를 구독하고 **컴포넌트의 현재 canonical 상태**를 다시 읽는다. Mounted에서는 공통 context에 Riding 프로필을 설치하고 OnFoot/소유 변경/종료에서는 자신이 설치한 제공자만 해제한다. 결과 영수증으로 상태를 추정하거나 복제 상태를 직접 쓰지 않는다.
 
-현재 실제 서버 API가 있는 **Dismount 한 개**를 제공한다. 셀 클릭과 기존 네 번째 스킬 슬롯 입력은 모두 `RequestSetMounted(false, ...)`로 이어진다. 물리 키는 해당 슬롯의 현재 설정을 조회하며 별도 IMC나 기본 키 덮어쓰기를 추가하지 않는다. Dash/Emote와 탑승 호출/보관함·RidingShortcut 배정은 이 어댑터의 구현 범위가 아니다.
+초기 연결에서는 하차 한 개를 제공했다. 현재 하차 셀 클릭과 네 번째 스킬 슬롯 입력은 모두 `RequestSetMounted(false, ...)`로 이어진다. 질주는 기존 회피 입력 태그, 특수 동작은 첫 번째 스킬 슬롯 입력을 사용한다.
 
-Riding의 native 좌측 바는 네 칸을 유지하며 하차를 네 번째 표시 위치에 둔다(`NativeSlotCount=4`, `DisplaySlot=3`, `SkillSlot=3`). 앞의 세 빈 칸에 실행할 수 없는 Dash/Emote를 추가하지 않는다. 표시 위치를 바꿔도 `SkillSlot`/`InputTag`·ActionId나 현재 물리 키 배정은 바뀌지 않는다. 사용자 직업 편성/우측 아이템 배열을 수정하지 않는다.
+Riding의 native 좌측 바는 도보와 같이 64×64 슬롯 여덟 개를 네 칸씩 두 줄로 표시한다. 질주는 윗줄 첫 칸에 두고, 특수 동작과 내리기는 현재 기본 `Q`·`R`에 맞춰 아랫줄 양 끝에 둔다. 나머지 칸은 비어 있다. 표시 위치는 `SkillSlot`/`InputTag`·ActionId와 독립적이고 단축키 라벨은 현재 매핑을 읽는다.
 
 저장된 `PlayerIdentity`는 내부에 하단 게이지를 배치한 전체 화면 모듈이다. 그 바깥 Canvas 배치를 작은 native 중앙 위젯에 그대로 복사하면 텍스트가 화면 위에 나타난다. Riding 프로필은 중앙 배치를 명시하여 anchors `(0.5, 1)`, alignment `(0.5, 1)`, offsets `(0, -88, 240, 88)`, auto-size false로 하단 중앙에 표시한다. 좌표는 HUD의 논리 Canvas 공간이며 기존 직업 모듈/에셋의 내부 배치는 수정하지 않는다.
 

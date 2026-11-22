@@ -36,6 +36,11 @@ bool URPGActionBarProfile::IsValidProfile() const
 
 bool URPGActionBarProfile::TryBuildDisplayOrder(TArray<int32>& OutOrder) const
 {
+    if (NativeColumnCount < 0 || NativeColumnCount > 8)
+    {
+        OutOrder.Reset();
+        return false;
+    }
     TArray<int32> DisplaySlots;
     for (const auto& Entry : Actions) DisplaySlots.Add(Entry.DisplaySlot);
     return RPGActionBarLayout::Resolve(DisplaySlots, NativeSlotCount, OutOrder);

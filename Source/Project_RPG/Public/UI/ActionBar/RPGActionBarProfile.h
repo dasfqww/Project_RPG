@@ -33,8 +33,10 @@ class PROJECT_RPG_API URPGActionBarProfile : public UDataAsset
 public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly) FName ProfileId;
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TArray<FRPGActionBarEntry> Actions;
-    /** Zero infers the native row length. Positive values preserve empty positions, up to eight. */
+    /** Zero infers the native slot count. Positive values preserve empty positions, up to eight. */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0", ClampMax="8")) int32 NativeSlotCount = 0;
+    /** Zero keeps a single row. Positive values wrap native positions into rows of this width in slots. */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0", ClampMax="8")) int32 NativeColumnCount = 0;
     /** Null selects the native action bar. */
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TSubclassOf<URPGActionBarWidget> LeftWidgetClass;
     /** Null hides the class identity region while this profile is active. */

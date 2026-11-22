@@ -49,3 +49,17 @@ TSharedRef<SHorizontalBox> RPGActionBarLayout::CreateRow(TConstArrayView<int32> 
     }
     return Row;
 }
+
+TSharedRef<SWidget> RPGActionBarLayout::CreateRows(TConstArrayView<int32> Order, int32 ColumnCount,
+    TFunctionRef<TSharedRef<SWidget>(int32)> CreateCell)
+{
+    if (ColumnCount <= 0 || Order.Num() <= ColumnCount) return CreateRow(Order, CreateCell);
+
+    auto Rows = SNew(SVerticalBox);
+    for (int32 First = 0; First < Order.Num(); First += ColumnCount)
+    {
+        const int32 Count = FMath::Min(ColumnCount, Order.Num() - First);
+        Rows->AddSlot().AutoHeight().HAlign(HAlign_Left)[CreateRow(Order.Slice(First, Count), CreateCell)];
+    }
+    return Rows;
+}

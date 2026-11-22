@@ -57,7 +57,7 @@ TSharedRef<SWidget> URPGActionBarWidget::RebuildWidget()
     TArray<int32> Order;
     if (!Profile || !Profile->TryBuildDisplayOrder(Order)) return SNew(SHorizontalBox);
     TWeakObjectPtr<URPGActionBarWidget> Weak(this);
-    return RPGActionBarLayout::CreateRow(Order, [Weak, Profile](int32 Index) -> TSharedRef<SWidget>
+    return RPGActionBarLayout::CreateRows(Order, Profile->NativeColumnCount, [Weak, Profile](int32 Index) -> TSharedRef<SWidget>
     {
         const auto Entry = Profile->Actions[Index];
         const FName Id = Entry.ActionId;

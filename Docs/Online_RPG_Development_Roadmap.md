@@ -1005,6 +1005,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| 탑승 퀵슬롯 8칸 / riding-eight-slots-20261122 | 64×64 슬롯 네 칸씩 두 줄. Space 질주는 윗줄 첫 칸, Q 특수 동작·R 내리기는 아랫줄 양 끝 | ActionBar 배치 h/cpp·Widget·Context·RidingSubsystem·Profile, LayoutTests, 계약 및 본인 행 | UE 5.8 Slate 8건·전체 UHT/집중 CPP 통과. 사설 임시 2865390589 bytes 정리. Saved/BuildChecks/RidingEightSlots22 | 이 행 및 본인 8경로 main index/ref 예약. origin/main 일치 확인 시 예약 해제 |
 | 보호막 수치 / shield-hp-label-20261122 | HP 뒤에 활성 보호막 잔량 (+수치) 표시 | PlayerShieldWidget·PlayerVitalsWidget h/cpp, PlayerShieldWidgetTests.cpp, 장비 효과 문서·본인 행 | UE 5.8 Editor 증분 빌드, 독립 native 7건 통과. 승인된 보호막 잔량 50→30→만료, 최대 HP를 넘는 1200 표시 확인. 미추적 HitReact 제외한 검사 사본. 임시 504770946 bytes 정리 | 검증·공유 실행 해제. 본인 7경로 main index/ref·origin/main 순차 게시 예약. 이 행 포함 커밋 원격 일치 시 해제 |
 | UI 조합키 / panel-shortcuts-20261122 | DA_PanelShortcuts에서 조합 추가·삭제, 기본 Alt+M 우편함 토글 | 단축키 에셋·컨트롤러 연결·입력 컴포넌트/검증·cook 경로·창 검사·옵션 계약·본인 행 | Editor UHT·C++ 9단계/링크 3단계 성공. 미추적 HitReact를 제외한 동일 모듈의 격리 Slate 자동화 4건 성공. 임시 27,627,729바이트 및 링크 36개 정리. Saved/BuildChecks/PanelShortcuts22/Result.json | 검증·정리 완료 및 공유 빌드 해제. 본인 10경로 main index/ref·origin/main 게시 순차 예약. 원격 일치 시 예약 해제 |
 | HUD 스킬 슬롯 64 / hud-skill-cell-64-20261122 | 왼쪽 스킬 8칸 64×64 조정 | WBP_SkillQuickSlot.uasset·본인 행 | 블루프린트 컴파일·별도 UE 재로드·상하 4칸씩 확인. 자기 임시 1058122 bytes 정리. Saved/BuildChecks/HudSkillCell64/Result.json 보존 | 공유 실행 예약 해제. 본인 2경로 main index/ref·origin/main 게시 순차 예약. 원격 해시 일치 시 해제 |

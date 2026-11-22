@@ -25,7 +25,8 @@ public:
           Profile(NewObject<URPGActionBarProfile>())
     {
         Profile->ProfileId = TEXT("Riding");
-        Profile->NativeSlotCount = 4;
+        Profile->NativeSlotCount = 8;
+        Profile->NativeColumnCount = 4;
         Profile->CenterWidgetClass = URPGActionBarIdentityWidget::StaticClass();
         // PlayerIdentity is an authored fullscreen module; place this compact replacement explicitly.
         Profile->bOverrideCenterLayout = true;
@@ -39,14 +40,14 @@ public:
         Profile->Actions.Add(Dash);
         FRPGActionBarEntry Emote;
         Emote.ActionId = TEXT("Emote"); Emote.Label = LOCTEXT("Emote", "특수 동작");
-        Emote.SkillSlot = 0; Emote.DisplaySlot = 1;
+        Emote.SkillSlot = 0; Emote.DisplaySlot = 4;
         Profile->Actions.Add(Emote);
         FRPGActionBarEntry Entry;
         Entry.ActionId = TEXT("Dismount");
         Entry.Label = LOCTEXT("Dismount", "내리기");
         // Reuse the current fourth skill binding; never overwrite the player's physical key mapping.
         Entry.SkillSlot = 3;
-        Entry.DisplaySlot = 3;
+        Entry.DisplaySlot = 7;
         Profile->Actions.Add(Entry);
         RefreshIdentity();
     }

@@ -55,6 +55,24 @@ bool FRPGActionBarLayoutCompatibility::RunTest(const FString&)
     const TArray<int32> NoActions;
     TestTrue(TEXT("Fully empty fixed row is supported"), RPGActionBarLayout::Resolve(NoActions, 4, Order)
         && Order == TArray<int32>{INDEX_NONE, INDEX_NONE, INDEX_NONE, INDEX_NONE});
+
+    const TArray<int32> RidingPositions{0, 4, 7};
+    if (!TestTrue(TEXT("Riding profile reserves eight positions"), RPGActionBarLayout::Resolve(RidingPositions, 8, Order))) return false;
+    const auto Rows = RPGActionBarLayout::CreateRows(Order, 4,
+        [](int32) -> TSharedRef<SWidget> { return SNew(SButton); });
+    if (!TestEqual(TEXT("Native grid has two rows"), Rows->GetChildren()->Num(), 2)) return false;
+    for (int32 RowIndex = 0; RowIndex < 2; ++RowIndex)
+    {
+        const auto Row = Rows->GetChildren()->GetChildAt(RowIndex);
+        if (!TestEqual(TEXT("Four slots per row"), Row->GetChildren()->Num(), 4)) return false;
+        for (int32 Column = 0; Column < 4; ++Column)
+        {
+            const int32 Position = RowIndex * 4 + Column;
+            TestEqual(TEXT("Only reserved positions have action buttons"),
+                RPGActionBarLayoutTests::FindButton(Row->GetChildren()->GetChildAt(Column)).IsValid(),
+                RidingPositions.Contains(Position));
+        }
+    }
     return true;
 }
 
