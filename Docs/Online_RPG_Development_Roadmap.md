@@ -1005,6 +1005,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| HUD 스킬 슬롯 64 / hud-skill-cell-64-20261122 | 왼쪽 스킬 8칸 64×64 조정 | WBP_SkillQuickSlot.uasset·본인 행 | 블루프린트 컴파일·별도 UE 재로드·상하 4칸씩 확인. 자기 임시 1058122 bytes 정리. Saved/BuildChecks/HudSkillCell64/Result.json 보존 | 공유 실행 예약 해제. 본인 2경로 main index/ref·origin/main 게시 순차 예약. 원격 해시 일치 시 해제 |
 | 탈것 슬롯 툴팁 / riding-slot-tooltips-20261122 | 탑승 슬롯 기능명은 호버 툴팁, 본문은 아이콘·키·쿨타임 | SRPGActionBarCell.cpp, RPGActionBarCellTests.cpp, ACTION_BAR_CONTEXT.md, 본인 행 | UE 5.8 Slate 8건 성공 및 사설 Project_RPGEditor 집중 컴파일 성공. 임시 2864932373 bytes 정리. Saved/BuildChecks/RidingSlotTooltips22 | 이 행과 본인 소스·검사·계약만 main index/ref에 예약. origin/main 반영 확인 시 예약 해제 |
 | 보호막 체력바 / shield-bar-overlay-20261122 | 보호막을 플레이어 HP 바 안의 밝은 구간으로 표시 | PlayerShieldWidget h/cpp·PlayerVitalsWidget.cpp·PlayerShieldWidgetTests.cpp·장비 효과 문서 및 본인 행 | UE 5.8 Editor 빌드 성공, 격리 native 3건 통과. D3D12 PIE에서 최대 HP 300 기준 보호막 15→9→0, HP 바 안 너비 5%→3%→숨김 확인. 미추적 HitReact 오류 2건은 분리 기록. 자체 검증 임시 약 9.8GiB 정리 | 검증·실행 자원 해제. 본인 6경로 main index/ref·origin/main 게시 예약. 이 행 포함 커밋 원격 일치 시 해제 |
 | HUD 퀵슬롯 확대 / hud-quickslot-size-20261122 | 하단 스킬 8칸 72×72, 물약·소모품 9칸 52×52, 아이템 단축키·수량 12pt 및 HP·MP 간격 확보 | WBP_SkillQuickSlot·WBP_PlayerHUD, Private/UI/{RPGQuickSlotWidget,HUD/RPGHUD}.cpp, 본인 행 | UE 5.8 Editor 증분 5단계·블루프린트 재로드·D3D12 HUD 3해상도·집중 자동화 20건 통과. 검증 임시 3981300252 bytes 및 정션 55개 정리. Saved/BuildChecks/HudQuickSlotSize22/Result.json·HUD-1280x720.png 보존 | 원본 Editor 예약 해제. 본인 5경로 main 커밋 및 origin/main 일치 시 Git 예약 해제 |
