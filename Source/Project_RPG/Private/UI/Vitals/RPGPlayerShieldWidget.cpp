@@ -20,7 +20,7 @@ void URPGPlayerShieldWidget::SetShieldSource(URPGShieldComponent* Next)
 	const auto* PC = GetOwningPlayer();
 	Source = Next && (!PC || (PC->IsLocalController() && Next->GetOwner() == PC->GetPawn())) ? Next : nullptr;
 	BindSource();
-	RefreshPresentation();
+	RefreshPresentation(true);
 }
 
 void URPGPlayerShieldWidget::BindSource()
@@ -98,6 +98,11 @@ void URPGPlayerShieldWidget::OnSourceEndPlay(AActor* Actor, EEndPlayReason::Type
 void URPGPlayerShieldWidget::OnShieldChanged(const FRPGShieldPresentation&) { RefreshPresentation(); }
 void URPGPlayerShieldWidget::OnHealthChanged(const FOnAttributeChangeData&) { RefreshPresentation(); }
 
+float URPGPlayerShieldWidget::GetDisplayedAmountFor(const UAbilitySystemComponent* ASC) const
+{
+	return ASC && BoundASC.Get() == ASC ? Displayed.Remaining : 0.f;
+}
+
 void URPGPlayerShieldWidget::NativeTick(const FGeometry& Geometry, const float DeltaSeconds)
 {
 	Super::NativeTick(Geometry, DeltaSeconds);
@@ -105,7 +110,7 @@ void URPGPlayerShieldWidget::NativeTick(const FGeometry& Geometry, const float D
 	if (Displayed.bVisible && RefreshElapsed >= .1f) { RefreshElapsed = 0.f; RefreshPresentation(); }
 }
 
-void URPGPlayerShieldWidget::RefreshPresentation()
+void URPGPlayerShieldWidget::RefreshPresentation(bool bSourceChanged)
 {
 	FRPGShieldHUDSnapshot Next;
 	const auto* Shield = Source.Get();
@@ -138,8 +143,10 @@ void URPGPlayerShieldWidget::RefreshPresentation()
 	{
 		SegmentSlot->SetAnchors(FAnchors(Next.StartFraction, 0.f, Next.EndFraction, 1.f));
 	}
+	const bool bAmountChanged = Displayed.Remaining != Next.Remaining;
 	Displayed = Next;
 	SetVisibility(Next.bVisible ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	if (bAmountChanged || bSourceChanged) OnDisplayedShieldChanged.Broadcast();
 }
 
 TSharedRef<SWidget> URPGPlayerShieldWidget::RebuildWidget()

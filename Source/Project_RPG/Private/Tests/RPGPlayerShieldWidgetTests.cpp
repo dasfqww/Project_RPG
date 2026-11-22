@@ -7,6 +7,7 @@
 #include "Component/RPGAbilitySystemComponent.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Overlay.h"
+#include "Components/TextBlock.h"
 #include "DataAsset/StartUpData/DataAsset_StartUpDataBase.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
@@ -168,12 +169,22 @@ bool FRPGShieldHUDOwnerTest::RunTest(const FString&)
 	if (!TestNotNull(TEXT("Authored HUD wraps the two fills together"), Fills)) return false;
 	TestEqual(TEXT("Health bar is below the shield"), Fills->GetChildAt(0), F.Root->GetWidgetFromName(TEXT("HealthBar")));
 	TestEqual(TEXT("Shield is above the health fill"), Fills->GetChildAt(1), static_cast<UWidget*>(F.View));
+	const auto* HealthText = Cast<UTextBlock>(F.Root->GetWidgetFromName(TEXT("HealthText")));
+	if (!TestNotNull(TEXT("Authored health label"), HealthText)) return false;
 	auto* A = F.Player(); auto* B = F.Player();
 	if (!TestNotNull(TEXT("Player A"), A) || !TestNotNull(TEXT("Player B"), B)) return false;
 	auto* ShieldA = A->FindComponentByClass<URPGShieldComponent>(); auto* ShieldB = B->FindComponentByClass<URPGShieldComponent>();
 	if (!TestNotNull(TEXT("Shield A"), ShieldA) || !TestNotNull(TEXT("Shield B"), ShieldB)) return false;
 	F.PC->Possess(A); ShieldA->GrantOrRefresh(FGuid::NewGuid(), .05f, 3.f);
 	TestEqual(TEXT("Authored child follows the owning Pawn"), F.View->GetDisplayedShield().Remaining, 50.f);
+	TestEqual(TEXT("Shield amount is appended to HP"), HealthText->GetText().ToString(), FString(TEXT("1000/1000 (+50)")));
+	ShieldA->AbsorbDamage(20.f);
+	TestEqual(TEXT("Shield-only damage refreshes the label"), HealthText->GetText().ToString(), FString(TEXT("1000/1000 (+30)")));
+	F.Advance(185);
+	TestEqual(TEXT("Shield expiry removes the suffix"), HealthText->GetText().ToString(), FString(TEXT("1000/1000")));
+	ShieldA->GrantOrRefresh(FGuid::NewGuid(), 1.f, 3.f);
+	ShieldA->GrantOrRefresh(FGuid::NewGuid(), .2f, 3.f);
+	TestEqual(TEXT("Full gauge still shows the actual amount"), HealthText->GetText().ToString(), FString(TEXT("1000/1000 (+1200)")));
 	F.View->SetShieldSource(ShieldB);
 	const FGuid SourceB = FGuid::NewGuid();
 	ShieldB->GrantOrRefresh(SourceB, .02f, 3.f);
@@ -181,6 +192,7 @@ bool FRPGShieldHUDOwnerTest::RunTest(const FString&)
 	F.View->SetShieldSource(ShieldA);
 	F.PC->Possess(B); ShieldB->GrantOrRefresh(SourceB, .03f, 3.f);
 	TestEqual(TEXT("Pawn replacement follows the new source"), F.View->GetDisplayedShield().Remaining, 30.f);
+	TestEqual(TEXT("New Pawn supplies the suffix"), HealthText->GetText().ToString(), FString(TEXT("1000/1000 (+30)")));
 	ShieldA->GrantOrRefresh(FGuid::NewGuid(), .09f, 3.f);
 	TestEqual(TEXT("Late old-Pawn events cannot overwrite the current total"), F.View->GetDisplayedShield().Remaining, 30.f);
 	F.PC->UnPossess();

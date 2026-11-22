@@ -5,6 +5,7 @@
 
 class UAbilitySystemComponent;
 class UProgressBar;
+class URPGPlayerShieldWidget;
 class UTextBlock;
 struct FOnAttributeChangeData;
 
@@ -57,6 +58,7 @@ private:
 	void UnbindController();
 	void RefreshPresentation();
 	void ApplyPresentation();
+	void RefreshHealthText();
 	void OnAttributeChanged(const FOnAttributeChangeData& Change);
 	UFUNCTION() void OnOwningPawnChanged(APawn* OldPawn, APawn* NewPawn);
 	UFUNCTION() void OnSourceEndPlay(AActor* Actor, EEndPlayReason::Type Reason);
@@ -65,6 +67,7 @@ private:
 	TWeakObjectPtr<UAbilitySystemComponent> BoundSource;
 	TWeakObjectPtr<AActor> SourceActor;
 	TWeakObjectPtr<APlayerController> BoundController;
+	TWeakObjectPtr<URPGPlayerShieldWidget> ShieldView;
 	FDelegateHandle HealthHandle, MaxHealthHandle, ManaHandle, MaxManaHandle;
 	UPROPERTY(Transient) FRPGPlayerVitalsSnapshot DisplayedVitals;
 	bool bConstructed = false;

@@ -29,7 +29,9 @@ public:
 	/** Explicit previews are allowed without an owner; a player view only accepts its own Pawn. */
 	UFUNCTION(BlueprintCallable, Category="UI|Shield") void SetShieldSource(URPGShieldComponent* Source);
 	UFUNCTION(BlueprintPure, Category="UI|Shield") FRPGShieldHUDSnapshot GetDisplayedShield() const { return Displayed; }
-	void RefreshPresentation();
+	float GetDisplayedAmountFor(const UAbilitySystemComponent* ASC) const;
+	FSimpleMulticastDelegate OnDisplayedShieldChanged;
+	void RefreshPresentation(bool bSourceChanged = false);
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;

@@ -145,10 +145,29 @@ void URPGPlayerVitalsWidget::ApplyPresentation()
 	SetVisibility(State.bHasSource ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	if (HealthBar) HealthBar->SetPercent(State.HealthFraction);
 	if (ManaBar) ManaBar->SetPercent(State.ManaFraction);
-	if (HealthText) HealthText->SetText(State.bHasSource ? ResourceText(State.Health, State.MaxHealth) : FText::GetEmpty());
+	RefreshHealthText();
 	if (ManaText) ManaText->SetText(State.bHasSource ? ResourceText(State.Mana, State.MaxMana) : FText::GetEmpty());
 	// Cosmetic callbacks may detach or replace the source; no state writes follow.
 	if (bConstructed) OnVitalsPresentationChanged();
+}
+
+void URPGPlayerVitalsWidget::RefreshHealthText()
+{
+	if (!HealthText) return;
+	const auto& State = DisplayedVitals;
+	FText Text = State.bHasSource ? ResourceText(State.Health, State.MaxHealth) : FText::GetEmpty();
+	const auto* Shield = ShieldView.Get();
+	const float Remaining = State.bHasSource && Shield ? Shield->GetDisplayedAmountFor(VitalsSource.Get()) : 0.f;
+	if (Remaining > 0.f)
+	{
+		FNumberFormattingOptions Format;
+		Format.SetUseGrouping(false).SetMaximumFractionalDigits(1);
+		const FText Amount = Remaining < .1f
+			? FText::Format(NSLOCTEXT("RPGPlayerVitals", "BelowShieldDisplayPrecision", "<{0}"), FText::AsNumber(.1f, &Format))
+			: FText::AsNumber(Remaining, &Format);
+		Text = FText::Format(NSLOCTEXT("RPGPlayerVitals", "HealthWithShield", "{0} (+{1})"), Text, Amount);
+	}
+	HealthText->SetText(Text);
 }
 
 TSharedRef<SWidget> URPGPlayerVitalsWidget::RebuildWidget()
@@ -171,6 +190,9 @@ TSharedRef<SWidget> URPGPlayerVitalsWidget::RebuildWidget()
 	{
 		auto* Shield = Cast<URPGPlayerShieldWidget>(WidgetTree->FindWidget(TEXT("PlayerShield")));
 		auto* BarContainer = Cast<UContentWidget>(HealthBar->GetParent());
+		if (auto* Previous = ShieldView.Get()) Previous->OnDisplayedShieldChanged.RemoveAll(this);
+		ShieldView = Shield;
+		if (Shield) Shield->OnDisplayedShieldChanged.AddUObject(this, &ThisClass::RefreshHealthText);
 		if (Shield && BarContainer)
 		{
 			// Fit both fills inside the existing border padding. The authored labels
