@@ -14,6 +14,11 @@
 #include "GameFramework/PlayerController.h"
 #include "Styling/CoreStyle.h"
 
+namespace
+{
+constexpr float MaxShieldBarCoverage = .9f;
+}
+
 void URPGPlayerShieldWidget::SetShieldSource(URPGShieldComponent* Next)
 {
 	UnbindSource();
@@ -132,8 +137,7 @@ void URPGPlayerShieldWidget::RefreshPresentation(bool bSourceChanged)
 			Next.bVisible = true; Next.Remaining = State.Remaining;
 			Next.SecondsRemaining = static_cast<float>(State.ExpiresAt - Now);
 			const float HealthFraction = FMath::Min(1.f, Stats->GetCurrentHealth() / Stats->GetMaxHealth());
-			const float ShieldFraction = FMath::Min(1.f, State.Remaining / Stats->GetMaxHealth());
-			// Fit the full shield segment inside the gauge, overlapping the end of HP when needed.
+			const float ShieldFraction = FMath::Min(MaxShieldBarCoverage, State.Remaining / Stats->GetMaxHealth());
 			Next.EndFraction = FMath::Min(1.f, HealthFraction + ShieldFraction);
 			Next.StartFraction = Next.EndFraction - ShieldFraction;
 		}

@@ -184,7 +184,10 @@ bool FRPGShieldHUDOwnerTest::RunTest(const FString&)
 	TestEqual(TEXT("Shield expiry removes the suffix"), HealthText->GetText().ToString(), FString(TEXT("1000/1000")));
 	ShieldA->GrantOrRefresh(FGuid::NewGuid(), 1.f, 3.f);
 	ShieldA->GrantOrRefresh(FGuid::NewGuid(), .2f, 3.f);
-	TestEqual(TEXT("Full gauge still shows the actual amount"), HealthText->GetText().ToString(), FString(TEXT("1000/1000 (+1200)")));
+	const auto Overcap = F.View->GetDisplayedShield();
+	TestTrue(TEXT("Oversized shield leaves the first ten percent uncovered"), FMath::IsNearlyEqual(Overcap.StartFraction, .1f, 1.e-6f));
+	TestEqual(TEXT("Oversized shield reaches the right edge"), Overcap.EndFraction, 1.f);
+	TestEqual(TEXT("Capped fill still shows the actual amount"), HealthText->GetText().ToString(), FString(TEXT("1000/1000 (+1200)")));
 	F.View->SetShieldSource(ShieldB);
 	const FGuid SourceB = FGuid::NewGuid();
 	ShieldB->GrantOrRefresh(SourceB, .02f, 3.f);
