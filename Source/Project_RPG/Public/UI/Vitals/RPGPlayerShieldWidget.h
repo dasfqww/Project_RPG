@@ -6,7 +6,7 @@
 
 class URPGShieldComponent;
 class UAbilitySystemComponent;
-class UTextBlock;
+class UCanvasPanelSlot;
 struct FOnAttributeChangeData;
 
 USTRUCT(BlueprintType)
@@ -16,9 +16,11 @@ struct FRPGShieldHUDSnapshot
 	UPROPERTY(BlueprintReadOnly) bool bVisible = false;
 	UPROPERTY(BlueprintReadOnly) float Remaining = 0.f;
 	UPROPERTY(BlueprintReadOnly) float SecondsRemaining = 0.f;
+	UPROPERTY(BlueprintReadOnly) float StartFraction = 0.f;
+	UPROPERTY(BlueprintReadOnly) float EndFraction = 0.f;
 };
 
-/** Read-only owner shield display. Only the visible countdown needs a cosmetic tick. */
+/** Read-only owner shield segment, sized relative to the health gauge. */
 UCLASS(meta=(DisplayName="Player Shield"))
 class PROJECT_RPG_API URPGPlayerShieldWidget : public UUserWidget
 {
@@ -34,8 +36,6 @@ protected:
 	virtual void NativeDestruct() override;
 	virtual void BeginDestroy() override;
 	virtual void NativeTick(const FGeometry& Geometry, float DeltaSeconds) override;
-	UPROPERTY(BlueprintReadOnly, meta=(BindWidgetOptional)) TObjectPtr<UTextBlock> ShieldText;
-	UPROPERTY(BlueprintReadOnly, meta=(BindWidgetOptional)) TObjectPtr<UTextBlock> ShieldTimeText;
 private:
 	friend struct FRPGPlayerShieldWidgetTestAccess;
 	void UnbindSource();
@@ -49,7 +49,8 @@ private:
 	TWeakObjectPtr<UAbilitySystemComponent> BoundASC;
 	TWeakObjectPtr<AActor> BoundActor;
 	TWeakObjectPtr<APlayerController> Controller;
-	FDelegateHandle HealthHandle;
+	FDelegateHandle HealthHandle, MaxHealthHandle;
+	UPROPERTY(Transient) TObjectPtr<UCanvasPanelSlot> SegmentSlot;
 	UPROPERTY(Transient) FRPGShieldHUDSnapshot Displayed;
 	bool bConstructed = false;
 	float RefreshElapsed = 0.f;

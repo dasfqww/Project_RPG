@@ -5,7 +5,8 @@
 #include "Character/RPGPlayer.h"
 #include "Component/Combat/RPGShieldComponent.h"
 #include "Component/RPGAbilitySystemComponent.h"
-#include "Components/TextBlock.h"
+#include "Components/CanvasPanelSlot.h"
+#include "Components/Overlay.h"
 #include "DataAsset/StartUpData/DataAsset_StartUpDataBase.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
@@ -26,8 +27,7 @@ struct FRPGPlayerShieldWidgetTestAccess
 	static void Attach(URPGPlayerShieldWidget& W) { W.NativeConstruct(); }
 	static void Detach(URPGPlayerShieldWidget& W) { W.NativeDestruct(); }
 	static void Tick(URPGPlayerShieldWidget& W) { W.NativeTick(FGeometry(), .1f); }
-	static UTextBlock* Amount(URPGPlayerShieldWidget& W) { return W.ShieldText; }
-	static UTextBlock* Time(URPGPlayerShieldWidget& W) { return W.ShieldTimeText; }
+	static UCanvasPanelSlot* Segment(URPGPlayerShieldWidget& W) { return W.SegmentSlot; }
 	static bool Listens(URPGShieldComponent& Shield, URPGPlayerShieldWidget& W)
 	{ return Shield.OnShieldChanged.IsAlreadyBound(&W, &URPGPlayerShieldWidget::OnShieldChanged); }
 };
@@ -117,10 +117,21 @@ bool FRPGShieldHUDStateTest::RunTest(const FString&)
 	TestTrue(TEXT("Grant"), ShieldA->GrantOrRefresh(Source, .05f, 3.f));
 	TestTrue(TEXT("First grant wakes the collapsed widget through its event"), F.View->GetDisplayedShield().bVisible);
 	TestEqual(TEXT("Amount"), F.View->GetDisplayedShield().Remaining, 50.f);
-	if (!TestNotNull(TEXT("Native amount label"), FRPGPlayerShieldWidgetTestAccess::Amount(*F.View))) return false;
-	TestTrue(TEXT("Actual label"), FRPGPlayerShieldWidgetTestAccess::Amount(*F.View)->GetText().ToString().Contains(TEXT("50")));
+	const auto* Segment = FRPGPlayerShieldWidgetTestAccess::Segment(*F.View);
+	if (!TestNotNull(TEXT("Native shield fill"), Segment)) return false;
+	TestTrue(TEXT("Full health places the shield against the right edge"), FMath::IsNearlyEqual(Segment->GetAnchors().Minimum.X, .95, 1.e-6));
+	TestEqual(TEXT("Full health clips the shield at the right edge"), Segment->GetAnchors().Maximum.X, 1.);
 	ShieldA->AbsorbDamage(20.f);
 	TestEqual(TEXT("Damage updates through the component delegate"), F.View->GetDisplayedShield().Remaining, 30.f);
+	auto* ASC = A->GetRPGAbilitySystemComponent();
+	ASC->SetNumericAttributeBase(URPGAttributeSet::GetCurrentHealthAttribute(), 500.f);
+	TestTrue(TEXT("Partial health moves the shield to the end of HP"), FMath::IsNearlyEqual(Segment->GetAnchors().Minimum.X, .5, 1.e-6));
+	TestTrue(TEXT("Remaining 30 HP defines the segment width"), FMath::IsNearlyEqual(Segment->GetAnchors().Maximum.X, .53, 1.e-6));
+	ASC->SetNumericAttributeBase(URPGAttributeSet::GetMaxHealthAttribute(), 2000.f);
+	TestTrue(TEXT("Max HP moves the segment even when shield amount is unchanged"), FMath::IsNearlyEqual(Segment->GetAnchors().Minimum.X, .25, 1.e-6));
+	TestTrue(TEXT("Width follows current max HP"), FMath::IsNearlyEqual(Segment->GetAnchors().Maximum.X, .265, 1.e-6));
+	ASC->SetNumericAttributeBase(URPGAttributeSet::GetMaxHealthAttribute(), 1000.f);
+	ASC->SetNumericAttributeBase(URPGAttributeSet::GetCurrentHealthAttribute(), 1000.f);
 	F.Advance(30); FRPGPlayerShieldWidgetTestAccess::Tick(*F.View);
 	TestTrue(TEXT("Countdown advances without a new shield event"), F.View->GetDisplayedShield().SecondsRemaining < 2.6f);
 	TestEqual(TEXT("Display never heals or damages health"), A->GetRPGAttributeSet()->GetCurrentHealth(), 1000.f);
@@ -143,6 +154,7 @@ bool FRPGShieldHUDStateTest::RunTest(const FString&)
 	FRPGPlayerShieldWidgetTestAccess::Detach(*F.View);
 	TestFalse(TEXT("Destruct removes shield subscription"), FRPGPlayerShieldWidgetTestAccess::Listens(*ShieldB, *F.View));
 	TestFalse(TEXT("Destruct removes health subscription"), B->GetRPGAbilitySystemComponent()->GetGameplayAttributeValueChangeDelegate(URPGAttributeSet::GetCurrentHealthAttribute()).IsBoundToObject(F.View));
+	TestFalse(TEXT("Destruct removes max health subscription"), B->GetRPGAbilitySystemComponent()->GetGameplayAttributeValueChangeDelegate(URPGAttributeSet::GetMaxHealthAttribute()).IsBoundToObject(F.View));
 	return true;
 }
 
@@ -152,6 +164,10 @@ bool FRPGShieldHUDOwnerTest::RunTest(const FString&)
 {
 	using namespace RPGShieldHUDTests;
 	FFixture F; if (!TestTrue(TEXT("Saved Vitals module and native child"), F.Initialize(true))) return false;
+	auto* Fills = Cast<UOverlay>(F.View->GetParent());
+	if (!TestNotNull(TEXT("Authored HUD wraps the two fills together"), Fills)) return false;
+	TestEqual(TEXT("Health bar is below the shield"), Fills->GetChildAt(0), F.Root->GetWidgetFromName(TEXT("HealthBar")));
+	TestEqual(TEXT("Shield is above the health fill"), Fills->GetChildAt(1), static_cast<UWidget*>(F.View));
 	auto* A = F.Player(); auto* B = F.Player();
 	if (!TestNotNull(TEXT("Player A"), A) || !TestNotNull(TEXT("Player B"), B)) return false;
 	auto* ShieldA = A->FindComponentByClass<URPGShieldComponent>(); auto* ShieldB = B->FindComponentByClass<URPGShieldComponent>();

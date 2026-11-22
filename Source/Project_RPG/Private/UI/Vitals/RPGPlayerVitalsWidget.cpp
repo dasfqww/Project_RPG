@@ -1,9 +1,13 @@
 #include "UI/Vitals/RPGPlayerVitalsWidget.h"
+#include "UI/Vitals/RPGPlayerShieldWidget.h"
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "Attribute/RPGAttributeSet.h"
 #include "Blueprint/WidgetTree.h"
+#include "Components/ContentWidget.h"
+#include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -162,6 +166,25 @@ TSharedRef<SWidget> URPGPlayerVitalsWidget::RebuildWidget()
 		ManaBar->SetFillColorAndOpacity(FLinearColor(.1f, .25f, .9f));
 		Root->AddChildToVerticalBox(HealthText); Root->AddChildToVerticalBox(HealthBar);
 		Root->AddChildToVerticalBox(ManaText); Root->AddChildToVerticalBox(ManaBar);
+	}
+	if (!IsDesignTime() && WidgetTree && HealthBar)
+	{
+		auto* Shield = Cast<URPGPlayerShieldWidget>(WidgetTree->FindWidget(TEXT("PlayerShield")));
+		auto* BarContainer = Cast<UContentWidget>(HealthBar->GetParent());
+		if (Shield && BarContainer)
+		{
+			// Fit both fills inside the existing border padding. The authored labels
+			// remain siblings above the border, so they stay legible over both fills.
+			auto* Fills = WidgetTree->ConstructWidget<UOverlay>();
+			BarContainer->SetContent(Fills);
+			Shield->RemoveFromParent();
+			for (auto* Fill : {static_cast<UWidget*>(HealthBar.Get()), static_cast<UWidget*>(Shield)})
+			{
+				auto* FillSlot = Fills->AddChildToOverlay(Fill);
+				FillSlot->SetHorizontalAlignment(HAlign_Fill);
+				FillSlot->SetVerticalAlignment(VAlign_Fill);
+			}
+		}
 	}
 	return Super::RebuildWidget();
 }
