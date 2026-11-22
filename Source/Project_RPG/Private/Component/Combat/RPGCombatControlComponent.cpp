@@ -12,6 +12,8 @@
 #include "GameFramework/GameStateBase.h"
 #include "GameplayEffect/RPGStunEffect.h"
 #include "AIController.h"
+#include "Engine/AssetManager.h"
+#include "Engine/StreamableManager.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 #include "NiagaraComponent.h"
@@ -44,6 +46,11 @@ void URPGCombatControlComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProp
 void URPGCombatControlComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	if (GetNetMode() != NM_DedicatedServer && !StunVisual.IsNull())
+	{
+		StunVisualLoadHandle = UAssetManager::GetStreamableManager().RequestAsyncLoad(StunVisual.ToSoftObjectPath(),
+			FStreamableDelegate::CreateUObject(this, &ThisClass::UpdateVisual));
+	}
 	if (auto* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(GetOwner())) InitializeWithAbilitySystem(*ASC);
 }
 
@@ -339,22 +346,19 @@ void URPGCombatControlComponent::OnRep_StunState()
 void URPGCombatControlComponent::UpdateVisual()
 {
 	if (!GetWorld() || GetWorld()->GetNetMode() == NM_DedicatedServer) return;
-	const auto CanShow = [this]()
-	{
-		const auto* State = GetWorld()->GetGameState();
-		const double Now = State ? State->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
-		return !bEnding && IsLivingAvatar(GetOwner()) && StunState.bActive
-			&& StunState.RecoveryRevision == RecoveryRevision() && (StunState.EndServerTime == 0.0 || Now < StunState.EndServerTime);
-	};
-	if (!CanShow())
+	const auto* State = GetWorld()->GetGameState();
+	const double Now = State ? State->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	const bool bCanShow = !bEnding && StunState.bActive && IsLivingAvatar(GetOwner())
+		&& StunState.RecoveryRevision == RecoveryRevision() && (StunState.EndServerTime == 0.0 || Now < StunState.EndServerTime);
+	if (!bCanShow)
 	{
 		if (StunVisualInstance) { StunVisualInstance->DestroyComponent(); StunVisualInstance = nullptr; }
 		return;
 	}
-	if (StunVisualInstance || StunVisual.IsNull()) return;
+	if (StunVisualInstance) return;
 	auto* Character = Cast<ACharacter>(GetOwner());
-	UNiagaraSystem* System = StunVisual.LoadSynchronous();
-	if (Character && System && CanShow())
+	UNiagaraSystem* System = StunVisual.Get();
+	if (Character && System)
 		StunVisualInstance = UNiagaraFunctionLibrary::SpawnSystemAttached(System, Character->GetRootComponent(), NAME_None,
 			FVector(0.f, 0.f, Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 30.f), FRotator::ZeroRotator,
 			EAttachLocation::KeepRelativeOffset, false, true, ENCPoolMethod::None, false);
@@ -373,6 +377,11 @@ void URPGCombatControlComponent::TickComponent(float DeltaTime, ELevelTick Type,
 void URPGCombatControlComponent::EndPlay(const EEndPlayReason::Type Reason)
 {
 	bEnding = true;
+	if (StunVisualLoadHandle)
+	{
+		StunVisualLoadHandle->CancelHandle();
+		StunVisualLoadHandle.Reset();
+	}
 	EndKnockback(ERPGKnockbackEndReason::LifeChanged);
 	EndAirborne(ERPGAirborneEndReason::LifeChanged);
 	Unbind();

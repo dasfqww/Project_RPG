@@ -26,7 +26,7 @@ class URPGAirbornePresentationProfile;
 class UWidgetComponent;
 class UGameplayAbility;
 class URPGGameplayAbility;
-class UAnimMontage;
+struct FStreamableHandle;
 struct FRPGMontageImmunityRuntime;
 struct FOnAttributeChangeData;
 struct FGameplayEffectRemovalInfo;
@@ -261,6 +261,7 @@ private:
 	TWeakObjectPtr<UAnimMontage> AirborneMontage;
 	int32 AirborneMontageInstanceId = INDEX_NONE;
 	UPROPERTY(Transient) TObjectPtr<UNiagaraComponent> StunVisualInstance;
+	TSharedPtr<FStreamableHandle> StunVisualLoadHandle;
 	TWeakObjectPtr<UAbilitySystemComponent> BoundASC;
 	TSet<FActiveGameplayEffectHandle> OwnedStuns;
 	TArray<FGuid> RecentApprovedHits;
