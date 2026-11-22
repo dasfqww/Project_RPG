@@ -99,7 +99,7 @@ private:
 	void BuildNativeItemCell();
 	void BindToQuickSlot();
 	void UnbindFromQuickSlot();
-	void RefreshSkillSlotView();
+	void RefreshSkillSlotView(bool bRefreshTooltip = false);
 	void BindItemCommandState();
 	void RefreshItemCommandState();
 	void HandleItemCommandFieldChanged(UObject* Object, UE::FieldNotification::FFieldId FieldId);

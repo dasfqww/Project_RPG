@@ -2,6 +2,7 @@
 
 
 #include "UI/Skill/RPGSkillRefinementButton.h"
+#include "UI/Tooltip/RPGSkillTooltip.h"
 
 void URPGSkillRefinementButton::NativeOnInitialized()
 {
@@ -15,18 +16,25 @@ void URPGSkillRefinementButton::NativeOnInitialized()
 	OnClicked().AddUObject(this, &ThisClass::HandleRefinementButtonClicked);
 }
 
-void URPGSkillRefinementButton::InitializeRefinement(int32 InTier, int32 InIndex, const FRPGSkillRefinementOption& InOption)
+void URPGSkillRefinementButton::InitializeRefinement(int32 InTier, int32 InIndex,
+	const FRPGSkillRefinementOption& InOption, const int32 InRequiredSkillLevel)
 {
 	TierIndex = InTier;
 	OptionIndex = InIndex;
 	RefinementOption = InOption;
+	RequiredSkillLevel = InRequiredSkillLevel;
 
-	SetIsRefinementSelected(false);
+	if (GetSelected()) SetSelectedInternal(false, false);
+	BP_OnSelectionChanged(false);
 	// 초기화 시 선택 상태는 기본 false로
 	BP_OnRefinementInitialized(RefinementOption, false);
+	// The existing Blueprint initializes a plain text tip along with the icon.
+	// Restore the shared card after that event and read the now-resolved icon.
+	URPGSkillTooltip::UpdateFor(*this,
+		FRPGSkillTooltipPresentation::ForRefinement(RefinementOption, RequiredSkillLevel, false, true));
 }
 
-void URPGSkillRefinementButton::SetIsRefinementSelected(bool bInSelected)
+void URPGSkillRefinementButton::SetRefinementState(bool bInSelected, bool bUnlocked)
 {
 	// Apply authoritative/predicted model state even for a non-toggleable
 	// authored button. SetIsSelected(false) otherwise cannot clear selection.
@@ -35,6 +43,8 @@ void URPGSkillRefinementButton::SetIsRefinementSelected(bool bInSelected)
 		SetSelectedInternal(bInSelected, false);
 	}
 	BP_OnSelectionChanged(bInSelected);
+	URPGSkillTooltip::UpdateFor(*this,
+		FRPGSkillTooltipPresentation::ForRefinement(RefinementOption, RequiredSkillLevel, bInSelected, bUnlocked));
 }
 
 void URPGSkillRefinementButton::HandleRefinementButtonClicked()

@@ -113,7 +113,7 @@ void URPGSkillRefinementBoard::UpdateButtons()
 				if (TierData.Options.IsValidIndex(OptIdx))
 				{
 					Btn->SetVisibility(ESlateVisibility::Visible);
-					Btn->InitializeRefinement(TierIdx, OptIdx, TierData.Options[OptIdx]);
+				Btn->InitializeRefinement(TierIdx, OptIdx, TierData.Options[OptIdx], TierData.RequiredSkillLevel);
 				}
 				else
 				{
@@ -144,10 +144,11 @@ void URPGSkillRefinementBoard::RefreshSelection()
 			if (Btn && Btn->GetVisibility() == ESlateVisibility::Visible)
 			{
 				bool bSelected = CurrentSlotVM->IsRefinementSelected(TierIdx, Btn->GetOptionIndex());
-				Btn->SetIsRefinementSelected(bSelected);
 				const URPGSkillDefinition* Definition = CurrentSlotVM->GetSkillDefinition();
-				Btn->SetIsEnabled(Definition && Definition->IsRefinementSelectionAllowed(
-					CurrentSlotVM->SkillLevel, TierIdx, Btn->GetOptionIndex()));
+				const bool bUnlocked = Definition && Definition->IsRefinementSelectionAllowed(
+					CurrentSlotVM->SkillLevel, TierIdx, Btn->GetOptionIndex());
+				Btn->SetRefinementState(bSelected, bUnlocked);
+				Btn->SetIsEnabled(bUnlocked);
 			}
 		}
 	}

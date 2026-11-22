@@ -16,6 +16,7 @@
 #include "UI/QuickSlotDragDropOperation.h"
 #include "Character/RPGPlayer.h"
 #include "Component/UI/QuickSlotComponent.h"
+#include "Component/Skill/RPGPlayerSkillComponent.h"
 #include "Component/RPGInventoryProjectionComponent.h"
 #include "UI/Inventory/Projection/RPGItemIdDragDropOperation.h"
 #include "UI/DragQuickSlotItemVisual.h"
@@ -27,6 +28,10 @@
 #include "UI/RPGDragDropOperation.h"
 #include "UI/Skill/RPGSkillQuickSlotDragDrop.h"
 #include "Skill/QuickSlot/RPGQuickSlotInputBindings.h"
+#include "PlayerClass/RPGPlayerClassDefinition.h"
+#include "Skill/RPGSkillDefinition.h"
+#include "Skill/RPGSkillRuntimeTypes.h"
+#include "UI/Tooltip/RPGSkillTooltip.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Application/SlateUser.h"
 #include "UI/Slots/SRPGSlotFrame.h"
@@ -199,6 +204,7 @@ void URPGQuickSlotWidget::UnbindFromQuickSlot()
 	}
 
 	LinkedQuickSlotComponent.Reset();
+	if (bIsSkillSlot) URPGSkillTooltip::UpdateFor(*this, {});
 }
 
 void URPGQuickSlotWidget::BindItemCommandState()
@@ -277,7 +283,7 @@ void URPGQuickSlotWidget::HandleSlotChanged(
 	{
 		CancelItemIconLoad();
 		ItemIconReference.Reset();
-		RefreshSkillSlotView();
+		RefreshSkillSlotView(true);
 		return;
 	}
 	if (PressedItemId.IsValid() && Content.ItemId != PressedItemId)
@@ -333,7 +339,7 @@ void URPGQuickSlotWidget::HandleSlotChanged(
 	ClearSlotItem();
 }
 
-void URPGQuickSlotWidget::RefreshSkillSlotView()
+void URPGQuickSlotWidget::RefreshSkillSlotView(const bool bRefreshTooltip)
 {
 	if (!SkillViewModel.IsValid()) return;
 	SkillViewModel->RefreshSkillState();
@@ -345,6 +351,29 @@ void URPGQuickSlotWidget::RefreshSkillSlotView()
 	SetInputKeyText(SkillViewModel->GetKeyLabel());
 	UpdateSkillCooldownView(SkillViewModel->IsSlotActive()
 		? SkillViewModel->GetCooldownFraction() : 0.0f);
+
+	if (bRefreshTooltip)
+	{
+		const UQuickSlotComponent* QuickSlots = LinkedQuickSlotComponent.Get();
+		const FRPGQuickSlotContent* Content = QuickSlots ? QuickSlots->GetSkillSlotContent(SlotIndex) : nullptr;
+		APawn* Pawn = GetOwningPlayerPawn();
+		const auto* Skills = Pawn ? Pawn->FindComponentByClass<URPGPlayerSkillComponent>() : nullptr;
+		const auto* PlayerClass = Skills ? Skills->GetPlayerClassDefinition() : nullptr;
+		const FRPGPlayerClassSkill* Skill = PlayerClass && Content && Content->AbilityTag.IsValid()
+			? PlayerClass->FindSkill(Content->AbilityTag) : nullptr;
+		FRPGSkillSaveData Selection;
+		if (Skill && Skill->Definition && Skills->TryGetSkillSaveData(Content->AbilityTag, Selection))
+		{
+			FRPGSkillRuntimeSpec Spec;
+			Skill->Definition->BuildRuntimeSpec(Pawn, Selection, Spec);
+			URPGSkillTooltip::UpdateFor(*this,
+				FRPGSkillTooltipPresentation::ForSkill(*Skill->Definition, Spec, true));
+		}
+		else
+		{
+			URPGSkillTooltip::UpdateFor(*this, {});
+		}
+	}
 }
 
 void URPGQuickSlotWidget::UpdateSkillCooldownView(const float RemainingFraction)
@@ -377,7 +406,7 @@ void URPGQuickSlotWidget::NativeTick(const FGeometry& Geometry, const float Delt
 	if (SkillRefreshElapsed >= 0.1f)
 	{
 		SkillRefreshElapsed = 0.f;
-		if (bIsSkillSlot) RefreshSkillSlotView();
+		if (bIsSkillSlot) RefreshSkillSlotView(IsHovered());
 		else SetInputKeyText(ResolveQuickSlotInputKeyText(LinkedQuickSlotComponent.Get(), false, SlotIndex, InputText));
 	}
 }

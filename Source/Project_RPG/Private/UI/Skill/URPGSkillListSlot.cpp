@@ -12,6 +12,7 @@
 #include "UI/Skill/RPGSkillLevelAdjuster.h"
 #include "UI/Skill/RPGSkillQuickSlotDragDrop.h"
 #include "UI/RPGDragDropOperation.h"
+#include "UI/Tooltip/RPGSkillTooltip.h"
 #include "UI/ViewModel/RPGSkillSlotViewModel.h"
 #include "View/MVVMView.h"
 
@@ -38,6 +39,8 @@ void UURPGSkillListSlot::NativeOnListItemObjectSet(UObject* ListItemObject)
 			URPGSkillSlotViewModel::FFieldNotificationClassDescriptor::SkillIcon, Refresh);
 		ViewModel->AddFieldValueChangedDelegate(
 			URPGSkillSlotViewModel::FFieldNotificationClassDescriptor::SkillLevel, Refresh);
+		ViewModel->AddFieldValueChangedDelegate(
+			URPGSkillSlotViewModel::FFieldNotificationClassDescriptor::bIsLocked, Refresh);
 		ViewModel->AddFieldValueChangedDelegate(
 			URPGSkillSlotViewModel::FFieldNotificationClassDescriptor::CurrentRefinementIndices, Refresh);
 	}
@@ -96,20 +99,24 @@ void UURPGSkillListSlot::RefreshSkillPresentation()
 	{
 		Image->SetBrushFromTexture(ViewModel ? ViewModel->SkillIcon : nullptr);
 	}
+	FRPGSkillSaveData Selection;
+	FRPGSkillRuntimeSpec Spec;
+	const URPGSkillDefinition* Definition = ViewModel ? ViewModel->GetSkillDefinition() : nullptr;
+	if (Definition)
+	{
+		Selection.SkillLevel = ViewModel->SkillLevel;
+		Selection.SelectedRefinementIndices = ViewModel->CurrentRefinementIndices;
+		Definition->BuildRuntimeSpec(GetOwningPlayerPawn(), Selection, Spec);
+	}
 	if (UCommonTextBlock* Text = Cast<UCommonTextBlock>(GetWidgetFromName(TEXT("SkillTypeText"))))
 	{
-		FRPGSkillRuntimeSpec Spec;
-		if (ViewModel && ViewModel->GetSkillDefinition())
-		{
-			FRPGSkillSaveData Selection;
-			Selection.SkillLevel = ViewModel->SkillLevel;
-			Selection.SelectedRefinementIndices = ViewModel->CurrentRefinementIndices;
-			ViewModel->GetSkillDefinition()->BuildRuntimeSpec(GetOwningPlayerPawn(), Selection, Spec);
-		}
 		const URPGSkillExecutionPolicy* Policy = Spec.ExecutionPolicyClass
 			? Spec.ExecutionPolicyClass->GetDefaultObject<URPGSkillExecutionPolicy>() : nullptr;
 		Text->SetText(Policy ? Policy->GetExecutionDisplayName() : FText::GetEmpty());
 	}
+	URPGSkillTooltip::UpdateFor(*this, Definition
+		? FRPGSkillTooltipPresentation::ForSkill(*Definition, Spec, !ViewModel->bIsLocked)
+		: FRPGSkillTooltipPresentation());
 }
 
 void UURPGSkillListSlot::UnbindViewModel()
@@ -119,6 +126,7 @@ void UURPGSkillListSlot::UnbindViewModel()
 		ViewModel->RemoveAllFieldValueChangedDelegates(this);
 	}
 	CurrentViewModel.Reset();
+	URPGSkillTooltip::UpdateFor(*this, {});
 }
 
 void UURPGSkillListSlot::NativeOnEntryReleased()

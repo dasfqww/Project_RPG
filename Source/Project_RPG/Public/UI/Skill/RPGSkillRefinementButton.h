@@ -18,8 +18,9 @@ class PROJECT_RPG_API URPGSkillRefinementButton : public UCommonButtonBase
 	GENERATED_BODY()
 	
 public:
-	void InitializeRefinement(int32 InTier, int32 InIndex, const FRPGSkillRefinementOption& InOption);
-	void SetIsRefinementSelected(bool bInSelected);
+	void InitializeRefinement(int32 InTier, int32 InIndex, const FRPGSkillRefinementOption& InOption,
+		int32 InRequiredSkillLevel = 0);
+	void SetRefinementState(bool bInSelected, bool bUnlocked);
 
 	FOnRefinementButtonClicked OnRefinementClicked;
 
@@ -44,6 +45,7 @@ protected:
 	void BP_OnSelectionChanged(bool bIsSelected);
 
 private:
+	int32 RequiredSkillLevel = 0;
 	void HandleRefinementButtonClicked();
 
 public:
