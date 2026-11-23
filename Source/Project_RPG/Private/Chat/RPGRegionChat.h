@@ -9,6 +9,7 @@
 class UEditableTextBox;
 class UScrollBox;
 class UTextBlock;
+class STextBlock;
 
 UENUM()
 enum class ERPGTownChatChannel : uint8
@@ -52,6 +53,25 @@ private:
 };
 
 UCLASS()
+class URPGRegionChatBubble final : public UUserWidget
+{
+	GENERATED_BODY()
+public:
+	void ShowMessage(const FString& Text, double Now);
+	bool UpdatePosition(int32 SpeakerId, double Now);
+
+protected:
+	virtual TSharedRef<SWidget> RebuildWidget() override;
+	virtual void ReleaseSlateResources(bool bReleaseChildren) override;
+
+private:
+	FText Message;
+	TSharedPtr<STextBlock> MessageBlock;
+	TWeakObjectPtr<ARPGRegionChatPawn> Speaker;
+	double ExpiresAt = 0.0;
+};
+
+UCLASS()
 class ARPGRegionChatController final : public APlayerController
 {
 	GENERATED_BODY()
@@ -63,7 +83,7 @@ public:
 	void ClientOpenRegionChat(int32 Channel);
 
 	UFUNCTION(Client, Reliable)
-	void ClientReceiveRegionMessage(ERPGTownChatChannel Channel, const FString& Sender, const FString& Text);
+	void ClientReceiveRegionMessage(ERPGTownChatChannel Channel, int32 SpeakerId, const FString& Sender, const FString& Text);
 
 protected:
 	virtual void PlayerTick(float DeltaSeconds) override;
@@ -71,6 +91,7 @@ protected:
 
 private:
 	UPROPERTY(Transient) TObjectPtr<URPGRegionChatWidget> ChatWidget;
+	UPROPERTY(Transient) TMap<int32, TObjectPtr<URPGRegionChatBubble>> ChatBubbles;
 	double NextSendTime = 0;
 };
 

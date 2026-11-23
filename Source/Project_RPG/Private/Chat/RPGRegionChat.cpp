@@ -1,6 +1,9 @@
 #include "Chat/RPGRegionChat.h"
 
+#include "Blueprint/WidgetLayoutLibrary.h"
 #include "Blueprint/WidgetTree.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
+#include "Camera/CameraComponent.h"
 #include "Components/Button.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/EditableTextBox.h"
@@ -13,15 +16,23 @@
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Styling/CoreStyle.h"
+#include "UObject/Package.h"
+#include "Widgets/Images/SImage.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/SOverlay.h"
+#include "Widgets/Text/STextBlock.h"
 
 namespace
 {
 	constexpr int32 MaxMessageLength = 240;
 	constexpr double NearbyRadiusCm = 2000.0;
+	constexpr double BubbleDurationSeconds = 4.0;
 
 	FText ChannelName(ERPGTownChatChannel Channel)
 	{
@@ -47,6 +58,12 @@ ARPGRegionChatPawn::ARPGRegionChatPawn()
 	// horizontal test movement to the server while keeping players at spawn height.
 	GetCharacterMovement()->DefaultLandMovementMode = MOVE_Flying;
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+
+	// Keep the local speaker's overhead UI inside the temporary town camera.
+	auto* Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("TownCamera"));
+	Camera->SetupAttachment(GetCapsuleComponent());
+	Camera->SetRelativeLocation(FVector(-360.0, 0.0, 165.0));
+	Camera->SetRelativeRotation(FRotator(-18.0, 0.0, 0.0));
 }
 
 TSharedRef<SWidget> URPGRegionChatWidget::RebuildWidget()
@@ -134,6 +151,91 @@ void URPGRegionChatWidget::AppendMessage(ERPGTownChatChannel Channel, const FStr
 	Scroll->ScrollToEnd();
 }
 
+TSharedRef<SWidget> URPGRegionChatBubble::RebuildWidget()
+{
+	static const FLinearColor Fill(0.025f, 0.030f, 0.042f, 0.96f);
+	static const FLinearColor Edge(0.54f, 0.44f, 0.29f, 0.9f);
+	static const FSlateRoundedBoxBrush Frame(Fill, 8.0f, Edge, 1.0f);
+	static const FSlateRoundedBoxBrush Tail(Fill, 1.0f, Edge, 1.0f, FVector2D(9.0, 9.0));
+
+	return SNew(SOverlay)
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Bottom)
+		.Padding(FMargin(0.0f, 0.0f, 0.0f, 2.0f))
+		[
+			SNew(SImage)
+			.Image(&Tail)
+			.RenderTransform(FSlateRenderTransform(FQuat2D(PI / 4.0f)))
+			.RenderTransformPivot(FVector2D(0.5, 0.5))
+		]
+		+ SOverlay::Slot()
+		.Padding(FMargin(0.0f, 0.0f, 0.0f, 9.0f))
+		[
+			SNew(SBorder)
+			.BorderImage(&Frame)
+			.Padding(FMargin(12.0f, 7.0f))
+			[
+				SAssignNew(MessageBlock, STextBlock)
+				.Text(Message)
+				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), 14))
+				.ColorAndOpacity(FLinearColor(1.0f, 0.97f, 0.88f))
+				.WrapTextAt(236.0f)
+				.WrappingPolicy(ETextWrappingPolicy::AllowPerCharacterWrapping)
+			]
+		];
+}
+
+void URPGRegionChatBubble::ReleaseSlateResources(bool bReleaseChildren)
+{
+	Super::ReleaseSlateResources(bReleaseChildren);
+	MessageBlock.Reset();
+}
+
+void URPGRegionChatBubble::ShowMessage(const FString& Text, double Now)
+{
+	Message = FText::FromString(Text);
+	ExpiresAt = Now + BubbleDurationSeconds;
+	if (MessageBlock) MessageBlock->SetText(Message);
+}
+
+bool URPGRegionChatBubble::UpdatePosition(int32 SpeakerId, double Now)
+{
+	if (Now >= ExpiresAt || Speaker.IsStale()) return false;
+
+	if (!Speaker.IsValid())
+	{
+		// The chat RPC can arrive before the speaker's pawn is replicated.
+		if (const auto* State = GetWorld()->GetGameState())
+		{
+			for (const APlayerState* Player : State->PlayerArray)
+			{
+				if (IsValid(Player) && Player->GetPlayerId() == SpeakerId)
+				{
+					Speaker = Cast<ARPGRegionChatPawn>(Player->GetPawn());
+					break;
+				}
+			}
+		}
+	}
+
+	FVector2D ScreenPosition;
+	if (const auto* Pawn = Speaker.Get())
+	{
+		const double Height = Pawn->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 20.0;
+		const FVector Anchor = Pawn->GetActorLocation() + FVector(0.0, 0.0, Height);
+		if (UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(GetOwningPlayer(), Anchor, ScreenPosition, true))
+		{
+			SetPositionInViewport(ScreenPosition, false);
+			SetVisibility(ESlateVisibility::HitTestInvisible);
+			return true;
+		}
+	}
+
+	SetVisibility(ESlateVisibility::Collapsed);
+	return true;
+}
+
 void ARPGRegionChatController::PlayerTick(float DeltaSeconds)
 {
 	Super::PlayerTick(DeltaSeconds);
@@ -144,6 +246,16 @@ void ARPGRegionChatController::PlayerTick(float DeltaSeconds)
 		const int32 Right = static_cast<int32>(IsInputKeyDown(EKeys::D)) - static_cast<int32>(IsInputKeyDown(EKeys::A));
 		ControlledPawn->AddMovementInput(FVector::ForwardVector, Forward);
 		ControlledPawn->AddMovementInput(FVector::RightVector, Right);
+	}
+
+	const double Now = FPlatformTime::Seconds();
+	for (auto It = ChatBubbles.CreateIterator(); It; ++It)
+	{
+		if (!It.Value()->UpdatePosition(It.Key(), Now))
+		{
+			It.Value()->RemoveFromParent();
+			It.RemoveCurrent();
+		}
 	}
 }
 
@@ -170,7 +282,7 @@ void ARPGRegionChatController::ServerSendRegionMessage_Implementation(ERPGTownCh
 				if (!IsValid(RecipientPawn) || FVector::DistSquared(SenderPawn->GetActorLocation(),
 					RecipientPawn->GetActorLocation()) > FMath::Square(NearbyRadiusCm)) continue;
 			}
-			Recipient->ClientReceiveRegionMessage(Channel, State->GetPlayerName(), Message);
+			Recipient->ClientReceiveRegionMessage(Channel, State->GetPlayerId(), State->GetPlayerName(), Message);
 		}
 	}
 }
@@ -192,13 +304,34 @@ void ARPGRegionChatController::ClientOpenRegionChat_Implementation(int32 Channel
 	SetShowMouseCursor(true);
 }
 
-void ARPGRegionChatController::ClientReceiveRegionMessage_Implementation(ERPGTownChatChannel Channel, const FString& Sender, const FString& Text)
+void ARPGRegionChatController::ClientReceiveRegionMessage_Implementation(
+	ERPGTownChatChannel Channel, int32 SpeakerId, const FString& Sender, const FString& Text)
 {
-	if (ChatWidget) ChatWidget->AppendMessage(Channel, Sender, Text);
+	if (!ChatWidget) return;
+	ChatWidget->AppendMessage(Channel, Sender, Text);
+	if (Channel != ERPGTownChatChannel::Nearby) return;
+
+	auto* Bubble = ChatBubbles.FindRef(SpeakerId).Get();
+	if (!Bubble)
+	{
+		Bubble = CreateWidget<URPGRegionChatBubble>(this);
+		if (!Bubble) return;
+		Bubble->SetVisibility(ESlateVisibility::Collapsed);
+		if (!Bubble->AddToPlayerScreen(-1)) return;
+		Bubble->SetAlignmentInViewport(FVector2D(0.5, 1.0));
+		ChatBubbles.Add(SpeakerId, Bubble);
+	}
+	Bubble->ShowMessage(Text, FPlatformTime::Seconds());
 }
 
 void ARPGRegionChatController::EndPlay(const EEndPlayReason::Type Reason)
 {
+	for (const auto& Pair : ChatBubbles)
+	{
+		Pair.Value->RemoveFromParent();
+	}
+	ChatBubbles.Reset();
+
 	if (ChatWidget)
 	{
 		ChatWidget->RemoveFromParent();
