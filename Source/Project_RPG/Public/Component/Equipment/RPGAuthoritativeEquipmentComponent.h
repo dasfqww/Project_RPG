@@ -3,7 +3,7 @@
 #include "Ability/RPGAbilitySet.h"
 #include "Component/PawnExtensionComponentBase.h"
 #include "Item/Persistence/RPGItemRecord.h"
-#include "Item/Equipment/RPGEquipmentSnapshot.h"
+#include "Item/Equipment/RPGEquipmentProgressionRules.h"
 #include "Item/Equipment/RPGEquipmentEffectContext.h"
 #include "Type/RPGEnumTypes.h"
 #include "RPGAuthoritativeEquipmentComponent.generated.h"
@@ -109,7 +109,7 @@ private:
 		FGuid ItemId);
 	void RefreshSnapshotActors();
 	void UpdateActorVisibility();
-	bool ApplyProgressionStats(float Attack, float MaximumHealth);
+	bool ApplyProgressionStats(const FRPGEquipmentProgressionContribution& Contribution);
 
 	UFUNCTION()
 	void OnRep_ActiveEquipState(EEquipState PreviousState);
@@ -127,7 +127,6 @@ private:
 	FRPGItemOwnerRef AppliedOwner;
 	FActiveGameplayEffectHandle ProgressionEffect;
 	TWeakObjectPtr<class URPGAbilitySystemComponent> ProgressionAbilitySystem;
-	float AppliedProgressionAttack = 0.f;
-	float AppliedProgressionHealth = 0.f;
+	FRPGEquipmentProgressionContribution AppliedProgression;
 	uint64 EffectActiveStateGeneration = 0;
 };

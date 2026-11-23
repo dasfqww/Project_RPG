@@ -7,6 +7,11 @@ struct PROJECT_RPG_API FRPGEquipmentProgressionContribution
 {
 	float Attack = 0.f;
 	float MaximumHealth = 0.f;
+	float CooldownReductionPercent = 0.f;
+	float DamageReductionPercent = 0.f;
+
+	bool operator==(const FRPGEquipmentProgressionContribution&) const = default;
+	bool IsEmpty() const { return *this == FRPGEquipmentProgressionContribution{}; }
 };
 
 namespace RPGEquipmentProgression

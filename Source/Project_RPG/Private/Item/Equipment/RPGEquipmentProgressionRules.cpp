@@ -8,15 +8,25 @@ bool RPGEquipmentProgression::TryCalculate(const FPrimaryAssetId& Definition, co
 	if (!Growth.IsSet()) return true;
 	if (!Growth.IsValid() || Definition.PrimaryAssetType != FPrimaryAssetType(TEXT("RPGItemDefinition"))
 		|| Version != 1) return false;
-	struct FRecipe { const TCHAR* Name; EEquipmentSlotType Slot; float Attack; float Health; float AttackStep; float HealthStep; };
+	struct FRecipe
+	{
+		const TCHAR* Name;
+		EEquipmentSlotType Slot;
+		float Attack;
+		float Health;
+		float AttackStep;
+		float HealthStep;
+		float CooldownReductionPercent = 0.f;
+		float DamageReductionPercent = 0.f;
+	};
 	static const FRecipe Recipes[] = {
 		{TEXT("GameItem.Equipment.Progression.Starter.GreatSword"), EEquipmentSlotType::Weapon_Primary_R, 0, 0, 3, 0},
 		{TEXT("GameItem.Equipment.Progression.Starter.Chest"), EEquipmentSlotType::Chest, 0, 0, 0, 40},
 		{TEXT("GameItem.Equipment.Progression.Starter.Gloves"), EEquipmentSlotType::Hands, 0, 0, 2, 0},
 		{TEXT("GameItem.Equipment.Progression.Target.EnduranceGreatSword"), EEquipmentSlotType::Weapon_Primary_R, 10, 0, 3, 0},
 		{TEXT("GameItem.Equipment.Progression.Target.CirculationGreatSword"), EEquipmentSlotType::Weapon_Primary_R, 10, 0, 3, 0},
-		{TEXT("GameItem.Equipment.Progression.Target.Chest"), EEquipmentSlotType::Chest, 0, 100, 0, 40},
-		{TEXT("GameItem.Equipment.Progression.Target.Gloves"), EEquipmentSlotType::Hands, 4, 0, 2, 0}
+		{TEXT("GameItem.Equipment.Progression.Target.Chest"), EEquipmentSlotType::Chest, 0, 100, 0, 40, 0, 5},
+		{TEXT("GameItem.Equipment.Progression.Target.Gloves"), EEquipmentSlotType::Hands, 4, 0, 2, 0, 5, 0}
 	};
 	for (const FRecipe& Recipe : Recipes)
 	{
@@ -24,6 +34,8 @@ bool RPGEquipmentProgression::TryCalculate(const FPrimaryAssetId& Definition, co
 		if (Slot != Recipe.Slot) return false;
 		Out.Attack = Recipe.Attack + Recipe.AttackStep * Growth.Level;
 		Out.MaximumHealth = Recipe.Health + Recipe.HealthStep * Growth.Level;
+		Out.CooldownReductionPercent = Recipe.CooldownReductionPercent;
+		Out.DamageReductionPercent = Recipe.DamageReductionPercent;
 		return true;
 	}
 	return false;
@@ -44,6 +56,8 @@ bool RPGEquipmentProgression::TrySum(const TArray<FRPGEquipmentSnapshot>& Snapsh
 			&& ActiveState != EEquipState::WeaponSet_Primary) continue;
 		Out.Attack += Item.Attack;
 		Out.MaximumHealth += Item.MaximumHealth;
+		Out.CooldownReductionPercent += Item.CooldownReductionPercent;
+		Out.DamageReductionPercent += Item.DamageReductionPercent;
 	}
 	return true;
 }

@@ -127,7 +127,7 @@ void URPGAuthoritativeEquipmentComponent::SetActiveEquipState(const EEquipState 
 	const EEquipState PreviousState = ActiveEquipState;
 	FRPGEquipmentProgressionContribution Contribution;
 	if (!RPGEquipmentProgression::TrySum(EquipmentSnapshots, State, Contribution)
-		|| !ApplyProgressionStats(Contribution.Attack, Contribution.MaximumHealth)) return;
+		|| !ApplyProgressionStats(Contribution)) return;
 	ActiveEquipState = State;
 	++EffectActiveStateGeneration;
 	UpdateActorVisibility();
@@ -294,7 +294,7 @@ bool URPGAuthoritativeEquipmentComponent::Reconcile(
 		RPGAuthoritativeEquipment::SetError(OutError, TEXT("Unsupported explicit equipment progression."));
 		return false;
 	}
-	if (Contribution.Attack != 0.f || Contribution.MaximumHealth != 0.f)
+	if (!Contribution.IsEmpty())
 	{
 		const auto* ASC = OwnerActor->FindComponentByClass<URPGAbilitySystemComponent>();
 		if (!ASC || !ASC->IsOwnerActorAuthoritative()
@@ -348,7 +348,7 @@ bool URPGAuthoritativeEquipmentComponent::Reconcile(
 			return false;
 		}
 	}
-	if (!ApplyProgressionStats(Contribution.Attack, Contribution.MaximumHealth))
+	if (!ApplyProgressionStats(Contribution))
 	{
 		ResetApplied();
 		RPGAuthoritativeEquipment::SetError(OutError, TEXT("Equipment progression effect could not be applied."));
@@ -483,20 +483,20 @@ void URPGAuthoritativeEquipmentComponent::ResetApplied()
 	}
 	EquipmentSnapshots.Reset();
 	AppliedOwner = {};
-	ApplyProgressionStats(0.f, 0.f);
+	ApplyProgressionStats({});
 	if (GetOwner() && GetOwner()->HasAuthority()) GetOwner()->ForceNetUpdate();
 	OnEquipmentSnapshotsChanged.Broadcast();
 }
 
-bool URPGAuthoritativeEquipmentComponent::ApplyProgressionStats(const float Attack, const float MaximumHealth)
+bool URPGAuthoritativeEquipmentComponent::ApplyProgressionStats(const FRPGEquipmentProgressionContribution& Contribution)
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority()) return Attack == 0.f && MaximumHealth == 0.f;
+	const bool bHasContribution = !Contribution.IsEmpty();
+	if (!GetOwner() || !GetOwner()->HasAuthority()) return !bHasContribution;
 	auto* ASC = GetOwner() ? GetOwner()->FindComponentByClass<URPGAbilitySystemComponent>() : nullptr;
-	const bool bHasContribution = Attack != 0.f || MaximumHealth != 0.f;
 	if (bHasContribution && (!ASC || !ASC->IsOwnerActorAuthoritative()
 		|| !ASC->HasAttributeSetForAttribute(URPGAttributeSet::GetAttackAttribute())
 		|| !ASC->HasAttributeSetForAttribute(URPGAttributeSet::GetMaxHealthAttribute()))) return false;
-	if (ProgressionAbilitySystem == ASC && Attack == AppliedProgressionAttack && MaximumHealth == AppliedProgressionHealth
+	if (ProgressionAbilitySystem == ASC && Contribution == AppliedProgression
 		&& (!bHasContribution || (ProgressionEffect.IsValid() && ASC->GetActiveGameplayEffect(ProgressionEffect)))) return true;
 	FActiveGameplayEffectHandle Next;
 	if (bHasContribution)
@@ -505,8 +505,10 @@ bool URPGAuthoritativeEquipmentComponent::ApplyProgressionStats(const float Atta
 		Context.AddSourceObject(this);
 		FGameplayEffectSpecHandle Spec = ASC->MakeOutgoingSpec(URPGEquipmentProgressionEffect::StaticClass(), 1.f, Context);
 		if (!Spec.IsValid()) return false;
-		Spec.Data->SetSetByCallerMagnitude(URPGEquipmentProgressionEffect::AttackMagnitude(), Attack);
-		Spec.Data->SetSetByCallerMagnitude(URPGEquipmentProgressionEffect::HealthMagnitude(), MaximumHealth);
+		Spec.Data->SetSetByCallerMagnitude(URPGEquipmentProgressionEffect::AttackMagnitude(), Contribution.Attack);
+		Spec.Data->SetSetByCallerMagnitude(URPGEquipmentProgressionEffect::HealthMagnitude(), Contribution.MaximumHealth);
+		Spec.Data->SetSetByCallerMagnitude(URPGEquipmentProgressionEffect::CooldownReductionMagnitude(), Contribution.CooldownReductionPercent);
+		Spec.Data->SetSetByCallerMagnitude(URPGEquipmentProgressionEffect::DamageReductionMagnitude(), Contribution.DamageReductionPercent);
 		Next = ASC->ApplyGameplayEffectSpecToSelf(*Spec.Data);
 		if (!Next.IsValid() || !ASC->GetActiveGameplayEffect(Next)) return false;
 	}
@@ -514,8 +516,7 @@ bool URPGAuthoritativeEquipmentComponent::ApplyProgressionStats(const float Atta
 		PreviousASC->RemoveActiveGameplayEffect(ProgressionEffect);
 	ProgressionEffect = Next;
 	ProgressionAbilitySystem = ASC;
-	AppliedProgressionAttack = Attack;
-	AppliedProgressionHealth = MaximumHealth;
+	AppliedProgression = Contribution;
 	// Replace the complete aggregate before clamping, so swapping two chests
 	// does not transiently clamp health against an unequipped base maximum.
 	if (ASC && ASC->HasAttributeSetForAttribute(URPGAttributeSet::GetCurrentHealthAttribute()))

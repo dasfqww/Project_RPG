@@ -97,7 +97,13 @@ bool FRPGEquipmentProgressionLifecycleTest::RunTest(const FString&)
 	auto Sword=F.Record(TEXT("Target.EnduranceGreatSword"),EEquipmentSlotType::Weapon_Primary_R);
 	auto Chest=F.Record(TEXT("Target.Chest"),EEquipmentSlotType::Chest);
 	auto Gloves=F.Record(TEXT("Target.Gloves"),EEquipmentSlotType::Hands);
+	const auto Cooldown = URPGAttributeSet::GetCooldownReductionPercentAttribute();
+	const auto Mitigation = URPGAttributeSet::GetDamageReductionPercentAttribute();
+	F.ASC->SetNumericAttributeBase(Cooldown, 2.f);
+	F.ASC->SetNumericAttributeBase(Mitigation, 3.f);
 	TestTrue(TEXT("Apply +0 targets"),F.Equipment->Reconcile(F.Owner,{Sword,Chest,Gloves},*F.Data));
+	TestEqual(TEXT("Gloves add five points to cooldown reduction"), F.ASC->GetNumericAttribute(Cooldown), 7.f);
+	TestEqual(TEXT("Chest adds five points to damage reduction"), F.ASC->GetNumericAttribute(Mitigation), 8.f);
 	TestEqual(TEXT("+14 attack"),F.Attack(),64.f); TestEqual(TEXT("+100 max HP"),F.Max(),300.f); TestEqual(TEXT("No heal"),F.Health(),120.f);
 	for(int32 I=0;I<3;++I) TestTrue(TEXT("Repeat restore"),F.Equipment->Reconcile(F.Owner,{Sword,Chest,Gloves},*F.Data));
 	TestEqual(TEXT("Single aggregate GE"),F.ASC->GetActiveEffects(FGameplayEffectQuery()).Num(),1);
@@ -109,10 +115,13 @@ bool FRPGEquipmentProgressionLifecycleTest::RunTest(const FString&)
 	TestEqual(TEXT("Still one GE"),F.ASC->GetActiveEffects(FGameplayEffectQuery()).Num(),1);
 	F.Equipment->SetActiveEquipState(EEquipState::WeaponSet_Secondary);
 	TestEqual(TEXT("Inactive primary weapon excluded"),F.Attack(),60.f); TestEqual(TEXT("Armor remains"),F.Max(),420.f);
+	TestEqual(TEXT("Gloves retain the same bonus after upgrades and weapon swap"), F.ASC->GetNumericAttribute(Cooldown), 7.f);
+	TestEqual(TEXT("Chest retains the same bonus after upgrades and weapon swap"), F.ASC->GetNumericAttribute(Mitigation), 8.f);
 	F.Equipment->SetActiveEquipState(EEquipState::WeaponSet_Primary); TestEqual(TEXT("Primary restored once"),F.Attack(),79.f);
 	F.ASC->SetNumericAttributeBase(URPGAttributeSet::GetCurrentHealthAttribute(),410);
 	auto StarterChest=F.Record(TEXT("Starter.Chest"),EEquipmentSlotType::Chest,3);
 	TestTrue(TEXT("Swap chest"),F.Equipment->Reconcile(F.Owner,{Sword,StarterChest,Gloves},*F.Data));
+	TestEqual(TEXT("Starter chest restores base damage reduction"), F.ASC->GetNumericAttribute(Mitigation), 3.f);
 	TestEqual(TEXT("Final max HP"),F.Max(),320.f); TestEqual(TEXT("Clamp to final maximum, not temporary base"),F.Health(),320.f);
 	TestTrue(TEXT("Unequip chest"),F.Equipment->Reconcile(F.Owner,{Sword,Gloves},*F.Data));
 	TestEqual(TEXT("Original maximum"),F.Max(),200.f); TestEqual(TEXT("Clamp on unequip"),F.Health(),200.f);
@@ -120,6 +129,8 @@ bool FRPGEquipmentProgressionLifecycleTest::RunTest(const FString&)
 	TestTrue(TEXT("Restore while dead"),F.Equipment->Reconcile(F.Owner,{Sword,Chest,Gloves},*F.Data));
 	TestEqual(TEXT("No resurrection"),F.Health(),0.f);
 	TestTrue(TEXT("Remove all"),F.Equipment->Reconcile(F.Owner,{},*F.Data));
+	TestEqual(TEXT("Removing gloves restores base cooldown reduction"), F.ASC->GetNumericAttribute(Cooldown), 2.f);
+	TestEqual(TEXT("Removing chest restores base damage reduction"), F.ASC->GetNumericAttribute(Mitigation), 3.f);
 	TestEqual(TEXT("Base attack preserved"),F.Attack(),50.f); TestEqual(TEXT("Base maximum preserved"),F.Max(),200.f);
 	TestEqual(TEXT("No gear GE remains"),F.ASC->GetActiveEffects(FGameplayEffectQuery()).Num(),0);
 	return true;
