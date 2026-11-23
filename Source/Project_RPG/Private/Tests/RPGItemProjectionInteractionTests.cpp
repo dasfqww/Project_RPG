@@ -456,6 +456,25 @@ bool FRPGEquipmentProgressionDetailsTest::RunTest(const FString&)
 	if (!TestTrue(TEXT("Legacy/unset item remains readable"), Fixture.Load({Legacy}))) return false;
 	TestFalse(TEXT("No automatic +0 is shown for a legacy item"),
 		Fixture.Model->GetItemPresentation(Legacy.GetItemId()).InstanceDetails.ToString().Contains(TEXT("+0")));
+	FRPGEquipmentProgressionState Growth;
+	Growth.GrowthBandId = TEXT("FirstSlice"); Growth.RuleVersion = 1; Growth.Level = 3;
+	const FPrimaryAssetId GlovesId(TEXT("RPGItemDefinition"), TEXT("GameItem.Equipment.Progression.Target.Gloves"));
+	const FPrimaryAssetId ChestId(TEXT("RPGItemDefinition"), TEXT("GameItem.Equipment.Progression.Target.Chest"));
+	const auto Gloves = Fixture.MakeRecord(GlovesId, ERPGItemContainerType::Inventory, 0, 1, Growth);
+	const auto Chest = Fixture.MakeRecord(ChestId, ERPGItemContainerType::Equipment, static_cast<int32>(EEquipmentSlotType::Chest), 1, Growth);
+	const auto MailedChest = Fixture.MakeRecord(ChestId, ERPGItemContainerType::Mail, 0, 1, Growth);
+	const auto LegacyGloves = Fixture.MakeRecord(GlovesId, ERPGItemContainerType::Inventory, 1);
+	if (!TestTrue(TEXT("Target armor and legacy items enter the owner projection"),
+		Fixture.Load({Gloves, Chest, MailedChest, LegacyGloves}))) return false;
+	TestTrue(TEXT("Bag gloves preview the fixed cooldown option"),
+		Fixture.Model->GetItemPresentation(Gloves.GetItemId()).InstanceDetails.ToString().Contains(TEXT("Cooldown reduction +5%")));
+	for (const auto* Item : {&Chest, &MailedChest})
+	{
+		TestTrue(TEXT("Equipped and mailed chests show the same mitigation option"),
+			Fixture.Model->GetItemPresentation(Item->GetItemId()).InstanceDetails.ToString().Contains(TEXT("Damage reduction +5%")));
+	}
+	TestFalse(TEXT("Legacy target gloves gain no preview"),
+		Fixture.Model->GetItemPresentation(LegacyGloves.GetItemId()).InstanceDetails.ToString().Contains(TEXT("Cooldown reduction")));
 	TestTrue(TEXT("An invalid item has no stale growth label"), Fixture.Model->GetItemPresentation(FGuid()).InstanceDetails.IsEmpty());
 	return true;
 }

@@ -21,6 +21,9 @@ namespace RPGEquipmentProgression
 	PROJECT_RPG_API bool TryCalculate(const FPrimaryAssetId& Definition, int32 Version,
 		EEquipmentSlotType Slot, const FRPGEquipmentProgressionState& Growth,
 		FRPGEquipmentProgressionContribution& Out);
+	/** Read-only value preview for inventory and mail, where the record has no equipment slot. */
+	PROJECT_RPG_API bool TryPreview(const FPrimaryAssetId& Definition, int32 Version,
+		const FRPGEquipmentProgressionState& Growth, FRPGEquipmentProgressionContribution& Out);
 	PROJECT_RPG_API bool TrySum(const TArray<FRPGEquipmentSnapshot>& Snapshots,
 		EEquipState ActiveState, FRPGEquipmentProgressionContribution& Out);
 }

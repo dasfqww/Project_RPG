@@ -1,5 +1,6 @@
 #include "UI/Inventory/Projection/RPGItemTooltipFormatter.h"
 
+#include "Item/Equipment/RPGEquipmentProgressionRules.h"
 #include "Item/Projection/RPGInventoryProjectionTypes.h"
 
 FText FRPGItemTooltipFormatter::BuildInstanceDetails(
@@ -37,10 +38,24 @@ FText FRPGItemTooltipFormatter::BuildInstanceDetails(
 	const FRPGEquipmentProgressionState& Growth = Entry.GetEquipmentProgression();
 	if (Growth.IsSet() && Growth.IsValid())
 	{
-		// Display the persisted opt-in only. This is not an eligibility decision,
-		// an implicit legacy +0, or a calculation/application of combat stats.
 		Lines.Add(FText::Format(NSLOCTEXT("RPGItemUI", "TooltipEquipmentProgression", "Enhancement: +{0}"),
 			FText::AsNumber(Growth.Level)));
+		FRPGEquipmentProgressionContribution Contribution;
+		const int32 Slot = Entry.GetSlotIndex();
+		const bool bHasPreview = Entry.GetContainerType() == ERPGItemContainerType::Equipment
+			? Slot >= 0 && Slot <= MAX_uint8 && RPGEquipmentProgression::TryCalculate(Entry.GetDefinitionId(),
+				Entry.GetDefinitionVersion(), static_cast<EEquipmentSlotType>(Slot), Growth, Contribution)
+			: RPGEquipmentProgression::TryPreview(Entry.GetDefinitionId(), Entry.GetDefinitionVersion(), Growth, Contribution);
+		if (bHasPreview && Contribution.CooldownReductionPercent > 0.f)
+		{
+			Lines.Add(FText::Format(NSLOCTEXT("RPGItemUI", "TooltipCooldownReduction", "Cooldown reduction +{0}%"),
+				FText::AsNumber(Contribution.CooldownReductionPercent)));
+		}
+		if (bHasPreview && Contribution.DamageReductionPercent > 0.f)
+		{
+			Lines.Add(FText::Format(NSLOCTEXT("RPGItemUI", "TooltipDamageReduction", "Damage reduction +{0}%"),
+				FText::AsNumber(Contribution.DamageReductionPercent)));
+		}
 	}
 	if (Entry.IsLocked())
 	{

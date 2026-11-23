@@ -1,7 +1,9 @@
 #include "Item/Equipment/RPGEquipmentProgressionRules.h"
 
-bool RPGEquipmentProgression::TryCalculate(const FPrimaryAssetId& Definition, const int32 Version,
-	const EEquipmentSlotType Slot, const FRPGEquipmentProgressionState& Growth,
+namespace
+{
+bool TryResolveContribution(const FPrimaryAssetId& Definition, const int32 Version,
+	const TOptional<EEquipmentSlotType> Slot, const FRPGEquipmentProgressionState& Growth,
 	FRPGEquipmentProgressionContribution& Out)
 {
 	Out = {};
@@ -31,7 +33,7 @@ bool RPGEquipmentProgression::TryCalculate(const FPrimaryAssetId& Definition, co
 	for (const FRecipe& Recipe : Recipes)
 	{
 		if (!Definition.PrimaryAssetName.ToString().Equals(Recipe.Name, ESearchCase::CaseSensitive)) continue;
-		if (Slot != Recipe.Slot) return false;
+		if (Slot.IsSet() && Slot.GetValue() != Recipe.Slot) return false;
 		Out.Attack = Recipe.Attack + Recipe.AttackStep * Growth.Level;
 		Out.MaximumHealth = Recipe.Health + Recipe.HealthStep * Growth.Level;
 		Out.CooldownReductionPercent = Recipe.CooldownReductionPercent;
@@ -39,6 +41,20 @@ bool RPGEquipmentProgression::TryCalculate(const FPrimaryAssetId& Definition, co
 		return true;
 	}
 	return false;
+}
+}
+
+bool RPGEquipmentProgression::TryCalculate(const FPrimaryAssetId& Definition, const int32 Version,
+	const EEquipmentSlotType Slot, const FRPGEquipmentProgressionState& Growth,
+	FRPGEquipmentProgressionContribution& Out)
+{
+	return TryResolveContribution(Definition, Version, Slot, Growth, Out);
+}
+
+bool RPGEquipmentProgression::TryPreview(const FPrimaryAssetId& Definition, const int32 Version,
+	const FRPGEquipmentProgressionState& Growth, FRPGEquipmentProgressionContribution& Out)
+{
+	return TryResolveContribution(Definition, Version, {}, Growth, Out);
 }
 
 bool RPGEquipmentProgression::TrySum(const TArray<FRPGEquipmentSnapshot>& Snapshots,
