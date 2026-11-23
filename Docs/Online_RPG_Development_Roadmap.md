@@ -296,6 +296,8 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 ## 12. 현재 현황과 다음 작업 체크리스트 (2026-10-20)
 
+- [x] **2026-11-24 우측 탈것 퀵슬롯 아이콘** — 서버가 확정한 빠른 호출 ID로 탈것 DA 아이콘을 비동기 로드하고 교체된 설정을 같은 슬롯에 반영한다. D3D12 게임 HUD 미등록·말·늑대와 늑대 클릭 탑승·하차, 퀵슬롯 native 15건 확인. [탈것 퀵슬롯 계약](RIDING_SYSTEM_CODE_DESIGN.md#준비-로비-탈것-보관함-목록-2026-11-23).
+
 - [x] 2026-11-20 장비창 프리뷰 색감 보정. 고정 노출 +0.35와 카메라 색 균형 적용. 사설 CPP 1개 및 Editor 모듈 링크 통과, 동일 캐릭터 D3D12 PIE에서 따뜻한 픽셀 3,664→1,687 및 전신·대검 확인. 임시 6,124,050,867 bytes 폐기. [장비창 외형](ITEM_INVENTORY_PROJECTION.md#장비창-플레이어-외형-2026-11-20).
 
 - [x] 2026-11-20 장비창 중앙에 소유 플레이어와 표시 중인 장비를 렌더링한다. UE 5.8 사설 UHT/관련 CPP 18개/모듈 링크, 창 회귀 6개, D3D12 PIE의 전신·대검 표시 갱신·닫기/재열기 확인. 임시 7,685,365,921 bytes 폐기. [장비창 플레이어 외형](ITEM_INVENTORY_PROJECTION.md#장비창-플레이어-외형-2026-11-20).
@@ -1005,6 +1007,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| 탈것 HUD 아이콘 / mount-hud-icon-24 | 우측 슬롯의 저장된 탈것 DA 아이콘 표시와 교체 갱신 | RPGItemQuickSlotBar.cpp, RPGRidingTypes.h, RPGRidingSessionComponent.cpp, Docs/RIDING_SYSTEM_CODE_DESIGN.md, 로드맵 본인 기록 | UE 5.8 격리 Editor 전체 링크와 native 퀵슬롯 15건 성공. Memory HTTP 미등록·말·늑대 저장 상태 재조회, 실제 D3D12 게임 HUD 세 상태 및 포인터 클릭 늑대 탑승·내리기 확인. 탑승은 기존 테스트 정의 사용. 임시 10918698007 bytes 및 정션 72개 정리. Saved/BuildChecks/MountHudIcon24/Result.json | 구현·검증 완료. main index/ref와 origin/main에 본인 5경로만 순차 게시 예약. 원격 일치 시 예약 해제 |
 | directional-airborne-24 | 서버 승인 방향별 공중·다운·기상. 대검과 공용 Gruntling 적용 | RPGAirborneTypes.h, RPGAirbornePresentationProfile.h, RPGCombatAirborne.cpp, 에어본 직접 회귀 검사 및 Melee2 러너, DirectionalAirborne 에셋, DA_Airborne_Player·Guardian, BP_Gruntling_Glacer, 전투 계약 및 본인 행 | UE 5.8 Editor 빌드·사설 링크. 실제 Guardian Melee2 네 방향 Iris 2인 80~160ms/5% 손실에서 피격자·관찰자 몽타주 및 공중 자세 방향 일치. 가디언·글레이서 8회 착지·다운·기상 및 기존 회귀 포함 native 19건 통과. Saved/BuildChecks/DirectionalAirborne24/Result.json | 검증 자원 해제. 정션 87개 및 러너 임시 2,630,224 bytes 정리. 자동 승인 검토가 격리 Temp 7,494,786,424 bytes 삭제를 차단해 로컬 보존. 본인 제품·직접 회귀·계약 및 이 행만 main index/ref와 origin/main 순차 게시 예약. 원격 일치 시 Git 예약 해제 |
 | 플레이어 공속·이속 상한 / player-speed-cap-24 | 속도 100% 기준 표기와 계산 최종 140% 상한 | RPGPlayerSpeed.h 신규, RPGAttributeSet.cpp, RPGCharacterMovementComponent.cpp, RPGPlayerGameplayAbility.cpp, RPGGameplayAbility_Equipment.cpp, RPGEquipmentStatsPanel.cpp, 본인 행 | UE 5.8 사설 C++ 5개·링크, 시작 GE 기준 100%·최대 140%·플레이어 실제 이동·둔화 포함 native 3건 통과. 임시 616,711,045 bytes와 정션 2개 정리. Saved/BuildChecks/PlayerSpeedCap24/Result.json | 지금 main index/ref·origin/main에 본인 소스 6개 및 이 행만 게시 예약. 원격 일치 시 예약 해제 |
 | P 스탯 탭 이름 / equipment-stat-activity-tab-24 | 우측 탭명을 공격·방어·활동으로 표시 | RPGEquipmentStatsPanel.cpp 및 본인 행 | MSVC 구문 검사 통과. 임시 응답 파일 정리 완료. Saved/BuildChecks/EquipmentStatActivity24/Result.json | 지금 main index/ref·origin/main에 본인 소스 및 이 행만 게시 예약. 원격 일치 시 예약 해제 |

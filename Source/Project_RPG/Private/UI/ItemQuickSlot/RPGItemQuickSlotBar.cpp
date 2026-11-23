@@ -2,11 +2,95 @@
 #include "UI/RPGQuickSlotWidget.h"
 #include "Controller/RPGPlayerController.h"
 #include "Component/UI/QuickSlotComponent.h"
+#include "Engine/AssetManager.h"
+#include "Engine/StreamableManager.h"
+#include "Engine/Texture2D.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerState.h"
+#include "Riding/RPGMountDefinition.h"
+#include "Riding/RPGRidingSessionComponent.h"
+#include "Slate/DeferredCleanupSlateBrush.h"
+#include "Widgets/SOverlay.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
+
+namespace
+{
+class SRPGMountQuickSlotContent final : public SCompoundWidget
+{
+public:
+    SLATE_BEGIN_ARGS(SRPGMountQuickSlotContent) {}
+    SLATE_END_ARGS()
+
+    void Construct(const FArguments&, TWeakObjectPtr<ARPGPlayerController> InController)
+    {
+        Controller = InController;
+        ChildSlot
+        [
+            SNew(SOverlay)
+            + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
+            [
+                SAssignNew(Label, STextBlock).Text(NSLOCTEXT("RidingQuickSlot", "Call", "탈것"))
+            ]
+            + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
+            [
+                SAssignNew(Image, SImage).Visibility(EVisibility::Collapsed)
+            ]
+        ];
+    }
+
+    void Tick(const FGeometry&, const double, const float) override
+    {
+        const auto* PC = Controller.Get();
+        const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+        const auto* PS = Pawn ? Pawn->GetPlayerState() : nullptr;
+        const auto* Session = PS ? PS->FindComponentByClass<URPGRidingSessionComponent>() : nullptr;
+        const FString CurrentMountId = Session ? Session->GetOwnerState().QuickSlotMountId : FString();
+        if (CurrentMountId != MountId)
+        {
+            MountId = CurrentMountId;
+            Load.Reset();
+            Image->SetImage(nullptr);
+            Image->SetVisibility(EVisibility::Collapsed);
+            Icon.Reset();
+            Label->SetVisibility(EVisibility::HitTestInvisible);
+            if (!MountId.IsEmpty() && UAssetManager::IsInitialized())
+            {
+                auto& Assets = UAssetManager::Get();
+                const FPrimaryAssetId Id(URPGMountDefinition::PrimaryAssetType, FName(*MountId));
+                const FSoftObjectPath Path = Assets.GetPrimaryAssetPath(Id);
+                if (Path.IsValid()) Load = Assets.GetStreamableManager().RequestAsyncLoad(Path);
+            }
+        }
+
+        if (!Load || !Load->HasLoadCompleted()) return;
+        const auto Completed = MoveTemp(Load);
+        if (const auto* Definition = Cast<URPGMountDefinition>(Completed->GetLoadedAsset()))
+        {
+            if (Definition->MountId == MountId && !Definition->Icon.IsNull())
+                Load = UAssetManager::GetStreamableManager().RequestAsyncLoad(Definition->Icon.ToSoftObjectPath());
+        }
+        else if (auto* Texture = Cast<UTexture2D>(Completed->GetLoadedAsset()))
+        {
+            Icon = FDeferredCleanupSlateBrush::CreateBrush(Texture, FVector2D(52.f, 52.f));
+            Image->SetImage(Icon->GetSlateBrush());
+            Image->SetVisibility(EVisibility::HitTestInvisible);
+            Label->SetVisibility(EVisibility::Collapsed);
+        }
+    }
+
+private:
+    TWeakObjectPtr<ARPGPlayerController> Controller;
+    FString MountId;
+    TSharedPtr<FStreamableHandle> Load;
+    TSharedPtr<FDeferredCleanupSlateBrush> Icon;
+    TSharedPtr<STextBlock> Label;
+    TSharedPtr<SImage> Image;
+};
+}
 
 TSharedRef<SWidget> URPGItemQuickSlotBar::RebuildWidget()
 {
@@ -65,6 +149,6 @@ TSharedRef<SWidget> URPGItemQuickSlotBar::RebuildWidget()
                     if (auto* PC = Controller.Get()) PC->CallQuickSlotMount();
                     return FReply::Handled();
                 })
-                [SNew(STextBlock).Text(NSLOCTEXT("RidingQuickSlot", "Call", "탈것"))]]];
+                [SNew(SRPGMountQuickSlotContent, Controller)]]];
 
 }

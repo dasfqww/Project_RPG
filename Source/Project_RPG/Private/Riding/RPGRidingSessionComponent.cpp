@@ -222,9 +222,11 @@ void URPGRidingSessionComponent::PublishOwnerState()
         {
         case ERPGRidingSelectorKind::Specific:
             OwnerState.bQuickSlotAssigned = Snapshot.OwnedMountIds.Contains(Snapshot.Shortcut.MountId);
+            if (OwnerState.bQuickSlotAssigned) OwnerState.QuickSlotMountId = Snapshot.Shortcut.MountId;
             break;
         case ERPGRidingSelectorKind::Selected:
             OwnerState.bQuickSlotAssigned = Snapshot.OwnedMountIds.Contains(Snapshot.SelectedMountId);
+            if (OwnerState.bQuickSlotAssigned) OwnerState.QuickSlotMountId = Snapshot.SelectedMountId;
             break;
         case ERPGRidingSelectorKind::RandomFavorites:
             OwnerState.bQuickSlotAssigned = !Snapshot.Favorites.IsEmpty();
