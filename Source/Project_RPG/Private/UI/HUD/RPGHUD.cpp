@@ -2,6 +2,7 @@
 
 
 #include "UI/HUD/RPGHUD.h"
+#include "Chat/RPGPlayerChatWidget.h"
 #include "UI/ActionBar/RPGActionBarHUDPresenter.h"
 #include "UI/ItemQuickSlot/RPGItemQuickSlotBar.h"
 #include "Blueprint/WidgetTree.h"
@@ -50,6 +51,16 @@ void ARPGHUD::BeginPlay()
 		&& Controller->IsLocalController() && Controller->GetLocalPlayer())
 	{
 		CombatContributionWidget = CreateWidget<URPGCombatContributionWidget>(Controller);
+		if (GetNetMode() == NM_Client)
+		{
+			WhisperWidget = CreateWidget<URPGPlayerChatWidget>(Controller);
+			if (WhisperWidget && WhisperWidget->AddToPlayerScreen(6))
+			{
+				WhisperWidget->SetPositionInViewport(FVector2D(16.f, -16.f), false);
+				WhisperWidget->SetAnchorsInViewport(FAnchors(0.f, 1.f));
+				WhisperWidget->SetAlignmentInViewport(FVector2D(0.f, 1.f));
+			}
+		}
 		if (CombatContributionWidget && !CombatContributionWidget->AddToPlayerScreen(5))
 		{
 			CombatContributionWidget->RemoveFromParent();
@@ -92,6 +103,11 @@ void ARPGHUD::EndPlay(const EEndPlayReason::Type Reason)
     PlayerHUDController.Reset();
     RemovePlayerHUD();
     RemoveActionProgressWidget();
+    if (WhisperWidget)
+    {
+        WhisperWidget->RemoveFromParent();
+        WhisperWidget = nullptr;
+    }
     if (IntroApproachGuideWidget)
     {
         IntroApproachGuideWidget->RemoveFromParent();

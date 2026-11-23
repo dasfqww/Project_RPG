@@ -14,6 +14,7 @@ using ProjectRpg.Backend.Domain;
 using ProjectRpg.Backend.Validation;
 using ProjectRpg.Backend.Shop;
 using ProjectRpg.Backend.Achievements;
+using ProjectRpg.Backend.Chat;
 
 const string migrateSchemaArgument = "--migrate-schema";
 const string validateNarrativeArgument = "--validate-narrative-catalog";
@@ -79,6 +80,7 @@ builder.Services.Configure<DungeonSettlementOptions>(
 builder.Services.Configure<SecurityTelemetryOptions>(
     builder.Configuration.GetSection(SecurityTelemetryOptions.SectionName));
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+builder.Services.AddSingleton<LobbyChat>();
 builder.Services.AddSingleton<AccessTokenService>();
 builder.Services.AddSingleton<ApiRateLimiter>();
 builder.Services.AddScoped<BearerAuthenticator>();
@@ -1263,6 +1265,7 @@ app.MapRidingApi();
 app.MapTradeApi();
 app.MapAuctionApi();
 app.MapShopApi();
+app.MapLobbyChat();
 app.MapDungeonAbandonmentApi();
 app.MapDungeonMembershipSnapshotApi();
 app.MapDungeonAdmissionApi();

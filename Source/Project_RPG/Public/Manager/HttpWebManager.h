@@ -265,6 +265,8 @@ public:
 
 	/** Pinned player/endpoint identity only, never exposes a bearer or service credential. */
 	bool GetPlayerEquipmentContext(FString& OutEndpoint, FString& OutSteamId) const;
+	FHttpRequestPtr CreatePlayerChatRequest(FGuid Character, bool bLobby, FGuid Epoch, int64 After,
+		const FString& PostBody, TFunction<void(int32, FString)> Complete);
 	/** Player-only trade HTTP. Credential refresh retains trade identity; no service-token fallback. */
 	TSharedRef<IRPGTradeTransport> CreatePlayerTradeTransport();
 	TSharedRef<IRPGAuctionTransport> CreatePlayerAuctionTransport();

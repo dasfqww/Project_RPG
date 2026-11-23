@@ -112,6 +112,7 @@ protected:
 private:
 	UPROPERTY(Transient) TObjectPtr<URPGItemQuickSlotBar> ItemQuickSlotBar;
 	UPROPERTY(Transient) TObjectPtr<UUserWidget> PlayerHUDWidget;
+	UPROPERTY(Transient) TObjectPtr<UUserWidget> WhisperWidget;
 	UPROPERTY(Transient) TObjectPtr<URPGActionBarHUDPresenter> ActionBarPresenter;
 	TWeakObjectPtr<APlayerController> PlayerHUDController;
 	TWeakObjectPtr<APawn> PlayerHUDPawn;

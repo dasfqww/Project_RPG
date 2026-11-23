@@ -1,4 +1,5 @@
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
+#include "Chat/RPGPlayerChatWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Achievements/RPGAchievementPanel.h"
 #include "Components/Button.h"
@@ -30,6 +31,8 @@
 
 void URPGOnlineLobbyWidget::BuildMenuContent(UVerticalBox& Parent)
 {
+	if (auto* Chat = CreateWidget<URPGPlayerChatWidget>(GetOwningPlayer()))
+		Parent.AddChildToVerticalBox(Chat);
 	MenuContent = WidgetTree->ConstructWidget<UVerticalBox>();
 	Parent.AddChildToVerticalBox(MenuContent);
 	auto* Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *MenuContent,
