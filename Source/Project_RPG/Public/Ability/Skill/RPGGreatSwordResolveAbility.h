@@ -2,6 +2,7 @@
 
 #include "Ability/RPGGameplayAbility.h"
 #include "GameplayEffect.h"
+#include "PlayerClass/RPGClassIdentityStats.h"
 #include "Skill/RPGClassSkillPolicy.h"
 #include "RPGGreatSwordResolveAbility.generated.h"
 
@@ -28,11 +29,14 @@ public:
 
 /** First-slice greatsword identity. Native confirmations only; no gauge/empower RPC. */
 UCLASS(NotBlueprintable)
-class PROJECT_RPG_API URPGGreatSwordResolveAbility final : public URPGGameplayAbility, public IRPGClassSkillPolicy
+class PROJECT_RPG_API URPGGreatSwordResolveAbility final : public URPGGameplayAbility,
+	public IRPGClassSkillPolicy, public IRPGClassIdentityStats
 {
 	GENERATED_BODY()
 public:
 	URPGGreatSwordResolveAbility();
+	virtual void ReadIdentityStats(const UAbilitySystemComponent& ASC, FText& OutTitle,
+		TArray<FRPGIdentityStatRow>& OutRows) const override;
 	virtual bool CanCommitClassSkill(const URPGGameplayAbility_SkillContainer& Skill) const override;
 	virtual bool CommitClassSkill(URPGGameplayAbility_SkillContainer& Skill,
 		float& OutDamageMultiplier, bool& OutSuppressHitGain) const override;

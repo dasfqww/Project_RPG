@@ -1,5 +1,6 @@
 #include "UI/Inventory/Projection/RPGInventoryProjectionWidget.h"
 #include "RPGEquipmentPortrait.h"
+#include "RPGEquipmentStatsPanel.h"
 #include "RPGInventoryArt.h"
 
 #include "Blueprint/WidgetTree.h"
@@ -349,6 +350,7 @@ void URPGInventoryProjectionWidget::NativeConstruct()
 	BindViewModel();
 	RefreshFromViewModel();
 	InitializeEquipmentPortrait();
+	if (!IsDesignTime()) RPGEquipmentStatsPanel::Attach(*this);
 }
 
 void URPGInventoryProjectionWidget::InitializeEquipmentPortrait()

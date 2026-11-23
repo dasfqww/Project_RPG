@@ -27,6 +27,12 @@
 
 namespace
 {
+	float GetResolveGainScale(const URPGAttributeSet& Stats)
+	{
+		const float Multiplier = Stats.GetIdentityGainMultiplier();
+		return FMath::IsFinite(Multiplier) ? FMath::Clamp(Multiplier, 0.f, 2.f) : 1.f;
+	}
+
 	bool Living(const AActor* Avatar, const UAbilitySystemComponent* ASC)
 	{
 		const auto* Stats = ASC ? ASC->GetSet<URPGAttributeSet>() : nullptr;
@@ -104,6 +110,28 @@ URPGGreatSwordResolveAbility::URPGGreatSwordResolveAbility()
 	SetAssetTags(Tags);
 }
 
+void URPGGreatSwordResolveAbility::ReadIdentityStats(const UAbilitySystemComponent& ASC,
+	FText& OutTitle, TArray<FRPGIdentityStatRow>& OutRows) const
+{
+	const auto* Stats = ASC.GetSet<URPGAttributeSet>();
+	if (!Stats) return;
+
+	const float Increase = GetResolveGainScale(*Stats) - 1.f;
+	FNumberFormattingOptions PercentFormat;
+	PercentFormat.SetAlwaysSign(Increase > 0.f).SetMaximumFractionalDigits(1);
+	OutTitle = NSLOCTEXT("RPGEquipmentStats", "ResolveTitle", "투지");
+	OutRows.Add({
+		NSLOCTEXT("RPGEquipmentStats", "MaxResolve", "최대 투지"),
+		FText::AsNumber(Stats->GetMaxIdentityGauge()),
+		{}
+	});
+	OutRows.Add({
+		NSLOCTEXT("RPGEquipmentStats", "ResolveGain", "투지 획득량 증가"),
+		FText::AsPercent(Increase, &PercentFormat),
+		NSLOCTEXT("RPGEquipmentStats", "ResolveGainTip", "일반 상태에서 획득하는 투지의 기본 수급량 대비 변화입니다.")
+	});
+}
+
 bool URPGGreatSwordResolveAbility::IsConfiguredFor(const AActor* Avatar)
 {
 	const auto* Growth = IsValid(Avatar) ? Avatar->FindComponentByClass<URPGPlayerSkillComponent>() : nullptr;
@@ -148,8 +176,7 @@ bool URPGGreatSwordResolveAbility::ApplyGaugeDelta(UGameplayAbility& Ability, fl
 	if (Delta < 0.f && Stats->GetCurrentIdentityGauge() < -Delta) return false;
 	if (Delta > 0.f)
 	{
-		const float Multiplier = Stats->GetIdentityGainMultiplier();
-		const float GainScale = FMath::IsFinite(Multiplier) ? FMath::Clamp(Multiplier, 0.f, 2.f) : 1.f;
+		const float GainScale = GetResolveGainScale(*Stats);
 		Delta = FMath::Min(Delta * GainScale, FMath::Max(0.f, 100.f - Stats->GetCurrentIdentityGauge()));
 	}
 	if (Delta == 0.f) return true;
