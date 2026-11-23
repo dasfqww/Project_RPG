@@ -169,11 +169,13 @@ bool FRPGContributionQueryTest::RunTest(const FString&)
 	TestTrue(TEXT("A second allowed hit really deals damage"), Enemy->Attributes()->GetCurrentHealth() < FirstHP);
 	TestEqual(TEXT("Multi-hit damage cannot duplicate one activation's contribution"), Meter->GetContributionState().Stagger, 25.f);
 	F.Ability->Finish();
+	F.Source->Attributes()->SetStaggerContributionBonusPercent(20.f);
 	if (!F.Start(*this, Runtime, RPGGameplayTags::Player_Event_AOE)) return false;
 	F.Event(RPGGameplayTags::Player_Event_AOE, Enemy);
 	TestTrue(TEXT("A fresh activation completes the stagger threshold"), Meter->GetContributionState().bStaggerComplete);
 	TestTrue(TEXT("Part completion is independent and clamped"), Meter->GetContributionState().bPartBroken);
-	TestEqual(TEXT("The second target has not reached its larger threshold"), OtherMeter->GetContributionState().Stagger, 50.f);
+	TestEqual(TEXT("The source bonus multiplies the skill's refined stagger"), OtherMeter->GetContributionState().Stagger, 55.f);
+	TestEqual(TEXT("The source bonus leaves part break at the original amount"), OtherMeter->GetContributionState().PartBreak, 40.f);
 
 	auto* PartySource = F.Pawn(FVector::ZeroVector, 1);
 	if (!PartySource) return false;
@@ -185,7 +187,7 @@ bool FRPGContributionQueryTest::RunTest(const FString&)
 	if (!TestTrue(TEXT("Another party source starts its own ability"), PartySource->ASC()->TryActivateAbility(Handle))) return false;
 	FGameplayEventData Event;
 	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(PartySource, RPGGameplayTags::Player_Event_AOE, Event);
-	TestEqual(TEXT("Contributions from another source accumulate on the same receiver"), OtherMeter->GetContributionState().Stagger, 75.f);
+	TestEqual(TEXT("Contributions from another source accumulate using its own stats"), OtherMeter->GetContributionState().Stagger, 80.f);
 	TestEqual(TEXT("Completed meters never overflow"), Meter->GetContributionState().Stagger, 50.f);
 	const uint32 Revision = Meter->GetContributionState().Revision;
 	Enemy->SetRole(ROLE_SimulatedProxy);

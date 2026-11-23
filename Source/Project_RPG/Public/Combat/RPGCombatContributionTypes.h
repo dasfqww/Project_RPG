@@ -8,14 +8,16 @@ USTRUCT(BlueprintType)
 struct PROJECT_RPG_API FRPGCombatContributionAmounts
 {
 	GENERATED_BODY()
+	static constexpr float MaximumUnitsPerHit = 1000.f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0", ClampMax="1000"))
 	float Stagger = 0.f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0", ClampMax="1000"))
 	float PartBreak = 0.f;
 	bool IsValid() const
 	{
-		return FMath::IsFinite(Stagger) && Stagger >= 0.f && Stagger <= 1000.f
-			&& FMath::IsFinite(PartBreak) && PartBreak >= 0.f && PartBreak <= 1000.f;
+		return FMath::IsFinite(Stagger) && Stagger >= 0.f && Stagger <= MaximumUnitsPerHit
+			&& FMath::IsFinite(PartBreak) && PartBreak >= 0.f && PartBreak <= MaximumUnitsPerHit;
 	}
 };
 

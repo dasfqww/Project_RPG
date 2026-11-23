@@ -45,6 +45,7 @@ URPGAttributeSet::URPGAttributeSet()
 	InitActiveEffectDuration(0.f);
 	InitCriticalChance(0.3f);
 	InitCriticalDamage(2.f);
+	InitStaggerContributionBonusPercent(0.f);
 }
 
 void URPGAttributeSet::OnAttributeAggregatorCreated(const FGameplayAttribute& Attribute, FAggregator* Aggregator) const
@@ -81,6 +82,7 @@ void URPGAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, TakeDamage, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, CriticalChance, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, CriticalDamage, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, StaggerContributionBonusPercent, COND_None, REPNOTIFY_Always);
 }
 
 void URPGAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
@@ -427,4 +429,9 @@ void URPGAttributeSet::OnRep_CriticalChance(const FGameplayAttributeData& OldVal
 void URPGAttributeSet::OnRep_CriticalDamage(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(URPGAttributeSet, CriticalDamage, OldValue);
+}
+
+void URPGAttributeSet::OnRep_StaggerContributionBonusPercent(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(URPGAttributeSet, StaggerContributionBonusPercent, OldValue);
 }

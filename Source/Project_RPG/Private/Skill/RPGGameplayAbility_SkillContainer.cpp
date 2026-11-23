@@ -1,5 +1,6 @@
 #include "Skill/RPGGameplayAbility_SkillContainer.h"
 #include "Skill/RPGApprovedSkillHitEvent.h"
+#include "Attribute/RPGAttributeSet.h"
 #include "Component/Equipment/RPGAuthoritativeEquipmentComponent.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Skill/RPGClassSkillPolicy.h"
@@ -1364,6 +1365,17 @@ bool URPGGameplayAbility_SkillContainer::ExecuteAuthorizedSkillDamageInternal(
 	}
 	const bool bDeliverContributions = (ActiveSkillSpec.ContributionHitSection.IsNone() || bAuthoredFinisher)
 		&& (Contributions.Stagger > 0.f || Contributions.PartBreak > 0.f);
+	if (bDeliverContributions && Contributions.Stagger > 0.f)
+	{
+		const UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
+		const URPGAttributeSet* Attributes = SourceASC ? SourceASC->GetSet<URPGAttributeSet>() : nullptr;
+		const float Bonus = Attributes ? Attributes->GetStaggerContributionBonusPercent() : 0.f;
+		if (FMath::IsFinite(Bonus) && Bonus > 0.f)
+		{
+			const float Scale = 1.f + FMath::Min(Bonus, 100.f) / 100.f;
+			Contributions.Stagger = FMath::Min(Contributions.Stagger * Scale, FRPGCombatContributionAmounts::MaximumUnitsPerHit);
+		}
+	}
 	FText LastError;
 	for (const FRPGHitQueryResult& ServerHit : ServerHits)
 	{

@@ -204,6 +204,14 @@ public:
 	UFUNCTION()
 	void OnRep_CriticalDamage(const FGameplayAttributeData& OldValue);
 
+	/** Percentage points of additional stagger contribution on an approved skill hit. */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_StaggerContributionBonusPercent, Category = "Combat")
+	FGameplayAttributeData StaggerContributionBonusPercent;
+	ATTRIBUTE_ACCESSORS(URPGAttributeSet, StaggerContributionBonusPercent);
+
+	UFUNCTION()
+	void OnRep_StaggerContributionBonusPercent(const FGameplayAttributeData& OldValue);
+
 private:
 	TWeakInterfacePtr<IPawnUIInterface> CachedPawnUIInterface;
 };
