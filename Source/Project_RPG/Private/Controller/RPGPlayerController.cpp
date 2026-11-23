@@ -2,6 +2,7 @@
 
 
 #include "Controller/RPGPlayerController.h"
+#include "RegionTravel/RPGRegionTravelComponent.h"
 #include "Item/Loot/RPGLootInteractionComponent.h"
 #include "Controller/RPGInputMappingClone.h"
 #include "Online/RPGDungeonSessionSubsystem.h"
@@ -90,6 +91,7 @@
 ARPGPlayerController::ARPGPlayerController()
 {
 	InputBindingTransactions = MakeShared<FRPGInputBindingTransactions>(*this);
+	CreateDefaultSubobject<URPGRegionTravelComponent>(TEXT("RegionTravel"));
 	InteractionProgress = CreateDefaultSubobject<URPGInteractionProgressComponent>(TEXT("InteractionProgress"));
 	CreateDefaultSubobject<URPGLootInteractionComponent>(TEXT("LootInteraction"));
 	CreateDefaultSubobject<URPGRidingLocalInteractionComponent>(TEXT("RidingLocalInteraction"));
