@@ -96,6 +96,7 @@ struct PROJECT_RPG_API FRPGRidingOwnerState
 {
     GENERATED_BODY()
     UPROPERTY(BlueprintReadOnly) bool bReady = false;
+    UPROPERTY(BlueprintReadOnly) bool bQuickSlotAssigned = false;
     UPROPERTY(BlueprintReadOnly) double DashEndServerSeconds = 0;
     UPROPERTY(BlueprintReadOnly) double EmoteEndServerSeconds = 0;
     UPROPERTY(BlueprintReadOnly) double CombatEndServerSeconds = 0;

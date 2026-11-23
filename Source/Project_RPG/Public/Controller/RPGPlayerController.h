@@ -126,7 +126,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	FKey GetCurrentKeyForTag(FGameplayTag InTag) const;
 	/** Fixed gameplay toggle. Returns an invalid key while an active Enhanced Input mapping owns it. */
-	FKey GetRidingToggleKey() const;
+	bool CanCallQuickSlotMount() const;
+	void CallQuickSlotMount();
 	const UDataAsset_InputConfig* GetInputConfig() const { return InputConfigDataAsset; }
 	virtual const UDataAsset_InputConfig* GetSourceInputConfig() const override
 	{
@@ -234,7 +235,6 @@ protected:
 	
 	// 퀵슬롯 입력 처리
 	UFUNCTION()
-	void ToggleRiding();
 	void PressSkillSlot(int32 SlotIndex);
 	void ReleaseSkillSlot(int32 SlotIndex);
 

@@ -102,11 +102,6 @@ public:
             const auto State = C->GetRidingState();
             View.bAvailable = RPGRiding::IsCanonical(State) && State.Mode == ERPGRidingMode::Mounted
                 && Epoch.IsValid() && State.Key.RiderEpoch == Epoch;
-            if (const auto* RPGController = Cast<ARPGPlayerController>(PC))
-            {
-                const FKey Key = RPGController->GetRidingToggleKey();
-                if (Key.IsValid()) View.KeyLabel = Key.GetDisplayName(false);
-            }
         }
         if (!View.bAvailable) View.UnavailableReason = LOCTEXT("StateChanged", "탑승 상태를 다시 확인 중입니다.");
         return View;

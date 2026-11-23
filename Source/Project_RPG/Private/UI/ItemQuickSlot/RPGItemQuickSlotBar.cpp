@@ -1,5 +1,6 @@
 #include "UI/ItemQuickSlot/RPGItemQuickSlotBar.h"
 #include "UI/RPGQuickSlotWidget.h"
+#include "Controller/RPGPlayerController.h"
 #include "Component/UI/QuickSlotComponent.h"
 #include "GameFramework/Pawn.h"
 #include "Widgets/SBoxPanel.h"
@@ -30,6 +31,7 @@ TSharedRef<SWidget> URPGItemQuickSlotBar::RebuildWidget()
                 [Cells[Row * 4 + Column]->TakeWidget()];
         Grid->AddSlot().AutoHeight().Padding(0.f, Row ? 4.f : 0.f, 0.f, 0.f)[Line];
     }
+    const TWeakObjectPtr<ARPGPlayerController> Controller(Cast<ARPGPlayerController>(GetOwningPlayer()));
     return SNew(SHorizontalBox)
         + SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 12.f, 0.f)
         [SNew(SBox).WidthOverride(64.f)
@@ -52,5 +54,17 @@ TSharedRef<SWidget> URPGItemQuickSlotBar::RebuildWidget()
                     [SNew(STextBlock).Font(FCoreStyle::GetDefaultFontStyle("Regular", 9)).MinDesiredWidth(60.f).Justification(ETextJustify::Center)
                         .Text_Lambda([Slots] { return FText::Format(NSLOCTEXT("ItemQuickSlots", "Threshold", "HP {0}%"),
                             FText::AsNumber(Slots.IsValid() ? Slots->GetPotionHealthThreshold() : 50)); })]]]]
-        + SHorizontalBox::Slot().AutoWidth()[Grid];
+        + SHorizontalBox::Slot().AutoWidth()[Grid]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(8.f, 0.f, 0.f, 0.f)
+        [SNew(SBox).WidthOverride(64.f).HeightOverride(64.f)
+            [SNew(SButton).IsFocusable(false).HAlign(HAlign_Center).VAlign(VAlign_Center)
+                .IsEnabled_Lambda([Controller] { const auto* PC = Controller.Get(); return PC && PC->CanCallQuickSlotMount(); })
+                .ToolTipText(NSLOCTEXT("RidingQuickSlot", "CallHelp", "탈것 보관함에서 등록한 탈것을 호출합니다."))
+                .OnClicked_Lambda([Controller]
+                {
+                    if (auto* PC = Controller.Get()) PC->CallQuickSlotMount();
+                    return FReply::Handled();
+                })
+                [SNew(STextBlock).Text(NSLOCTEXT("RidingQuickSlot", "Call", "탈것"))]]];
+
 }

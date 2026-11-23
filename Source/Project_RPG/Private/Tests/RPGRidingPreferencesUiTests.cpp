@@ -18,6 +18,7 @@
 struct FRPGRidingPreferencesUiTestAccess
 {
     static URPGRidingPreferencesWidget* Panel(URPGRidingCollectionWidget& W) { return W.PreferencesPanel; }
+    static void Register(URPGRidingCollectionWidget& W) { W.QuickSlotButton->OnClicked.Broadcast(); }
     static void Load(URPGRidingPreferencesWidget& W) { W.ReloadButton->OnClicked.Broadcast(); }
     static void Selected(URPGRidingPreferencesWidget& W, int32 I) { W.BrowseMount(W.MountIds[I-1]); W.DefaultButton->OnClicked.Broadcast(); }
     static void Favorite(URPGRidingPreferencesWidget& W, int32 I) { W.BrowseMount(W.MountIds[I]); W.FavoriteButton->OnClicked.Broadcast(); }
@@ -92,7 +93,18 @@ bool FRidingPreferencesUiConsent::RunTest(const FString&)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingPreferencesUiModes,"ProjectRPG.Riding.PreferencesUI.Modes",Flags)
 bool FRidingPreferencesUiModes::RunTest(const FString&)
 {
-    if(!Ready(*this))return false;FOwner F;auto O=Object(F.Body);auto Mounts=O->GetArrayField(TEXT("mounts"));auto Wolf=Object(Json(Mounts[0]->AsObject()));Wolf->SetStringField(TEXT("mountId"),TEXT("wolf"));Wolf->SetStringField(TEXT("sourceRequestId"),FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens));Mounts.Add(MakeShared<FJsonValueObject>(Wolf));O->SetArrayField(TEXT("mounts"),Mounts);F.Body=Json(O);F.Load();
+    if(!Ready(*this))return false;
+    FOwner Slot;
+    Slot.Load();
+    A::Register(*Slot.Parent);
+    TestTrue(TEXT("Register opens review for the clicked mount"), Slot.Client->GetView().bCanConfirm);
+    TestEqual(TEXT("Review sends nothing until confirmed"), Slot.WT->Writes, 0);
+    A::Confirm(*Slot.Widget);
+    const auto Command = Object(Slot.WT->Body);
+    TestTrue(TEXT("Slot saves the existing character shortcut as Specific"),
+        Command && Command->GetObjectField(TEXT("shortcut"))->GetStringField(TEXT("mode")) == TEXT("Specific")
+        && Command->GetObjectField(TEXT("shortcut"))->GetStringField(TEXT("mountId")) == TEXT("horse"));
+    FOwner F;auto O=Object(F.Body);auto Mounts=O->GetArrayField(TEXT("mounts"));auto Wolf=Object(Json(Mounts[0]->AsObject()));Wolf->SetStringField(TEXT("mountId"),TEXT("wolf"));Wolf->SetStringField(TEXT("sourceRequestId"),FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens));Mounts.Add(MakeShared<FJsonValueObject>(Wolf));O->SetArrayField(TEXT("mounts"),Mounts);F.Body=Json(O);F.Load();
     A::Selected(*F.Widget,2);A::Mode(*F.Widget,1);TestFalse(TEXT("Specific mode requires explicit owned target"),F.Client->GetView().bCanReview);A::Specific(*F.Widget,2);A::Favorite(*F.Widget,0);A::Favorite(*F.Widget,1);A::Review(*F.Widget);
     TestTrue(TEXT("Specific target is named"),A::Text(*F.Widget).Contains(TEXT("회색 늑대")));const auto Token=F.Client->GetView().Review;A::Mode(*F.Widget,0);TestFalse(TEXT("Editing invalidates old consent"),F.Client->Confirm(Token));
     TestTrue(TEXT("Selected mode clears specific reference"),F.Client->GetView().Draft.Shortcut.MountId.IsEmpty());A::Reset(*F.Widget);TestFalse(TEXT("Reset is a local draft operation"),F.Client->GetView().bDirty);TestEqual(TEXT("Mode changes/reset send nothing"),F.WT->Writes,0);

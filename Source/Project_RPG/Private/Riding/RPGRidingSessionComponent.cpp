@@ -215,6 +215,24 @@ void URPGRidingSessionComponent::PublishOwnerState()
     const double WorldNow = GetWorld() ? GetWorld()->GetTimeSeconds() : 0;
     OwnerState = {};
     OwnerState.bReady = IsContextCurrent() && Runtime->GetStatus() == ERPGRidingSessionStatus::Ready;
+    FRPGRidingAdmissionSnapshot Snapshot;
+    if (OwnerState.bReady && Runtime->CopySnapshot(Snapshot))
+    {
+        switch (Snapshot.Shortcut.Kind)
+        {
+        case ERPGRidingSelectorKind::Specific:
+            OwnerState.bQuickSlotAssigned = Snapshot.OwnedMountIds.Contains(Snapshot.Shortcut.MountId);
+            break;
+        case ERPGRidingSelectorKind::Selected:
+            OwnerState.bQuickSlotAssigned = Snapshot.OwnedMountIds.Contains(Snapshot.SelectedMountId);
+            break;
+        case ERPGRidingSelectorKind::RandomFavorites:
+            OwnerState.bQuickSlotAssigned = !Snapshot.Favorites.IsEmpty();
+            break;
+        default:
+            break;
+        }
+    }
     if (Timing.bValid)
     {
         OwnerState.DashEndServerSeconds = WorldNow + Timing.DashRemaining;

@@ -53,10 +53,12 @@ private:
     friend class URPGRidingBrowseButton;
     void Browse(const FString& MountId);
     UFUNCTION() void MountSelected();
+    UFUNCTION() void RegisterQuickSlot();
     UFUNCTION() void BackToCollection();
     UPROPERTY(Transient) TObjectPtr<class UWidgetSwitcher> Pages;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> PreferencesMountName;
     UPROPERTY(Transient) TObjectPtr<UButton> MountButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> QuickSlotButton;
     FText MountFeedback;
     TFunction<bool(const FRPGRidingSelector&)> MountAction;
     UPROPERTY(Transient) TObjectPtr<UButton> BackButton;

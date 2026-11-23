@@ -6,6 +6,8 @@
 #include "Riding/RPGGameplayAbility_RidingDash.h"
 #include "UI/ActionBar/RPGActionBarContext.h"
 #include "UI/ActionBar/RPGActionBarWidget.h"
+#include "UI/ItemQuickSlot/RPGItemQuickSlotBar.h"
+#include "Widgets/Input/SButton.h"
 #include "Component/RPGInputComponent.h"
 #include "Component/UI/QuickSlotComponent.h"
 #include "Component/UI/RPGSkillWindowComponent.h"
@@ -146,29 +148,27 @@ bool FRidingToggleKeyInput::RunTest(const FString&)
     if (!TestTrue(TEXT("Local controller and real physics fixture"), F.Initialize())) return false;
 
     F.SendKey(EKeys::F9, IE_Pressed);
-    if (!TestTrue(TEXT("F9 mounts through the controller input stack"), F.Context->HasOverride())) return false;
-    TestEqual(TEXT("Dismount slot shows the toggle key"), F.Context->ReadAction(TEXT("Dismount")).KeyLabel.ToString(),
-        EKeys::F9.GetDisplayName(false).ToString());
-    F.SendKey(EKeys::F9, IE_Repeat);
-    TestTrue(TEXT("Held key does not dismount"), F.Context->HasOverride());
+    TestFalse(TEXT("F9 no longer requests a mount"), F.Context->HasOverride());
+    F.SendKey(EKeys::F9, IE_Released);
+    if (!TestTrue(TEXT("Saved mount is callable from the slot"), F.PC->CanCallQuickSlotMount())) return false;
+    TStrongObjectPtr<URPGItemQuickSlotBar> Bar(CreateWidget<URPGItemQuickSlotBar>(F.PC));
+    if (!TestTrue(TEXT("HUD bar created"), Bar.IsValid())) return false;
+    auto Grid = Bar->RebuildWidget();
+    if (!TestEqual(TEXT("Potion, consumables, and mount"), Grid->GetChildren()->Num(), 3)) return false;
+    auto Frame = Grid->GetChildren()->GetChildAt(2);
+    auto Button = StaticCastSharedRef<SButton>(Frame->GetChildren()->GetChildAt(0));
+    Button->SimulateClick();
+    if (!TestTrue(TEXT("Quick-slot call uses the real server mount path"), F.Context->HasOverride())) return false;
+    TestTrue(TEXT("Dismount slot has no fixed keyboard label"), F.Context->ReadAction(TEXT("Dismount")).KeyLabel.IsEmpty());
+    F.SendKey(EKeys::F9, IE_Pressed);
+    TestTrue(TEXT("F9 no longer dismounts"), F.Context->HasOverride());
     F.SendKey(EKeys::F9, IE_Released);
     F.Context->PressSlot(3);
     TestTrue(TEXT("Old skill binding no longer dismounts"), F.Context->HasOverride());
     F.Context->ReleaseSlot(3);
 
-    auto* WindowComponent = F.PC->FindComponentByClass<URPGSkillWindowComponent>();
-    TStrongObjectPtr<URPGActionBarWidget> Window(CreateWidget<URPGActionBarWidget>(F.PC));
-    if (!TestTrue(TEXT("Actual window boundary"), WindowComponent && Window.IsValid())) return false;
-    const auto Windows = WindowComponent->GetWindowInputState();
-    Windows->BeginWindow(*F.PC, *Window.Get());
-    F.SendKey(EKeys::F9, IE_Pressed);
-    TestTrue(TEXT("Open window blocks the toggle"), F.Context->HasOverride());
-    F.SendKey(EKeys::F9, IE_Released);
-    Windows->EndWindow(*Window.Get());
-
-    F.SendKey(EKeys::F9, IE_Pressed);
-    TestFalse(TEXT("Fresh F9 press dismounts and restores the class bar"), F.Context->HasOverride());
-    F.SendKey(EKeys::F9, IE_Released);
+    F.Context->PressAction(TEXT("Riding"), TEXT("Dismount"), F.Context->GetRevision());
+    TestFalse(TEXT("Dismount click restores the class bar"), F.Context->HasOverride());
     return true;
 }
 

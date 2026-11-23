@@ -191,6 +191,9 @@ TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
         RosterScroll->AddChild(Rows);
         ReloadButton = Button(TEXT("RidingCollectionReload"), NSLOCTEXT("RidingCollection","Reload","보유 탈것 불러오기"));
 
+        QuickSlotButton = Button(TEXT("RidingCollectionRegisterQuickSlot"),
+            NSLOCTEXT("RidingCollection", "RegisterQuickSlot", "퀵슬롯 등록"));
+        QuickSlotButton->OnClicked.AddUniqueDynamic(this, &ThisClass::RegisterQuickSlot);
         Status = Label(WidgetTree, FText::GetEmpty(), 11);
         Status->SetAutoWrapText(true);
         List->AddChildToVerticalBox(Status)->SetPadding(FMargin(0, 4, 0, 0));
@@ -329,9 +332,17 @@ void URPGRidingCollectionWidget::RefreshView()
         Settings->SetText(FText::Format(NSLOCTEXT("RidingCollection", "Settings", "선택 탈것: {0}\n빠른 호출: {1}"), Name(C->SelectedMountId), Shortcut));
         Key += LexToString(C->RosterRevision) + TEXT("/") + LexToString(C->PreferencesRevision);
     }
+    const auto Preferences = PreferencesOwner.Pin();
+    const auto PreferencesView = Preferences ? Preferences->GetView() : FRPGRidingPreferencesView{};
+    const bool bQuickSlotRecovery = PreferencesView.bCanRecover || PreferencesView.bCanRetry
+        || PreferencesView.bCanStorage || PreferencesView.bCanRefreshAssets;
     const FString Filter = Search->GetText().ToString().TrimStartAndEnd(); const bool bFavorites = FavoritesOnly->IsChecked();
     Key += TEXT("/") + Filter + (bFavorites ? TEXT("/favorite") : TEXT("/all"));
-    if (Key == RowsKey) return; RowsKey = Key; Rows->ClearChildren();
+    if (Key == RowsKey)
+    {
+        QuickSlotButton->SetIsEnabled(bQuickSlotRecovery || (PreferencesView.bCanEdit && !BrowsedMount.IsEmpty()));
+        return;
+    } RowsKey = Key; Rows->ClearChildren();
     TArray<FString> Visible;
     if (C) for (const auto& M : C->Mounts)
     {
@@ -346,6 +357,7 @@ void URPGRidingCollectionWidget::RefreshView()
             Visible.Contains(C->SelectedMountId) ? C->SelectedMountId : Visible[0];
     }
     MountButton->SetIsEnabled(!BrowsedMount.IsEmpty());
+    QuickSlotButton->SetIsEnabled(bQuickSlotRecovery || (PreferencesView.bCanEdit && !BrowsedMount.IsEmpty()));
     PreferencesMountName->SetText(Names.FindRef(BrowsedMount));
     PreferencesPanel->BrowseMount(BrowsedMount);
     for (const auto& Id : Visible)
@@ -428,6 +440,21 @@ void URPGRidingCollectionWidget::MountSelected()
     MountFeedback = MountAction && MountAction(Selector) ? FText::GetEmpty()
         : NSLOCTEXT("RidingCollection", "MountUnavailable", "현재 장소에서는 탈것에 탑승할 수 없습니다.");
     RefreshView();
+}
+
+void URPGRidingCollectionWidget::RegisterQuickSlot()
+{
+    const auto Preferences = PreferencesOwner.Pin();
+    if (bClosing || !Preferences) return;
+    const auto View = Preferences->GetView();
+    if (View.bCanRecover || View.bCanRetry || View.bCanStorage || View.bCanRefreshAssets)
+    {
+        OpenPreferences();
+        return;
+    }
+    if (BrowsedMount.IsEmpty() || !Preferences->AssignQuickSlot(View.Snapshot, BrowsedMount)) return;
+    Preferences->Review(View.Snapshot);
+    OpenPreferences();
 }
 
 void URPGRidingCollectionWidget::OpenRegistration()
