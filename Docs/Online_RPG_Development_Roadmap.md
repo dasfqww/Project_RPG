@@ -1005,6 +1005,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| 탈것 샘플 DA / mount-sample-data-24 | 말·늑대·사슴의 기본 데이터와 썸네일 | Content/Blueprints/Riding/Samples 에셋 6개, 탈것 코드 계약·본인 행 | UE 5.8 작성·독립 재로드 종료 0, Mount Primary Asset 목록·필드·아이콘 3종 확인. 모델과 모션 필드는 작성용 초안. 임시 1972240 bytes 정리. Saved/BuildChecks/MountSampleData24 | main index/ref 및 origin/main 순차 게시. 원격 일치 시 예약 해제 |
 | 탈것 퀵슬롯 / riding-quick-slot-23 | 보관함 등록·HUD 슬롯 호출·고정 F9 해제 | Riding CollectionWidget·PreferencesClient·SessionComponent·Types, Controller, ItemQuickSlotBar, RidingActionBarSubsystem, 직접 검사·계약 문서·본인 행 | UE 5.8 Editor 빌드 및 사설 native 25건 성공. 보관함 검토·저장, HUD 버튼의 서버 탑승 경로, F9 무동작과 내리기 확인. 임시 72,758,565 bytes와 정션 37개 정리. Saved/BuildChecks/RidingQuickSlot23 | 검증 자원 해제. 본인 변경만 main index/ref 및 origin/main 순차 게시. 원격 일치 시 예약 해제 |
 | 탈것 보관함 탑승 버튼 / riding-library-footer-23 | 하단 퀵슬롯 안내·선택 탈것 탑승·닫기 | 보관함 h/cpp·직접 UI 검사·로비 탑승 연결·탈것 코드 계약·본인 행 | UE 5.8 Editor 빌드와 native 23건 성공. 예시 창에서 하단 렌더 확인. 격리 검사 임시 3,006,979,887 bytes 정리, 사용자 창 사본은 종료 시 정리. 실제 로비 탈것 탑승은 라이더 권한과 콘텐츠가 필요. Saved/BuildChecks/RidingLibraryFooter23 | 공유 빌드 해제. main index/ref 및 origin/main에 본인 6경로 순차 게시 예약. 원격 일치 시 게시 예약 해제 |
 | 탈것 보관함 / riding-library-23 | 단일 목록 및 별도 설정·등록 화면 | UI/Riding 위젯·Slate/Riding·직접 UI 검사·탈것 코드 계약·본인 행 | UE 5.8 Editor 빌드 성공, 보관함·설정·등록 native 23건 성공, D3D12 목록 7종과 행 선택 확인. 재실행 창은 종료 시 사본 자동 정리. Saved/BuildChecks/RidingLibrary23 | 본인 변경만 main index/ref와 origin/main 순차 게시 예약. 원격 일치 시 게시 예약 해제 |
