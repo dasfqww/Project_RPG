@@ -146,7 +146,12 @@ bool URPGGreatSwordResolveAbility::ApplyGaugeDelta(UGameplayAbility& Ability, fl
 	if (!IsValid(Avatar) || !Avatar->HasAuthority() || !Living(Avatar, ASC) || !Stats || !FMath::IsFinite(Delta) || !FMath::IsFinite(Stats->GetCurrentIdentityGauge())
 		|| !FMath::IsNearlyEqual(Stats->GetMaxIdentityGauge(), 100.f)) return false;
 	if (Delta < 0.f && Stats->GetCurrentIdentityGauge() < -Delta) return false;
-	if (Delta > 0.f) Delta = FMath::Clamp(Delta, 0.f, FMath::Max(0.f, 100.f - Stats->GetCurrentIdentityGauge()));
+	if (Delta > 0.f)
+	{
+		const float Multiplier = Stats->GetIdentityGainMultiplier();
+		const float GainScale = FMath::IsFinite(Multiplier) ? FMath::Clamp(Multiplier, 0.f, 2.f) : 1.f;
+		Delta = FMath::Min(Delta * GainScale, FMath::Max(0.f, 100.f - Stats->GetCurrentIdentityGauge()));
+	}
 	if (Delta == 0.f) return true;
 	FGameplayEffectContextHandle Context = ASC->MakeEffectContext();
 	Context.SetAbility(&Ability);

@@ -68,6 +68,7 @@ bool FRPGGreatSwordBerserkTest::RunTest(const FString&)
     const auto* IdentitySpec = ASC->FindAbilitySpecFromClass(URPGGreatSwordResolveAbility::StaticClass());
     if (!TestNotNull(TEXT("Identity granted"), IdentitySpec)) return false;
     const auto IdentityHandle = IdentitySpec->Handle;
+    ASC->SetNumericAttributeBase(URPGAttributeSet::GetIdentityGainMultiplierAttribute(), 1.5f);
     ASC->SetNumericAttributeBase(URPGAttributeSet::GetCurrentIdentityGaugeAttribute(), 100.f);
     TestFalse(TEXT("No equipped rage skill rejects entry"), ASC->TryActivateAbility(IdentityHandle));
     if (!TestTrue(TEXT("Register charge and normal skill"), Slots->InitializeSkillSlotsFromRecord(Generation,
@@ -122,6 +123,19 @@ bool FRPGGreatSwordBerserkTest::RunTest(const FString&)
     TestTrue(TEXT("Last cast forbids gain"), Ability->SuppressesResolveGain());
     CastChecked<IRPGClassSkillPolicy>(Ability->ActiveClassSkillPolicy)->OnClassSkillHitConfirmed(*Ability);
     TestEqual(TEXT("Late hit cannot replenish final cast"), ASC->GetNumericAttribute(URPGAttributeSet::GetCurrentIdentityGaugeAttribute()),0.f);
+    ASC->CancelAbilityHandle(ChargeSpec->Handle);
+    Slots->EndUseSkillSlot(0);
+    for (const auto Cooldown : Cooldowns(Charge)) ASC->RemoveActiveGameplayEffect(Cooldown);
+    for (int i=0;i<6;++i) { ++GFrameCounter; World->Tick(LEVELTICK_All,1.f/60.f); }
+    Slots->BeginUseSkillSlot(0);
+    if (!TestTrue(TEXT("Ordinary charge starts after berserk"), Ability->IsActive())) return false;
+    CastChecked<IRPGClassSkillPolicy>(Ability->ActiveClassSkillPolicy)->OnClassSkillHitConfirmed(*Ability);
+    TestEqual(TEXT("Ordinary confirmed hit applies the identity gain multiplier"),
+        ASC->GetNumericAttribute(URPGAttributeSet::GetCurrentIdentityGaugeAttribute()), 30.f);
+    ASC->SetNumericAttributeBase(URPGAttributeSet::GetCurrentIdentityGaugeAttribute(), 90.f);
+    CastChecked<IRPGClassSkillPolicy>(Ability->ActiveClassSkillPolicy)->OnClassSkillHitConfirmed(*Ability);
+    TestEqual(TEXT("Scaled gain stops at the gauge maximum"),
+        ASC->GetNumericAttribute(URPGAttributeSet::GetCurrentIdentityGaugeAttribute()), 100.f);
     ASC->CancelAbilityHandle(ChargeSpec->Handle);
     Slots->EndUseSkillSlot(0);
     ASC->SetNumericAttributeBase(URPGAttributeSet::GetCurrentIdentityGaugeAttribute(),100.f);
