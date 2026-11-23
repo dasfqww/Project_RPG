@@ -1,6 +1,7 @@
 #include "Ability/Player/RPGGameplayAbility_Equipment.h"
 
-#include "Attribute/RPGAttributeSet.h"
+#include "Attribute/RPGPlayerSpeed.h"
+#include "Character/RPGPlayer.h"
 #include "Component/Combat/PawnCombatComponent.h"
 #include "Component/Equipment/RPGAuthoritativeEquipmentComponent.h"
 #include "Item/Weapon/RPGWeaponBase.h"
@@ -88,8 +89,11 @@ void URPGGameplayAbility_Equipment::ActivateAbility(const FGameplayAbilitySpecHa
 	{
 		if (const URPGAttributeSet* Attributes = ActorInfo->AbilitySystemComponent->GetSet<URPGAttributeSet>())
 		{
-			SnapshottedAttackRate = FMath::Max(0.f, DefaultAttackRate *
-				(1.f + Attributes->GetAttackSpeedPercent() / 100.f));
+			const AActor* Avatar = ActorInfo->AvatarActor.Get();
+			const float Scale = Avatar && Avatar->IsA<ARPGPlayer>()
+				? RPGPlayerSpeed::AttackScale(*Attributes)
+				: 1.f + Attributes->GetAttackSpeedPercent() / 100.f;
+			SnapshottedAttackRate = FMath::Max(0.f, DefaultAttackRate * Scale);
 		}
 	}
 	// Blueprint activation sees the current invocation's snapshots, never the previous invocation.

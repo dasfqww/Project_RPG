@@ -4,6 +4,7 @@
 #include "AbilitySystemComponent.h"
 #include "Algo/Compare.h"
 #include "Attribute/RPGAttributeSet.h"
+#include "Attribute/RPGPlayerSpeed.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Character/RPGPlayer.h"
@@ -44,13 +45,6 @@ namespace
 		FNumberFormattingOptions Format;
 		Format.SetMaximumFractionalDigits(2);
 		return FMath::IsFinite(Fraction) ? FText::AsPercent(Fraction, &Format) : LOCTEXT("Unavailable", "—");
-	}
-
-	FText Multiplier(float Value)
-	{
-		return FMath::IsFinite(Value)
-			? FText::Format(LOCTEXT("Multiplier", "{0}배"), Number(Value))
-			: LOCTEXT("Unavailable", "—");
 	}
 
 	class SRPGEquipmentStats final : public SCompoundWidget
@@ -148,8 +142,8 @@ namespace
 					Add(LOCTEXT("Attack", "공격력"), Number(Attributes->GetAttack()));
 					Add(LOCTEXT("CritChance", "치명타 확률"), Percent(FMath::Clamp(Attributes->GetCriticalChance(), 0.f, 1.f)));
 					Add(LOCTEXT("CritDamage", "치명타 피해"), Percent(Attributes->GetCriticalDamage()));
-					Add(LOCTEXT("AttackRate", "공격 속도 배율"), Multiplier(Attributes->GetAttackSpeed()));
-					Add(LOCTEXT("EquipmentAttackRate", "무기 공격 속도 보정"), Percent(Attributes->GetAttackSpeedPercent() / 100.f));
+					Add(LOCTEXT("AttackRate", "공격 속도"), Percent(RPGPlayerSpeed::AttackScale(*Attributes)),
+						LOCTEXT("AttackRateTip", "기본 속도를 100%로 표시합니다. 최대 140%까지 적용됩니다."));
 					break;
 				case EStatTab::Defense:
 					Add(LOCTEXT("MaxHealth", "최대 체력"), Number(Attributes->GetMaxHealth()));
@@ -158,9 +152,8 @@ namespace
 					break;
 				case EStatTab::Utility:
 					Add(LOCTEXT("MaxMana", "최대 마나"), Number(Attributes->GetMaxMana()));
-					Add(LOCTEXT("MoveSpeed", "이동 속도 배율"), Multiplier(Attributes->GetMoveSpeed() *
-						FMath::Max(0.f, 1.f + Attributes->GetMoveSpeedPercent() / 100.f)),
-						LOCTEXT("MoveSpeedTip", "이동 속도에 적용되는 능력치 배율입니다."));
+					Add(LOCTEXT("MoveSpeed", "이동 속도"), Percent(RPGPlayerSpeed::MovementScale(*Attributes)),
+						LOCTEXT("MoveSpeedTip", "기본 속도를 100%로 표시합니다. 최대 140%까지 적용됩니다."));
 					Add(LOCTEXT("Cooldown", "재사용 대기시간 감소"), Percent(FMath::Clamp(Attributes->GetCooldownReductionPercent(), 0.f, 50.f) / 100.f));
 					Add(LOCTEXT("Stagger", "무력화량 증가"), Percent(FMath::Clamp(Attributes->GetStaggerContributionBonusPercent(), 0.f, 100.f) / 100.f));
 					const auto* Skills = Player->GetPlayerSkillComponent();

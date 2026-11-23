@@ -36,6 +36,7 @@ URPGAttributeSet::URPGAttributeSet()
 	InitIdentityGainMultiplier(1.f);
 	InitAttack(1.f);
 	InitDefense(1.f);
+	InitAttackSpeed(1.f);
 	InitMoveSpeed(1.f);
 	InitMoveSpeedPercent(0.f);
 	InitAttackSpeedPercent(0.f);

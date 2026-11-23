@@ -6,7 +6,9 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "Attribute/RPGAttributeSet.h"
+#include "Attribute/RPGPlayerSpeed.h"
 #include "Animation/AnimInstance.h"
+#include "Character/RPGPlayer.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "GameFramework/Controller.h"
@@ -151,6 +153,11 @@ float URPGCharacterMovementComponent::GetMaxSpeed() const
 	const auto* ASC = CharacterOwner ? UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(CharacterOwner) : nullptr;
 	const auto* Stats = ASC && ASC->GetAvatarActor() == CharacterOwner ? ASC->GetSet<URPGAttributeSet>() : nullptr;
 	if (!Stats) return Base * GetSkillMovementScalar();
+	if (CharacterOwner->IsA<ARPGPlayer>())
+	{
+		const float Result = Base * RPGPlayerSpeed::MovementScale(*Stats) * GetSkillMovementScalar();
+		return FMath::IsFinite(Result) ? FMath::Max(0.f, Result) : 0.f;
+	}
 	const float Scale = Stats->GetMoveSpeed(), Percent = Stats->GetMoveSpeedPercent();
 	const float Result = Base * Scale * FMath::Max(0.f, 1.f + Percent / 100.f) * GetSkillMovementScalar();
 	return FMath::IsFinite(Scale) && Scale >= 0.f && FMath::IsFinite(Percent) && FMath::IsFinite(Result) ? FMath::Max(0.f, Result) : 0.f;

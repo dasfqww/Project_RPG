@@ -14,6 +14,7 @@
 #include "Component/Combat/RPGCombatReactionComponent.h"
 #include "Component/UI/PlayerUIComponent.h"
 #include "Attribute/RPGAttributeSet.h"
+#include "Attribute/RPGPlayerSpeed.h"
 #include "DataTable/SkillData.h"
 #include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "FunctionLibrary/RPGCombatFunctionLibrary.h"
@@ -289,7 +290,7 @@ void URPGPlayerGameplayAbility::ActivateAbility(const FGameplayAbilitySpecHandle
 		return;
 	}
 
-	AttackSpeed = Attributes ? Attributes->GetAttackSpeed() : 1.0f;
+	AttackSpeed = Attributes ? RPGPlayerSpeed::AttackScale(*Attributes) : 1.0f;
 
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 }
