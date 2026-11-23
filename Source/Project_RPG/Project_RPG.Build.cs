@@ -25,6 +25,10 @@ public class Project_RPG : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "CommonLoadingScreen", "ApplicationCore", "RenderCore" });
 		AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenSSL");
+		if (Target.bCompileICU)
+		{
+			AddEngineThirdPartyPrivateStaticDependencies(Target, "ICU");
+		}
 
 		// Registers this module's native FastArray serializers with Iris.
 		// Without this, replicated RPG FastArray properties are rejected when

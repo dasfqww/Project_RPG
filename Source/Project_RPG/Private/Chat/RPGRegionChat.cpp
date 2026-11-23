@@ -28,6 +28,13 @@
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
+#if UE_ENABLE_ICU
+THIRD_PARTY_INCLUDES_START
+#include <unicode/normalizer2.h>
+#include <unicode/uchar.h>
+THIRD_PARTY_INCLUDES_END
+#endif
+
 namespace
 {
 	constexpr int32 MaxMessageLength = 240;
@@ -49,6 +56,61 @@ namespace
 			if (Character < 0x20 || (Character >= 0x7f && Character <= 0x9f)) return false;
 		}
 		return true;
+	}
+
+	std::u16string NormalizeChatComparison(const FString& Message)
+	{
+#if UE_ENABLE_ICU
+		const auto Input = StringCast<UTF16CHAR>(*Message, Message.Len());
+		const icu::UnicodeString Source(reinterpret_cast<const UChar*>(Input.Get()), Input.Length());
+		icu::UnicodeString Folded;
+		bool bPendingSpace = false;
+		for (int32 Index = 0; Index < Source.length();)
+		{
+			const UChar32 CodePoint = Source.char32At(Index);
+			Index += U16_LENGTH(CodePoint);
+			if (u_isUWhiteSpace(CodePoint))
+			{
+				bPendingSpace = !Folded.isEmpty();
+				continue;
+			}
+			if (bPendingSpace)
+			{
+				Folded.append(static_cast<UChar32>(' '));
+				bPendingSpace = false;
+			}
+			Folded.append(u_foldCase(CodePoint, U_FOLD_CASE_DEFAULT));
+		}
+		UErrorCode Error = U_ZERO_ERROR;
+		const auto* Nfc = icu::Normalizer2::getNFCInstance(Error);
+		icu::UnicodeString Normalized;
+		if (U_SUCCESS(Error) && Nfc != nullptr)
+		{
+			Nfc->normalize(Folded, Normalized, Error);
+		}
+		const icu::UnicodeString& Result = U_SUCCESS(Error) && Nfc != nullptr ? Normalized : Folded;
+		if (Result.isEmpty()) return {};
+		return std::u16string(reinterpret_cast<const char16_t*>(Result.getBuffer()), Result.length());
+#else
+		FString Folded;
+		bool bPendingSpace = false;
+		for (const TCHAR CodeUnit : Message)
+		{
+			if (FChar::IsWhitespace(CodeUnit))
+			{
+				bPendingSpace = !Folded.IsEmpty();
+				continue;
+			}
+			if (bPendingSpace)
+			{
+				Folded.AppendChar(TEXT(' '));
+				bPendingSpace = false;
+			}
+			Folded.AppendChar(FChar::ToLower(CodeUnit));
+		}
+		const auto Input = StringCast<UTF16CHAR>(*Folded, Folded.Len());
+		return std::u16string(reinterpret_cast<const char16_t*>(Input.Get()), Input.Length());
+#endif
 	}
 }
 
@@ -106,6 +168,10 @@ TSharedRef<SWidget> URPGRegionChatWidget::RebuildWidget()
 		Send->AddChild(SendLabel);
 		Send->OnClicked.AddDynamic(this, &ThisClass::SendMessage);
 		Compose->AddChildToHorizontalBox(Send);
+		Status = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("RegionChatStatus"));
+		Status->SetAutoWrapText(true);
+		Root->AddChildToVerticalBox(Status);
+		SetStatus(FText::GetEmpty());
 		RefreshChannelLabel();
 	}
 	return Super::RebuildWidget();
@@ -123,8 +189,10 @@ void URPGRegionChatWidget::CommitMessage(const FText&, ETextCommit::Type Method)
 
 void URPGRegionChatWidget::ToggleChannel()
 {
+	if (bSendPending) return;
 	SendChannel = SendChannel == ERPGTownChatChannel::Region ? ERPGTownChatChannel::Nearby : ERPGTownChatChannel::Region;
 	RefreshChannelLabel();
+	SetStatus(FText::GetEmpty());
 }
 
 void URPGRegionChatWidget::RefreshChannelLabel()
@@ -134,13 +202,46 @@ void URPGRegionChatWidget::RefreshChannelLabel()
 
 void URPGRegionChatWidget::SendMessage()
 {
+	if (bSendPending) return;
 	const FString Text = Input->GetText().ToString().TrimStartAndEnd();
 	if (!IsValidMessage(Text)) return;
 	if (auto* Controller = GetOwningPlayer<ARPGRegionChatController>())
 	{
+		bSendPending = true;
+		Input->SetIsReadOnly(true);
 		Controller->ServerSendRegionMessage(SendChannel, Text);
-		Input->SetText(FText::GetEmpty());
 	}
+}
+
+void URPGRegionChatWidget::CompleteSend(ERPGTownChatSendResult Result, int32 RetryAfterSeconds)
+{
+	if (!bSendPending) return;
+	bSendPending = false;
+	Input->SetIsReadOnly(false);
+	switch (Result)
+	{
+	case ERPGTownChatSendResult::Accepted:
+		Input->SetText(FText::GetEmpty());
+		SetStatus(FText::GetEmpty());
+		break;
+	case ERPGTownChatSendResult::Duplicate:
+		SetStatus(FText::Format(NSLOCTEXT("RPGRegionChat", "DuplicateWait", "같은 메시지는 {0}초 후 다시 보낼 수 있어요."),
+			FText::AsNumber(RetryAfterSeconds)));
+		break;
+	case ERPGTownChatSendResult::RateLimited:
+		SetStatus(FText::Format(NSLOCTEXT("RPGRegionChat", "RateWait", "메시지를 너무 빠르게 보내고 있어요. {0}초 후 다시 시도해 주세요."),
+			FText::AsNumber(RetryAfterSeconds)));
+		break;
+	default:
+		SetStatus(NSLOCTEXT("RPGRegionChat", "InvalidSend", "메시지를 보낼 수 없어요. 잠시 후 다시 시도해 주세요."));
+		break;
+	}
+}
+
+void URPGRegionChatWidget::SetStatus(const FText& Message)
+{
+	Status->SetText(Message);
+	Status->SetVisibility(Message.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
 }
 
 void URPGRegionChatWidget::AppendMessage(ERPGTownChatChannel Channel, const FString& Sender, const FString& Text)
@@ -263,15 +364,35 @@ void ARPGRegionChatController::ServerSendRegionMessage_Implementation(ERPGTownCh
 {
 	const auto* Mode = GetWorld()->GetAuthGameMode<ARPGRegionChatGameMode>();
 	const APlayerState* State = GetPlayerState<APlayerState>();
-	const double Now = FPlatformTime::Seconds();
-	if (!Mode || !Mode->CanUseRegionChat() || !State || Text.Len() > MaxMessageLength || Now < NextSendTime) return;
 	const bool bNearby = Channel == ERPGTownChatChannel::Nearby;
-	if (!bNearby && Channel != ERPGTownChatChannel::Region) return;
 	const APawn* SenderPawn = bNearby ? GetPawn() : nullptr;
-	if (bNearby && !IsValid(SenderPawn)) return;
+	if (!Mode || !Mode->CanUseRegionChat() || !State || Text.Len() > MaxMessageLength
+		|| (!bNearby && Channel != ERPGTownChatChannel::Region) || (bNearby && !IsValid(SenderPawn)))
+	{
+		ClientCompleteRegionSend(ERPGTownChatSendResult::Invalid, 0);
+		return;
+	}
 	const FString Message = Text.TrimStartAndEnd();
-	if (!IsValidMessage(Message)) return;
-	NextSendTime = Now + .5;
+	if (!IsValidMessage(Message))
+	{
+		ClientCompleteRegionSend(ERPGTownChatSendResult::Invalid, 0);
+		return;
+	}
+	const auto RateChannel = bNearby ? ERPGTownChatRateChannel::Nearby : ERPGTownChatRateChannel::Region;
+	const auto Comparison = NormalizeChatComparison(Message);
+	if (Comparison.empty())
+	{
+		ClientCompleteRegionSend(ERPGTownChatSendResult::Invalid, 0);
+		return;
+	}
+	const auto Decision = RateLimiter.TryAccept(RateChannel, Comparison, FPlatformTime::Seconds());
+	if (Decision.Reason != ERPGTownChatRateReason::Accepted)
+	{
+		const auto Result = Decision.Reason == ERPGTownChatRateReason::Duplicate
+			? ERPGTownChatSendResult::Duplicate : ERPGTownChatSendResult::RateLimited;
+		ClientCompleteRegionSend(Result, FMath::CeilToInt(Decision.RetryAfterSeconds));
+		return;
+	}
 	for (auto It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		if (auto* Recipient = Cast<ARPGRegionChatController>(It->Get()); Recipient && Recipient->PlayerState)
@@ -285,6 +406,12 @@ void ARPGRegionChatController::ServerSendRegionMessage_Implementation(ERPGTownCh
 			Recipient->ClientReceiveRegionMessage(Channel, State->GetPlayerId(), State->GetPlayerName(), Message);
 		}
 	}
+	ClientCompleteRegionSend(ERPGTownChatSendResult::Accepted, 0);
+}
+
+void ARPGRegionChatController::ClientCompleteRegionSend_Implementation(ERPGTownChatSendResult Result, int32 RetryAfterSeconds)
+{
+	if (ChatWidget) ChatWidget->CompleteSend(Result, RetryAfterSeconds);
 }
 
 void ARPGRegionChatController::ClientOpenRegionChat_Implementation(int32 Channel)

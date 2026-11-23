@@ -4,6 +4,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/PlayerController.h"
+#include "Chat/RPGTownChatRateLimiter.h"
 #include "RPGRegionChat.generated.h"
 
 class UEditableTextBox;
@@ -16,6 +17,15 @@ enum class ERPGTownChatChannel : uint8
 {
 	Region,
 	Nearby
+};
+
+UENUM()
+enum class ERPGTownChatSendResult : uint8
+{
+	Accepted,
+	Invalid,
+	Duplicate,
+	RateLimited
 };
 
 UCLASS()
@@ -32,6 +42,7 @@ class URPGRegionChatWidget final : public UUserWidget
 	GENERATED_BODY()
 public:
 	void SetChannel(int32 Channel);
+	void CompleteSend(ERPGTownChatSendResult Result, int32 RetryAfterSeconds);
 	void AppendMessage(ERPGTownChatChannel Channel, const FString& Sender, const FString& Text);
 
 protected:
@@ -42,14 +53,17 @@ private:
 	UFUNCTION() void SendMessage();
 	UFUNCTION() void ToggleChannel();
 	void RefreshChannelLabel();
+	void SetStatus(const FText& Message);
 
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Heading;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> ChannelLabel;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Transcript;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> Status;
 	UPROPERTY(Transient) TObjectPtr<UEditableTextBox> Input;
 	UPROPERTY(Transient) TObjectPtr<UScrollBox> Scroll;
 	TArray<FString> RecentLines;
 	ERPGTownChatChannel SendChannel = ERPGTownChatChannel::Region;
+	bool bSendPending = false;
 };
 
 UCLASS()
@@ -80,6 +94,9 @@ public:
 	void ServerSendRegionMessage(ERPGTownChatChannel Channel, const FString& Text);
 
 	UFUNCTION(Client, Reliable)
+	void ClientCompleteRegionSend(ERPGTownChatSendResult Result, int32 RetryAfterSeconds);
+
+	UFUNCTION(Client, Reliable)
 	void ClientOpenRegionChat(int32 Channel);
 
 	UFUNCTION(Client, Reliable)
@@ -92,7 +109,7 @@ protected:
 private:
 	UPROPERTY(Transient) TObjectPtr<URPGRegionChatWidget> ChatWidget;
 	UPROPERTY(Transient) TMap<int32, TObjectPtr<URPGRegionChatBubble>> ChatBubbles;
-	double NextSendTime = 0;
+	FRPGTownChatRateLimiter RateLimiter;
 };
 
 /** Opt-in dedicated development map. Each server process hosts one region channel. */
