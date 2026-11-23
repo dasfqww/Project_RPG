@@ -20,6 +20,7 @@
 #include "UI/Shop/RPGShopWidget.h"
 #include "UI/Riding/RPGRidingCollectionWidget.h"
 #include "Riding/RPGRidingCollectionSubsystem.h"
+#include "Riding/RPGRidingComponent.h"
 #include "UI/Lobby/RPGOnlineLobbyLayout.h"
 #include "UI/Lobby/RPGTutorialEntryPolicy.h"
 #include "UI/Narrative/RPGNarrativeDialogueWidget.h"
@@ -28,6 +29,7 @@
 #include "Engine/LocalPlayer.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/Pawn.h"
 
 void URPGOnlineLobbyWidget::BuildMenuContent(UVerticalBox& Parent)
 {
@@ -165,6 +167,18 @@ void URPGOnlineLobbyWidget::OpenRidingCollection()
 		Panel->OnClosed.AddUObject(this, &ThisClass::HandleRidingCollectionClosed);
 		Panel->SetReadOwner(Reader.ToSharedRef(), [Weak](const FString& Id)
 			{ const auto* Subsystem = Weak.Get(); return Subsystem ? Subsystem->DescribeMount(Id) : FText::GetEmpty(); });
+        const TWeakObjectPtr<APlayerController> RidingController(GetOwningPlayer());
+        Panel->SetMountAction([RidingController](const FRPGRidingSelector& Selector)
+        {
+            const auto* PC = RidingController.Get();
+            APawn* Pawn = PC && PC->IsLocalController() ? PC->GetPawn().Get() : nullptr;
+            auto* Riding = Pawn ? Pawn->FindComponentByClass<URPGRidingComponent>() : nullptr;
+            if (!IsValid(Riding) || !Riding->IsRegistered()) return false;
+            const auto State = Riding->GetRidingState();
+            if (!State.Key.RiderEpoch.IsValid() || !RPGRiding::IsCanonical(State)) return false;
+            Riding->RequestSetMounted(true, Selector);
+            return true;
+        });
 		if (const auto Registration = Owner->GetRegistrationClient()) Panel->SetRegistrationOwner(Registration.ToSharedRef());
 		if (const auto Preferences = Owner->GetPreferencesClient()) Panel->SetPreferencesOwner(Preferences.ToSharedRef());
 		if (RidingCollectionPanel == Panel && Panel->GetVisibility() != ESlateVisibility::Collapsed) Panel->AddToViewport(146);

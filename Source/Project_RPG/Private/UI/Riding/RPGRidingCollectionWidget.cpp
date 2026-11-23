@@ -191,19 +191,26 @@ TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
         RosterScroll->AddChild(Rows);
         ReloadButton = Button(TEXT("RidingCollectionReload"), NSLOCTEXT("RidingCollection","Reload","보유 탈것 불러오기"));
 
-        auto* Footer = WidgetTree->ConstructWidget<UHorizontalBox>();
-        CollectionPage->AddChildToVerticalBox(Footer)->SetPadding(FMargin(0,10,0,0));
-        Status = Label(WidgetTree,FText::GetEmpty(),11);
+        Status = Label(WidgetTree, FText::GetEmpty(), 11);
         Status->SetAutoWrapText(true);
-        auto* StatusSlot = Footer->AddChildToHorizontalBox(Status);
-        StatusSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-        StatusSlot->SetVerticalAlignment(VAlign_Center);
-        OpenRegistrationButton = Action(WidgetTree,TEXT("OpenRidingRegistration"),NSLOCTEXT("RidingRegistration","Open","가방 물품 등록"));
-        OpenPreferencesButton = Action(WidgetTree, TEXT("OpenRidingPreferences"), NSLOCTEXT("RidingCollection","OpenPreferences","탈것 설정"));
-        Footer->AddChildToHorizontalBox(OpenPreferencesButton)->SetPadding(FMargin(0,0,4,0));
-        OpenPreferencesButton->OnClicked.AddUniqueDynamic(this, &ThisClass::OpenPreferences);
-        Footer->AddChild(OpenRegistrationButton);
-        OpenRegistrationButton->OnClicked.AddUniqueDynamic(this,&ThisClass::OpenRegistration);
+        List->AddChildToVerticalBox(Status)->SetPadding(FMargin(0, 4, 0, 0));
+
+        auto* Hint = Label(WidgetTree, NSLOCTEXT("RidingCollection", "QuickSlotHint", "탈것을 퀵슬롯에 등록하여 탑승할수 있습니다."), 11);
+        Hint->SetColorAndOpacity(Gold);
+        Hint->SetJustification(ETextJustify::Center);
+        Hint->SetAutoWrapText(true);
+        CollectionPage->AddChildToVerticalBox(Hint)->SetPadding(FMargin(0, 8, 0, 5));
+        auto* Footer = WidgetTree->ConstructWidget<UHorizontalBox>();
+        CollectionPage->AddChild(Footer);
+
+        MountButton = Action(WidgetTree, TEXT("RidingCollectionMount"), NSLOCTEXT("RidingCollection", "Mount", "탑승"));
+        auto* MountSlot = Footer->AddChildToHorizontalBox(MountButton);
+        MountSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        MountSlot->SetPadding(FMargin(0, 0, 3, 0));
+        MountButton->OnClicked.AddUniqueDynamic(this, &ThisClass::MountSelected);
+        auto* FooterClose = Action(WidgetTree, TEXT("RidingCollectionFooterClose"), NSLOCTEXT("RidingCollection", "Close", "닫기"));
+        Footer->AddChildToHorizontalBox(FooterClose)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        FooterClose->OnClicked.AddUniqueDynamic(this, &ThisClass::CloseScreen);
 
         auto* RegistrationPage = WidgetTree->ConstructWidget<UVerticalBox>();
         Pages->AddChild(RegistrationPage);
@@ -286,7 +293,7 @@ void URPGRidingCollectionWidget::NativeConstruct()
 }
 void URPGRidingCollectionWidget::NativeDestruct() { Detach(); Super::NativeDestruct(); }
 bool URPGRidingCollectionWidget::TickView(float) { if (bClosing) return false; RefreshView(); RefreshRegistration(); return !bClosing; }
-void URPGRidingCollectionWidget::Reload() { if (!bClosing) if (const auto Owner = Reader.Pin()) Owner->Read(); RefreshView(); }
+void URPGRidingCollectionWidget::Reload() { MountFeedback = FText::GetEmpty(); if (!bClosing) if (const auto Owner = Reader.Pin()) Owner->Read(); RefreshView(); }
 void URPGRidingCollectionWidget::SearchChanged(const FText&) { RowsKey.Reset(); RefreshView(); }
 void URPGRidingCollectionWidget::FavoritesChanged(bool) { RowsKey.Reset(); RefreshView(); }
 void URPGRidingCollectionWidget::RefreshView()
@@ -298,7 +305,6 @@ void URPGRidingCollectionWidget::RefreshView()
     const auto State = Owner->GetState(); const auto* C = Owner->GetCollection(); const double Retry = Owner->GetRetryAfterSeconds();
     const bool bReady = C != nullptr;
     ReloadButton->SetIsEnabled(State != ERPGRidingCollectionReadState::Loading && Retry <= 0);
-    OpenPreferencesButton->SetIsEnabled(PreferencesOwner.IsValid());
     Search->SetIsEnabled(bReady); FavoritesOnly->SetIsEnabled(bReady);
     FText Message = NSLOCTEXT("RidingCollection", "Prompt", "보유 탈것을 불러와 주세요.");
     if (State == ERPGRidingCollectionReadState::Loading) Message = NSLOCTEXT("RidingCollection", "Loading", "보유 탈것을 불러오는 중입니다.");
@@ -306,7 +312,7 @@ void URPGRidingCollectionWidget::RefreshView()
     else if (Retry > 0) Message = FText::Format(NSLOCTEXT("RidingCollection", "Retry", "{0}초 후 다시 불러올 수 있습니다."), FMath::CeilToInt(Retry));
     else if (bReady) Message = C->bCatalogReady ? NSLOCTEXT("RidingCollection", "Ready", "현재 캐릭터에 저장된 탈것 정보입니다.")
         : NSLOCTEXT("RidingCollection", "Disabled", "보유 내역입니다. 현재 탈것 등록과 설정 변경을 사용할 수 없습니다.");
-    Status->SetText(Message); Settings->SetText(FText::GetEmpty());
+    Status->SetText(MountFeedback.IsEmpty() ? Message : MountFeedback); Settings->SetText(FText::GetEmpty());
     TMap<FString, FText> Names; FString Key;
     if (C)
     {
@@ -339,6 +345,7 @@ void URPGRidingCollectionWidget::RefreshView()
         BrowsedMount = Visible.IsEmpty() ? FString() :
             Visible.Contains(C->SelectedMountId) ? C->SelectedMountId : Visible[0];
     }
+    MountButton->SetIsEnabled(!BrowsedMount.IsEmpty());
     PreferencesMountName->SetText(Names.FindRef(BrowsedMount));
     PreferencesPanel->BrowseMount(BrowsedMount);
     for (const auto& Id : Visible)
@@ -393,6 +400,7 @@ void URPGRidingBrowseButton::Browse()
 void URPGRidingCollectionWidget::Browse(const FString& MountId)
 {
     if (BrowsedMount == MountId) return;
+    MountFeedback = FText::GetEmpty();
     BrowsedMount = MountId;
     RowsKey.Reset();
     RefreshView();
@@ -408,6 +416,20 @@ void URPGRidingCollectionWidget::ToggleSort()
     RowsKey.Reset();
     RefreshView();
 }
+void URPGRidingCollectionWidget::MountSelected()
+{
+    if (bClosing || !Pages || Pages->GetActiveWidgetIndex() != 0 || BrowsedMount.IsEmpty()) return;
+    const auto Owner = Reader.Pin();
+    const auto* Collection = Owner ? Owner->GetCollection() : nullptr;
+    if (!Collection || !Collection->Mounts.ContainsByPredicate([this](const FRPGRidingOwnedMount& Mount)
+        { return Mount.MountId == BrowsedMount; })) return;
+
+    const FRPGRidingSelector Selector{ERPGRidingSelectorKind::Specific, BrowsedMount};
+    MountFeedback = MountAction && MountAction(Selector) ? FText::GetEmpty()
+        : NSLOCTEXT("RidingCollection", "MountUnavailable", "현재 장소에서는 탈것에 탑승할 수 없습니다.");
+    RefreshView();
+}
+
 void URPGRidingCollectionWidget::OpenRegistration()
 {
     Pages->SetActiveWidgetIndex(1);
@@ -424,13 +446,13 @@ void URPGRidingCollectionWidget::BackToCollection()
     const bool bFromRegistration = Pages->GetActiveWidgetIndex() == 1;
     if (bFromRegistration) DismissRegistration();
     Pages->SetActiveWidgetIndex(0);
-    (bFromRegistration ? OpenRegistrationButton : OpenPreferencesButton)->SetKeyboardFocus();
+    CloseButton->SetKeyboardFocus();
 }
 void URPGRidingCollectionWidget::CloseScreen()
 {
     if (bClosing) return; bClosing = true; Detach();
     if (Rows) Rows->ClearChildren(); if (Settings) Settings->SetText(FText::GetEmpty());
-    Reader.Reset(); Presenter = {}; Description = {}; RowsKey.Reset(); SetVisibility(ESlateVisibility::Collapsed);
+    Reader.Reset(); Presenter = {}; Description = {}; MountAction = {}; RowsKey.Reset(); SetVisibility(ESlateVisibility::Collapsed);
     PreferencesOwner.Reset(); Registration.Reset(); RegistrationIds.Reset(); RegistrationSnapshot.Invalidate(); RegistrationReview.Invalidate(); SelectedRegistration.Invalidate();
     if (IsInViewport() || GetParent()) RemoveFromParent(); OnClosed.Broadcast();
 }

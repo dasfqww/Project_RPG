@@ -37,8 +37,14 @@ struct FRPGRidingCollectionWidgetTestAccess
         if (auto* Row = Cast<URPGRidingBrowseButton>(W.Rows->GetChildAt(Index))) Row->OnClicked.Broadcast();
     }
     static FText Detail(URPGRidingCollectionWidget& W) { return W.PreferencesMountName->GetText(); }
+    static void Close(URPGRidingCollectionWidget& W)
+    {
+        CastChecked<UButton>(W.WidgetTree->FindWidget(TEXT("RidingCollectionFooterClose")))->OnClicked.Broadcast();
+    }
+    static bool CanMount(URPGRidingCollectionWidget& W) { return W.MountButton->GetIsEnabled(); }
+    static void Mount(URPGRidingCollectionWidget& W) { W.MountButton->OnClicked.Broadcast(); }
     static int32 Page(URPGRidingCollectionWidget& W) { return W.Pages->GetActiveWidgetIndex(); }
-    static void Registration(URPGRidingCollectionWidget& W) { W.OpenRegistrationButton->OnClicked.Broadcast(); }
+    static void Registration(URPGRidingCollectionWidget& W) { W.OpenRegistration(); }
     static FString Settings(URPGRidingCollectionWidget& W) { return W.Settings->GetText().ToString(); }
     static FString Status(URPGRidingCollectionWidget& W) { return W.Status->GetText().ToString(); }
     static FString Empty(URPGRidingCollectionWidget& W) { return W.Empty->GetText().ToString(); }
@@ -120,13 +126,27 @@ bool FRidingCollectionScreenFilters::RunTest(const FString&)
     A::Click(*F.Widget, 1);
     TestEqual(TEXT("Row click selects the second mount for settings"), A::Detail(*F.Widget).ToString(), FString(TEXT("탈것 2")));
     TestEqual(TEXT("Browsing keeps the saved mount"), A::Settings(*F.Widget), SavedSettings);
+    TestTrue(TEXT("An owned selection enables mount"), A::CanMount(*F.Widget));
+    A::Mount(*F.Widget);
+    TestTrue(TEXT("A missing rider is reported"), A::Status(*F.Widget).Contains(TEXT("탑승할 수 없습니다")));
+    int32 MountRequests = 0;
+    FRPGRidingSelector Requested;
+    F.Widget->SetMountAction([&](const FRPGRidingSelector& Selector)
+    {
+        ++MountRequests;
+        Requested = Selector;
+        return true;
+    });
+    A::Mount(*F.Widget);
+    TestEqual(TEXT("One mount request from footer"), MountRequests, 1);
+    TestTrue(TEXT("Mounted selector uses the clicked mount"), Requested.Kind == ERPGRidingSelectorKind::Specific && Requested.MountId == TEXT("wolf"));
     A::Registration(*F.Widget);
     TestEqual(TEXT("Bag registration is a separate page"), A::Page(*F.Widget), 1);
     A::Escape(*F.Widget);
     TestEqual(TEXT("Escape returns to the selected mount"), A::Page(*F.Widget), 0);
     TestEqual(TEXT("Back preserves selection"), A::Detail(*F.Widget).ToString(), FString(TEXT("탈것 2")));
     A::Search(*F.Widget, TEXT("말")); TestEqual(TEXT("Name filter"), A::Count(*F.Widget), 1);
-    A::Search(*F.Widget, TEXT("없는 이름")); TestEqual(TEXT("Empty filter"), A::Count(*F.Widget), 0); TestFalse(TEXT("Empty search explained"), A::Empty(*F.Widget).IsEmpty());
+    A::Search(*F.Widget, TEXT("없는 이름")); TestEqual(TEXT("Empty filter"), A::Count(*F.Widget), 0); TestFalse(TEXT("No selection disables mount"), A::CanMount(*F.Widget)); TestFalse(TEXT("Empty search explained"), A::Empty(*F.Widget).IsEmpty());
     A::Search(*F.Widget, TEXT("")); A::Favorites(*F.Widget, true); TestEqual(TEXT("Server favorites only"), A::Count(*F.Widget), 1);
     TestEqual(TEXT("Filters never send HTTP or persist settings"), F.Transport->Reads, 1); return true;
 }
@@ -145,7 +165,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRidingCollectionScreenLifetime, "ProjectRPG.Ri
 bool FRidingCollectionScreenLifetime::RunTest(const FString&)
 {
     using A = FRPGRidingCollectionWidgetTestAccess; FScreen F; if (!F.Widget.IsValid()) return false;
-    F.Load(); TestTrue(TEXT("Escape handled"), A::Escape(*F.Widget));
+    F.Load(); A::Close(*F.Widget);
+    TestEqual(TEXT("Footer close collapses the collection"), F.Widget->GetVisibility(), ESlateVisibility::Collapsed);
     TestFalse(TEXT("Unsubscribed on close"), F.Reader->OnChanged.IsBoundToObject(F.Widget.Get())); TestFalse(TEXT("Stopped polling view"), A::Ticking(*F.Widget));
     TestEqual(TEXT("Close does not read or mutate"), F.Transport->Reads, 1);
     FScreen Auth; Auth.Load(); Auth.Transport->bAuth = false; A::Refresh(*Auth.Widget);

@@ -34,8 +34,11 @@ class PROJECT_RPG_API URPGRidingCollectionWidget final : public UUserWidget
 public:
     using FPresenter = TFunction<FText(const FString&)>;
     void SetReadOwner(TSharedRef<FRPGRidingCollectionReader> InReader, FPresenter InPresenter, FPresenter InDescription = {});
+    void SetMountAction(TFunction<bool(const FRPGRidingSelector&)> InAction) { MountAction = MoveTemp(InAction); }
     void SetRegistrationOwner(TSharedRef<FRPGRidingRegistrationClient> InOwner);
     void SetPreferencesOwner(TSharedRef<FRPGRidingPreferencesClient> InOwner);
+    void OpenRegistration();
+    void OpenPreferences();
     UFUNCTION() void CloseScreen();
     FSimpleMulticastDelegate OnClosed;
 protected:
@@ -49,13 +52,13 @@ private:
     friend struct FRPGRidingPreferencesUiTestAccess;
     friend class URPGRidingBrowseButton;
     void Browse(const FString& MountId);
-    UFUNCTION() void OpenRegistration();
-    UFUNCTION() void OpenPreferences();
+    UFUNCTION() void MountSelected();
     UFUNCTION() void BackToCollection();
     UPROPERTY(Transient) TObjectPtr<class UWidgetSwitcher> Pages;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> PreferencesMountName;
-    UPROPERTY(Transient) TObjectPtr<UButton> OpenRegistrationButton;
-    UPROPERTY(Transient) TObjectPtr<UButton> OpenPreferencesButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> MountButton;
+    FText MountFeedback;
+    TFunction<bool(const FRPGRidingSelector&)> MountAction;
     UPROPERTY(Transient) TObjectPtr<UButton> BackButton;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> RegistrationUnavailable;
     FSlateBrush MountPortrait(const FString& Id, float Size);
