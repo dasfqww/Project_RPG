@@ -31,6 +31,8 @@ struct PROJECT_RPG_API FRPGSkillRuntimeSpec
 
 	void Reset();
 	float GetStatScalar(const FGameplayTag& StatTag, float DefaultValue = 1.0f) const;
+	/** Authored hit value with the selected skill and committed class multipliers. */
+	float ScaleHitDamage(float AuthoredDamage, float ClassMultiplier) const;
 	bool HasRefinementTag(const FGameplayTag& RefinementTag) const;
 	float GetCooldownDuration(float MinimumDuration = 1.0f) const;
 	/** Resolve the frozen Radius scalar without changing the authored profile or security limits.

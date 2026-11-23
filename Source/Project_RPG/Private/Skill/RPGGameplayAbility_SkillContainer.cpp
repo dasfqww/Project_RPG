@@ -1342,13 +1342,7 @@ bool URPGGameplayAbility_SkillContainer::ExecuteAuthorizedSkillDamageInternal(
 			TEXT("The authoritative skill HitQuery found no eligible target."));
 		return false;
 	}
-	const FGameplayTag DamageScalarTag =
-		FGameplayTag::RequestGameplayTag(TEXT("Shared.Stat.Damage"), false);
-	const float DamageScalar = DamageScalarTag.IsValid()
-		? ActiveSkillSpec.GetStatScalar(DamageScalarTag)
-		: 1.0f;
-	const float ClassMultiplier = CommittedClassDamageMultiplier;
-	const float FinalDamage = BaseDamage * DamageScalar * ClassMultiplier;
+	const float FinalDamage = ActiveSkillSpec.ScaleHitDamage(BaseDamage, CommittedClassDamageMultiplier);
 	if (!FMath::IsFinite(FinalDamage) || FinalDamage <= 0.0f ||
 		FinalDamage > ActiveSkillSpec.SecurityProfile.MaximumDamagePerHit)
 	{

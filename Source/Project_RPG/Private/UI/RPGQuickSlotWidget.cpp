@@ -367,7 +367,7 @@ void URPGQuickSlotWidget::RefreshSkillSlotView(const bool bRefreshTooltip)
 			FRPGSkillRuntimeSpec Spec;
 			Skill->Definition->BuildRuntimeSpec(Pawn, Selection, Spec);
 			URPGSkillTooltip::UpdateFor(*this,
-				FRPGSkillTooltipPresentation::ForSkill(*Skill->Definition, Spec, true));
+				FRPGSkillTooltipPresentation::ForSkill(*Skill->Definition, Spec, true, Pawn));
 		}
 		else
 		{

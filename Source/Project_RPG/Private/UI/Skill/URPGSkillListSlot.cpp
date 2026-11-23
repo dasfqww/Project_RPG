@@ -64,6 +64,12 @@ void UURPGSkillListSlot::NativeOnListItemObjectSet(UObject* ListItemObject)
 	}
 }
 
+void UURPGSkillListSlot::NativeOnMouseEnter(const FGeometry& Geometry, const FPointerEvent& Event)
+{
+	Super::NativeOnMouseEnter(Geometry, Event);
+	RefreshSkillPresentation();
+}
+
 FReply UURPGSkillListSlot::NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event)
 {
 	const URPGSkillSlotViewModel* Model = CurrentViewModel.Get();
@@ -115,7 +121,7 @@ void UURPGSkillListSlot::RefreshSkillPresentation()
 		Text->SetText(Policy ? Policy->GetExecutionDisplayName() : FText::GetEmpty());
 	}
 	URPGSkillTooltip::UpdateFor(*this, Definition
-		? FRPGSkillTooltipPresentation::ForSkill(*Definition, Spec, !ViewModel->bIsLocked)
+		? FRPGSkillTooltipPresentation::ForSkill(*Definition, Spec, !ViewModel->bIsLocked, GetOwningPlayerPawn())
 		: FRPGSkillTooltipPresentation());
 }
 

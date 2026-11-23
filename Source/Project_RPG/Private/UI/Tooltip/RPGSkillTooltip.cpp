@@ -1,5 +1,8 @@
 #include "UI/Tooltip/RPGSkillTooltip.h"
 
+#include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemComponent.h"
+#include "Attribute/RPGAttributeSet.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/HorizontalBox.h"
@@ -12,12 +15,49 @@
 #include "DataTable/SkillData.h"
 #include "Engine/Texture2D.h"
 #include "Skill/RPGSkillDefinition.h"
+#include "Skill/RPGSkillExecutionPolicy.h"
 #include "Skill/RPGSkillRuntimeTypes.h"
 
 #define LOCTEXT_NAMESPACE "RPGSkillTooltip"
 
+namespace
+{
+void AddHitDamageLines(TArray<FText>& Lines, const FRPGSkillRuntimeSpec& Spec, AActor* Source)
+{
+	// Native policy damage events use the runtime spec's authored value for each hit.
+	if (!Spec.ExecutionPolicyClass || !FMath::IsFinite(Spec.BaseDamage) || Spec.BaseDamage <= 0.f) return;
+
+	const UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Source);
+	const FGameplayAttribute AttackAttribute = URPGAttributeSet::GetAttackAttribute();
+	if (!ASC || !ASC->HasAttributeSetForAttribute(AttackAttribute)) return;
+	const float Attack = ASC->GetNumericAttribute(AttackAttribute);
+	if (!FMath::IsFinite(Attack) || Attack < 0.f) return;
+
+	const float ClassMultiplier = Spec.bGreatSwordRageSkill ? Spec.GreatSwordRageDamageMultiplier : 1.f;
+	const float ScaledDamage = Spec.ScaleHitDamage(Spec.BaseDamage, ClassMultiplier);
+	if (!FMath::IsFinite(ScaledDamage) || ScaledDamage <= 0.f
+		|| ScaledDamage > Spec.SecurityProfile.MaximumDamagePerHit) return;
+
+	const double NormalDamage = static_cast<double>(ScaledDamage) * Attack;
+	FNumberFormattingOptions Format;
+	Format.SetMaximumFractionalDigits(2);
+	Lines.Add(Spec.bGreatSwordRageSkill
+		? LOCTEXT("RageHitPreview", "타격당 피해 · 대상 방어 적용 전 · 분노 소모 기준")
+		: LOCTEXT("HitPreview", "타격당 피해 · 대상 방어 적용 전"));
+	Lines.Add(FText::Format(LOCTEXT("NormalHitDamage", "일반 {0}"), FText::AsNumber(NormalDamage, &Format)));
+	const FGameplayAttribute CritAttribute = URPGAttributeSet::GetCriticalDamageAttribute();
+	if (!ASC->HasAttributeSetForAttribute(CritAttribute)) return;
+	const float CritMultiplier = ASC->GetNumericAttribute(CritAttribute);
+	if (FMath::IsFinite(CritMultiplier) && CritMultiplier >= 0.f)
+	{
+		Lines.Add(FText::Format(LOCTEXT("CriticalHitDamage", "치명타 {0} ({1})"),
+			FText::AsNumber(NormalDamage * CritMultiplier, &Format), FText::AsPercent(CritMultiplier, &Format)));
+	}
+}
+}
+
 FRPGSkillTooltipPresentation FRPGSkillTooltipPresentation::ForSkill(const URPGSkillDefinition& Definition,
-	const FRPGSkillRuntimeSpec& Spec, const bool bAcquired)
+	const FRPGSkillRuntimeSpec& Spec, const bool bAcquired, AActor* Source)
 {
 	FRPGSkillTooltipPresentation Result;
 	Result.Title = Spec.DisplayName.IsEmpty() ? FText::FromName(Definition.SkillTag.GetTagName()) : Spec.DisplayName;
@@ -32,6 +72,7 @@ FRPGSkillTooltipPresentation FRPGSkillTooltipPresentation::ForSkill(const URPGSk
 	if (bAcquired)
 	{
 		Lines.Add(FText::Format(LOCTEXT("SkillLevel", "스킬 레벨 {0}"), FText::AsNumber(Spec.SkillLevel)));
+		AddHitDamageLines(Lines, Spec, Source);
 	}
 	Lines.Add(FText::Format(LOCTEXT("Cooldown", "재사용 대기시간 {0}초"), FText::AsNumber(Spec.GetCooldownDuration())));
 	if (Spec.bGreatSwordRageSkill)

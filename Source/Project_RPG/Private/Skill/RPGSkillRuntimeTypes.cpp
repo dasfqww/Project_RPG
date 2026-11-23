@@ -2,6 +2,13 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(RPGSkillRuntimeTypes)
 
+float FRPGSkillRuntimeSpec::ScaleHitDamage(const float AuthoredDamage, const float ClassMultiplier) const
+{
+	const FGameplayTag DamageTag = FGameplayTag::RequestGameplayTag(TEXT("Shared.Stat.Damage"), false);
+	const float DamageScalar = DamageTag.IsValid() ? GetStatScalar(DamageTag) : 1.f;
+	return AuthoredDamage * DamageScalar * ClassMultiplier;
+}
+
 void FRPGSkillRuntimeSpec::Reset()
 {
 	SkillTag = FGameplayTag::EmptyTag;

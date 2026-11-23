@@ -23,7 +23,7 @@ struct PROJECT_RPG_API FRPGSkillTooltipPresentation
 	UTexture2D* Icon = nullptr;
 
 	static FRPGSkillTooltipPresentation ForSkill(const URPGSkillDefinition& Definition,
-		const FRPGSkillRuntimeSpec& Spec, bool bAcquired);
+		const FRPGSkillRuntimeSpec& Spec, bool bAcquired, AActor* Source);
 	static FRPGSkillTooltipPresentation ForRefinement(const FRPGSkillRefinementOption& Option,
 		int32 RequiredLevel, bool bSelected, bool bUnlocked);
 };

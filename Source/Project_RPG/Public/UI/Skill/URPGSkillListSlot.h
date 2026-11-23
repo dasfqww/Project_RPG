@@ -24,6 +24,7 @@ protected:
 	virtual void NativeOnListItemObjectSet(UObject* ListItemObject) override;
 	virtual void NativeOnEntryReleased() override;
 	virtual void NativeDestruct() override;
+	virtual void NativeOnMouseEnter(const FGeometry& Geometry, const FPointerEvent& Event) override;
 	virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event) override;
 	virtual void NativeOnDragDetected(const FGeometry& Geometry, const FPointerEvent& Event,
 		UDragDropOperation*& OutOperation) override;
