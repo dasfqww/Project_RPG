@@ -85,7 +85,7 @@ namespace
 							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(0.f, 0.f, 4.f, 0.f)
 							[ MakeTab(EStatTab::Defense, LOCTEXT("Defense", "방어")) ]
 							+ SHorizontalBox::Slot().FillWidth(1.f)
-							[ MakeTab(EStatTab::Utility, LOCTEXT("Utility", "전투 보조")) ]
+							[ MakeTab(EStatTab::Utility, LOCTEXT("Utility", "활동")) ]
 						]
 						+ SVerticalBox::Slot().FillHeight(1.f)
 						[
