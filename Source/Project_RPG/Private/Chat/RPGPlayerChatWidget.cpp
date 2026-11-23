@@ -327,7 +327,7 @@ void URPGPlayerChatWidget::Send()
 	Json->SetStringField(TEXT("text"), Text);
 	FString Body;
 	FJsonSerializer::Serialize(Json, TJsonWriterFactory<>::Create(&Body));
-	auto Done = [WeakThis = TWeakObjectPtr<ThisClass>(this), Serial = Generation](int32 Code, FString)
+	auto Done = [WeakThis = TWeakObjectPtr<ThisClass>(this), Serial = Generation](int32 Code, FString ResponseBody)
 	{
 		auto* Self = WeakThis.Get();
 		if (!Self || Self->Generation != Serial) return;
@@ -341,7 +341,25 @@ void URPGPlayerChatWidget::Send()
 			Self->Poll();
 		}
 		else if (Code == 404) Self->SetStatus(TEXT("받는 캐릭터의 이름과 접속 상태를 확인하세요."));
-		else if (Code == 429) Self->SetStatus(TEXT("잠시 후 다시 보내세요."));
+		else if (Code == 429)
+		{
+			TSharedPtr<FJsonObject> Retry;
+			int32 Seconds = 0;
+			FString Error;
+			if (FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(ResponseBody), Retry) && Retry
+				&& Retry->TryGetNumberField(TEXT("retryAfterSeconds"), Seconds) && Seconds > 0 && Seconds <= 20)
+			{
+				Retry->TryGetStringField(TEXT("error"), Error);
+				const FText Pattern = Error == TEXT("chat_duplicate")
+					? NSLOCTEXT("RPGPlayerChat", "DuplicateWait", "같은 메시지는 {0}초 후 다시 보낼 수 있어요.")
+					: NSLOCTEXT("RPGPlayerChat", "RateWait", "메시지를 너무 빠르게 보내고 있어요. {0}초 후 다시 시도해 주세요.");
+				Self->SetStatus(FText::Format(Pattern, FText::AsNumber(Seconds)).ToString());
+			}
+			else
+			{
+				Self->SetStatus(TEXT("잠시 후 다시 보내세요."));
+			}
+		}
 		else Self->SetStatus(TEXT("전송을 확인할 수 없습니다. 다시 보내세요."));
 		Self->UpdateControls();
 	};

@@ -25,7 +25,7 @@ internal static class LobbyChatEndpoints
             var rosters = await repository.GetRostersAsync(principal.SteamId, ct);
             var roster = rosters.FirstOrDefault(r => r.RosterId == character.RosterId);
             if (roster == null) return Results.StatusCode(403);
-            http.Items[typeof(ChatActor)] = new ChatActor(character.CharacterId, character.Name, roster.WorldId);
+            http.Items[typeof(ChatActor)] = new ChatActor(character.CharacterId, character.Name, roster.WorldId, principal.SteamId);
             return await next(context);
         });
         chat.MapGet("", (Guid characterId, bool lobby, Guid? epoch, long after, HttpContext http, LobbyChat service) =>
