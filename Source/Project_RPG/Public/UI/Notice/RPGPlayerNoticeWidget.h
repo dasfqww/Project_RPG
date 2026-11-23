@@ -12,6 +12,13 @@ class PROJECT_RPG_API URPGPlayerNoticeWidget : public UUserWidget
 {
     GENERATED_BODY()
 public:
+    /** Use ShowNotice directly, independently of pawn and HUD changes. */
+    void UseManualNotices()
+    {
+        bAutoBindOwningPawn = false;
+        UnbindController();
+        SetNoticeSource(nullptr);
+    }
     UFUNCTION(BlueprintCallable, Category="UI|Notice") void SetNoticeSource(UPlayerUIComponent* Source);
     UFUNCTION(BlueprintCallable, Category="UI|Notice") void ShowNotice(const FText& Text);
     UFUNCTION(BlueprintCallable, Category="UI|Notice") void ClearNotice();

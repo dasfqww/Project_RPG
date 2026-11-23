@@ -8,6 +8,7 @@
 class ARPGRegionGate;
 class UUserWidget;
 class UAbilitySystemComponent;
+class URPGPlayerNoticeWidget;
 
 UCLASS()
 class PROJECT_RPG_API URPGRegionTravelComponent : public UActorComponent
@@ -27,10 +28,11 @@ private:
 	UFUNCTION(Server, Reliable)
 	void ServerPrepared(int32 Id);
 	UFUNCTION(Client, Reliable)
-	void ClientFinish(int32 Id, bool bCommitted, FVector ArrivalLocation);
+	void ClientFinish(int32 Id, const FText& FailureReason, FVector ArrivalLocation);
 
 	void PollServer();
-	void FinishServer(bool bCommitted);
+	void FinishServer(const FText& FailureReason);
+	void ShowFailure(const FText& FailureReason);
 	void PollClient();
 	void ReleaseClient();
 	void ReleaseServer();
@@ -59,6 +61,8 @@ private:
 	FTimerHandle ClientTimer;
 	UPROPERTY(Transient)
 	TObjectPtr<UUserWidget> Screen;
+	UPROPERTY(Transient)
+	TObjectPtr<URPGPlayerNoticeWidget> FallbackNotice;
 	UPROPERTY(Transient)
 	TObjectPtr<UInputComponent> InputBlock;
 };

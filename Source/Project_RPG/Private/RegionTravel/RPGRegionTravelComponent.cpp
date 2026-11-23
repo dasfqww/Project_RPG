@@ -1,6 +1,8 @@
 #include "RegionTravel/RPGRegionTravelComponent.h"
 #include "RegionTravel/RPGRegionGate.h"
 #include "UI/Loading/RPGExperienceLoadingScreen.h"
+#include "UI/Notice/RPGPlayerNoticeWidget.h"
+#include "Component/UI/PlayerUIComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "Components/ArrowComponent.h"
@@ -89,6 +91,11 @@ void URPGRegionTravelComponent::ClientPrepare_Implementation(int32 Id, FName Sou
 {
 	auto* PC = CastChecked<APlayerController>(GetOwner());
 	ReleaseClient();
+	if (FallbackNotice)
+	{
+		FallbackNotice->RemoveFromParent();
+		FallbackNotice = nullptr;
+	}
 	ClientId = Id;
 	ClientSource = Source;
 	ClientTarget = Destination;
@@ -139,9 +146,14 @@ void URPGRegionTravelComponent::PollServer()
 	auto* PC = CastChecked<APlayerController>(GetOwner());
 	ACharacter* Character = LockedCharacter.Get();
 	if (!IsValid(Character) || PC->GetPawn() != Character || !SourceGate.IsValid() || !TargetGate.IsValid()
-		|| !SourceGate->Trigger->IsOverlappingActor(Character) || GetWorld()->GetRealTimeSeconds() >= ServerDeadline)
+		|| !SourceGate->Trigger->IsOverlappingActor(Character))
 	{
-		FinishServer(false);
+		FinishServer(NSLOCTEXT("RPGRegionTravel", "Interrupted", "지역 이동이 중단되었습니다. 이동하려면 통로로 다시 들어가세요."));
+		return;
+	}
+	if (GetWorld()->GetRealTimeSeconds() >= ServerDeadline)
+	{
+		FinishServer(NSLOCTEXT("RPGRegionTravel", "Timeout", "다음 지역을 준비하는 시간이 초과되었습니다. 통로에서 나왔다가 다시 들어가세요."));
 		return;
 	}
 	if (!bReady || !IsVisible(GetWorld(), LevelName(*TargetGate))) return;
@@ -156,16 +168,16 @@ void URPGRegionTravelComponent::PollServer()
 		PC->ClientSetLocation(Character->GetActorLocation(), Arrival->GetComponentRotation());
 		Character->ForceNetUpdate();
 	}
-	FinishServer(bMoved);
+	FinishServer(bMoved ? FText::GetEmpty() : NSLOCTEXT("RPGRegionTravel", "Blocked", "도착 지점에 자리가 없습니다. 잠시 후 통로로 다시 들어가세요."));
 }
 
-void URPGRegionTravelComponent::FinishServer(bool bCommitted)
+void URPGRegionTravelComponent::FinishServer(const FText& FailureReason)
 {
 	const FVector Location = LockedCharacter.IsValid() ? LockedCharacter->GetActorLocation() : FVector::ZeroVector;
 	UE_LOG(LogTemp, Display, TEXT("Region travel %s id=%d %s -> %s committed=%d"),
-		*GetNameSafe(GetOwner()), Serial, *GetNameSafe(SourceGate.Get()), *GetNameSafe(TargetGate.Get()), bCommitted);
+		*GetNameSafe(GetOwner()), Serial, *GetNameSafe(SourceGate.Get()), *GetNameSafe(TargetGate.Get()), FailureReason.IsEmpty());
 	ReleaseServer();
-	ClientFinish(Serial, bCommitted, Location);
+	ClientFinish(Serial, FailureReason, Location);
 }
 
 void URPGRegionTravelComponent::ReleaseServer()
@@ -184,18 +196,43 @@ void URPGRegionTravelComponent::ReleaseServer()
 	LockedCharacter.Reset();
 }
 
-void URPGRegionTravelComponent::ClientFinish_Implementation(int32 Id, bool bCommitted, FVector Location)
+void URPGRegionTravelComponent::ClientFinish_Implementation(int32 Id, const FText& FailureReason, FVector Location)
 {
 	if (ClientId != Id) return;
-	if (!bCommitted)
+	if (!FailureReason.IsEmpty())
 	{
 		if (GetNetMode() == NM_Client) RequestLevel(GetWorld(), ClientTarget, false);
 		ReleaseClient();
+		ShowFailure(FailureReason);
 		return;
 	}
 	bAwaitingArrival = true;
 	ExpectedLocation = Location;
 	ArrivalDeadline = GetWorld()->GetRealTimeSeconds() + 5.0;
+}
+
+void URPGRegionTravelComponent::ShowFailure(const FText& FailureReason)
+{
+	auto* PC = CastChecked<APlayerController>(GetOwner());
+	if (!PC->IsLocalController()) return;
+	const APawn* Pawn = PC->GetPawn();
+	auto* UI = Pawn ? Pawn->FindComponentByClass<UPlayerUIComponent>() : nullptr;
+	if (UI && UI->OnNoticeTextChanged.IsBound())
+	{
+		UI->OnNoticeTextChanged.Broadcast(FailureReason);
+		return;
+	}
+	// A possession change can temporarily leave this player without a bound HUD.
+	if (!FallbackNotice)
+	{
+		FallbackNotice = CreateWidget<URPGPlayerNoticeWidget>(PC, URPGPlayerNoticeWidget::StaticClass());
+		if (!FallbackNotice) return;
+		FallbackNotice->UseManualNotices();
+		FallbackNotice->AddToPlayerScreen(100);
+		FallbackNotice->SetAnchorsInViewport(FAnchors(0.5f, 0.15f));
+		FallbackNotice->SetAlignmentInViewport(FVector2D(0.5f, 0.f));
+	}
+	FallbackNotice->ShowNotice(FailureReason);
 }
 
 void URPGRegionTravelComponent::ReleaseClient()
@@ -221,5 +258,6 @@ void URPGRegionTravelComponent::EndPlay(const EEndPlayReason::Type Reason)
 {
 	ReleaseServer();
 	ReleaseClient();
+	if (FallbackNotice) FallbackNotice->RemoveFromParent();
 	Super::EndPlay(Reason);
 }
