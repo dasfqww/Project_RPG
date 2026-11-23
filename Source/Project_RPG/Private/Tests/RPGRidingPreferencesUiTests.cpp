@@ -19,8 +19,8 @@ struct FRPGRidingPreferencesUiTestAccess
 {
     static URPGRidingPreferencesWidget* Panel(URPGRidingCollectionWidget& W) { return W.PreferencesPanel; }
     static void Load(URPGRidingPreferencesWidget& W) { W.ReloadButton->OnClicked.Broadcast(); }
-    static void Selected(URPGRidingPreferencesWidget& W, int32 I) { W.SelectedBox->SetSelectedIndex(I); W.SelectChanged({},ESelectInfo::Direct); }
-    static void Favorite(URPGRidingPreferencesWidget& W, int32 I) { W.FavoriteBox->SetSelectedIndex(I); W.FavoriteChanged({},ESelectInfo::Direct); W.FavoriteButton->OnClicked.Broadcast(); }
+    static void Selected(URPGRidingPreferencesWidget& W, int32 I) { W.BrowseMount(W.MountIds[I-1]); W.DefaultButton->OnClicked.Broadcast(); }
+    static void Favorite(URPGRidingPreferencesWidget& W, int32 I) { W.BrowseMount(W.MountIds[I]); W.FavoriteButton->OnClicked.Broadcast(); }
     static void Mode(URPGRidingPreferencesWidget& W, int32 I) { W.ModeBox->SetSelectedIndex(I); W.ModeChanged({},ESelectInfo::Direct); }
     static void Specific(URPGRidingPreferencesWidget& W, int32 I) { W.SpecificBox->SetSelectedIndex(I); W.SpecificChanged({},ESelectInfo::Direct); }
     static void Review(URPGRidingPreferencesWidget& W) { W.ReviewButton->OnClicked.Broadcast(); }

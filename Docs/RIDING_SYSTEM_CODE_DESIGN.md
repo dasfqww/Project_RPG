@@ -1070,3 +1070,9 @@ authoring spec은 아래 형식이다. 경로와 ID는 예시이며 해당 에�
 `Run-RidingFoundationTests.ps1 -IncludeDashPresentation`은 실제 엔진 몽타주의 Dash 전용 선택/속도·멱등성·취소/오래된 콜백·Emote→Dash·다른 instance 보존·root motion/잘못된 RateScale 거절을 기존 표시/승차 입력 회귀와 검사한다. 읽기 전용 Mannequin/Idle과 transient 몽타주를 사용한다. `Run-RidingIntegrationCompile.ps1 -IncludeDashPresentation`은 게시 원본 사본+본인 overlay의 전체 프로젝트 UHT/실제 표시 CPP2 컴파일이다. 실제 탈것 에셋/화면·물리 입력·전체 게임 링크·다인/Steam/cook 검증은 별도이며, 작은 결과/해시는 로컬 `Saved/BuildChecks/RidingDashPresentation-20261117/Completion.json`에 남긴다.
 
 최종 입력의 분리 모듈 UHT/42단계 빌드·링크와 **E3BF8401…BE8CE60** DLL에서 **native29 Success(신규3/기존26), 검사 오류/경고0·UE0**을 확인했다. 게시 전체 프로젝트 **UHT/관련 CPP2 컴파일0**, 현재 제품/검사 입력 SHA 일치·PS 구문·공백 확인을 통과했다. 두 실행의 자기 사본/OBJ/DLL/PDB/cache **2,898,780,199 bytes(2.700GiB)**·읽기 링크1을 폐기했고 Temp/PID/정리 예외0이다. 원본 게임 DLL/에디터·콘텐츠·무기/플레이어 애니메이션·다른 담당 변경을 보존했으며 폐기한 DLL hash는 당시 근거다.
+
+### 준비 로비 탈것 보관함 목록 (2026-11-23)
+
+보관함은 단일 목록으로 이름 검색, 저장된 즐겨찾기 필터와 이름 정렬을 제공한다. 행은 별표, 사각 썸네일, 이름과 한 줄 설명을 표시한다. 선택한 행은 파란 테두리로 구분한다. 하단 탈것 설정과 가방 물품 등록은 각각 별도 페이지를 연다. 설정은 선택한 행의 기본 탈것 지정·즐겨찾기와 빠른 호출 방식을 기존 검토와 확정 경로로 저장한다. 등록에서 목록으로 돌아오면 미확정 등록 동의를 해제한다.
+
+썸네일은 말·늑대·사슴의 임시 초상화를 사용한다. 보유와 이름은 기존 캐릭터 조회 경로에서 가져온다. 로컬 실행 창에서는 예시 탈것으로 목록을 확인할 수 있다.

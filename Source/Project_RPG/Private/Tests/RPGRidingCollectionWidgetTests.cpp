@@ -1,9 +1,11 @@
 #include "UI/Riding/RPGRidingCollectionWidget.h"
 #include "Online/RPGBackendPlayerAuthState.h"
+#include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
 #include "Components/CheckBox.h"
 #include "Components/EditableTextBox.h"
 #include "Components/TextBlock.h"
+#include "Components/WidgetSwitcher.h"
 #include "Components/VerticalBox.h"
 #include "Dom/JsonObject.h"
 #include "HAL/PlatformTime.h"
@@ -22,7 +24,21 @@ struct FRPGRidingCollectionWidgetTestAccess
     static bool CanRead(URPGRidingCollectionWidget& W) { return W.ReloadButton->GetIsEnabled(); }
     static int32 Count(URPGRidingCollectionWidget& W) { return W.Rows->GetChildrenCount(); }
     static FString Rows(URPGRidingCollectionWidget& W)
-    { FString S; for (auto* Child : W.Rows->GetAllChildren()) if (auto* Text = Cast<UTextBlock>(Child)) S += Text->GetText().ToString(); return S; }
+    {
+        FString VisibleText;
+        UWidgetTree::ForWidgetAndChildren(W.Rows, [&](UWidget* Widget)
+        {
+            if (const auto* Text = Cast<UTextBlock>(Widget)) VisibleText += Text->GetText().ToString();
+        });
+        return VisibleText;
+    }
+    static void Click(URPGRidingCollectionWidget& W, int32 Index)
+    {
+        if (auto* Row = Cast<URPGRidingBrowseButton>(W.Rows->GetChildAt(Index))) Row->OnClicked.Broadcast();
+    }
+    static FText Detail(URPGRidingCollectionWidget& W) { return W.PreferencesMountName->GetText(); }
+    static int32 Page(URPGRidingCollectionWidget& W) { return W.Pages->GetActiveWidgetIndex(); }
+    static void Registration(URPGRidingCollectionWidget& W) { W.OpenRegistrationButton->OnClicked.Broadcast(); }
     static FString Settings(URPGRidingCollectionWidget& W) { return W.Settings->GetText().ToString(); }
     static FString Status(URPGRidingCollectionWidget& W) { return W.Status->GetText().ToString(); }
     static FString Empty(URPGRidingCollectionWidget& W) { return W.Empty->GetText().ToString(); }
@@ -100,6 +116,15 @@ bool FRidingCollectionScreenFilters::RunTest(const FString&)
     Mounts.Add(MakeShared<FJsonValueObject>(Wolf)); O->SetArrayField(TEXT("mounts"), Mounts); O->SetStringField(TEXT("rosterRevision"), TEXT("2")); F.Load(Json(O));
     TestEqual(TEXT("Owned with missing presentation is still visible"), A::Count(*F.Widget), 2);
     TestFalse(TEXT("No fallback definition ID in UI"), A::Rows(*F.Widget).Contains(TEXT("wolf")));
+    const FString SavedSettings = A::Settings(*F.Widget);
+    A::Click(*F.Widget, 1);
+    TestEqual(TEXT("Row click selects the second mount for settings"), A::Detail(*F.Widget).ToString(), FString(TEXT("탈것 2")));
+    TestEqual(TEXT("Browsing keeps the saved mount"), A::Settings(*F.Widget), SavedSettings);
+    A::Registration(*F.Widget);
+    TestEqual(TEXT("Bag registration is a separate page"), A::Page(*F.Widget), 1);
+    A::Escape(*F.Widget);
+    TestEqual(TEXT("Escape returns to the selected mount"), A::Page(*F.Widget), 0);
+    TestEqual(TEXT("Back preserves selection"), A::Detail(*F.Widget).ToString(), FString(TEXT("탈것 2")));
     A::Search(*F.Widget, TEXT("말")); TestEqual(TEXT("Name filter"), A::Count(*F.Widget), 1);
     A::Search(*F.Widget, TEXT("없는 이름")); TestEqual(TEXT("Empty filter"), A::Count(*F.Widget), 0); TestFalse(TEXT("Empty search explained"), A::Empty(*F.Widget).IsEmpty());
     A::Search(*F.Widget, TEXT("")); A::Favorites(*F.Widget, true); TestEqual(TEXT("Server favorites only"), A::Count(*F.Widget), 1);

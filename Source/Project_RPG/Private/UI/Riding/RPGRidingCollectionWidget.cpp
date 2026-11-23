@@ -3,8 +3,8 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
-#include "Components/CanvasPanel.h"
-#include "Components/CanvasPanelSlot.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
+#include "Components/ButtonSlot.h"
 #include "Components/CheckBox.h"
 #include "Components/EditableTextBox.h"
 #include "Components/ScrollBox.h"
@@ -12,34 +12,228 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "Components/Image.h"
+#include "Components/ScaleBox.h"
+#include "Components/ScaleBoxSlot.h"
+#include "Components/WidgetSwitcher.h"
+#include "Brushes/SlateDynamicImageBrush.h"
+#include "Brushes/SlateImageBrush.h"
+#include "Misc/Paths.h"
 #include "InputCoreTypes.h"
+
+namespace
+{
+    const FLinearColor Gold(.88f, .64f, .30f);
+    const FLinearColor Ink(.008f, .009f, .010f);
+
+    UTextBlock* Label(UWidgetTree* Tree, const FText& Value, int32 FontSize = 12, bool Bold = false)
+    {
+        auto* Text = Tree->ConstructWidget<UTextBlock>();
+        Text->SetText(Value);
+        auto Font = Text->GetFont();
+        Font.Size = FontSize;
+        Font.TypefaceFontName = Bold ? TEXT("Bold") : TEXT("Regular");
+        Text->SetFont(Font);
+        Text->SetAutoWrapText(false);
+        return Text;
+    }
+
+    FButtonStyle ButtonStyle(bool Selected)
+    {
+        const FLinearColor Edge = Selected ? FLinearColor(.13f,.56f,.95f) : FLinearColor(.048f,.052f,.054f);
+        FButtonStyle Style;
+        Style.SetNormal(FSlateRoundedBoxBrush(FLinearColor(.012f,.014f,.016f), 0.f, Edge, 1.f));
+        Style.SetHovered(FSlateRoundedBoxBrush(FLinearColor(.031f,.035f,.042f), 0.f, Selected ? Edge : Gold, 1.f));
+        Style.SetPressed(Style.Hovered);
+        Style.SetNormalPadding(FMargin(6,4));
+        Style.SetPressedPadding(FMargin(6,4));
+        return Style;
+    }
+
+    UButton* Action(UWidgetTree* Tree, const TCHAR* Name, const FText& Value)
+    {
+        auto* Button = Tree->ConstructWidget<UButton>(UButton::StaticClass(), Name);
+        Button->SetStyle(ButtonStyle(false));
+        Button->SetContent(Label(Tree, Value));
+        return Button;
+    }
+
+    UBorder* Surface(UWidgetTree* Tree, FLinearColor Color, FMargin Padding)
+    {
+        auto* Border = Tree->ConstructWidget<UBorder>();
+        Border->SetBrushColor(Color);
+        Border->SetPadding(Padding);
+        return Border;
+    }
+}
+
+FSlateBrush URPGRidingCollectionWidget::MountPortrait(const FString& Id, float Size)
+{
+    const TCHAR* File = Id.StartsWith(TEXT("wolf")) ? TEXT("Fang.png") :
+                        Id.StartsWith(TEXT("stag")) ? TEXT("Hart.png") : TEXT("Courser.png");
+    const FName Resource(*(FPaths::ProjectContentDir() / TEXT("Slate/Riding") / File));
+    auto& Cached = PortraitBrushes.FindOrAdd(Resource);
+    if (!Cached) Cached = MakeShared<FSlateDynamicImageBrush>(Resource, FVector2D(Size));
+    FSlateBrush Brush = *Cached;
+    Brush.SetImageSize(FVector2D(Size));
+    return Brush;
+}
 
 TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
 {
     if (!WidgetTree) WidgetTree = NewObject<UWidgetTree>(this, TEXT("WidgetTree"));
     if (!WidgetTree->RootWidget)
     {
-        auto* Root = WidgetTree->ConstructWidget<UCanvasPanel>(); WidgetTree->RootWidget = Root;
-        auto* Frame = WidgetTree->ConstructWidget<UBorder>(); Frame->SetBrushColor(FLinearColor(.025f, .035f, .045f, .98f)); Frame->SetPadding(FMargin(18));
-        auto* CanvasSlot = Root->AddChildToCanvas(Frame); CanvasSlot->SetAnchors(FAnchors(.5f)); CanvasSlot->SetAlignment(FVector2D(.5f)); CanvasSlot->SetAutoSize(true);
-        auto* Size = WidgetTree->ConstructWidget<USizeBox>(); Size->SetWidthOverride(700); Size->SetHeightOverride(520); Frame->SetContent(Size);
-        auto* OuterScroll = WidgetTree->ConstructWidget<UScrollBox>(); Size->SetContent(OuterScroll);
-        auto* List = WidgetTree->ConstructWidget<UVerticalBox>(); OuterScroll->AddChild(List);
-        auto Text = [&](const FText& Value) { auto* W = WidgetTree->ConstructWidget<UTextBlock>(); W->SetText(Value); W->SetAutoWrapText(true); List->AddChild(W); return W; };
-        auto Button = [&](const TCHAR* Name, const FText& Value) { auto* W = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), FName(Name)); auto* Label = WidgetTree->ConstructWidget<UTextBlock>(); Label->SetText(Value); W->SetContent(Label); List->AddChild(W); return W; };
-        Text(NSLOCTEXT("RidingCollection", "Title", "탈것 보관함"));
-        Status = Text(FText::GetEmpty()); Settings = Text(FText::GetEmpty());
-        ReloadButton = Button(TEXT("RidingCollectionReload"), NSLOCTEXT("RidingCollection", "Reload", "보유 탈것 불러오기"));
-        Search = WidgetTree->ConstructWidget<UEditableTextBox>(); Search->SetHintText(NSLOCTEXT("RidingCollection", "Search", "탈것 이름 검색")); List->AddChild(Search);
-        FavoritesOnly = WidgetTree->ConstructWidget<UCheckBox>(); auto* Label = WidgetTree->ConstructWidget<UTextBlock>();
-        Label->SetText(NSLOCTEXT("RidingCollection", "FavoritesOnly", "즐겨찾기만 보기")); FavoritesOnly->SetContent(Label); List->AddChild(FavoritesOnly);
+        auto* Backdrop = Surface(WidgetTree, FLinearColor(.004f,.007f,.012f,.82f), FMargin(14));
+        WidgetTree->RootWidget = Backdrop;
+        auto* Fit = WidgetTree->ConstructWidget<UScaleBox>();
+        Fit->SetStretch(EStretch::ScaleToFit);
+        Fit->SetStretchDirection(EStretchDirection::DownOnly);
+        Backdrop->SetContent(Fit);
+        auto* Size = WidgetTree->ConstructWidget<USizeBox>();
+        Size->SetWidthOverride(465);
+        Size->SetHeightOverride(650);
+        Fit->SetContent(Size);
+        CastChecked<UScaleBoxSlot>(Size->Slot)->SetHorizontalAlignment(HAlign_Center);
+        CastChecked<UScaleBoxSlot>(Size->Slot)->SetVerticalAlignment(VAlign_Center);
+        auto* Rim = Surface(WidgetTree, FLinearColor(.30f,.23f,.15f), FMargin(1));
+        Size->SetContent(Rim);
+        auto* Shell = Surface(WidgetTree, Ink, FMargin(10));
+        Rim->SetContent(Shell);
+        auto* Layout = WidgetTree->ConstructWidget<UVerticalBox>();
+        Shell->SetContent(Layout);
+        auto* Header = WidgetTree->ConstructWidget<UHorizontalBox>();
+        Layout->AddChildToVerticalBox(Header)->SetPadding(FMargin(0,0,0,4));
+        auto* Title = Label(WidgetTree, NSLOCTEXT("RidingCollection","MountTitle","탈 것"), 20, true);
+        Title->SetColorAndOpacity(FLinearColor(.9f,.83f,.67f));
+        Title->SetJustification(ETextJustify::Center);
+        Header->AddChildToHorizontalBox(Title)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        CloseButton = Action(WidgetTree, TEXT("RidingCollectionClose"), FText::FromString(TEXT("×")));
+        CloseButton->SetToolTipText(NSLOCTEXT("RidingCollection","Close","닫기"));
+        Header->AddChild(CloseButton);
+
+        auto* Rule = WidgetTree->ConstructWidget<UHorizontalBox>();
+        Layout->AddChildToVerticalBox(Rule)->SetPadding(FMargin(0,0,0,6));
+        auto AddRule = [&]
+        {
+            auto* Hairline = WidgetTree->ConstructWidget<USizeBox>();
+            Hairline->SetHeightOverride(1);
+            Hairline->SetContent(Surface(WidgetTree, FLinearColor(.30f,.19f,.065f), FMargin(0)));
+            auto* Cell = Rule->AddChildToHorizontalBox(Hairline);
+            Cell->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+            Cell->SetVerticalAlignment(VAlign_Center);
+        };
+        AddRule();
+        auto* Diamond = Label(WidgetTree, FText::FromString(TEXT("◇")), 9);
+        Diamond->SetColorAndOpacity(Gold);
+        Rule->AddChild(Diamond);
+        AddRule();
+        Pages = WidgetTree->ConstructWidget<UWidgetSwitcher>();
+        Layout->AddChildToVerticalBox(Pages)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        auto* CollectionPage = WidgetTree->ConstructWidget<UVerticalBox>();
+        Pages->AddChild(CollectionPage);
+        auto* ListSurface = Surface(WidgetTree, FLinearColor(.006f,.007f,.008f), FMargin(5));
+        CollectionPage->AddChildToVerticalBox(ListSurface)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        auto* List = WidgetTree->ConstructWidget<UVerticalBox>();
+        ListSurface->SetContent(List);
+        auto Text = [&](const FText& Value)
+        {
+            auto* W = Label(WidgetTree, Value);
+            W->SetAutoWrapText(true);
+            List->AddChildToVerticalBox(W)->SetPadding(FMargin(0,2));
+            return W;
+        };
+        auto Button = [&](const TCHAR* Name, const FText& Value)
+        {
+            auto* W = Action(WidgetTree, Name, Value);
+            List->AddChildToVerticalBox(W)->SetPadding(FMargin(0,2));
+            return W;
+        };
+        auto* SearchLine = WidgetTree->ConstructWidget<UHorizontalBox>();
+        List->AddChild(SearchLine);
+        Search = WidgetTree->ConstructWidget<UEditableTextBox>();
+        Search->SetHintText(NSLOCTEXT("RidingCollection","Search","탈것 이름 검색"));
+        auto SearchStyle = Search->GetWidgetStyle();
+        auto SearchFont = SearchStyle.TextStyle.Font;
+        SearchFont.Size = 12;
+        SearchStyle.SetFont(SearchFont);
+        SearchStyle.SetForegroundColor(FLinearColor::White);
+        SearchStyle.SetFocusedForegroundColor(FLinearColor::White);
+        SearchStyle.SetBackgroundImageNormal(ButtonStyle(false).Normal);
+        SearchStyle.SetBackgroundImageHovered(ButtonStyle(false).Hovered);
+        SearchStyle.SetBackgroundImageFocused(ButtonStyle(true).Normal);
+        Search->SetWidgetStyle(SearchStyle);
+        SearchLine->AddChildToHorizontalBox(Search)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        auto* SearchButton = Action(WidgetTree,TEXT("FocusRidingSearch"),NSLOCTEXT("RidingCollection","SearchButton","검색"));
+        auto* Magnifier = WidgetTree->ConstructWidget<UImage>();
+        Magnifier->SetBrush(FSlateVectorImageBrush(FPaths::ProjectContentDir() / TEXT("Slate/Riding/Search.svg"), FVector2D(18)));
+        SearchButton->SetContent(Magnifier);
+        SearchButton->SetToolTipText(NSLOCTEXT("RidingCollection","SearchButton","검색"));
+        SearchButton->OnClicked.AddUniqueDynamic(this,&ThisClass::FocusSearch);
+        SearchLine->AddChild(SearchButton);
+        auto* FilterLine = WidgetTree->ConstructWidget<UHorizontalBox>();
+        List->AddChildToVerticalBox(FilterLine)->SetPadding(FMargin(0,4));
+
+        FavoritesOnly = WidgetTree->ConstructWidget<UCheckBox>();
+        FavoritesOnly->SetContent(Label(WidgetTree, NSLOCTEXT("RidingCollection","FavoritesOnly","즐겨찾기만 보기")));
+        FilterLine->AddChildToHorizontalBox(FavoritesOnly)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        auto* Sort = Action(WidgetTree,TEXT("RidingSort"),NSLOCTEXT("RidingCollection","DefaultSort","기본 정렬"));
+        SortLabel = CastChecked<UTextBlock>(Sort->GetContent());
+        SortLabel->SetColorAndOpacity(Gold);
+        Sort->OnClicked.AddUniqueDynamic(this,&ThisClass::ToggleSort);
+        FilterLine->AddChild(Sort);
         Empty = Text(FText::GetEmpty());
-        auto* MountSize = WidgetTree->ConstructWidget<USizeBox>(); MountSize->SetHeightOverride(140); List->AddChild(MountSize);
-        auto* Scroll = WidgetTree->ConstructWidget<UScrollBox>(); MountSize->SetContent(Scroll);
-        Rows = WidgetTree->ConstructWidget<UVerticalBox>(); Scroll->AddChild(Rows);
-        PreferencesPanel = WidgetTree->ConstructWidget<URPGRidingPreferencesWidget>(); List->AddChild(PreferencesPanel);
+        auto* RosterScroll = WidgetTree->ConstructWidget<UScrollBox>();
+        List->AddChildToVerticalBox(RosterScroll)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        Rows = WidgetTree->ConstructWidget<UVerticalBox>();
+        RosterScroll->AddChild(Rows);
+        ReloadButton = Button(TEXT("RidingCollectionReload"), NSLOCTEXT("RidingCollection","Reload","보유 탈것 불러오기"));
+
+        auto* Footer = WidgetTree->ConstructWidget<UHorizontalBox>();
+        CollectionPage->AddChildToVerticalBox(Footer)->SetPadding(FMargin(0,10,0,0));
+        Status = Label(WidgetTree,FText::GetEmpty(),11);
+        Status->SetAutoWrapText(true);
+        auto* StatusSlot = Footer->AddChildToHorizontalBox(Status);
+        StatusSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        StatusSlot->SetVerticalAlignment(VAlign_Center);
+        OpenRegistrationButton = Action(WidgetTree,TEXT("OpenRidingRegistration"),NSLOCTEXT("RidingRegistration","Open","가방 물품 등록"));
+        OpenPreferencesButton = Action(WidgetTree, TEXT("OpenRidingPreferences"), NSLOCTEXT("RidingCollection","OpenPreferences","탈것 설정"));
+        Footer->AddChildToHorizontalBox(OpenPreferencesButton)->SetPadding(FMargin(0,0,4,0));
+        OpenPreferencesButton->OnClicked.AddUniqueDynamic(this, &ThisClass::OpenPreferences);
+        Footer->AddChild(OpenRegistrationButton);
+        OpenRegistrationButton->OnClicked.AddUniqueDynamic(this,&ThisClass::OpenRegistration);
+
+        auto* RegistrationPage = WidgetTree->ConstructWidget<UVerticalBox>();
+        Pages->AddChild(RegistrationPage);
+        BackButton = Action(WidgetTree,TEXT("RidingRegistrationBack"), NSLOCTEXT("RidingRegistration","Back","‹  탈것 목록으로"));
+        RegistrationPage->AddChildToVerticalBox(BackButton)->SetHorizontalAlignment(HAlign_Left);
+        BackButton->OnClicked.AddUniqueDynamic(this,&ThisClass::BackToCollection);
+        RegistrationUnavailable = Label(WidgetTree,NSLOCTEXT("RidingRegistration","Unavailable","현재 등록할 물품 정보를 사용할 수 없습니다."));
+        RegistrationPage->AddChild(RegistrationUnavailable);
+        auto* RegistrationScroll = WidgetTree->ConstructWidget<UScrollBox>();
+        RegistrationPage->AddChildToVerticalBox(RegistrationScroll)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        RegistrationGroup = WidgetTree->ConstructWidget<UVerticalBox>();
+        RegistrationScroll->AddChild(RegistrationGroup);
+        auto* PreferencesPage = WidgetTree->ConstructWidget<UVerticalBox>();
+        Pages->AddChild(PreferencesPage);
+        auto* PreferencesBack = Action(WidgetTree, TEXT("RidingPreferencesBack"), NSLOCTEXT("RidingRegistration","Back","‹  탈것 목록으로"));
+        PreferencesPage->AddChildToVerticalBox(PreferencesBack)->SetHorizontalAlignment(HAlign_Left);
+        PreferencesBack->OnClicked.AddUniqueDynamic(this, &ThisClass::BackToCollection);
+        auto* PreferencesScroll = WidgetTree->ConstructWidget<UScrollBox>();
+        PreferencesPage->AddChildToVerticalBox(PreferencesScroll)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        Settings = Label(WidgetTree, FText::GetEmpty(), 11);
+        Settings->SetAutoWrapText(true);
+        PreferencesScroll->AddChild(Settings);
+        PreferencesMountName = Label(WidgetTree, FText::GetEmpty(), 16, true);
+        PreferencesMountName->SetColorAndOpacity(Gold);
+        PreferencesScroll->AddChild(PreferencesMountName);
+        PreferencesPanel = WidgetTree->ConstructWidget<URPGRidingPreferencesWidget>();
+        PreferencesScroll->AddChild(PreferencesPanel);
         if (const auto P = PreferencesOwner.Pin()) PreferencesPanel->SetOwner(P.ToSharedRef());
-        auto* MainList = List; RegistrationGroup = WidgetTree->ConstructWidget<UVerticalBox>(); List->AddChild(RegistrationGroup); List = RegistrationGroup;
+
+        List = RegistrationGroup;
         Text(NSLOCTEXT("RidingRegistration", "Title", "가방 물품으로 탈것 등록")); RegistrationStatus = Text(FText::GetEmpty());
         RegistrationReload = Button(TEXT("RidingRegistrationReload"), NSLOCTEXT("RidingRegistration", "Reload", "등록할 최신 물품 불러오기"));
         RegistrationRows = WidgetTree->ConstructWidget<UComboBoxString>(); List->AddChild(RegistrationRows);
@@ -60,16 +254,14 @@ TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
         RegistrationRetry->OnClicked.AddUniqueDynamic(this, &ThisClass::RetryRegistration);
         RegistrationStorage->OnClicked.AddUniqueDynamic(this, &ThisClass::StorageRegistration);
         RegistrationAssets->OnClicked.AddUniqueDynamic(this, &ThisClass::RefreshRegistrationAssets);
-        List = MainList;
-        CloseButton = Button(TEXT("RidingCollectionClose"), NSLOCTEXT("RidingCollection", "Close", "닫기"));
         ReloadButton->OnClicked.AddUniqueDynamic(this, &ThisClass::Reload); CloseButton->OnClicked.AddUniqueDynamic(this, &ThisClass::CloseScreen);
         Search->OnTextChanged.AddUniqueDynamic(this, &ThisClass::SearchChanged); FavoritesOnly->OnCheckStateChanged.AddUniqueDynamic(this, &ThisClass::FavoritesChanged);
     }
     SetIsFocusable(true); RowsKey.Reset(); RefreshView(); RefreshRegistration(); return Super::RebuildWidget();
 }
-void URPGRidingCollectionWidget::SetReadOwner(TSharedRef<FRPGRidingCollectionReader> InReader, FPresenter InPresenter)
+void URPGRidingCollectionWidget::SetReadOwner(TSharedRef<FRPGRidingCollectionReader> InReader, FPresenter InPresenter, FPresenter InDescription)
 {
-    Detach(); Reader = InReader; Presenter = MoveTemp(InPresenter); BoundContext = InReader->GetContext(); bClosing = false;
+    Detach(); Reader = InReader; Presenter = MoveTemp(InPresenter); Description = MoveTemp(InDescription); BoundContext = InReader->GetContext(); bClosing = false;
     RowsKey.Reset(); Subscribe(); RefreshView();
 }
 void URPGRidingCollectionWidget::Subscribe()
@@ -106,6 +298,7 @@ void URPGRidingCollectionWidget::RefreshView()
     const auto State = Owner->GetState(); const auto* C = Owner->GetCollection(); const double Retry = Owner->GetRetryAfterSeconds();
     const bool bReady = C != nullptr;
     ReloadButton->SetIsEnabled(State != ERPGRidingCollectionReadState::Loading && Retry <= 0);
+    OpenPreferencesButton->SetIsEnabled(PreferencesOwner.IsValid());
     Search->SetIsEnabled(bReady); FavoritesOnly->SetIsEnabled(bReady);
     FText Message = NSLOCTEXT("RidingCollection", "Prompt", "보유 탈것을 불러와 주세요.");
     if (State == ERPGRidingCollectionReadState::Loading) Message = NSLOCTEXT("RidingCollection", "Loading", "보유 탈것을 불러오는 중입니다.");
@@ -132,30 +325,117 @@ void URPGRidingCollectionWidget::RefreshView()
     }
     const FString Filter = Search->GetText().ToString().TrimStartAndEnd(); const bool bFavorites = FavoritesOnly->IsChecked();
     Key += TEXT("/") + Filter + (bFavorites ? TEXT("/favorite") : TEXT("/all"));
-    if (Key == RowsKey) return; RowsKey = Key; Rows->ClearChildren(); int32 Count = 0;
+    if (Key == RowsKey) return; RowsKey = Key; Rows->ClearChildren();
+    TArray<FString> Visible;
     if (C) for (const auto& M : C->Mounts)
     {
-        const bool bFavorite = C->Favorites.Contains(M.MountId); const auto& Name = Names.FindChecked(M.MountId);
-        if ((bFavorites && !bFavorite) || (!Filter.IsEmpty() && !Name.ToString().Contains(Filter))) continue;
-        const FText Mark = C->SelectedMountId == M.MountId ? NSLOCTEXT("RidingCollection", "Selected", "선택됨") : NSLOCTEXT("RidingCollection", "Owned", "보유");
-        auto* Text = WidgetTree->ConstructWidget<UTextBlock>(); Text->SetAutoWrapText(true);
-        Text->SetText(FText::Format(NSLOCTEXT("RidingCollection", "Row", "{0} · {1}{2}"), Name, Mark,
-            bFavorite ? NSLOCTEXT("RidingCollection", "Favorite", " · 즐겨찾기") : FText::GetEmpty()));
-        Rows->AddChild(Text); ++Count;
+        if (bFavorites && !C->Favorites.Contains(M.MountId)) continue;
+        if (!Filter.IsEmpty() && !Names.FindChecked(M.MountId).ToString().Contains(Filter)) continue;
+        Visible.Add(M.MountId);
     }
+    if (bSortByName) Visible.StableSort([&Names](const FString& A, const FString& B) { return Names.FindChecked(A).CompareTo(Names.FindChecked(B)) < 0; });
+    if (!Visible.Contains(BrowsedMount))
+    {
+        BrowsedMount = Visible.IsEmpty() ? FString() :
+            Visible.Contains(C->SelectedMountId) ? C->SelectedMountId : Visible[0];
+    }
+    PreferencesMountName->SetText(Names.FindRef(BrowsedMount));
+    PreferencesPanel->BrowseMount(BrowsedMount);
+    for (const auto& Id : Visible)
+    {
+        auto* Row = WidgetTree->ConstructWidget<URPGRidingBrowseButton>();
+        Row->Collection = this;
+        Row->MountId = Id;
+        Row->OnClicked.AddUniqueDynamic(Row,&URPGRidingBrowseButton::Browse);
+        Row->SetStyle(ButtonStyle(Id == BrowsedMount));
+        auto* Line = WidgetTree->ConstructWidget<UHorizontalBox>();
+        CastChecked<UButtonSlot>(Row->AddChild(Line))->SetHorizontalAlignment(HAlign_Fill);
+        const bool Starred = C->Favorites.Contains(Id);
+        auto* Star = Label(WidgetTree,FText::FromString(Starred ? TEXT("★") : TEXT("☆")), 14);
+        Star->SetColorAndOpacity(Starred ? Gold : FLinearColor(.18f,.19f,.20f));
+        auto* StarSlot = Line->AddChildToHorizontalBox(Star);
+        StarSlot->SetVerticalAlignment(VAlign_Center);
+        StarSlot->SetPadding(FMargin(2,0,7,0));
+        auto* Icon = WidgetTree->ConstructWidget<UImage>();
+        Icon->SetBrush(MountPortrait(Id, 46));
+        auto* IconFrame = Surface(WidgetTree, FLinearColor(.20f,.16f,.10f), FMargin(1));
+        IconFrame->SetContent(Icon);
+        Line->AddChild(IconFrame);
+        auto* Copy = WidgetTree->ConstructWidget<UVerticalBox>();
+        auto* NameText = Label(WidgetTree,Names.FindChecked(Id),13,true);
+        NameText->SetColorAndOpacity(Id == C->SelectedMountId ? Gold : Starred ? FLinearColor(.30f,.76f,1.f) : FLinearColor(.64f,.84f,.37f));
+        NameText->SetTextOverflowPolicy(ETextOverflowPolicy::Ellipsis);
+        Copy->AddChild(NameText);
+        FText Caption = Description ? Description(Id) : FText::GetEmpty();
+        if (Caption.IsEmpty())
+            Caption = Id == C->SelectedMountId ? NSLOCTEXT("RidingCollection","DefaultDescription","기본 탈것으로 지정됨") :
+                Starred ? NSLOCTEXT("RidingCollection","StarDescription","즐겨찾기에 등록된 탈것") : NSLOCTEXT("RidingCollection","OwnedDescription","보유 중인 탈것");
+        auto* Sub = Label(WidgetTree,Caption,11);
+        Sub->SetColorAndOpacity(FLinearColor(.57f,.59f,.60f));
+        Sub->SetTextOverflowPolicy(ETextOverflowPolicy::Ellipsis);
+        Copy->AddChild(Sub);
+        auto* NameSlot = Line->AddChildToHorizontalBox(Copy);
+        NameSlot->SetPadding(FMargin(9,0));
+        NameSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        NameSlot->SetVerticalAlignment(VAlign_Center);
+        Row->SetToolTipText(Names.FindChecked(Id));
+        Rows->AddChildToVerticalBox(Row)->SetPadding(FMargin(0,0,0,1));
+    }
+    const int32 Count = Visible.Num();
+    Empty->SetVisibility(C && Visible.IsEmpty() ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
     Empty->SetText(!C ? FText::GetEmpty() : C->Mounts.IsEmpty() ? NSLOCTEXT("RidingCollection", "Empty", "보유한 탈것이 없습니다.")
         : Count == 0 ? NSLOCTEXT("RidingCollection", "FilteredEmpty", "검색 조건에 맞는 탈것이 없습니다.") : FText::GetEmpty());
+}
+void URPGRidingBrowseButton::Browse()
+{
+    if (Collection.IsValid()) Collection->Browse(MountId);
+}
+void URPGRidingCollectionWidget::Browse(const FString& MountId)
+{
+    if (BrowsedMount == MountId) return;
+    BrowsedMount = MountId;
+    RowsKey.Reset();
+    RefreshView();
+}
+void URPGRidingCollectionWidget::FocusSearch()
+{
+    Search->SetKeyboardFocus();
+}
+void URPGRidingCollectionWidget::ToggleSort()
+{
+    bSortByName = !bSortByName;
+    SortLabel->SetText(bSortByName ? NSLOCTEXT("RidingCollection","NameSort","이름 정렬") : NSLOCTEXT("RidingCollection","DefaultSort","기본 정렬"));
+    RowsKey.Reset();
+    RefreshView();
+}
+void URPGRidingCollectionWidget::OpenRegistration()
+{
+    Pages->SetActiveWidgetIndex(1);
+    RefreshRegistration();
+    BackButton->SetKeyboardFocus();
+}
+void URPGRidingCollectionWidget::OpenPreferences()
+{
+    Pages->SetActiveWidgetIndex(2);
+    SetKeyboardFocus();
+}
+void URPGRidingCollectionWidget::BackToCollection()
+{
+    const bool bFromRegistration = Pages->GetActiveWidgetIndex() == 1;
+    if (bFromRegistration) DismissRegistration();
+    Pages->SetActiveWidgetIndex(0);
+    (bFromRegistration ? OpenRegistrationButton : OpenPreferencesButton)->SetKeyboardFocus();
 }
 void URPGRidingCollectionWidget::CloseScreen()
 {
     if (bClosing) return; bClosing = true; Detach();
     if (Rows) Rows->ClearChildren(); if (Settings) Settings->SetText(FText::GetEmpty());
-    Reader.Reset(); Presenter = {}; RowsKey.Reset(); SetVisibility(ESlateVisibility::Collapsed);
+    Reader.Reset(); Presenter = {}; Description = {}; RowsKey.Reset(); SetVisibility(ESlateVisibility::Collapsed);
     PreferencesOwner.Reset(); Registration.Reset(); RegistrationIds.Reset(); RegistrationSnapshot.Invalidate(); RegistrationReview.Invalidate(); SelectedRegistration.Invalidate();
     if (IsInViewport() || GetParent()) RemoveFromParent(); OnClosed.Broadcast();
 }
 FReply URPGRidingCollectionWidget::NativeOnKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)
-{ if (Event.GetKey() == EKeys::Escape) { CloseScreen(); return FReply::Handled(); } return Super::NativeOnKeyDown(Geometry, Event); }
+{ if (Event.GetKey() == EKeys::Escape) { if (Pages && Pages->GetActiveWidgetIndex() != 0) BackToCollection(); else CloseScreen(); return FReply::Handled(); } return Super::NativeOnKeyDown(Geometry, Event); }
 
 void URPGRidingCollectionWidget::SetPreferencesOwner(TSharedRef<FRPGRidingPreferencesClient> InOwner)
 { PreferencesOwner = InOwner; if (PreferencesPanel) PreferencesPanel->SetOwner(InOwner); }
@@ -169,6 +449,7 @@ void URPGRidingCollectionWidget::RefreshRegistration()
 {
     if (bClosing || bRegistrationUpdating || !RegistrationGroup) return; TGuardValue<bool> Guard(bRegistrationUpdating, true);
     const auto Owner = Registration.Pin(); const auto V = Owner ? Owner->GetView() : FRPGRidingRegistrationView{};
+    RegistrationUnavailable->SetVisibility(V.bAvailable ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
     RegistrationGroup->SetVisibility(V.bAvailable ? ESlateVisibility::Visible : ESlateVisibility::Collapsed); if (!V.bAvailable) return;
     RegistrationStatus->SetText(V.Status); RegistrationReload->SetIsEnabled(V.bCanReload);
     if (V.Snapshot != RegistrationSnapshot) { RegistrationSnapshot = V.Snapshot; SelectedRegistration.Invalidate(); if (Owner) Owner->Dismiss(); }

@@ -16,6 +16,7 @@ class PROJECT_RPG_API URPGRidingPreferencesWidget final : public UUserWidget
 public:
     void SetOwner(TSharedRef<FRPGRidingPreferencesClient> InOwner);
     void DetachOwner();
+    void BrowseMount(const FString& Id);
 protected:
     virtual TSharedRef<SWidget> RebuildWidget() override;
     virtual void NativeConstruct() override;
@@ -25,8 +26,7 @@ private:
     void RefreshView();
     bool TickView(float);
     UFUNCTION() void Reload();
-    UFUNCTION() void SelectChanged(FString Value, ESelectInfo::Type Type);
-    UFUNCTION() void FavoriteChanged(FString Value, ESelectInfo::Type Type);
+    UFUNCTION() void SetDefault();
     UFUNCTION() void ModeChanged(FString Value, ESelectInfo::Type Type);
     UFUNCTION() void SpecificChanged(FString Value, ESelectInfo::Type Type);
     UFUNCTION() void ToggleFavorite();
@@ -50,8 +50,7 @@ private:
     UPROPERTY(Transient) TObjectPtr<UTextBlock> Status;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> Favorites;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> ReviewText;
-    UPROPERTY(Transient) TObjectPtr<UComboBoxString> SelectedBox;
-    UPROPERTY(Transient) TObjectPtr<UComboBoxString> FavoriteBox;
+    UPROPERTY(Transient) TObjectPtr<UButton> DefaultButton;
     UPROPERTY(Transient) TObjectPtr<UComboBoxString> ModeBox;
     UPROPERTY(Transient) TObjectPtr<UComboBoxString> SpecificBox;
     UPROPERTY(Transient) TObjectPtr<UButton> ReloadButton;

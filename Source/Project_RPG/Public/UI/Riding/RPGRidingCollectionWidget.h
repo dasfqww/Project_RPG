@@ -2,6 +2,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Containers/Ticker.h"
 #include "Components/ComboBoxString.h"
+#include "Components/Button.h"
 #include "Riding/RPGRidingCollectionReader.h"
 #include "Riding/RPGRidingRegistrationClient.h"
 #include "RPGRidingCollectionWidget.generated.h"
@@ -15,6 +16,16 @@ class UTextBlock;
 class UVerticalBox;
 class UComboBoxString;
 
+UCLASS()
+class PROJECT_RPG_API URPGRidingBrowseButton final : public UButton
+{
+    GENERATED_BODY()
+public:
+    FString MountId;
+    TWeakObjectPtr<class URPGRidingCollectionWidget> Collection;
+    UFUNCTION() void Browse();
+};
+
 /** Collection view and explicit registration consent. Closing never sends a mutation or mount command. */
 UCLASS()
 class PROJECT_RPG_API URPGRidingCollectionWidget final : public UUserWidget
@@ -22,7 +33,7 @@ class PROJECT_RPG_API URPGRidingCollectionWidget final : public UUserWidget
     GENERATED_BODY()
 public:
     using FPresenter = TFunction<FText(const FString&)>;
-    void SetReadOwner(TSharedRef<FRPGRidingCollectionReader> InReader, FPresenter InPresenter);
+    void SetReadOwner(TSharedRef<FRPGRidingCollectionReader> InReader, FPresenter InPresenter, FPresenter InDescription = {});
     void SetRegistrationOwner(TSharedRef<FRPGRidingRegistrationClient> InOwner);
     void SetPreferencesOwner(TSharedRef<FRPGRidingPreferencesClient> InOwner);
     UFUNCTION() void CloseScreen();
@@ -36,6 +47,24 @@ private:
     friend struct FRPGRidingCollectionWidgetTestAccess;
     friend struct FRPGRidingRegistrationUiTestAccess;
     friend struct FRPGRidingPreferencesUiTestAccess;
+    friend class URPGRidingBrowseButton;
+    void Browse(const FString& MountId);
+    UFUNCTION() void OpenRegistration();
+    UFUNCTION() void OpenPreferences();
+    UFUNCTION() void BackToCollection();
+    UPROPERTY(Transient) TObjectPtr<class UWidgetSwitcher> Pages;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> PreferencesMountName;
+    UPROPERTY(Transient) TObjectPtr<UButton> OpenRegistrationButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> OpenPreferencesButton;
+    UPROPERTY(Transient) TObjectPtr<UButton> BackButton;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> RegistrationUnavailable;
+    FSlateBrush MountPortrait(const FString& Id, float Size);
+    TMap<FName,TSharedPtr<struct FSlateDynamicImageBrush>> PortraitBrushes;
+    FString BrowsedMount;
+    bool bSortByName = false;
+    UFUNCTION() void ToggleSort();
+    UFUNCTION() void FocusSearch();
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> SortLabel;
     void RefreshRegistration();
     UFUNCTION() void ReloadRegistration();
     UFUNCTION() void RegistrationSelection(FString Value, ESelectInfo::Type Type);
@@ -62,6 +91,7 @@ private:
     UFUNCTION() void FavoritesChanged(bool bChecked);
     TWeakPtr<FRPGRidingCollectionReader> Reader;
     FPresenter Presenter;
+    FPresenter Description;
     FRPGRidingCollectionContext BoundContext;
     FDelegateHandle Changed;
     FTSTicker::FDelegateHandle TickHandle;
