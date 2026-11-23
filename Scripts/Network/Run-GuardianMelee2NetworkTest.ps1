@@ -6,7 +6,9 @@ param(
  [string]$AuditRun,
  [string]$AuditResultRun,
  [string]$OutputRoot,
- [switch]$MovingPlatform
+ [switch]$MovingPlatform,
+ [ValidateSet('Front','Right','Back','Left')][string]$Direction,
+ [string]$AssetRegistryCacheRoot
 )
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'GuardianMelee2Artifacts.ps1')
@@ -42,6 +44,7 @@ if($AuditRun){Test-MotionContract ([IO.Path]::GetFullPath($AuditRun));return}
 if($AuditResultRun){$null=Test-GuardianMelee2Results -Directory ([IO.Path]::GetFullPath($AuditResultRun)) -MovingPlatform:$MovingPlatform;return}
 if(!$RuntimeProject){throw 'Specify -RuntimeProject with a coordinated, built project directory; archived verification modules are discarded after use.'}
 $RuntimeProject=[IO.Path]::GetFullPath($RuntimeProject)
+if($AssetRegistryCacheRoot){$AssetRegistryCacheRoot=(Resolve-Path -LiteralPath $AssetRegistryCacheRoot).Path}
 $taskRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../Saved/CombatGuardianMelee2Network'))
 if($OutputRoot){$taskRoot=[IO.Path]::GetFullPath($OutputRoot)}
 $run=Join-Path $taskRoot ([Guid]::NewGuid().ToString('N'))
@@ -66,6 +69,15 @@ function Start-Probe([string]$Role,[string]$Destination,[string]$Mode,[string]$C
   '-ini:Engine:[OnlineSubsystem]:DefaultPlatformService=Null')
  if($Role -eq 'owner'){$arguments+='-RPGGuardianMelee2Owner'}
  if($MovingPlatform){$arguments+='-RPGGuardianMelee2MovingPlatform'}
+ if($AssetRegistryCacheRoot){
+  $arguments+=('-AssetRegistryCacheRootFolder="'+$AssetRegistryCacheRoot+'"')
+  $arguments+='-NoAssetRegistryCacheWrite'
+ }
+ if($Direction){
+  $directionIndex=@{Front=0;Right=1;Back=2;Left=3}[$Direction]
+  $arguments+="-RPGGuardianMelee2Direction=$directionIndex"
+  $arguments+='-RPGDevelopmentClassProfile=/Game/Blueprints/GameData/PlayerClass/Development/DA_GreatSword_Development.DA_GreatSword_Development'
+ }
  @{role=$Role;arguments=$arguments}|ConvertTo-Json -Depth 4|Set-Content -LiteralPath (Join-Path $run ($Role+'.command.json')) -Encoding UTF8
  $process=Start-Process 'D:/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe' -ArgumentList $arguments -WindowStyle Hidden -PassThru
  $processRoles[$process.Id]=$Role
@@ -110,8 +122,19 @@ try{
  $observer=Start-Probe 'observer' '/Engine/Maps/Entry' '-game' ('t.MaxFPS 30,open 127.0.0.1:'+$Port)
  foreach($log in $logs){Wait-Marker $log 'GUARDIAN_MELEE2_NETWORK_COMPLETE'}
  $results=Test-GuardianMelee2Results -Directory $run -MovingPlatform:$MovingPlatform
+ if($Direction){
+  $motion=@{Front='Flyback_F';Right='Launch_R';Back='Launch_B';Left='Launch_L'}[$Direction]
+  $phases=@('airborne','downed','getting_up')
+  for($phase=1;$phase -le $phases.Count;$phase++){
+   $asset="AM_${motion}_$($phases[$phase-1])"
+   $expected="/Game/Blueprints/Combat/Reactions/DirectionalAirborne/Player/$asset.$asset"
+   foreach($role in @('owner','observer')){
+    if($results[$role].montages."$phase" -cne $expected){throw "$role did not play $expected"}
+   }
+  }
+ }
  Set-Content -LiteralPath (Join-Path $run 'exit') -Value 'all observations accepted' -Encoding ASCII
- $exitDeadline=[DateTime]::UtcNow.AddSeconds(30)
+ $exitDeadline=[DateTime]::UtcNow.AddSeconds($(if($Direction){120}else{30}))
  while(@($processes|Where-Object{!$_.HasExited}).Count -gt 0 -and [DateTime]::UtcNow -lt $exitDeadline){Start-Sleep -Milliseconds 200}
  foreach($process in $processes){if(!$process.HasExited){throw 'Owned probe did not exit'};$process.WaitForExit();if($process.ExitCode -ne 0){throw 'Owned probe exit was nonzero'}}
  if((Get-FileHash -LiteralPath $module -Algorithm SHA256).Hash -ne $moduleHash){throw 'Isolated DLL changed during verification'}

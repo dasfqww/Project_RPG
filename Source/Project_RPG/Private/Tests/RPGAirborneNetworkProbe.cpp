@@ -353,11 +353,11 @@ void URPGBossMapE2EProbeComponent::TickAirborneClient()
 			const auto* Instance = Anim && Montage ? Anim->GetActiveInstanceForMontage(Montage) : nullptr;
 			if (!Instance || Instance->GetInstanceID() != C->AirborneMontageInstanceId || Elapsed < .05 || ServerTime >= State.PhaseEndServerTime) return;
 			const auto* Profile = C->AirbornePresentationProfile.Get(); if (!Profile) return;
-			const auto& Presentation = PhaseIndex == 1 ? Profile->Airborne : PhaseIndex == 2 ? Profile->Downed : Profile->GettingUp;
+			const auto& Presentation = Profile->ResolveMontage(State.Phase, State.PresentationDirection);
 			const int32 Section = Presentation.Section.IsNone() ? 0 : Montage->GetSectionIndex(Presentation.Section);
 			float Start = 0.f, End = 0.f; Montage->GetSectionStartAndEndTime(Section, Start, End);
 			const float Length = End-Start; if (Length <= 0.f) return;
-			const float Offset = PhaseIndex == 3 ? Elapsed*FMath::Clamp(Length/State.GetUpDuration,.1f,4.f) : FMath::Fmod(Elapsed,Length);
+			const float Offset = PhaseIndex == 3 ? Elapsed*Length/State.GetUpDuration : FMath::Fmod(Elapsed,Length);
 			float PoseError = FMath::Abs(Anim->Montage_GetPosition(Montage)-Start-Offset);
 			if (PhaseIndex != 3) PoseError = FMath::Min(PoseError,FMath::Abs(Length-PoseError));
 			if (PoseError > .5f) return;

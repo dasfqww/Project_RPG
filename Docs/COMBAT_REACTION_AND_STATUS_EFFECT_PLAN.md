@@ -600,6 +600,23 @@ GPU 실행은 전투 검사를 통과했으나 첫 표본이 Niagara 비동기 �
 
 최종 결과 모음은 `Saved/CombatAirborne/Verification.proof.json`이다. 기존 기동 `LogAutomationTest: Error: Condition failed` 15줄은 남으며 실제 테스트 단계의 Error와 구분한다. 에어본 진행 중 늦은 참가, 실제 네트워크 재접속/Pawn 교체, 경사·낭떠러지의 복잡한 조합, 다른 이동 능력/보스 패턴 전체, 여러 PC·Steam·Shipping, 전용 Guardian 다운/기상 아트는 추가 작업이다. 후속 기능은 지속 상태이상이다.
 
+### 실전 방향별 에어본 모션
+
+서버가 승인한 변위 벡터의 반대 방향을 피격자의 전방과 비교해 피격 방향을 정한다. 공중 진입 시 확정한 `PresentationDirection`을 같은 실행의 착지·다운·기상까지 보존하고 `FRPGAirborneState`로 복제한다. 각 클라이언트는 방향과 현재 단계에 해당하는 몽타주를 서버 단계의 경과 시간에서 재생한다. 방향별 단계가 비어 있는 프로필은 해당 단계의 기본 몽타주를 사용한다.
+
+| 공격이 들어온 방향 | 공중 반동 | 착지 자세 |
+|---|---|---|
+| 정면 | Flyback_F | 바로 누움 |
+| 오른쪽 | Launch_R | 왼쪽으로 밀려나 바로 누움 |
+| 후방 | Launch_B | 엎드림 |
+| 왼쪽 | Launch_L | 오른쪽으로 밀려나 바로 누움 |
+
+공중 클립은 초반 반동 뒤 자세를 유지한다. CMC가 착지를 확인하면 공격 데이터가 정한 다운 시간이 시작된다. 기상 몽타주의 재생률은 서버가 정한 기상 시간에 맞고, 그 시간이 끝나면 공용 행동 차단이 해제된다. 방향별 모션은 각 단계의 코스메틱 몽타주이며 이동과 충돌은 기존 CMC 및 GAS 단계로 처리한다.
+
+플레이어 프로필에는 대검 프리뷰에서 검증한 모션의 호환 사본을, 가디언과 글레이서의 공용 프로필에는 Gruntling 스켈레톤으로 리타깃한 모션을 연결한다. 소드맨에는 별도 스켈레톤 리타깃이 필요하다.
+
+`Scripts/Network/Run-GuardianMelee2NetworkTest.ps1`의 `-Direction Front|Right|Back|Left`로 대검의 검을 뽑은 상태에서 실제 Guardian Melee2 무기 적중을 재현한다. 전용 서버와 두 Iris 클라이언트에서 승인 방향, 피격자와 관찰자의 단계별 몽타주 경로, 위치 수렴과 회복 완료를 확인한다. `ProjectRPG.Combat.DirectionalAirborne.GruntlingPresentation`은 두 Gruntling BP에서 네 방향의 공중·다운·기상을 검사한다.
+
 ## 20. 공용 둔화와 이동 속성 소비 — 2026-10-26
 
 ### 구현 방법과 정책

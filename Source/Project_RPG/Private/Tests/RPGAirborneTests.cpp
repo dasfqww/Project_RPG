@@ -7,6 +7,7 @@
 #include "Character/RPGNonPlayerCharacter.h"
 #include "Attribute/RPGAttributeSet.h"
 #include "Combat/RPGApprovedHitContext.h"
+#include "Combat/RPGAirbornePresentationProfile.h"
 #include "Component/Combat/RPGCombatControlComponent.h"
 #include "Component/RPGAbilitySystemComponent.h"
 #include "Component/RPGCharacterMovementComponent.h"
@@ -37,6 +38,7 @@ struct FRPGAirborneTestAccess
 	static UAnimMontage* Pose(const URPGCombatControlComponent& C) { return C.AirborneMontage.Get(); }
 	static int32 PoseId(const URPGCombatControlComponent& C) { return C.AirborneMontageInstanceId; }
 	static UAnimInstance* PoseAnim(const URPGCombatControlComponent& C) { return C.AirborneAnimInstance.Get(); }
+	static const URPGAirbornePresentationProfile* Profile(const URPGCombatControlComponent& C) { return C.AirbornePresentationProfile.Get(); }
 	static void Presentation(URPGCombatControlComponent& C, const URPGCombatControlComponent& From) { C.AirbornePresentationProfile=From.AirbornePresentationProfile; }
 	static void End(URPGCombatControlComponent& C) { C.EndAirborne(ERPGAirborneEndReason::Cleansed); }
 	static void Snapshot(URPGCombatControlComponent& C, const FRPGAirborneState& State)
@@ -819,6 +821,81 @@ bool FRPGPlatformBetweenMoveCarryTest::RunTest(const FString&)
 	Target->SetActorLocation(Target->GetActorLocation() + FVector(35, 0, 0), false, nullptr, ETeleportType::TeleportPhysics);
 	Tick(W, 1.f / 60.f);
 	TestEqual(TEXT("External motion still uses the original discontinuity boundary"), Control->GetAirborneState().EndReason, ERPGAirborneEndReason::ForeignMovement);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGAirborneGruntlingDirectionTest, "ProjectRPG.Combat.DirectionalAirborne.GruntlingPresentation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGAirborneGruntlingDirectionTest::RunTest(const FString&)
+{
+	using namespace RPGAirborneTests;
+	const TCHAR* Paths[] = {
+		TEXT("/Game/Blueprints/Character/NPC/Gruntling/Guardian/BP_Gruntling_Guardian.BP_Gruntling_Guardian_C"),
+		TEXT("/Game/Blueprints/Character/NPC/Gruntling/Glacer/BP_Gruntling_Glacer.BP_Gruntling_Glacer_C"),
+	};
+	const TCHAR* MotionNames[] = {TEXT("Flyback_F"), TEXT("Launch_R"), TEXT("Launch_B"), TEXT("Launch_L")};
+	const TCHAR* PhaseNames[] = {TEXT("airborne"), TEXT("downed"), TEXT("getting_up")};
+	const URPGAirbornePresentationProfile* Shared = nullptr;
+	for (const TCHAR* Path : Paths)
+	{
+		auto* Class = LoadClass<ARPGNonPlayerCharacter>(nullptr, Path);
+		if (!TestNotNull(Path, Class)) return false;
+		const auto* Profile = FRPGAirborneTestAccess::Profile(*Class->GetDefaultObject<ARPGNonPlayerCharacter>()->GetCombatControlComponent());
+		if (!TestNotNull(TEXT("Authored Gruntling profile"), Profile)) return false;
+		if (Shared) TestTrue(TEXT("Guardian and Glacer use the same profile asset"), Profile == Shared);
+		Shared = Profile;
+
+		FScope W; if (!W.Init()) return false;
+		const FTransform Transform(FVector(0, 0, 300));
+		auto* Target = W.World->SpawnActorDeferred<ARPGNonPlayerCharacter>(Class, Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (!TestNotNull(TEXT("Spawned authored Gruntling"), Target)) return false;
+		Target->AutoPossessAI = EAutoPossessAI::Disabled;
+		Target->FinishSpawning(Transform);
+		auto* Movement = Target->GetCharacterMovement();
+		Movement->bRunPhysicsWithNoController = true;
+		Movement->SetMovementMode(MOVE_Falling);
+		auto* ASC = Target->GetRPGAbilitySystemComponent();
+		if (!ASC->GetSet<URPGAttributeSet>()) ASC->AddAttributeSetSubobject(Target->GetRPGAttributeSet());
+		ASC->SetNumericAttributeBase(URPGAttributeSet::GetMaxHealthAttribute(), 100.f);
+		ASC->SetNumericAttributeBase(URPGAttributeSet::GetCurrentHealthAttribute(), 100.f);
+		Target->GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+		auto* Source = W.Spawn(FVector(1000, 0, 300));
+		W.Tick(3.f); // Allow the authored entry montage and falling movement to finish.
+		auto* Control = Target->GetCombatControlComponent();
+		for (int32 Side = 0; Side < UE_ARRAY_COUNT(MotionNames); ++Side)
+		{
+			const FVector TowardSource = Target->GetActorForwardVector().RotateAngleAxis(90.f * Side, FVector::UpVector);
+			Source->SetActorLocation(Target->GetActorLocation() + 600.f * TowardSource, false, nullptr, ETeleportType::TeleportPhysics);
+			if (!TestTrue(TEXT("Approved hit starts Gruntling airborne"), Apply(Source, Target))) return false;
+			const auto Direction = static_cast<ERPGHitReactionDirection>(Side);
+			int32 PhaseMask = 0;
+			for (int32 Frame = 0; Frame < 240 && Control->GetAirborneState().IsActive(); ++Frame)
+			{
+				W.Tick(1.f / 60.f);
+				const auto& State = Control->GetAirborneState();
+				if (!State.IsActive()) break;
+				if (!TestEqual(TEXT("One approved side for the entire sequence"), State.PresentationDirection, Direction)) return false;
+				const int32 Phase = static_cast<int32>(State.Phase) - 1;
+				auto* Montage = FRPGAirborneTestAccess::Pose(*Control);
+				if (!Montage || (PhaseMask & (1 << Phase))) continue;
+				const FString Expected = FString::Printf(TEXT("AM_%s_%s"), MotionNames[Side], PhaseNames[Phase]);
+				TestEqual(TEXT("Direction-specific runtime montage"), Montage->GetName(), Expected);
+				TestTrue(TEXT("The active phase blocks actions"), RPGCombatControl::IsActionBlocked(Target));
+				if (State.Phase == ERPGAirbornePhase::Downed)
+					TestTrue(TEXT("Downed follows physical landing"), Movement->IsMovingOnGround());
+				if (State.Phase == ERPGAirbornePhase::GettingUp)
+				{
+					const float Rate = Target->GetMesh()->GetAnimInstance()->Montage_GetPlayRate(Montage);
+					TestTrue(TEXT("Get-up animation fits the action lock"),
+						FMath::IsNearlyEqual(Rate * State.GetUpDuration, Montage->GetPlayLength(), .01f));
+				}
+				PhaseMask |= 1 << Phase;
+			}
+			TestEqual(TEXT("All three directional stages played"), PhaseMask, 7);
+			TestEqual(TEXT("Gruntling recovery completes"), Control->GetAirborneState().EndReason, ERPGAirborneEndReason::Completed);
+			TestFalse(TEXT("Actions unlocked after get-up"), RPGCombatControl::IsActionBlocked(Target));
+			W.Tick(.2f);
+		}
+	}
 	return true;
 }
 

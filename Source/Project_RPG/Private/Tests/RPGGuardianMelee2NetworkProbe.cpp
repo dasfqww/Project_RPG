@@ -20,10 +20,13 @@
 #include "Component/RPGCharacterMovementComponent.h"
 #include "Component/Combat/RPGCombatControlComponent.h"
 #include "Component/Combat/PawnCombatComponent.h"
+#include "Component/Equipment/RPGPlayerWeaponLoadoutComponent.h"
+#include "Item/Weapon/RPGWeaponBase.h"
 #include "Combat/RPGAirbornePresentationProfile.h"
 #include "Attribute/RPGAttributeSet.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
+#include "Animation/AnimSequence.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -39,6 +42,8 @@
 #include "Misc/Parse.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
+#include "RPGGameplayTags.h"
+#include "UObject/StrongObjectPtr.h"
 #include "UObject/UnrealType.h"
 
 #if !UE_BUILD_SHIPPING
@@ -47,10 +52,12 @@ namespace RPGGuardianMelee2Network
 static constexpr const TCHAR* PlayerClassPath=TEXT("/Game/Blueprints/Character/Player/BP_Player.BP_Player_C");
 static constexpr const TCHAR* NPCClassPath=TEXT("/Game/Blueprints/Character/NPC/Gruntling/Guardian/BP_Gruntling_Guardian.BP_Gruntling_Guardian_C");
 static constexpr const TCHAR* AbilityPath=TEXT("/Game/Blueprints/Character/NPC/Gruntling/GameplayAbility/GA_Guardian_Melee2.GA_Guardian_Melee2_C");
+static constexpr const TCHAR* DefaultAttackPath=TEXT("/Game/Blueprints/Character/Player/Abilities/DefaultAttack/GA_Player_DefaultAttack.GA_Player_DefaultAttack_C");
+static constexpr const TCHAR* AttackMontagePath=TEXT("/Game/Blueprints/Character/NPC/Gruntling/Anim/Montage/AM_Guardian_MeleeAttack.AM_Guardian_MeleeAttack");
 struct FProbe
 {
     FString Directory, Role;
-    double Deadline=FPlatformTime::Seconds()+180., ReadyAt=0., AttackAt=0., CompleteAt=0., DiagnosticAt=0.;
+    double Deadline=0., ReadyAt=0., AttackAt=0., CompleteAt=0., DiagnosticAt=0.;
     int32 Step=0, Phases=0, Poses=0;
     float InitialHP=0.f, InitialZ=0.f, MaximumZ=0.f, ObserverHP=0.f;
     TWeakObjectPtr<ARPGPlayer> Target;
@@ -59,6 +66,10 @@ struct FProbe
     TArray<TSharedPtr<FJsonValue>> Samples;
     bool bDone=false, bFirstPlayerLogged=false;
     const bool bMovingPlatform=FParse::Param(FCommandLine::Get(),TEXT("RPGGuardianMelee2MovingPlatform"));
+    int32 ExpectedDirection=INDEX_NONE;
+    bool bDrawRequested=false;
+    TMap<int32,FString> ObservedMontages;
+    TStrongObjectPtr<UAnimMontage> WarmAttackMontage;
     TWeakObjectPtr<AStaticMeshActor> Platform;
     TWeakObjectPtr<UInterpToMovementComponent> PlatformMover;
     FVector PlatformOrigin=FVector::ZeroVector, RecoveryRelativeOrigin=FVector::ZeroVector;
@@ -105,6 +116,13 @@ struct FProbe
     {
         const auto* Property=FindFProperty<FObjectPropertyBase>(Control->GetClass(),TEXT("AirbornePresentationProfile"));
         return Property?Cast<URPGAirbornePresentationProfile>(Property->GetObjectPropertyValue_InContainer(Control)):nullptr;
+    }
+    void WarmMontage(UAnimMontage* Montage) const
+    {
+        if (!Montage) return;
+        for (const auto& Track : Montage->SlotAnimTracks)
+            for (const auto& Segment : Track.AnimTrack.AnimSegments)
+                if (auto* Clip=Cast<UAnimSequence>(Segment.GetAnimReference())) Clip->CacheDerivedDataForCurrentPlatform();
     }
     bool Configure(UWorld* World)
     {
@@ -153,16 +171,30 @@ struct FProbe
         auto* Presentation=Profile(Control); auto* Anim=Player->GetMesh()->GetAnimInstance();
         if (Phase>0 && Presentation && Anim)
         {
-            const auto& Clip=Phase==1?Presentation->Airborne:Phase==2?Presentation->Downed:Presentation->GettingUp;
+            const auto& Clip=Presentation->ResolveMontage(State.Phase,State.PresentationDirection);
             auto* Instance=Clip.Montage?Anim->GetActiveInstanceForMontage(Clip.Montage):nullptr;
-            if (Instance && !Instance->IsStopped()) Poses|=1<<Phase;
+            if (Instance && !Instance->IsStopped())
+            {
+                Poses|=1<<Phase;
+                ObservedMontages.Add(Phase,Clip.Montage->GetPathName());
+            }
         }
         const auto Position=Player->GetActorLocation();
         auto Sample=MakeShared<FJsonObject>(); Sample->SetNumberField(TEXT("serverTime"),WorldTime(Player->GetWorld()));
         Sample->SetNumberField(TEXT("phase"),Phase); Sample->SetNumberField(TEXT("hp"),HP(Player));
         Sample->SetNumberField(TEXT("x"),Position.X); Sample->SetNumberField(TEXT("y"),Position.Y); Sample->SetNumberField(TEXT("z"),Position.Z);
         Sample->SetNumberField(TEXT("poses"),Poses); Samples.Add(MakeShared<FJsonValueObject>(Sample));
+        Sample->SetNumberField(TEXT("direction"),static_cast<int32>(State.PresentationDirection));
         auto* Movement=Player->GetCharacterMovement();
+        Sample->SetBoolField(TEXT("actionBlocked"),RPGCombatControl::IsActionBlocked(Player));
+        Sample->SetBoolField(TEXT("grounded"),Movement->IsMovingOnGround());
+        if (ExpectedDirection!=INDEX_NONE && State.IsActive())
+        {
+            const auto* Mesh=Player->GetMesh();
+            const FVector BodyAxis=Mesh->GetSocketLocation(TEXT("head"))-Mesh->GetSocketLocation(TEXT("pelvis"));
+            Sample->SetNumberField(TEXT("bodyAxisAlongFlight"),
+                FVector::DotProduct(BodyAxis.GetSafeNormal(),FRotator(0.f,State.Yaw,0.f).Vector()));
+        }
         Sample->SetNumberField(TEXT("phaseElapsed"),WorldTime(Player->GetWorld())-State.PhaseStartServerTime);
         Sample->SetNumberField(TEXT("arcDuration"),State.ArcDuration);
         Sample->SetNumberField(TEXT("movementStartClientTime"),State.MovementStartClientTime);
@@ -229,6 +261,11 @@ struct FProbe
             { Fail(TEXT("MovingPlatformRecoveryMismatch")); return; }
         }
         auto Result=MakeShared<FJsonObject>(); Result->SetBoolField(TEXT("success"),true); Result->SetStringField(TEXT("role"),Role);
+        if (ExpectedDirection != INDEX_NONE && RPGCombatControl::IsActionBlocked(Player))
+        { Fail(TEXT("ActionStillBlockedAfterRecovery")); return; }
+        auto Montages=MakeShared<FJsonObject>();
+        for (const auto& Entry : ObservedMontages) Montages->SetStringField(FString::FromInt(Entry.Key),Entry.Value);
+        Result->SetObjectField(TEXT("montages"),Montages);
         Result->SetNumberField(TEXT("phases"),Phases); Result->SetNumberField(TEXT("poses"),Poses);
         Result->SetNumberField(TEXT("initialHP"),InitialHP); Result->SetNumberField(TEXT("finalHP"),HP(Player));
         Result->SetNumberField(TEXT("rise"),MaximumZ-InitialZ); Result->SetNumberField(TEXT("initialZ"),InitialZ);
@@ -269,7 +306,6 @@ struct FProbe
             if (IFileManager::Get().FileExists(*(Directory/TEXT("exit")))) { FPlatformMisc::RequestExitWithStatus(false,0); return false; }
             return true;
         }
-        if (FPlatformTime::Seconds()>Deadline) { Fail(TEXT("Deadline")); return false; }
         UWorld* World=nullptr;
         if (GEngine) for (const auto& Context:GEngine->GetWorldContexts())
             if (Context.WorldType==EWorldType::Game && Context.World() && Context.World()->GetNetMode()!=NM_Standalone) { World=Context.World(); break; }
@@ -278,9 +314,12 @@ struct FProbe
         if (Role.IsEmpty())
         {
             FParse::Value(FCommandLine::Get(),TEXT("RPGGuardianMelee2Directory="),Directory);
+            FParse::Value(FCommandLine::Get(),TEXT("RPGGuardianMelee2Direction="),ExpectedDirection);
+            Deadline=FPlatformTime::Seconds()+(ExpectedDirection==INDEX_NONE?180.:600.);
             Role=Server?TEXT("server"):FParse::Param(FCommandLine::Get(),TEXT("RPGGuardianMelee2Owner"))?TEXT("owner"):TEXT("observer");
             if (Directory.IsEmpty()) { Fail(TEXT("OutputDirectoryMissing")); return false; }
         }
+        if (FPlatformTime::Seconds()>Deadline) { Fail(TEXT("Deadline")); return false; }
         auto* Driver=World->GetNetDriver(); if (!Driver || !Driver->IsUsingIrisReplication()) return true;
         if (Server && Step==0) { if (Configure(World)) Step=1; return true; }
         auto Found=Players(World);
@@ -293,6 +332,14 @@ struct FProbe
                     HP(*It),It->GetRPGAttributeSet()->GetCurrentHealth(),Profile(It->GetCombatControlComponent())!=nullptr,
                     It->GetMesh()->GetAnimInstance()?It->GetMesh()->GetAnimInstance()->IsAnyMontagePlaying():-1);
             for (TActorIterator<ARPGNonPlayerCharacter> It(World);It;++It) Details+=TEXT(" NPC=")+It->GetName();
+            if (Server && NPC.IsValid() && ExpectedDirection!=INDEX_NONE)
+            {
+                const auto* Combat=Found.Num()>0?Found[0]->GetPawnCombatComponent():nullptr;
+                Details+=FString::Printf(TEXT(" NPCReady=%d NPCWeapon=%d NPCMontage=%d GreatSword=%d DrawRequested=%d"),
+                    NPC->IsNPCStartUpDataReady(), NPC->GetPawnCombatComponent()->GetCharacterCurrentEquippedWeapon()!=nullptr,
+                    NPC->GetMesh()->GetAnimInstance()->IsAnyMontagePlaying(),
+                    Combat && Combat->GetCharacterHasWeaponByTag(RPGGameplayTags::Player_Weapon_GreatSword), bDrawRequested);
+            }
             UE_LOG(LogTemp,Display,TEXT("GUARDIAN_MELEE2_NETWORK_WAIT Role=%s Step=%d Players=%d%s"),*Role,Step,Found.Num(),*Details);
         }
         if (Server && Found.Num()==1 && !bFirstPlayerLogged)
@@ -317,7 +364,8 @@ struct FProbe
                 Found[1]->SetActorLocation(Player->GetActorLocation()+FVector(0,1200,0),false,nullptr,ETeleportType::TeleportPhysics);
                 Found[1]->GetCharacterMovement()->StopMovementImmediately();
                 FActorSpawnParameters Params; Params.Name=TEXT("GuardianMelee2Attacker"); Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-                NPC=World->SpawnActor<ARPGNonPlayerCharacter>(LoadClass<ARPGNonPlayerCharacter>(nullptr,NPCClassPath),Player->GetActorLocation()+FVector(-160,0,6),FRotator::ZeroRotator,Params);
+                const float SpawnOffset=ExpectedDirection==INDEX_NONE?-160.f:-650.f;
+                NPC=World->SpawnActor<ARPGNonPlayerCharacter>(LoadClass<ARPGNonPlayerCharacter>(nullptr,NPCClassPath),Player->GetActorLocation()+FVector(SpawnOffset,0,6),FRotator::ZeroRotator,Params);
                 if (!NPC.IsValid()) { Fail(TEXT("GuardianSpawn")); return false; }
                 if (bMovingPlatform) NPC->GetCharacterMovement()->AddTickPrerequisiteComponent(PlatformMover.Get());
                 NPC->bAlwaysRelevant=true;
@@ -335,7 +383,19 @@ struct FProbe
             for (TActorIterator<ARPGNonPlayerCharacter> It(World);It;++It) if (It->GetClass()->GetPathName()==NPCClassPath) Attacker=*It;
             if (!Attacker || !Profile(Control) || Player->GetMesh()->GetAnimInstance()->IsAnyMontagePlaying()) return true;
             if (Player->IsLocallyControlled()!=(Role==TEXT("owner"))) { Fail(TEXT("ReceiverOwnership")); return false; }
-            if (!ReadyAt) ReadyAt=FPlatformTime::Seconds()+1.;
+            if (!ReadyAt)
+            {
+                if (ExpectedDirection!=INDEX_NONE)
+                {
+                    // An uncached replicated attack montage can stall a client during the first hit.
+                    WarmAttackMontage.Reset(LoadObject<UAnimMontage>(nullptr,AttackMontagePath));
+                    WarmMontage(WarmAttackMontage.Get());
+                    const auto Direction=static_cast<ERPGHitReactionDirection>(ExpectedDirection);
+                    for (const auto Phase : {ERPGAirbornePhase::Airborne,ERPGAirbornePhase::Downed,ERPGAirbornePhase::GettingUp})
+                        WarmMontage(Profile(Control)->ResolveMontage(Phase,Direction).Montage);
+                }
+                ReadyAt=FPlatformTime::Seconds()+1.;
+            }
             if (FPlatformTime::Seconds()<ReadyAt) return true;
             auto Ready=MakeShared<FJsonObject>(); Ready->SetBoolField(TEXT("ready"),true); Write(Role+TEXT(".ready.json"),Ready); Step=1;
             InitialHP=HP(Player); InitialZ=MaximumZ=Player->GetActorLocation().Z;
@@ -348,9 +408,28 @@ struct FProbe
                 || !IFileManager::Get().FileExists(*(Directory/TEXT("observer.ready.json")))) return true;
             if (!ReadyAt) ReadyAt=FPlatformTime::Seconds()+1.;
             if (FPlatformTime::Seconds()<ReadyAt) return true;
+            if (ExpectedDirection!=INDEX_NONE)
+            {
+                auto* Combat=Player->GetPawnCombatComponent();
+                auto* Weapon=Combat->GetCharacterHasWeaponByTag(RPGGameplayTags::Player_Weapon_GreatSword);
+                if (!Weapon) return true;
+                if (!bDrawRequested)
+                {
+                    if (auto* Loadout=Player->FindComponentByClass<URPGPlayerWeaponLoadoutComponent>()) Loadout->RefreshLoadout();
+                    bDrawRequested=true;
+                    if (!Player->GetRPGAbilitySystemComponent()->TryActivateAbilityByClass(LoadClass<UGameplayAbility>(nullptr,DefaultAttackPath),true))
+                    { Fail(TEXT("GreatSwordDefaultAttackActivation")); return false; }
+                    UE_LOG(LogTemp, Display, TEXT("GUARDIAN_MELEE2_NETWORK_GREAT_SWORD_DRAW_REQUESTED"));
+                    return true;
+                }
+                if (Combat->GetCharacterCurrentEquippedWeapon()!=Weapon || Weapon->GetAttachParentSocketName()!=TEXT("WeaponHandSocket")
+                    || Player->GetMesh()->GetAnimInstance()->IsAnyMontagePlaying()) return true;
+            }
             InitialHP=HP(Player); InitialZ=MaximumZ=Player->GetActorLocation().Z;
-            NPC->SetActorLocation(Player->GetActorLocation()+FVector(-160,0,6),false,nullptr,ETeleportType::TeleportPhysics);
-            NPC->SetActorRotation(FRotator::ZeroRotator);
+            const int32 Side=ExpectedDirection==INDEX_NONE?2:ExpectedDirection;
+            const FVector TowardAttacker=Player->GetActorForwardVector().RotateAngleAxis(90.f*Side,FVector::UpVector);
+            NPC->SetActorLocation(Player->GetActorLocation()+160.f*TowardAttacker+FVector(0,0,6),false,nullptr,ETeleportType::TeleportPhysics);
+            NPC->SetActorRotation((-TowardAttacker).Rotation());
             if (!NPC->GetRPGAbilitySystemComponent()->TryActivateAbilityByClass(LoadClass<UGameplayAbility>(nullptr,AbilityPath),false)) { Fail(TEXT("OriginalGrantActivation")); return false; }
             AttackAt=FPlatformTime::Seconds(); Step=2;
             UE_LOG(LogTemp,Display,TEXT("GUARDIAN_MELEE2_NETWORK_ACTIVATED NaturalWeaponHit=1 OriginalGrant=1"));
@@ -358,6 +437,9 @@ struct FProbe
         if ((Server && Step==2) || (!Server && Step==1))
         {
             Observe(Player); const auto State=Control->GetAirborneState();
+            if (ExpectedDirection!=INDEX_NONE && State.IsActive()
+                && static_cast<int32>(State.PresentationDirection)!=ExpectedDirection)
+            { Fail(TEXT("UnexpectedApprovedHitDirection")); return false; }
             if (bMovingPlatform && Player->IsLocallyControlled() && (State.Phase==ERPGAirbornePhase::Downed || State.Phase==ERPGAirbornePhase::GettingUp))
                 Player->AddMovementInput(FVector::RightVector,1.f,true);
             if (State.Phase==ERPGAirbornePhase::Airborne && (!FMath::IsNearlyEqual(State.Distance,240.f) || !FMath::IsNearlyEqual(State.Height,180.f)

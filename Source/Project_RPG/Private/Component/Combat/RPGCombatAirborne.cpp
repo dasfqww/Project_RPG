@@ -60,6 +60,7 @@ bool URPGCombatControlComponent::ApplyApprovedDamageAirborne(AActor* Source, con
 	if (RecentAirborneHits.Num() >= 64) RecentAirborneHits.RemoveAt(0);
 	RecentAirborneHits.Add(Receipt);
 	if (IsImmuneTo(ERPGCombatEffectKind::Airborne) || HasUncancellableCombatAbility()) return false;
+	const auto PresentationDirection = RPGHitReaction::ResolveDirection(Character->GetActorForwardVector(), -AwayDirection);
 	TGuardValue<bool> Applying(bApplyingAirborne, true);
 	FRPGRidingDamageScope RidingOutcome(UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Source), ASC);
 	const FRPGApprovedHitContext Lifetime(Source, Character);
@@ -99,6 +100,7 @@ bool URPGCombatControlComponent::ApplyApprovedDamageAirborne(AActor* Source, con
 	AirborneState.RecoveryRevision = RecoveryRevision();
 	AirborneState.Distance = Settings.Distance; AirborneState.Height = Settings.Height;
 	AirborneState.Yaw = AwayDirection.Rotation().Yaw;
+	AirborneState.PresentationDirection = PresentationDirection;
 	AirborneState.ArcDuration = Duration;
 	AirborneState.MaximumFlightDuration = Duration + 2.f;
 	// Resolve once on the authority; the chosen duration travels with the airborne state.
@@ -410,15 +412,16 @@ void URPGCombatControlComponent::UpdateAirbornePose()
 	if (!bSamePhase && Anim->IsAnyMontagePlaying() && !bHandoff) return;
 	const auto* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(GetOwner());
 	if (ASC && ASC->GetAnimatingAbility()) return;
-	const auto& Selected = AirborneState.Phase == ERPGAirbornePhase::Airborne ? Profile->Airborne
-		: AirborneState.Phase == ERPGAirbornePhase::Downed ? Profile->Downed : Profile->GettingUp;
+	const auto& Selected = Profile->ResolveMontage(AirborneState.Phase, AirborneState.PresentationDirection);
 	if (!URPGCombatReactionComponent::IsSafeCosmeticMontage(Selected.Montage, Selected.Section)
 		|| Mesh->GetSkeletalMeshAsset()->GetSkeleton() != Selected.Montage->GetSkeleton()) return;
 	const int32 Section = Selected.Section.IsNone() ? 0 : Selected.Montage->GetSectionIndex(Selected.Section);
 	float Start = 0.f, End = 0.f; Selected.Montage->GetSectionStartAndEndTime(Section, Start, End);
 	if (!FMath::IsFinite(Start) || !FMath::IsFinite(End) || End <= Start) return;
 	const bool bLoop = AirborneState.Phase != ERPGAirbornePhase::GettingUp;
-	const float Rate = bLoop ? 1.f : FMath::Clamp((End - Start) / AirborneState.GetUpDuration, .1f, 4.f);
+	// Align the authored clip with the same server duration that releases action blocking.
+	const float Rate = bLoop ? 1.f : (End - Start) / AirborneState.GetUpDuration;
+	if (!FMath::IsFinite(Rate) || Rate <= 0.f) return;
 	const float Elapsed = (Now - AirborneState.PhaseStartServerTime) * Rate;
 	const float Offset = bLoop ? FMath::Fmod(Elapsed, End - Start) : Elapsed;
 	if (bSamePhase)

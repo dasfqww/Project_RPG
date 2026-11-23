@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Combat/RPGHitReactionTypes.h"
 #include "GameplayTagContainer.h"
 #include "RPGAirborneTypes.generated.h"
 
@@ -26,6 +27,8 @@ struct PROJECT_RPG_API FRPGAirborneState
 	UPROPERTY(BlueprintReadOnly) float Distance = 0.f;
 	UPROPERTY(BlueprintReadOnly) float Height = 0.f;
 	UPROPERTY() float Yaw = 0.f;
+	/** Victim-relative side of the approved hit, sampled on the server before displacement. */
+	UPROPERTY(BlueprintReadOnly) ERPGHitReactionDirection PresentationDirection = ERPGHitReactionDirection::Front;
 	UPROPERTY(BlueprintReadOnly) float ArcDuration = 0.f;
 	UPROPERTY(BlueprintReadOnly) float MaximumFlightDuration = 0.f;
 	UPROPERTY(BlueprintReadOnly) float DownDuration = 0.f;
