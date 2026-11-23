@@ -102,6 +102,13 @@ bool FRPGEquipmentApprovedDamageTest::RunTest(const FString&)
 	Equipment->SetActiveEquipState(EEquipState::WeaponSet_Secondary); Hit(110.f);
 	Equipment->SetActiveEquipState(EEquipState::WeaponSet_Primary); Hit(129.f);
 	TestTrue(TEXT("Unequip all"),Equipment->Reconcile(Owner,{},*Data)); Hit(100.f);
+	Target->Attributes()->SetDamageReductionPercent(25.f);
+	Hit(75.f);
+	Hit(0.f, 80.f); // Mitigation does not admit damage that exceeds the original approval limit.
+	Target->Attributes()->SetDamageReductionPercent(100.f);
+	Hit(10.f);
+	Target->Attributes()->SetDamageReductionPercent(-25.f);
+	Hit(100.f);
 	Ability->Finish();
 	return true;
 }

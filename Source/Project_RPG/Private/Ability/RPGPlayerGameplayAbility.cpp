@@ -79,8 +79,35 @@ void URPGPlayerGameplayAbility::ApplyCooldown(
 	const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo) const
 {
-	// Preserve any longer, asset-authored legacy cooldown.
-	Super::ApplyCooldown(Handle, ActorInfo, ActivationInfo);
+	const UAbilitySystemComponent* ASC = ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+	if (!ASC || !HasAuthorityOrPredictionKey(ActorInfo, &ActivationInfo))
+	{
+		return;
+	}
+
+	const URPGAttributeSet* Attributes = ASC->GetSet<URPGAttributeSet>();
+	const float Percent = Attributes ? Attributes->GetCooldownReductionPercent() : 0.f;
+	const float Scale = FMath::IsFinite(Percent) ? 1.f - FMath::Clamp(Percent, 0.f, 50.f) / 100.f : 1.f;
+
+	const UGameplayEffect* LegacyCooldown = GetCooldownGameplayEffect();
+	if (Scale < 1.f && LegacyCooldown && LegacyCooldown->DurationPolicy == EGameplayEffectDurationType::HasDuration)
+	{
+		FGameplayEffectSpecHandle LegacySpec = MakeOutgoingGameplayEffectSpec(
+			Handle, ActorInfo, ActivationInfo, LegacyCooldown->GetClass(), GetAbilityLevel(Handle, ActorInfo));
+		if (LegacySpec.IsValid())
+		{
+			const float Duration = LegacySpec.Data->GetDuration();
+			if (FMath::IsFinite(Duration) && Duration > MinimumRepeatCooldown)
+			{
+				LegacySpec.Data->SetDuration(FMath::Max(MinimumRepeatCooldown, Duration * Scale), true);
+			}
+			ApplyGameplayEffectSpecToOwner(Handle, ActorInfo, ActivationInfo, LegacySpec);
+		}
+	}
+	else
+	{
+		Super::ApplyCooldown(Handle, ActorInfo, ActivationInfo);
+	}
 
 	const float CooldownDuration =
 		GetRPGCooldownDuration(Handle, ActorInfo);
@@ -101,7 +128,7 @@ void URPGPlayerGameplayAbility::ApplyCooldown(
 		return;
 	}
 
-	CooldownSpec.Data->SetDuration(CooldownDuration, true);
+	CooldownSpec.Data->SetDuration(FMath::Max(MinimumRepeatCooldown, CooldownDuration * Scale), true);
 	CooldownSpec.Data->GetContext().AddSourceObject(
 		GetRPGCooldownSourceObject());
 	ApplyGameplayEffectSpecToOwner(

@@ -145,6 +145,7 @@ void UGE_ExecCalc_TakeDamage::Execute_Implementation(const FGameplayEffectCustom
 		(bIsCritical ? static_cast<double>(SourceCritDamage) : 1.0) / TargetDefense * DamageTakenMultiplier;
 	int32 FinalDamageDone = 0;
 	if (!FRPGDamageExecutionGuard::Approve(EffectSpec, SourceASC, TargetASC, CalculatedDamage, FinalDamageDone)) return;
+	FinalDamageDone = TargetAttributes->MitigateIncomingDamage(FinalDamageDone);
 
 	// 아이덴티티 게이지 획득 처리 (공격자가 플레이어인 경우)
 	if (BaseIdentityGain > 0.f && SourceASC && SourceAvatarActor && SourceAvatarActor->IsA<ARPGPlayer>()

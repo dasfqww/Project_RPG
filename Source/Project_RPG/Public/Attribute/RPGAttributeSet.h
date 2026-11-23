@@ -165,6 +165,17 @@ public:
 	UFUNCTION()
 	void OnRep_DamageReductionPercent(const FGameplayAttributeData& OldValue);
 
+	/** Positive damage is reduced by up to 90%, with a minimum of 1 damage. */
+	int32 MitigateIncomingDamage(int32 Damage) const;
+
+	/** Percentage points, capped at 50% when committing a skill cooldown. */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_CooldownReductionPercent, Category = "Combat")
+	FGameplayAttributeData CooldownReductionPercent;
+	ATTRIBUTE_ACCESSORS(URPGAttributeSet, CooldownReductionPercent);
+
+	UFUNCTION()
+	void OnRep_CooldownReductionPercent(const FGameplayAttributeData& OldValue);
+
 	/** Temporary capture channel used by D1's active-effect duration execution. */
 	UPROPERTY(BlueprintReadOnly, Category = "Gladiator|Combat", meta = (HideFromModifiers))
 	FGameplayAttributeData ActiveEffectDuration;

@@ -4,10 +4,69 @@
 #include "DataTable/SkillData.h"
 #include "Skill/RPGGameplayAbility_SkillContainer.h"
 #include "Skill/RPGSkillDefinition.h"
+#include "Attribute/RPGAttributeSet.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
+#include "GameFramework/WorldSettings.h"
+#include "GameplayEffect/GE_CoolDown.h"
+#include "Misc/ScopeExit.h"
+#include "Tests/RPGSkillDamageSecurityTestFixture.h"
+#include "Tests/RPGTestWorldCleanup.h"
 #include <limits>
 #if WITH_EDITOR
 #include "Misc/DataValidation.h"
 #endif
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGPlayerCooldownStatTest,
+	"ProjectRPG.Skill.Cooldown.PlayerCooldownStat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRPGPlayerCooldownStatTest::RunTest(const FString&)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false,
+		MakeUniqueObjectName(GetTransientPackage(), UWorld::StaticClass()));
+	if (!TestNotNull(TEXT("World"), World)) return false;
+	GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(World);
+	ON_SCOPE_EXIT { RPGTestWorld::Destroy(World); };
+	World->InitializeActorsForPlay(FURL());
+	World->BeginPlay();
+	World->GetWorldSettings()->NotifyBeginPlay();
+
+	auto* Pawn = World->SpawnActor<ARPGSkillDamageSecurityTestPawn>();
+	if (!TestNotNull(TEXT("GAS test pawn"), Pawn)) return false;
+	auto* ASC = Pawn->ASC();
+	const auto Handle = ASC->GiveAbility(FGameplayAbilitySpec(URPGSkillDamageSecurityTestAbility::StaticClass(), 1));
+	const auto* AbilitySpec = ASC->FindAbilitySpecFromHandle(Handle);
+	auto* Ability = AbilitySpec ? Cast<URPGSkillDamageSecurityTestAbility>(AbilitySpec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("Player skill ability"), Ability)) return false;
+
+	FGameplayEffectQuery Query;
+	Query.EffectDefinition = UGE_CoolDown::StaticClass();
+	const auto CheckCooldown = [&](float Base, float Percent, float Expected)
+	{
+		FRPGSkillRuntimeSpec Runtime;
+		Runtime.BaseCooldown = Base;
+		Runtime.CooldownReductionSeconds = 2.f;
+		Ability->Configure(Runtime, FGameplayTag());
+		Pawn->Attributes()->SetCooldownReductionPercent(Percent);
+		Ability->ApplyCooldown(Handle, ASC->AbilityActorInfo.Get(), FGameplayAbilityActivationInfo(Pawn));
+		float Remaining = 0.f, Duration = 0.f;
+		Ability->GetCooldownTimeRemainingAndDuration(Handle, ASC->AbilityActorInfo.Get(), Remaining, Duration);
+		TestEqual(TEXT("Queried duration matches applied cooldown"), Duration, Expected);
+		TestFalse(TEXT("Cooldown blocks activation"), Ability->CheckCooldown(Handle, ASC->AbilityActorInfo.Get()));
+		Pawn->Attributes()->SetCooldownReductionPercent(0.f);
+		Ability->GetCooldownTimeRemainingAndDuration(Handle, ASC->AbilityActorInfo.Get(), Remaining, Duration);
+		TestEqual(TEXT("Active duration is unaffected by stat changes"), Duration, Expected);
+		ASC->RemoveActiveEffects(Query);
+		TestTrue(TEXT("Cooldown removal permits activation"), Ability->CheckCooldown(Handle, ASC->AbilityActorInfo.Get()));
+	};
+	CheckCooldown(10.f, 0.f, 8.f);
+	CheckCooldown(10.f, -25.f, 8.f);
+	CheckCooldown(10.f, 25.f, 6.f);
+	CheckCooldown(10.f, 100.f, 4.f);
+	CheckCooldown(3.f, 50.f, 1.f);
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGSkillCooldownReductionTest,
 	"ProjectRPG.Skill.Cooldown.FlatReductionAndFreeze",

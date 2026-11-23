@@ -120,7 +120,11 @@ bool FRPGBurnAuthorityTest::RunTest(const FString&)
 	Forged.SetSetByCallerMagnitude(RPGGameplayTags::Shared_SetByCaller_BaseDamage,10000);
 	SA->ApplyGameplayEffectSpecToTarget(Forged,TA); TestEqual(TEXT("Unscheduled direct ASC damage denied"),Health(T),93.f);
 	TA->AddLooseGameplayTag(RPGGameplayTags::Shared_Status_Invincible); W.Tick(.5f); TestEqual(TEXT("Invulnerability consumes slot without damage"),Health(T),93.f);
-	TA->RemoveLooseGameplayTag(RPGGameplayTags::Shared_Status_Invincible); W.Tick(.5f); TestEqual(TEXT("No catch-up after invulnerability"),Health(T),86.f); return true;
+	TA->RemoveLooseGameplayTag(RPGGameplayTags::Shared_Status_Invincible); W.Tick(.5f); TestEqual(TEXT("No catch-up after invulnerability"),Health(T),86.f);
+	TA->SetNumericAttributeBase(URPGAttributeSet::GetDamageReductionPercentAttribute(), 50.f);
+	W.Tick(.5f);
+	TestEqual(TEXT("An existing burn uses the target's current damage reduction"), Health(T), 82.f);
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGBurnStackTest,"ProjectRPG.Combat.Burn.StackCapCleanseAndForeignOwnership",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)

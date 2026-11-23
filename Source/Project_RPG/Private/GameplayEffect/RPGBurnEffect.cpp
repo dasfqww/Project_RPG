@@ -22,6 +22,11 @@ URPGBurnTickEffect::URPGBurnTickEffect()
 void URPGBurnDamageExecution::Execute_Implementation(const FGameplayEffectCustomExecutionParameters& Params,
 	FGameplayEffectCustomExecutionOutput& Output) const
 {
-	const int32 Damage = FRPGBurnTickGuard::Consume(Params.GetOwningSpec(), Params.GetSourceAbilitySystemComponent(), Params.GetTargetAbilitySystemComponent());
+	UAbilitySystemComponent* TargetASC = Params.GetTargetAbilitySystemComponent();
+	int32 Damage = FRPGBurnTickGuard::Consume(Params.GetOwningSpec(), Params.GetSourceAbilitySystemComponent(), TargetASC);
+	if (const URPGAttributeSet* Attributes = TargetASC ? TargetASC->GetSet<URPGAttributeSet>() : nullptr)
+	{
+		Damage = Attributes->MitigateIncomingDamage(Damage);
+	}
 	if (Damage > 0) Output.AddOutputModifier(FGameplayModifierEvaluatedData(URPGAttributeSet::GetTakeDamageAttribute(), EGameplayModOp::Override, float(Damage)));
 }

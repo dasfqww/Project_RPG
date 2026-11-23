@@ -41,6 +41,7 @@ URPGAttributeSet::URPGAttributeSet()
 	InitAttackSpeedPercent(0.f);
 	InitDrainLifePercent(0.f);
 	InitDamageReductionPercent(0.f);
+	InitCooldownReductionPercent(0.f);
 	InitActiveEffectDuration(0.f);
 	InitCriticalChance(0.3f);
 	InitCriticalDamage(2.f);
@@ -76,6 +77,7 @@ void URPGAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, AttackSpeedPercent, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, DrainLifePercent, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, DamageReductionPercent, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, CooldownReductionPercent, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, TakeDamage, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, CriticalChance, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(URPGAttributeSet, CriticalDamage, COND_None, REPNOTIFY_Always);
@@ -396,6 +398,20 @@ void URPGAttributeSet::OnRep_DrainLifePercent(const FGameplayAttributeData& OldV
 void URPGAttributeSet::OnRep_DamageReductionPercent(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(URPGAttributeSet, DamageReductionPercent, OldValue);
+}
+
+int32 URPGAttributeSet::MitigateIncomingDamage(const int32 Damage) const
+{
+	const float Percent = GetDamageReductionPercent();
+	if (Damage <= 0 || !FMath::IsFinite(Percent) || Percent <= 0.f) return Damage;
+
+	const double Scale = 1.0 - static_cast<double>(FMath::Min(Percent, 90.f)) / 100.0;
+	return FMath::Max(1, FMath::RoundToInt32(static_cast<double>(Damage) * Scale));
+}
+
+void URPGAttributeSet::OnRep_CooldownReductionPercent(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(URPGAttributeSet, CooldownReductionPercent, OldValue);
 }
 
 void URPGAttributeSet::OnRep_TakeDamage(const FGameplayAttributeData& OldValue)
