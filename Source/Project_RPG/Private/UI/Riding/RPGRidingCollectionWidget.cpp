@@ -1,6 +1,7 @@
 #include "UI/Riding/RPGRidingCollectionWidget.h"
 #include "UI/Riding/RPGRidingPreferencesWidget.h"
 #include "Blueprint/WidgetTree.h"
+#include "Blueprint/DragDropOperation.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
@@ -185,15 +186,20 @@ TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
         Sort->OnClicked.AddUniqueDynamic(this,&ThisClass::ToggleSort);
         FilterLine->AddChild(Sort);
         Empty = Text(FText::GetEmpty());
-        auto* RosterScroll = WidgetTree->ConstructWidget<UScrollBox>();
+        RosterScroll = WidgetTree->ConstructWidget<UScrollBox>();
         List->AddChildToVerticalBox(RosterScroll)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
         Rows = WidgetTree->ConstructWidget<UVerticalBox>();
         RosterScroll->AddChild(Rows);
-        ReloadButton = Button(TEXT("RidingCollectionReload"), NSLOCTEXT("RidingCollection","Reload","보유 탈것 불러오기"));
-
-        QuickSlotButton = Button(TEXT("RidingCollectionRegisterQuickSlot"),
-            NSLOCTEXT("RidingCollection", "RegisterQuickSlot", "퀵슬롯 등록"));
-        QuickSlotButton->OnClicked.AddUniqueDynamic(this, &ThisClass::RegisterQuickSlot);
+        QuickSlotDropZone = Surface(WidgetTree, FLinearColor(.14f,.10f,.063f), FMargin(6));
+        List->AddChildToVerticalBox(QuickSlotDropZone)->SetPadding(FMargin(0, 4, 0, 0));
+        auto* SlotContent = WidgetTree->ConstructWidget<UHorizontalBox>();
+        QuickSlotDropZone->SetContent(SlotContent);
+        QuickSlotIcon = WidgetTree->ConstructWidget<UImage>();
+        SlotContent->AddChild(QuickSlotIcon);
+        QuickSlotLabel = Label(WidgetTree, FText::GetEmpty(), 11);
+        auto* DropLabelSlot = SlotContent->AddChildToHorizontalBox(QuickSlotLabel);
+        DropLabelSlot->SetVerticalAlignment(VAlign_Center);
+        DropLabelSlot->SetPadding(FMargin(4,0));
         Status = Label(WidgetTree, FText::GetEmpty(), 11);
         Status->SetAutoWrapText(true);
         List->AddChildToVerticalBox(Status)->SetPadding(FMargin(0, 4, 0, 0));
@@ -264,7 +270,7 @@ TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
         RegistrationRetry->OnClicked.AddUniqueDynamic(this, &ThisClass::RetryRegistration);
         RegistrationStorage->OnClicked.AddUniqueDynamic(this, &ThisClass::StorageRegistration);
         RegistrationAssets->OnClicked.AddUniqueDynamic(this, &ThisClass::RefreshRegistrationAssets);
-        ReloadButton->OnClicked.AddUniqueDynamic(this, &ThisClass::Reload); CloseButton->OnClicked.AddUniqueDynamic(this, &ThisClass::CloseScreen);
+        CloseButton->OnClicked.AddUniqueDynamic(this, &ThisClass::CloseScreen);
         Search->OnTextChanged.AddUniqueDynamic(this, &ThisClass::SearchChanged); FavoritesOnly->OnCheckStateChanged.AddUniqueDynamic(this, &ThisClass::FavoritesChanged);
     }
     SetIsFocusable(true); RowsKey.Reset(); RefreshView(); RefreshRegistration(); return Super::RebuildWidget();
@@ -307,11 +313,10 @@ void URPGRidingCollectionWidget::RefreshView()
     if (!Status || !Rows) return;
     const auto State = Owner->GetState(); const auto* C = Owner->GetCollection(); const double Retry = Owner->GetRetryAfterSeconds();
     const bool bReady = C != nullptr;
-    ReloadButton->SetIsEnabled(State != ERPGRidingCollectionReadState::Loading && Retry <= 0);
     Search->SetIsEnabled(bReady); FavoritesOnly->SetIsEnabled(bReady);
-    FText Message = NSLOCTEXT("RidingCollection", "Prompt", "보유 탈것을 불러와 주세요.");
+    FText Message = NSLOCTEXT("RidingCollection", "Prompt", "보유 탈것을 확인하고 있습니다.");
     if (State == ERPGRidingCollectionReadState::Loading) Message = NSLOCTEXT("RidingCollection", "Loading", "보유 탈것을 불러오는 중입니다.");
-    else if (State == ERPGRidingCollectionReadState::Failed) Message = NSLOCTEXT("RidingCollection", "Failed", "탈것 정보를 불러오지 못했습니다. 다시 시도해 주세요.");
+    else if (State == ERPGRidingCollectionReadState::Failed) Message = NSLOCTEXT("RidingCollection", "Failed", "탈것 정보를 불러오지 못했습니다. 창을 닫고 다시 열어 주세요.");
     else if (Retry > 0) Message = FText::Format(NSLOCTEXT("RidingCollection", "Retry", "{0}초 후 다시 불러올 수 있습니다."), FMath::CeilToInt(Retry));
     else if (bReady) Message = C->bCatalogReady ? NSLOCTEXT("RidingCollection", "Ready", "현재 캐릭터에 저장된 탈것 정보입니다.")
         : NSLOCTEXT("RidingCollection", "Disabled", "보유 내역입니다. 현재 탈것 등록과 설정 변경을 사용할 수 없습니다.");
@@ -332,17 +337,21 @@ void URPGRidingCollectionWidget::RefreshView()
         Settings->SetText(FText::Format(NSLOCTEXT("RidingCollection", "Settings", "선택 탈것: {0}\n빠른 호출: {1}"), Name(C->SelectedMountId), Shortcut));
         Key += LexToString(C->RosterRevision) + TEXT("/") + LexToString(C->PreferencesRevision);
     }
-    const auto Preferences = PreferencesOwner.Pin();
-    const auto PreferencesView = Preferences ? Preferences->GetView() : FRPGRidingPreferencesView{};
-    const bool bQuickSlotRecovery = PreferencesView.bCanRecover || PreferencesView.bCanRetry
-        || PreferencesView.bCanStorage || PreferencesView.bCanRefreshAssets;
     const FString Filter = Search->GetText().ToString().TrimStartAndEnd(); const bool bFavorites = FavoritesOnly->IsChecked();
     Key += TEXT("/") + Filter + (bFavorites ? TEXT("/favorite") : TEXT("/all"));
-    if (Key == RowsKey)
-    {
-        QuickSlotButton->SetIsEnabled(bQuickSlotRecovery || (PreferencesView.bCanEdit && !BrowsedMount.IsEmpty()));
-        return;
-    } RowsKey = Key; Rows->ClearChildren();
+    if (Key == RowsKey) return;
+    RowsKey = Key;
+    Rows->ClearChildren();
+
+    const FString Assigned = C && C->Shortcut.Kind == ERPGRidingSelectorKind::Specific ? C->Shortcut.MountId
+        : C && C->Shortcut.Kind == ERPGRidingSelectorKind::Selected ? C->SelectedMountId : FString();
+    const bool bAssigned = Names.Contains(Assigned);
+    QuickSlotIcon->SetVisibility(bAssigned ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+    if (bAssigned) QuickSlotIcon->SetBrush(MountPortrait(Assigned, 30));
+    QuickSlotLabel->SetText(bAssigned
+        ? FText::Format(NSLOCTEXT("RidingCollection", "SlotAssigned", "퀵슬롯 · {0}"), Names.FindChecked(Assigned))
+        : NSLOCTEXT("RidingCollection", "SlotDrop", "퀵슬롯 · 탈것 아이콘을 여기에 놓으세요."));
+
     TArray<FString> Visible;
     if (C) for (const auto& M : C->Mounts)
     {
@@ -357,7 +366,6 @@ void URPGRidingCollectionWidget::RefreshView()
             Visible.Contains(C->SelectedMountId) ? C->SelectedMountId : Visible[0];
     }
     MountButton->SetIsEnabled(!BrowsedMount.IsEmpty());
-    QuickSlotButton->SetIsEnabled(bQuickSlotRecovery || (PreferencesView.bCanEdit && !BrowsedMount.IsEmpty()));
     PreferencesMountName->SetText(Names.FindRef(BrowsedMount));
     PreferencesPanel->BrowseMount(BrowsedMount);
     for (const auto& Id : Visible)
@@ -377,6 +385,7 @@ void URPGRidingCollectionWidget::RefreshView()
         StarSlot->SetPadding(FMargin(2,0,7,0));
         auto* Icon = WidgetTree->ConstructWidget<UImage>();
         Icon->SetBrush(MountPortrait(Id, 46));
+        Row->DragIcon = Icon;
         auto* IconFrame = Surface(WidgetTree, FLinearColor(.20f,.16f,.10f), FMargin(1));
         IconFrame->SetContent(Icon);
         Line->AddChild(IconFrame);
@@ -442,19 +451,80 @@ void URPGRidingCollectionWidget::MountSelected()
     RefreshView();
 }
 
-void URPGRidingCollectionWidget::RegisterQuickSlot()
+FReply URPGRidingCollectionWidget::NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event)
+{
+    DragSource.Reset();
+    if (!bClosing && Rows && Pages->GetActiveWidgetIndex() == 0
+        && RosterScroll->GetCachedGeometry().IsUnderLocation(Event.GetScreenSpacePosition())
+        && Event.GetEffectingButton() == EKeys::LeftMouseButton)
+    {
+        for (auto* Child : Rows->GetAllChildren())
+        {
+            auto* Row = Cast<URPGRidingBrowseButton>(Child);
+            if (Row && Row->DragIcon && Row->DragIcon->GetCachedGeometry().IsUnderLocation(Event.GetScreenSpacePosition()))
+            {
+                DragSource = Row;
+                return FReply::Handled().DetectDrag(GetCachedWidget().ToSharedRef(), EKeys::LeftMouseButton);
+            }
+        }
+    }
+    return Super::NativeOnPreviewMouseButtonDown(Geometry, Event);
+}
+
+FReply URPGRidingCollectionWidget::NativeOnMouseButtonUp(const FGeometry& Geometry, const FPointerEvent& Event)
+{
+    if (const auto* Row = DragSource.Get(); Row && Event.GetEffectingButton() == EKeys::LeftMouseButton)
+    {
+        DragSource.Reset();
+        if (Row->GetParent() == Rows && Row->DragIcon->GetCachedGeometry().IsUnderLocation(Event.GetScreenSpacePosition()))
+            Browse(Row->MountId);
+        return FReply::Handled();
+    }
+    return Super::NativeOnMouseButtonUp(Geometry, Event);
+}
+
+void URPGRidingCollectionWidget::NativeOnDragDetected(const FGeometry& Geometry, const FPointerEvent& Event, UDragDropOperation*& Operation)
+{
+    Super::NativeOnDragDetected(Geometry, Event, Operation);
+    auto* Row = DragSource.Get();
+    DragSource.Reset();
+    if (bClosing || !Row || Row->GetParent() != Rows) return;
+    Operation = NewObject<UDragDropOperation>(this);
+    Operation->Payload = Row;
+    auto* Visual = NewObject<UImage>(this);
+    Visual->SetBrush(MountPortrait(Row->MountId, 46));
+    Operation->DefaultDragVisual = Visual;
+    Operation->Pivot = EDragPivot::CenterCenter;
+}
+
+bool URPGRidingCollectionWidget::NativeOnDrop(const FGeometry& Geometry, const FDragDropEvent& Event, UDragDropOperation* Operation)
+{
+    if (Operation && Operation->GetOuter() == this && QuickSlotDropZone
+        && QuickSlotDropZone->GetCachedGeometry().IsUnderLocation(Event.GetScreenSpacePosition()))
+        return AcceptQuickSlotDrop(Cast<URPGRidingBrowseButton>(Operation->Payload));
+    return Super::NativeOnDrop(Geometry, Event, Operation);
+}
+
+bool URPGRidingCollectionWidget::AcceptQuickSlotDrop(const URPGRidingBrowseButton* Row)
 {
     const auto Preferences = PreferencesOwner.Pin();
-    if (bClosing || !Preferences) return;
+    if (bClosing || !Preferences || Pages->GetActiveWidgetIndex() != 0 || !Row
+        || Row->Collection.Get() != this || Row->GetParent() != Rows) return false;
+
     const auto View = Preferences->GetView();
-    if (View.bCanRecover || View.bCanRetry || View.bCanStorage || View.bCanRefreshAssets)
+    if (View.bCanRecover || View.bCanRetry || View.bCanStorage || View.bCanRefreshAssets
+        || (!View.bCanEdit && View.bCanReload))
     {
         OpenPreferences();
-        return;
+        return true;
     }
-    if (BrowsedMount.IsEmpty() || !Preferences->AssignQuickSlot(View.Snapshot, BrowsedMount)) return;
+
+    const FString Id = Row->MountId;
+    if (!Preferences->AssignQuickSlot(View.Snapshot, Id)) return false;
+    Browse(Id);
     Preferences->Review(View.Snapshot);
     OpenPreferences();
+    return true;
 }
 
 void URPGRidingCollectionWidget::OpenRegistration()

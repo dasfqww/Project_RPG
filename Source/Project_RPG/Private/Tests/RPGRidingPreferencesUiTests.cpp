@@ -3,6 +3,7 @@
 #include "Riding/RPGRidingFreshRead.h"
 #include "Online/RPGBackendPlayerAuthState.h"
 #include "Components/Button.h"
+#include "Components/VerticalBox.h"
 #include "Components/TextBlock.h"
 #include "Dom/JsonObject.h"
 #include "HAL/PlatformTime.h"
@@ -18,7 +19,8 @@
 struct FRPGRidingPreferencesUiTestAccess
 {
     static URPGRidingPreferencesWidget* Panel(URPGRidingCollectionWidget& W) { return W.PreferencesPanel; }
-    static void Register(URPGRidingCollectionWidget& W) { W.QuickSlotButton->OnClicked.Broadcast(); }
+    static bool Drop(URPGRidingCollectionWidget& W, int32 Index)
+    { return W.AcceptQuickSlotDrop(Cast<URPGRidingBrowseButton>(W.Rows->GetChildAt(Index))); }
     static void Load(URPGRidingPreferencesWidget& W) { W.ReloadButton->OnClicked.Broadcast(); }
     static void Selected(URPGRidingPreferencesWidget& W, int32 I) { W.BrowseMount(W.MountIds[I-1]); W.DefaultButton->OnClicked.Broadcast(); }
     static void Favorite(URPGRidingPreferencesWidget& W, int32 I) { W.BrowseMount(W.MountIds[I]); W.FavoriteButton->OnClicked.Broadcast(); }
@@ -96,7 +98,7 @@ bool FRidingPreferencesUiModes::RunTest(const FString&)
     if(!Ready(*this))return false;
     FOwner Slot;
     Slot.Load();
-    A::Register(*Slot.Parent);
+    TestTrue(TEXT("Dropping an owned icon is handled"), A::Drop(*Slot.Parent, 0));
     TestTrue(TEXT("Register opens review for the clicked mount"), Slot.Client->GetView().bCanConfirm);
     TestEqual(TEXT("Review sends nothing until confirmed"), Slot.WT->Writes, 0);
     A::Confirm(*Slot.Widget);

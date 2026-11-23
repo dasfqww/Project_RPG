@@ -23,6 +23,7 @@ class PROJECT_RPG_API URPGRidingBrowseButton final : public UButton
 public:
     FString MountId;
     TWeakObjectPtr<class URPGRidingCollectionWidget> Collection;
+    UPROPERTY(Transient) TObjectPtr<class UImage> DragIcon;
     UFUNCTION() void Browse();
 };
 
@@ -45,6 +46,10 @@ protected:
     virtual TSharedRef<SWidget> RebuildWidget() override;
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+    virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry&, const FPointerEvent&) override;
+    virtual FReply NativeOnMouseButtonUp(const FGeometry&, const FPointerEvent&) override;
+    virtual void NativeOnDragDetected(const FGeometry&, const FPointerEvent&, UDragDropOperation*&) override;
+    virtual bool NativeOnDrop(const FGeometry&, const FDragDropEvent&, UDragDropOperation*) override;
     virtual FReply NativeOnKeyDown(const FGeometry&, const FKeyEvent&) override;
 private:
     friend struct FRPGRidingCollectionWidgetTestAccess;
@@ -53,12 +58,16 @@ private:
     friend class URPGRidingBrowseButton;
     void Browse(const FString& MountId);
     UFUNCTION() void MountSelected();
-    UFUNCTION() void RegisterQuickSlot();
+    bool AcceptQuickSlotDrop(const URPGRidingBrowseButton* Row);
     UFUNCTION() void BackToCollection();
     UPROPERTY(Transient) TObjectPtr<class UWidgetSwitcher> Pages;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> PreferencesMountName;
     UPROPERTY(Transient) TObjectPtr<UButton> MountButton;
-    UPROPERTY(Transient) TObjectPtr<UButton> QuickSlotButton;
+    UPROPERTY(Transient) TObjectPtr<class UScrollBox> RosterScroll;
+    UPROPERTY(Transient) TObjectPtr<class UBorder> QuickSlotDropZone;
+    UPROPERTY(Transient) TObjectPtr<class UImage> QuickSlotIcon;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> QuickSlotLabel;
+    TWeakObjectPtr<URPGRidingBrowseButton> DragSource;
     FText MountFeedback;
     TFunction<bool(const FRPGRidingSelector&)> MountAction;
     UPROPERTY(Transient) TObjectPtr<UButton> BackButton;
@@ -102,7 +111,6 @@ private:
     FTSTicker::FDelegateHandle TickHandle;
     FString RowsKey;
     bool bClosing = false, bUpdating = false;
-    UPROPERTY(Transient) TObjectPtr<UButton> ReloadButton;
     UPROPERTY(Transient) TObjectPtr<UButton> CloseButton;
     UPROPERTY(Transient) TObjectPtr<UEditableTextBox> Search;
     UPROPERTY(Transient) TObjectPtr<UCheckBox> FavoritesOnly;

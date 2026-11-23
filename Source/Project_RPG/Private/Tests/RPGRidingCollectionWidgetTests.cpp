@@ -20,8 +20,8 @@
 #include "Misc/AutomationTest.h"
 struct FRPGRidingCollectionWidgetTestAccess
 {
-    static void Read(URPGRidingCollectionWidget& W) { W.ReloadButton->OnClicked.Broadcast(); }
-    static bool CanRead(URPGRidingCollectionWidget& W) { return W.ReloadButton->GetIsEnabled(); }
+    static void Read(URPGRidingCollectionWidget& W) { W.Reload(); }
+    static bool CanRead(URPGRidingCollectionWidget& W) { const auto Owner = W.Reader.Pin(); return Owner && Owner->GetState() != ERPGRidingCollectionReadState::Loading && Owner->GetRetryAfterSeconds() <= 0; }
     static int32 Count(URPGRidingCollectionWidget& W) { return W.Rows->GetChildrenCount(); }
     static FString Rows(URPGRidingCollectionWidget& W)
     {

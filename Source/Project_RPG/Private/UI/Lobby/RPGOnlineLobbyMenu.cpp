@@ -181,7 +181,11 @@ void URPGOnlineLobbyWidget::OpenRidingCollection()
         });
 		if (const auto Registration = Owner->GetRegistrationClient()) Panel->SetRegistrationOwner(Registration.ToSharedRef());
 		if (const auto Preferences = Owner->GetPreferencesClient()) Panel->SetPreferencesOwner(Preferences.ToSharedRef());
-		if (RidingCollectionPanel == Panel && Panel->GetVisibility() != ESlateVisibility::Collapsed) Panel->AddToViewport(146);
+		if (RidingCollectionPanel == Panel && Panel->GetVisibility() != ESlateVisibility::Collapsed)
+        {
+            Panel->AddToViewport(146);
+            if (!Reader->GetCollection()) Reader->Read();
+        }
 	}
 }
 void URPGOnlineLobbyWidget::HandleRidingCollectionClosed()
