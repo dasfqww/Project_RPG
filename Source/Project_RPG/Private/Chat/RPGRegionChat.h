@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Blueprint/UserWidget.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/PlayerController.h"
 #include "RPGRegionChat.generated.h"
@@ -9,13 +10,28 @@ class UEditableTextBox;
 class UScrollBox;
 class UTextBlock;
 
+UENUM()
+enum class ERPGTownChatChannel : uint8
+{
+	Region,
+	Nearby
+};
+
+UCLASS()
+class ARPGRegionChatPawn final : public ACharacter
+{
+	GENERATED_BODY()
+public:
+	ARPGRegionChatPawn();
+};
+
 UCLASS()
 class URPGRegionChatWidget final : public UUserWidget
 {
 	GENERATED_BODY()
 public:
 	void SetChannel(int32 Channel);
-	void AppendMessage(const FString& Sender, const FString& Text);
+	void AppendMessage(ERPGTownChatChannel Channel, const FString& Sender, const FString& Text);
 
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
@@ -23,12 +39,16 @@ protected:
 private:
 	UFUNCTION() void CommitMessage(const FText& Text, ETextCommit::Type Method);
 	UFUNCTION() void SendMessage();
+	UFUNCTION() void ToggleChannel();
+	void RefreshChannelLabel();
 
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Heading;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> ChannelLabel;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Transcript;
 	UPROPERTY(Transient) TObjectPtr<UEditableTextBox> Input;
 	UPROPERTY(Transient) TObjectPtr<UScrollBox> Scroll;
 	TArray<FString> RecentLines;
+	ERPGTownChatChannel SendChannel = ERPGTownChatChannel::Region;
 };
 
 UCLASS()
@@ -37,15 +57,16 @@ class ARPGRegionChatController final : public APlayerController
 	GENERATED_BODY()
 public:
 	UFUNCTION(Server, Reliable)
-	void ServerSendRegionMessage(const FString& Text);
+	void ServerSendRegionMessage(ERPGTownChatChannel Channel, const FString& Text);
 
 	UFUNCTION(Client, Reliable)
 	void ClientOpenRegionChat(int32 Channel);
 
 	UFUNCTION(Client, Reliable)
-	void ClientReceiveRegionMessage(const FString& Sender, const FString& Text);
+	void ClientReceiveRegionMessage(ERPGTownChatChannel Channel, const FString& Sender, const FString& Text);
 
 protected:
+	virtual void PlayerTick(float DeltaSeconds) override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 
 private:

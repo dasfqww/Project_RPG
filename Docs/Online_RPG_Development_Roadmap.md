@@ -1005,6 +1005,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| 임시 마을 일반 채팅 / local-chat-24 | 일반 20m 수신 범위와 지역 채널 비교 | RPGRegionChat.h·cpp, 온라인 로비 계약 및 본인 행 | UE 5.8 격리 C++·모듈 링크 성공. 전용 서버·PIE 2인에서 25m 일반 미수신 및 지역 수신, 13m 복귀 후 일반 수신 확인. 임시 3,288,740,537 bytes·정션 2개 정리. Saved/BuildChecks/LocalChat24/Result.json | 검증 자원 해제. 본인 4경로 main index/ref 및 origin/main 순차 게시. 원격 일치 시 게시 예약 해제 |
 | 임시 마을 지역 채팅 / region-chat-24 | 개발 마을 동일 채널 지역 메시지, 타 채널·인던 제외 | RPGRegionChat.h·cpp, 온라인 로비 계약 및 본인 행 | UE 5.8 Editor 빌드 성공. Entry 전용 서버 두 채널·PIE 3인에서 한글 송수신과 분리 확인. 보스 인던에서 지역 UI 미생성. 임시 33,371,162 bytes·정션 2개 정리. Saved/BuildChecks/RegionChat24/Result.json | 검증 자원 해제. 본인 4경로 main index/ref 및 origin/main 순차 게시. 원격 일치 시 게시 예약 해제 |
 | 탈것 샘플 DA / mount-sample-data-24 | 말·늑대·사슴의 기본 데이터와 썸네일 | Content/Blueprints/Riding/Samples 에셋 6개, 탈것 코드 계약·본인 행 | UE 5.8 작성·독립 재로드 종료 0, Mount Primary Asset 목록·필드·아이콘 3종 확인. 모델과 모션 필드는 작성용 초안. 임시 1972240 bytes 정리. Saved/BuildChecks/MountSampleData24 | main index/ref 및 origin/main 순차 게시. 원격 일치 시 예약 해제 |
 | 탈것 퀵슬롯 / riding-quick-slot-23 | 보관함 등록·HUD 슬롯 호출·고정 F9 해제 | Riding CollectionWidget·PreferencesClient·SessionComponent·Types, Controller, ItemQuickSlotBar, RidingActionBarSubsystem, 직접 검사·계약 문서·본인 행 | UE 5.8 Editor 빌드 및 사설 native 25건 성공. 보관함 검토·저장, HUD 버튼의 서버 탑승 경로, F9 무동작과 내리기 확인. 임시 72,758,565 bytes와 정션 37개 정리. Saved/BuildChecks/RidingQuickSlot23 | 검증 자원 해제. 본인 변경만 main index/ref 및 origin/main 순차 게시. 원격 일치 시 예약 해제 |
