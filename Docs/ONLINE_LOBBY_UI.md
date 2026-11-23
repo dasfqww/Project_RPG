@@ -10,6 +10,21 @@
 
 에디터에서 확인하려면 개발 인증을 허용한 로컬 백엔드와 개발 로그인 옵션(`-RPGDevelopmentLogin -nosteam`)을 사용한다. `CharacterSelection` 맵에서 PIE의 **Play Standalone**, **Number of Players 3**, **Run Under One Process**로 실행한다. 각 창에서 서로 다른 개발 계정과 캐릭터로 로비에 들어가 일반 메시지 한 건, 귓속말 한 건, 다시 일반 메시지 한 건을 보낸다. 세 번째 창에는 일반 메시지 두 건만 표시되어야 한다.
 
+## 임시 공용 마을 지역 채팅 (2026-11-24)
+
+개발 빌드에서는 엔진의 빈 `Entry` 맵을 임시 마을로 띄워 지역 채팅을 확인할 수 있다. 서버 프로세스 하나가 채널 하나를 담당한다. 서버가 접속자에게 임시 주민 이름을 붙이고, 해당 서버와 맵에 접속한 사람에게만 지역 메시지를 전달한다. 전송 버튼 또는 Enter로 보내며 창에는 최근 50줄이 표시된다.
+
+프로젝트 루트에서 개발용 Editor 모듈을 빌드한 뒤 첫 번째 명령으로 1채널을 실행한다. 별도 PowerShell 창에서 변수 두 줄과 클라이언트 명령을 실행한다. 같은 채널에 두 클라이언트를 접속시킬 수 있다.
+
+```powershell
+$editor = 'D:/UE_5.8/Engine/Binaries/Win64/UnrealEditor.exe'
+$project = (Resolve-Path 'Project_RPG.uproject').Path
+& $editor $project '/Engine/Maps/Entry?game=/Script/Project_RPG.RPGRegionChatGameMode' -server -port=17741 -MULTIHOME=127.0.0.1 -RPGRegionChannel=1 -nosteam -NoLiveCoding -log
+& $editor $project '127.0.0.1:17741' -game -windowed -nosteam -NoLiveCoding -multiprocess
+```
+
+2채널은 다른 서버 프로세스에서 포트 `17742`와 `-RPGRegionChannel=2`로 시작하고 세 번째 클라이언트를 해당 포트에 연결한다. 지역 채팅은 개발 전용 서버의 `Entry`에서 열리며, 인던 맵에서는 열리지 않는다. 정식 공용 마을과 인증 입장 경로는 별도 기능이다.
+
 ## 플레이어 입장 티켓·포기 HTTP 경계 (2026-11-14)
 
 `FRPGDungeonPlayerTransport`가 플레이어 입장 티켓 발급과 명시적 포기의 요청 작성·
