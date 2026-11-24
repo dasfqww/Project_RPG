@@ -11,14 +11,14 @@
 #include "GameFramework/Pawn.h"
 #include "RegionTravel/RPGRegionGate.h"
 #include "Rendering/DrawElements.h"
+#include "UI/HUD/RPGHUDLayout.h"
 #include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/SLeafWidget.h"
 
 namespace
 {
-	constexpr float MapSize = 208.f;
-	constexpr float MapInset = 10.f;
+	constexpr float MapInset = 14.f;
 
 	FVector2D ProjectToMap(const FVector& Location, const FBox2D& Bounds)
 	{
@@ -96,7 +96,7 @@ namespace
 
 		virtual FVector2D ComputeDesiredSize(float LayoutScaleMultiplier) const override
 		{
-			return FVector2D(MapSize, MapSize);
+			return FVector2D(RPGHUDLayout::MinimapSize, RPGHUDLayout::MinimapSize);
 		}
 
 		virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& Geometry, const FSlateRect& CullingRect,
@@ -168,14 +168,14 @@ namespace
 	};
 }
 
+bool RPGPlayerMinimap::SupportsWorld(const UWorld* World)
+{
+	return World && UWorld::RemovePIEPrefix(World->GetOutermost()->GetName()) == TEXT("/Game/Maps/RegionTravel/L_Town");
+}
+
 void RPGPlayerMinimap::Attach(UUserWidget& PlayerHUD, APawn& Pawn)
 {
-	const UWorld* World = Pawn.GetWorld();
-	if (!World || UWorld::RemovePIEPrefix(World->GetOutermost()->GetName()) != TEXT("/Game/Maps/RegionTravel/L_Town"))
-	{
-		return;
-	}
-
+	if (!SupportsWorld(Pawn.GetWorld())) return;
 	UWidgetTree* Tree = PlayerHUD.WidgetTree;
 	auto* Canvas = Tree ? Cast<UCanvasPanel>(Tree->RootWidget) : nullptr;
 	if (!Canvas) return;
@@ -184,7 +184,8 @@ void RPGPlayerMinimap::Attach(UUserWidget& PlayerHUD, APawn& Pawn)
 	Host->SetVisibility(ESlateVisibility::HitTestInvisible);
 	Host->SetContent(SNew(SRPGRegionMinimap, Pawn));
 	auto* Slot = Canvas->AddChildToCanvas(Host);
-	Slot->SetAnchors(FAnchors(0.f, 0.f));
-	Slot->SetPosition(FVector2D(24.f, 24.f));
-	Slot->SetSize(FVector2D(MapSize, MapSize));
+	Slot->SetAnchors(FAnchors(1.f, 0.f));
+	Slot->SetAlignment(FVector2D(1.f, 0.f));
+	Slot->SetPosition(FVector2D(-RPGHUDLayout::Edge, RPGHUDLayout::MinimapTop));
+	Slot->SetSize(FVector2D(RPGHUDLayout::MinimapSize, RPGHUDLayout::MinimapSize));
 }

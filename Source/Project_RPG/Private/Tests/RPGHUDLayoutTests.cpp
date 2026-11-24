@@ -17,6 +17,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGHUDReservationsTest, "ProjectRPG.UI.HUDLayo
 bool FRPGHUDReservationsTest::RunTest(const FString&)
 {
     using namespace RPGHUDLayout;
+    TestEqual(TEXT("Quest keeps its normal position without the minimap"), RightCardTop(false, false), QuestTop);
+    TestEqual(TEXT("Quest begins below the minimap"), RightCardTop(false, true), MinimapTop + MinimapSize + MinimapCardGap);
+    TestTrue(TEXT("Quest and practice keep their separation below the minimap"),
+        RightCardTop(false, true) + QuestHeight + 12.f <= RightCardTop(true, true));
     for (const FVector2D Viewport : {FVector2D(1280,720), FVector2D(1920,1080), FVector2D(2560,1440)})
     {
         TestTrue(TEXT("Quest ends before practice begins"), QuestTop + QuestHeight + 12.f <= PracticeTop);

@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/SizeBox.h"
+#include "UI/Minimap/RPGPlayerMinimap.h"
 
 /** Presentation-only reservations, in DPI-scaled local-player layout units.
  * Keep quest and practice cards in separate bounded, scrollable regions. */
@@ -14,6 +15,9 @@ namespace RPGHUDLayout
     inline constexpr float QuestHeight = 156.f;
     inline constexpr float PracticeTop = 248.f;
     inline constexpr float PracticeHeight = 264.f;
+    inline constexpr float MinimapTop = 56.f;
+    inline constexpr float MinimapSize = 280.f;
+    inline constexpr float MinimapCardGap = 16.f;
     inline constexpr float CombatHeight = 180.f;
     inline constexpr float ProgressBottom = 288.f;
     inline FLinearColor PanelColor() { return FLinearColor(.035f, .026f, .021f, .92f); }
@@ -29,13 +33,19 @@ namespace RPGHUDLayout
             && Point.Y >= 100.f && Point.Y <= Viewport.Y - CombatHeight - 80.f;
     }
 
+    inline constexpr float RightCardTop(bool bPractice, bool bHasMinimap)
+    {
+        const float Top = bPractice ? PracticeTop : QuestTop;
+        return bHasMinimap ? Top + (MinimapTop + MinimapSize + MinimapCardGap - QuestTop) : Top;
+    }
+
     inline void PlaceRightCard(USizeBox& Size, UCanvasPanelSlot& Slot, bool bPractice)
     {
         Size.SetWidthOverride(SideWidth);
         Size.SetMaxDesiredHeight(bPractice ? PracticeHeight : QuestHeight);
         Slot.SetAnchors(FAnchors(1.f, 0.f));
         Slot.SetAlignment(FVector2D(1.f, 0.f));
-        Slot.SetPosition(FVector2D(-Edge, bPractice ? PracticeTop : QuestTop));
+        Slot.SetPosition(FVector2D(-Edge, RightCardTop(bPractice, RPGPlayerMinimap::SupportsWorld(Size.GetWorld()))));
         Slot.SetAutoSize(true);
     }
 }
