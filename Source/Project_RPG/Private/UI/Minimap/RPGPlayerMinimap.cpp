@@ -1,16 +1,18 @@
 #include "UI/Minimap/RPGPlayerMinimap.h"
+#include "UI/Minimap/RPGFieldWalkableArea.h"
 
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
+#include "Components/ArrowComponent.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/NativeWidgetHost.h"
-#include "Engine/AssetManager.h"
-#include "Engine/StreamableManager.h"
+#include "Engine/LevelStreaming.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
-#include "GameFramework/Pawn.h"
+#include "GameFramework/Character.h"
+#include "Kismet/GameplayStatics.h"
 #include "Layout/Clipping.h"
 #include "RegionTravel/RPGRegionGate.h"
 #include "Rendering/DrawElements.h"
@@ -25,7 +27,14 @@ namespace
 	constexpr float MapInset = 14.f;
 	constexpr double ViewRadiusCm = 1200.0;
 	const FBox2D FieldBounds(FVector2D(47600, -7800), FVector2D(63200, 7800));
+	const FName FieldLevelName(TEXT("/Game/Maps/RegionTravel/L_Field"));
 	const FName FieldOverviewName(TEXT("FieldMapOverview"));
+
+	FName GetGateLevel(const ARPGRegionGate& Gate)
+	{
+		return Gate.RegionLevel.IsNull() ? NAME_None
+			: FName(UWorld::RemovePIEPrefix(Gate.RegionLevel.ToSoftObjectPath().GetLongPackageName()));
+	}
 
 	struct FMinimapDisc
 	{
@@ -157,7 +166,7 @@ namespace
 			Regions.Reserve(2);
 			Regions.Emplace(NAME_None, FBox2D(FVector2D(-1800, -1800), FVector2D(1800, 1800)),
 				TEXT("/Game/Minimap/T_TownMinimap.T_TownMinimap"));
-			Regions.Emplace(FName(TEXT("/Game/Maps/RegionTravel/L_Field")), FieldBounds,
+			Regions.Emplace(FieldLevelName, FieldBounds,
 				TEXT("/Game/Minimap/T_FieldMinimap.T_FieldMinimap"));
 
 			for (TActorIterator<ARPGRegionGate> It(InPawn.GetWorld()); It; ++It)
@@ -166,8 +175,7 @@ namespace
 				{
 					continue;
 				}
-				const FName GateLevel = It->RegionLevel.IsNull() ? NAME_None
-					: FName(UWorld::RemovePIEPrefix(It->RegionLevel.ToSoftObjectPath().GetLongPackageName()));
+				const FName GateLevel = GetGateLevel(**It);
 				if (FMinimapRegion* Region = Regions.FindByPredicate([GateLevel](const FMinimapRegion& Candidate)
 					{ return Candidate.Level == GateLevel; }))
 				{
@@ -248,11 +256,10 @@ namespace
 			Host = &InHost;
 			PlayerIcon.Load(TEXT("/Game/Minimap/T_UI_Icons_MainHud_Compass_Marker_01.T_UI_Icons_MainHud_Compass_Marker_01"));
 			PortalIcon.Load(TEXT("/Game/Minimap/T_UI_Icons_Map_Portal_01.T_UI_Icons_Map_Portal_01"));
-			MapLoad = UAssetManager::GetStreamableManager().RequestAsyncLoad(MapPath);
 			for (TActorIterator<ARPGRegionGate> It(InPawn.GetWorld()); It; ++It)
 			{
 				if (It->GetLevel() == InPawn.GetWorld()->PersistentLevel && IsValid(It->Destination)
-					&& !It->RegionLevel.IsNull() && IsOnMap(ProjectToMap(It->GetActorLocation(), FieldBounds)))
+					&& It->Destination != *It && GetGateLevel(**It) == FieldLevelName)
 				{
 					Gates.Add(*It);
 				}
@@ -265,15 +272,39 @@ namespace
 
 		virtual void Tick(const FGeometry&, double, float) override
 		{
-			const APawn* LocalPawn = Pawn.Get();
-			if (!LocalPawn || !IsOnMap(ProjectToMap(LocalPawn->GetActorLocation(), FieldBounds)))
+			const ACharacter* Character = Cast<ACharacter>(Pawn.Get());
+			if (!Character || !IsOnMap(ProjectToMap(Character->GetActorLocation(), FieldBounds)))
 			{
 				if (UNativeWidgetHost* Owner = Host.Get()) Owner->SetVisibility(ESlateVisibility::Collapsed);
+				return;
 			}
-			else if (!Terrain.Texture.IsValid() && MapLoad.IsValid() && MapLoad->HasLoadCompleted())
+
+			const ULevelStreaming* Streaming = UGameplayStatics::GetStreamingLevel(Character, FieldLevelName);
+			ULevel* Level = Streaming && Streaming->IsLevelVisible() ? Streaming->GetLoadedLevel() : nullptr;
+			if (!Level)
 			{
-				Terrain.SetTexture(Cast<UTexture2D>(MapLoad->GetLoadedAsset()));
-				MapLoad.Reset();
+				Terrain.SetTexture(nullptr);
+				WalkableArea = FRPGFieldWalkableArea();
+				return;
+			}
+			if (!WalkableArea.IsForLevel(*Level))
+			{
+				TArray<FVector> Entrances;
+				for (const TWeakObjectPtr<ARPGRegionGate>& Gate : Gates)
+				{
+					if (const ARPGRegionGate* Current = Gate.Get(); Current && IsValid(Current->Arrival))
+					{
+						Entrances.Add(Current->Arrival->GetComponentLocation());
+					}
+				}
+				Terrain.SetTexture(nullptr);
+				WalkableArea.Begin(*Character, *Level, FieldBounds, Entrances);
+				bBuildingTerrain = true;
+			}
+			if (bBuildingTerrain && WalkableArea.Advance(*Character))
+			{
+				Terrain.SetTexture(WalkableArea.CreateTexture());
+				bBuildingTerrain = false;
 			}
 		}
 
@@ -298,13 +329,13 @@ namespace
 					if (const ARPGRegionGate* Current = Gate.Get())
 					{
 						const FVector2D UV = ProjectToMap(Current->GetActorLocation(), FieldBounds);
-						if (!IsOnMap(UV)) continue;
+						if (!IsOnMap(UV) || WalkableArea.IsHidden(Current->GetActorLocation())) continue;
 						FSlateDrawElement::MakeBox(Elements, Layer + 1, MarkerAt(Geometry, TopLeft + UV * Size, 23.f),
 							&PortalIcon.Brush, ESlateDrawEffect::None, Tint);
 					}
 				}
 			}
-			if (PlayerIcon.Texture.IsValid())
+			if (PlayerIcon.Texture.IsValid() && !WalkableArea.IsHidden(LocalPawn->GetActorLocation()))
 			{
 				DrawPlayer(Elements, Layer + 2, Geometry, TopLeft + PlayerUV * Size, *LocalPawn, PlayerIcon.Brush, Tint);
 			}
@@ -312,11 +343,11 @@ namespace
 		}
 
 	private:
-		const FSoftObjectPath MapPath{TEXT("/Game/Minimap/T_FieldOverview.T_FieldOverview")};
-		TSharedPtr<FStreamableHandle> MapLoad;
 		TWeakObjectPtr<APawn> Pawn;
 		TWeakObjectPtr<UNativeWidgetHost> Host;
 		TArray<TWeakObjectPtr<ARPGRegionGate>> Gates;
+		FRPGFieldWalkableArea WalkableArea;
+		bool bBuildingTerrain = false;
 		FMinimapImage Terrain;
 		FMinimapImage PlayerIcon;
 		FMinimapImage PortalIcon;
