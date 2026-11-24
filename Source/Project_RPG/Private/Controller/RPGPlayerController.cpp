@@ -26,6 +26,7 @@
 #include "Component/RPGAbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "UI/HUD/RPGHUD.h"
+#include "UI/Minimap/RPGPlayerMinimap.h"
 #include "UI/Inventory/Equipment/RPGEquipmentWidget.h"
 #include "UI/Inventory/Projection/RPGInventoryProjectionWidget.h"
 #include "UI/Inventory/Projection/RPGRewardMailWidget.h"
@@ -516,6 +517,19 @@ void ARPGPlayerController::SetupInputComponent()
 	{
 		InputComponent->BindKey(EKeys::P, IE_Pressed, this, &ThisClass::ToggleEquipmentProjection).bConsumeInput = true;
 		InputComponent->BindKey(EKeys::M, IE_Pressed, this, &ThisClass::ToggleMountCollection).bConsumeInput = true;
+		FInputKeyBinding OverviewKey(FInputChord(EKeys::Tab), IE_Pressed);
+		OverviewKey.bConsumeInput = false;
+		OverviewKey.KeyDelegate.GetDelegateForManualSet().BindWeakLambda(this, [this]()
+		{
+			if (!IsLocalController() || IsMoveInputIgnored() || bItemPresentationEnded || WindowInputState->HasOpenWindows()
+				|| ContentEntryPopup || GameplayAbandonmentWidget || !HUD || HUD->bIsMenuVisible || HUD->bIsOptionMenuVisible
+				|| (FSlateApplication::IsInitialized() && FSlateApplication::Get().AnyMenusVisible())) return;
+			if (const APawn* Pawn = GetPawn())
+			{
+				if (UUserWidget* PlayerHUD = HUD->GetPlayerHUDWidget()) RPGPlayerMinimap::ToggleFieldOverview(*PlayerHUD, *Pawn);
+			}
+		});
+		InputComponent->KeyBindings.Add(MoveTemp(OverviewKey));
 	}
 	if (!InputConfigDataAsset || !GetLocalPlayer()) return;
 	const auto ObservePartyInputSetup = [this](const TCHAR* Phase)
