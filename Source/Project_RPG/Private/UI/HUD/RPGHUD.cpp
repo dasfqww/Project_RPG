@@ -5,6 +5,7 @@
 #include "Chat/RPGPlayerChatWidget.h"
 #include "UI/ActionBar/RPGActionBarHUDPresenter.h"
 #include "UI/ItemQuickSlot/RPGItemQuickSlotBar.h"
+#include "UI/Minimap/RPGPlayerMinimap.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
@@ -222,6 +223,8 @@ void ARPGHUD::RefreshPlayerHUD()
     };
     if (StillCurrent())
     {
+        RPGPlayerMinimap::Attach(*Widget, *Pawn);
+
 		// Keep the authored tree intact; replace only its right-hand item region.
 		auto* Original = Widget->WidgetTree ? Widget->WidgetTree->FindWidget(TEXT("HorizontalBox_QuickSlot")) : nullptr;
 		auto* ItemCanvas = Original ? Cast<UCanvasPanel>(Original->GetParent()) : nullptr;
