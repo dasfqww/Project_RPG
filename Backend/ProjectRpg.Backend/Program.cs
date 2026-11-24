@@ -15,6 +15,7 @@ using ProjectRpg.Backend.Validation;
 using ProjectRpg.Backend.Shop;
 using ProjectRpg.Backend.Achievements;
 using ProjectRpg.Backend.Chat;
+using ProjectRpg.Backend.Town;
 
 const string migrateSchemaArgument = "--migrate-schema";
 const string validateNarrativeArgument = "--validate-narrative-catalog";
@@ -81,6 +82,8 @@ builder.Services.Configure<SecurityTelemetryOptions>(
     builder.Configuration.GetSection(SecurityTelemetryOptions.SectionName));
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddSingleton<LobbyChat>();
+builder.Services.AddSingleton<TownChannelPool>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<TownChannelPool>());
 builder.Services.AddSingleton<AccessTokenService>();
 builder.Services.AddSingleton<ApiRateLimiter>();
 builder.Services.AddScoped<BearerAuthenticator>();
@@ -1266,6 +1269,7 @@ app.MapTradeApi();
 app.MapAuctionApi();
 app.MapShopApi();
 app.MapLobbyChat();
+app.MapTownChannels();
 app.MapDungeonAbandonmentApi();
 app.MapDungeonMembershipSnapshotApi();
 app.MapDungeonAdmissionApi();

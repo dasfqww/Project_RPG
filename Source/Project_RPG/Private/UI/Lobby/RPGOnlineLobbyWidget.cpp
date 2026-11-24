@@ -269,6 +269,8 @@ TSharedRef<SWidget> URPGOnlineLobbyWidget::RebuildWidget()
 		Sections = LobbyContent;
 		Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *Sections, TEXT("OnlineLobbySelectedCharacterSection"), NSLOCTEXT("RPGOnlineLobby", "SelectedCharacterSection", "플레이 중인 캐릭터"));
 		PreparationCharacterText = AddText(TEXT("OnlineLobbyPreparationCharacter"), FText::GetEmpty());
+		if (bTownChannelsEnabled || FParse::Param(FCommandLine::Get(), TEXT("RPGTownChannels")))
+			AddAction(TEXT("EnterTownButton"), NSLOCTEXT("RPGOnlineLobby", "EnterTown", "마을 입장"));
 		AddAction(TEXT("ChangeCharacterButton"), NSLOCTEXT("RPGOnlineLobby", "ChangeCharacter", "캐릭터 선택으로 돌아가기"));
 		BuildMenuContent(*Sections);
 		Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *Sections, TEXT("OnlineLobbyConfigurationSection"), NSLOCTEXT("RPGOnlineLobby", "ConfigurationSection", "스킬 구성"));
@@ -370,6 +372,7 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 	Steam = GI ? GI->GetSubsystem<URPGSteamLobbySubsystem>() : nullptr;
 #define BIND_ACTION(Name, Method) if (auto* Button = Buttons.FindRef(TEXT(Name)).Get()) Button->OnClicked.AddUniqueDynamic(this, &ThisClass::Method)
 	BIND_ACTION("StartTutorialButton", StartTutorial);
+	BIND_ACTION("EnterTownButton", EnterTown);
 	BIND_ACTION("ReloadTutorialProgressButton", ReloadTutorialProgress);
 	BIND_ACTION("OpenSkillMenuButton", OpenSkillMenu);
 	BIND_ACTION("OpenEquipmentMenuButton", OpenEquipmentMenu);
@@ -465,6 +468,12 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 
 void URPGOnlineLobbyWidget::NativeDestruct()
 {
+	if (TownAdmissionRequest)
+	{
+		TownAdmissionRequest->OnProcessRequestComplete().Unbind();
+		TownAdmissionRequest->CancelRequest();
+		TownAdmissionRequest.Reset();
+	}
 	if (LineupStage) LineupStage->Destroy();
 	LineupStage = nullptr;
 	if (LineupImage) LineupImage->SetBrush(FSlateBrush());
@@ -534,7 +543,7 @@ bool URPGOnlineLobbyWidget::IsFrontendRequestInFlight() const
 	auto* Trades = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGTradeSubsystem>() : nullptr;
 	auto* Auctions = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGAuctionSubsystem>() : nullptr;
 	auto* Shop = GetOwningLocalPlayer() ? GetOwningLocalPlayer()->GetSubsystem<URPGShopSubsystem>() : nullptr;
-	return bLoadingCharacters || bCreatingCharacter || bLoggingIn || bLoggingOut || bAbandonmentConfirmationOpen
+	return TownAdmissionRequest.IsValid() || bLoadingCharacters || bCreatingCharacter || bLoggingIn || bLoggingOut || bAbandonmentConfirmationOpen
         || (Riding && Riding->BlocksTransitions())
 		|| (Trades && Trades->BlocksTransitions())
 		|| (Auctions && Auctions->BlocksTransitions())
@@ -592,7 +601,7 @@ FRPGOnlineLobbyPresentation URPGOnlineLobbyWidget::CurrentPresentation() const
 	const auto* Lobby = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr;
 	auto View = BuildPresentation(Web && Auth && Flow && Lobby && Lobby->IsLobbyController(GetOwningPlayer()),
 		Web && Web->HasAccessToken(), (Lobby && Lobby->IsFrontendTravelPending())
-			|| bLoadingCharacters || bCreatingCharacter || bLoggingIn || bLoggingOut || bAbandonmentConfirmationOpen
+			|| TownAdmissionRequest.IsValid() || bLoadingCharacters || bCreatingCharacter || bLoggingIn || bLoggingOut || bAbandonmentConfirmationOpen
 			|| (Web && Web->IsPlayerProgressionRequestInFlight()) || (ConfigurationPanel && ConfigurationPanel->IsRequestInFlight())
 			|| (EquipmentPanel && EquipmentPanel->IsBusy()),
 		Auth && Auth->IsLoginRequestInFlight(), Steam && Steam->IsLobbyRequestInFlight(), Flow && Flow->IsRequestInFlight(),
@@ -721,6 +730,8 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 		&& !bCharacterCreationOpen,
 		{Authenticated, Owned});
 	const bool bUnsavedConfiguration = ConfigurationPanel && ConfigurationPanel->HasUnsavedChanges();
+	if (auto* TownButton = Buttons.FindRef(TEXT("EnterTownButton")).Get())
+		TownButton->SetIsEnabled(CanEnterTown());
 	Enable(TEXT("ChangeCharacterButton"), bPreparationOpen && View.bCanSelectCharacter && !bParty && !bUnsavedConfiguration && !bTutorialEntryActive,
 		{Authenticated, NoAbandonment, NoPendingDeparture, NoActive, NoParty,
 		{!bUnsavedConfiguration, Block::UnsavedConfiguration}});
@@ -807,6 +818,7 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 	else if (bLoggingIn || Auth->IsLoginRequestInFlight())
 		Status = NSLOCTEXT("RPGOnlineLobby", "LoginBusy", "계정을 확인하고 있습니다. 잠시 기다려 주세요.");
 	else if (bCreatingCharacter) Status = NSLOCTEXT("RPGOnlineLobby", "CreatingAdventurer", "캐릭터를 만들고 있습니다.");
+	else if (TownAdmissionRequest) Status = NSLOCTEXT("RPGOnlineLobby", "TownPending", "마을 채널을 준비하고 있습니다.");
 	else if (View.bBusy) Status = NSLOCTEXT("RPGOnlineLobby", "Busy", "요청 처리 / 이동 중...");
 	else if (!Web->HasAccessToken() && !Web->GetAuthenticatedSteamId().IsEmpty())
 		Status = NSLOCTEXT("RPGOnlineLobby", "AuthenticationExpired", "인증이 만료되었습니다. 같은 Steam 계정으로 다시 로그인하세요. 캐릭터와 던전 선택은 유지됩니다.");

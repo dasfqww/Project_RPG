@@ -1,5 +1,32 @@
 # 협동 세션의 지역 이동
 
+## 로비에서 공용 마을 입장
+
+캐릭터를 선택하고 로비에서 **마을 입장**을 누르면 해당 원정대 월드의 `L_Town` 전용 서버에 접속한다. 첫 요청에서 1채널을 열고, 마지막 빈자리가 예약되는 순간 호스트 한도 안에서 다음 채널을 미리 기동한다. 후속 입장자는 준비 중인 채널에도 자리를 예약할 수 있고, 실제 접속 주소는 서버가 열리면 받는다. 빈자리가 여러 곳이면 번호가 작은 채널부터 채운다. 마을에서 필드로 이동한 사람도 같은 서버의 자리를 계속 사용한다.
+
+게임 백엔드와 전용 서버는 같은 호스트·OS 계정을 사용한다. 백엔드의 `TownChannels` 설정은 다음과 같다.
+
+| 설정 | 의미 |
+|---|---|
+| `Executable` | 직접 실행할 UE 전용 서버 바이너리의 절대 경로. 비어 있으면 채널 배정이 꺼진다. |
+| `Project` | UnrealEditor로 개발 서버를 띄울 때 사용할 `.uproject` 절대 경로. 패키지 전용 서버는 생략한다. |
+| `Address`, `FirstPort` | 클라이언트에서 도달 가능한 IPv4 주소와 첫 UDP 포트. 기본값은 `127.0.0.1`, `17840`이다. |
+| `Capacity`, `MaxProcesses` | 채널당 자리 수와 호스트 전체의 서버 수 상한. 초기 설정은 16명과 4개이며, 운영값은 마을 부하 측정 후 정한다. |
+| `IdleSeconds` | 추가 채널이 비어 있을 때 회수하기까지의 시간. 기본 120초. 한 월드만 사용하면 빈 1채널은 유지한다. |
+| `DevelopmentNoSteam` | 개발 백엔드에서 로컬 계정으로 확인할 때만 켠다. 일반 접속에서는 Steam 접속 ID와 예약 소유자가 일치해야 한다. |
+
+클라이언트의 `[/Script/Project_RPG.RPGOnlineLobbyWidget]`에 `bTownChannelsEnabled=True`를 설정하면 로비에 입장 버튼이 표시된다. 로컬 시험은 클라이언트 실행 인자 `-RPGTownChannels`로도 표시할 수 있다. 예를 들어 백엔드를 시작할 PowerShell 창에서 다음과 같이 설정한 후 기존 개발 로그인 절차를 사용한다.
+
+```powershell
+$env:ASPNETCORE_ENVIRONMENT = 'Development'
+$env:TownChannels__Executable = 'D:\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe'
+$env:TownChannels__Project = (Resolve-Path Project_RPG.uproject).Path
+$env:TownChannels__DevelopmentNoSteam = 'true'
+dotnet run --no-launch-profile --project Backend/ProjectRpg.Backend
+```
+
+입장 API `POST /api/characters/{characterId}/town`은 플레이어 소유권을 검사하고, 서버가 지정한 포트에서 마을 맵을 열었을 때 채널 번호·주소·일회용 티켓을 반환한다. 서버 기동 중 같은 캐릭터가 다시 요청하면 같은 자리를 사용한다. 입장 준비가 끝난 뒤 미사용 예약은 90초 후 만료되고, 접속을 마친 자리는 로그아웃이나 연결 종료를 서버가 확인할 때 반환한다. 정원과 호스트 한도를 모두 소진하면 HTTP 503, 이미 입장한 캐릭터의 재요청에는 409를 반환한다. 서로 다른 백엔드 인스턴스는 각각 독립적으로 서버를 관리하므로 한 호스트의 포트 범위는 단일 인스턴스에 할당한다.
+
 프로젝트 전투 테스트 지형에서 확인하려면 `/Game/Maps/RegionTravel/L_RegionTravelTest`를 연다. `testmap`을 기반으로 만든 이 맵에서는 기본 시작 지점 정면 약 7m에 두 기둥과 가로대가 보인다. 기둥 사이를 지나면 `L_Field`로 이동한다. 필드의 문으로 되돌아가면 테스트 맵의 입구 앞으로 나온다. 에디터의 Play As Client에서 플레이어 수를 2로 설정하면 두 번째 플레이어를 출발지에 둔 채 왕복을 확인할 수 있다.
 
 에디터에서 `/Game/Maps/RegionTravel/L_Town`을 열고 플레이한다. 마을 광장의 두 기둥 사이로 들어가면 필드로 이동하고, 필드의 문으로 되돌아가면 마을로 귀환한다. 두 명으로 플레이할 때 각 플레이어가 독립적으로 이동한다.

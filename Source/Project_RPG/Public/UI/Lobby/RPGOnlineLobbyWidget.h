@@ -257,6 +257,10 @@ private:
 	bool CanConfirmAbandonment() const;
 	void CloseAbandonmentConfirmation();
 	UFUNCTION() void EnterDungeon();
+	UFUNCTION() void EnterTown();
+	bool CanEnterTown() const;
+	UPROPERTY(Config) bool bTownChannelsEnabled = false;
+	FHttpRequestPtr TownAdmissionRequest;
 	UFUNCTION() void CreateSteamParty();
 	UFUNCTION() void FindSteamParties();
 	UFUNCTION() void JoinSteamParty();

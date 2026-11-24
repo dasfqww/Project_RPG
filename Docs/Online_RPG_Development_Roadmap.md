@@ -296,6 +296,8 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 ## 12. 현재 현황과 다음 작업 체크리스트 (2026-10-20)
 
+- [x] **공용 마을 채널 자동 분산 / town-channel-pool** — 로그인 로비에서 월드별 마을로 입장한다. 마지막 자리를 예약하면 호스트 한도 내에서 다음 전용 서버를 열고, 빈 추가 채널을 회수한다. [마을 입장 및 운영 설정](REGION_TRAVEL.md#로비에서-공용-마을-입장)
+
 - [x] **2026-11-24 기존 F1~F8에 탈것 배치** — 게임 내 보관함에서 기존 우측 슬롯에 드롭하고 슬롯 키·클릭으로 탑승한다. 같은 칸에서 교체, 캐릭터별 로컬 배치 저장, 기존 내리기를 D3D12에서 확인했다. [탈것 슬롯 계약](RIDING_SYSTEM_CODE_DESIGN.md#준비-로비-탈것-보관함-목록-2026-11-23).
 
 - [x] **2026-11-24 우측 탈것 퀵슬롯 아이콘** — 서버가 확정한 빠른 호출 ID로 탈것 DA 아이콘을 비동기 로드하고 교체된 설정을 같은 슬롯에 반영한다. D3D12 게임 HUD 미등록·말·늑대와 늑대 클릭 탑승·하차, 퀵슬롯 native 15건 확인. [탈것 퀵슬롯 계약](RIDING_SYSTEM_CODE_DESIGN.md#준비-로비-탈것-보관함-목록-2026-11-23).
@@ -1009,6 +1011,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| town-channel-pool | 마을 입장·채널별 예약·증설·회수 | Backend/ProjectRpg.Backend/Town, Program.cs, UE Town·RPGGameModeBase·HttpWebManager·RPGOnlineLobbyWidget, 마을 cook 규칙, 지역 이동 계약·본인 기록 | UE 5.8 Editor 및 백엔드 Release 빌드, 로비 입장→마을 빙의, 실제 2클라이언트·정원 1·호스트 2개에서 예약/선기동/만료/회수/재기동 확인. 로컬 Saved/BuildChecks/TownChannelPool/Result.json | 구현·검증 완료. 본인 경로 main/index·origin/main 순차 게시, 원격 일치 시 해제 |
 | outskirts-field-24 | 마을 외곽 교역소·숲길·폐성당 첫 필드 | L_Field, SM_OutskirtsTerrain, M_OutskirtsGround, 필드 미니맵 원본·텍스처·투영·계약 | UE 5.8 격리 모듈과 D3D11 단독 PIE에서 L_Town 입장, 캐릭터 이동 약 100m, 귀환 포털 및 미니맵 확인. Saved/BuildChecks/OutskirtsField24에 화면과 결과 보관. 임시 3,135,162,331 bytes 및 정션 3개 정리. 자동 검토 차단으로 Temp 소형 파일 689,805 bytes 잔류 | 구현·검증 자원 해제. 본인 8경로 main/index 및 origin/main 순차 게시, 원격 일치 시 해제 |
 | local-radius-minimap-24 | 플레이어 중심 12m 미니맵과 포털 범위 | Private/UI/Minimap/RPGPlayerMinimap.cpp, Docs/PLAYER_MINIMAP.md, 본인 행 | UE 5.8 집중 컴파일·격리 링크. D3D11 720p에서 중앙 화살표·지형 이동·반경 9.85m 포털 표시/13.5m 숨김·텍스처 경계·실제 마을/필드 왕복 확인. Saved/BuildChecks/LocalRadiusMinimap24/Result.json. 임시 37,430,540 bytes·정션 2개 정리 | 구현·검증 해제. 본인 3경로 main index/ref·origin/main 순차 게시 예약, 원격 일치 시 해제 |
 | field-overview-tab-24 | Tab 필드 전체 지도 및 주요 통행로 | Private/UI/Minimap, Private/Controller/RPGPlayerController.cpp, Content/Minimap/{T_FieldOverview PNG/UAsset,PAL_TownMinimap}, Docs/PLAYER_MINIMAP.md, 본인 행 | UE 5.8 에셋 저장·집중 컴파일·격리 링크. D3D11 720p 필드 Tab 토글·경로·포털 표시 및 마을 복귀 자동 닫기 확인. 3초 표본 닫힘 5.638ms·열림 5.473ms. Saved/BuildChecks/FieldOverviewTab24/Result.json. 임시 75,230,140 bytes·정션 38개 정리 | 구현·검증 해제. 본인 8경로 main index/ref·origin/main 순차 게시 예약, 원격 일치 시 해제 |

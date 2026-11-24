@@ -2,6 +2,7 @@
 
 
 #include "GameMode/RPGGameModeBase.h"
+#include "Town/RPGTownChannelHost.h"
 #include "UObject/Package.h"
 #include "Item/RPGItemBase.h"
 #include "Character/RPGPlayer.h"
@@ -125,6 +126,7 @@ namespace
 void ARPGGameModeBase::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	if (TownChannel) TownChannel->CheckOwner();
 	PollDungeonPreLoginConnections();
 }
 
@@ -314,6 +316,8 @@ EDataValidationResult ARPGGameModeBase::IsDataValid(
 void ARPGGameModeBase::BeginPlay()
 {
 	Super::BeginPlay();
+	TownChannel = FRPGTownChannelHost::Start(*GetWorld());
+	if (TownChannel) bRequireBackendJoinTicket = false;
 
 	if (IsLocalNetworkTestModeEnabled())
 	{
@@ -460,6 +464,11 @@ void ARPGGameModeBase::PreLoginAsync(
 	const FUniqueNetIdRepl& UniqueId,
 	const FOnPreLoginCompleteDelegate& OnComplete)
 {
+	if (TownChannel && !TownChannel->HasReservation(Options))
+	{
+		OnComplete.ExecuteIfBound(TEXT("town_reservation_required"));
+		return;
+	}
 	if (!IsGameModeServerRuntime()
 		|| !bRequireBackendJoinTicket
 		|| IsLocalNetworkTestModeEnabled())
@@ -548,6 +557,15 @@ FString ARPGGameModeBase::InitNewPlayer(
 		UniqueId,
 		Options,
 		Portal);
+	if (TownChannel && ErrorMessage.IsEmpty())
+	{
+		FString CharacterName;
+		if (!NewPlayerController || !TownChannel->Claim(*NewPlayerController, Options,
+			UniqueId.IsValid() ? UniqueId.ToString() : FString(), CharacterName))
+			return TEXT("town_reservation_expired");
+		ChangeName(NewPlayerController, CharacterName, false);
+		return {};
+	}
 	if (!ErrorMessage.IsEmpty()
 		// Installed-engine E2E uses a listen-server proxy.  The engine creates
 		// this one local controller while loading the map, before any external
@@ -689,6 +707,7 @@ void ARPGGameModeBase::PostLogin(APlayerController* NewPlayer)
 
 void ARPGGameModeBase::Logout(AController* Exiting)
 {
+	if (TownChannel) TownChannel->Release(Exiting);
 	if (APlayerController* Controller = Cast<APlayerController>(Exiting))
 	{
 		const TWeakObjectPtr<APlayerController> Key(Controller);

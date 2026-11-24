@@ -41,6 +41,9 @@ class PROJECT_RPG_API ARPGGameModeBase : public AGameModeBase
 	GENERATED_BODY()
 public:
 	ARPGGameModeBase();
+private:
+	TSharedPtr<struct FRPGTownChannelHost> TownChannel;
+public:
 
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
