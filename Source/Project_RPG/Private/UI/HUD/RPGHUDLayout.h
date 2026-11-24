@@ -11,13 +11,13 @@ namespace RPGHUDLayout
 {
     inline constexpr float Edge = 24.f;
     inline constexpr float SideWidth = 300.f;
-    inline constexpr float QuestTop = 76.f;
-    inline constexpr float QuestHeight = 156.f;
-    inline constexpr float PracticeTop = 248.f;
-    inline constexpr float PracticeHeight = 264.f;
+    inline constexpr float PartyTop = 76.f;
     inline constexpr float MinimapTop = 56.f;
     inline constexpr float MinimapSize = 280.f;
-    inline constexpr float MinimapCardGap = 16.f;
+    inline constexpr float RightCardGap = 16.f;
+    inline constexpr float QuestTop = MinimapTop + MinimapSize + RightCardGap;
+    inline constexpr float QuestHeight = 156.f;
+    inline constexpr float PracticeHeight = 264.f;
     inline constexpr float CombatHeight = 180.f;
     inline constexpr float ProgressBottom = 288.f;
     inline FLinearColor PanelColor() { return FLinearColor(.035f, .026f, .021f, .92f); }
@@ -35,8 +35,8 @@ namespace RPGHUDLayout
 
     inline constexpr float RightCardTop(bool bPractice, bool bHasMinimap)
     {
-        const float Top = bPractice ? PracticeTop : QuestTop;
-        return bHasMinimap ? Top + (MinimapTop + MinimapSize + MinimapCardGap - QuestTop) : Top;
+        if (!bPractice) return QuestTop;
+        return bHasMinimap ? QuestTop + QuestHeight + RightCardGap : QuestTop - RightCardGap - PracticeHeight;
     }
 
     inline void PlaceRightCard(USizeBox& Size, UCanvasPanelSlot& Slot, bool bPractice)
@@ -45,7 +45,8 @@ namespace RPGHUDLayout
         Size.SetMaxDesiredHeight(bPractice ? PracticeHeight : QuestHeight);
         Slot.SetAnchors(FAnchors(1.f, 0.f));
         Slot.SetAlignment(FVector2D(1.f, 0.f));
-        Slot.SetPosition(FVector2D(-Edge, RightCardTop(bPractice, RPGPlayerMinimap::SupportsWorld(Size.GetWorld()))));
+        const bool bHasMinimap = bPractice && RPGPlayerMinimap::SupportsWorld(Size.GetWorld());
+        Slot.SetPosition(FVector2D(-Edge, RightCardTop(bPractice, bHasMinimap)));
         Slot.SetAutoSize(true);
     }
 }

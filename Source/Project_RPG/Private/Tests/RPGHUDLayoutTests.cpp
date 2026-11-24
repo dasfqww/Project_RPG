@@ -17,14 +17,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGHUDReservationsTest, "ProjectRPG.UI.HUDLayo
 bool FRPGHUDReservationsTest::RunTest(const FString&)
 {
     using namespace RPGHUDLayout;
-    TestEqual(TEXT("Quest keeps its normal position without the minimap"), RightCardTop(false, false), QuestTop);
-    TestEqual(TEXT("Quest begins below the minimap"), RightCardTop(false, true), MinimapTop + MinimapSize + MinimapCardGap);
-    TestTrue(TEXT("Quest and practice keep their separation below the minimap"),
-        RightCardTop(false, true) + QuestHeight + 12.f <= RightCardTop(true, true));
+    TestEqual(TEXT("Quest begins below the minimap"), RightCardTop(false, true), MinimapTop + MinimapSize + RightCardGap);
+    TestEqual(TEXT("Without a minimap, quest keeps the same position"), RightCardTop(false, false), RightCardTop(false, true));
+    TestEqual(TEXT("Practice begins below the quest when the minimap occupies the top"),
+        RightCardTop(true, true), QuestTop + QuestHeight + RightCardGap);
+    TestTrue(TEXT("Without a minimap, practice fits above the quest"),
+        RightCardTop(true, false) >= MinimapTop && RightCardTop(true, false) + PracticeHeight + RightCardGap == QuestTop);
     for (const FVector2D Viewport : {FVector2D(1280,720), FVector2D(1920,1080), FVector2D(2560,1440)})
     {
-        TestTrue(TEXT("Quest ends before practice begins"), QuestTop + QuestHeight + 12.f <= PracticeTop);
-        TestTrue(TEXT("Practice ends above the combat band at minimum supported size"), PracticeTop + PracticeHeight <= Viewport.Y - CombatHeight);
+        TestTrue(TEXT("Quest ends above the combat band at minimum supported size"), QuestTop + QuestHeight <= Viewport.Y - CombatHeight);
         TestTrue(TEXT("Both side panels leave the central combat view clear"), 2.f * (SideWidth + Edge) < Viewport.X - 600.f);
         TestTrue(TEXT("Nearby centered world caption has space"), IsWorldLabelInSafeArea(FVector2D(Viewport.X/2, Viewport.Y/2), Viewport));
         TestFalse(TEXT("Caption cannot paint into quest/practice"), IsWorldLabelInSafeArea(FVector2D(Viewport.X - 150, 150), Viewport));
@@ -61,6 +62,13 @@ bool FRPGHUDGuideContainersTest::RunTest(const FString&)
             if (TestNotNull(TEXT("Practice size constraint"), PracticeSize))
                 TestEqual(TEXT("Practice cap"), PracticeSize->GetMaxDesiredHeight(), RPGHUDLayout::PracticeHeight);
             TestEqual(TEXT("Quest cap"), QuestSize->GetMaxDesiredHeight(), RPGHUDLayout::QuestHeight);
+            auto* QuestSlot = Cast<UCanvasPanelSlot>(QuestSize->Slot);
+            if (TestNotNull(TEXT("Quest has an anchored canvas slot"), QuestSlot))
+            {
+                TestEqual(TEXT("Quest stays at the right edge"), QuestSlot->GetAnchors().Minimum, FVector2D(1.f, 0.f));
+                TestEqual(TEXT("Quest reserves minimap space even in this world"), QuestSlot->GetPosition(),
+                    FVector2D(-RPGHUDLayout::Edge, RPGHUDLayout::QuestTop));
+            }
             TestTrue(TEXT("Missing tracking data does not leave an empty panel"), QuestSize->GetVisibility() == ESlateVisibility::Collapsed);
             TestTrue(TEXT("Practice root allows child scrolling without a fullscreen hit target"), Practice->GetVisibility() == ESlateVisibility::SelfHitTestInvisible);
             TestTrue(TEXT("Quest root allows child scrolling without a fullscreen hit target"), Quest->GetVisibility() == ESlateVisibility::SelfHitTestInvisible);

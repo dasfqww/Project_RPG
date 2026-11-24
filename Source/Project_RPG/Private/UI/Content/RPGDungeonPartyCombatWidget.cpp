@@ -25,7 +25,7 @@ TSharedRef<SWidget> URPGDungeonPartyCombatWidget::RebuildWidget()
 		Width->SetMaxDesiredHeight(360.f);
 		auto* Position = Canvas->AddChildToCanvas(Width);
 		Position->SetAnchors(FAnchors(0.f, 0.f));
-		Position->SetOffsets(FMargin(RPGHUDLayout::Edge, RPGHUDLayout::QuestTop, 0.f, 0.f));
+		Position->SetOffsets(FMargin(RPGHUDLayout::Edge, RPGHUDLayout::PartyTop, 0.f, 0.f));
 		Position->SetAutoSize(true);
 		auto* Card = WidgetTree->ConstructWidget<UBorder>();
 		Card->SetBrushColor(RPGHUDLayout::PanelColor());
