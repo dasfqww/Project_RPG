@@ -66,6 +66,15 @@ struct FProbe
     TArray<TSharedPtr<FJsonValue>> Samples;
     bool bDone=false, bFirstPlayerLogged=false;
     const bool bMovingPlatform=FParse::Param(FCommandLine::Get(),TEXT("RPGGuardianMelee2MovingPlatform"));
+    const bool bGrounded=FParse::Param(FCommandLine::Get(),TEXT("RPGGuardianMelee2Grounded"));
+    const FRPGKnockbackSettings GroundedSettings=[]{
+        FRPGKnockbackSettings Settings;
+        Settings.GroundFallDuration=.65f; Settings.DownDuration=1.2f; Settings.GetUpDuration=.8f;
+        return Settings;
+    }();
+    FVector InitialLocation=FVector::ZeroVector;
+    double MaximumGroundedDrift=0.;
+    double GroundFallEnd=0.;
     int32 ExpectedDirection=INDEX_NONE;
     bool bDrawRequested=false;
     TMap<int32,FString> ObservedMontages;
@@ -168,6 +177,12 @@ struct FProbe
         auto* Control=Player->GetCombatControlComponent(); auto State=Control->GetAirborneState();
         const int32 Phase=static_cast<int32>(State.Phase); Phases|=1<<Phase;
         MaximumZ=FMath::Max(MaximumZ,static_cast<float>(Player->GetActorLocation().Z));
+        if (bGrounded)
+        {
+            if (Phases==1) InitialLocation=Player->GetActorLocation();
+            MaximumGroundedDrift=FMath::Max(MaximumGroundedDrift,FVector::Dist(InitialLocation,Player->GetActorLocation()));
+            if (State.Phase==ERPGAirbornePhase::GroundFall) GroundFallEnd=State.PhaseEndServerTime;
+        }
         auto* Presentation=Profile(Control); auto* Anim=Player->GetMesh()->GetAnimInstance();
         if (Phase>0 && Presentation && Anim)
         {
@@ -242,7 +257,9 @@ struct FProbe
     {
         const auto State=Player->GetCombatControlComponent()->GetAirborneState();
         auto* Security=Player->FindComponentByClass<URPGSecurityValidationComponent>();
-        if ((Phases&15)!=15 || (Role!=TEXT("server") && (Poses&14)!=14) || MaximumZ<InitialZ+50 || HP(Player)>=InitialHP || HP(Player)<=0
+        const int32 ActiveMask=bGrounded?28:14;
+        const bool bInvalidTravel=bGrounded?MaximumGroundedDrift>5.:MaximumZ<InitialZ+50;
+        if (Phases!=(ActiveMask|1) || (Role!=TEXT("server") && Poses!=ActiveMask) || bInvalidTravel || HP(Player)>=InitialHP || HP(Player)<=0
             || State.EndReason!=ERPGAirborneEndReason::Completed || FMath::Abs(Player->GetActorLocation().Z-InitialZ)>8.f
             || (Security && (Security->GetTotalViolationCount()!=0 || Security->IsMovementAuthorizationActive())))
         { Fail(TEXT("HitPosePhysicsRecoveryMismatch")); return; }
@@ -281,6 +298,8 @@ struct FProbe
         Result->SetNumberField(TEXT("securityViolations"),Security?Security->GetTotalViolationCount():-1);
         Result->SetBoolField(TEXT("movementAuthorizationReleased"),Security && !Security->IsMovementAuthorizationActive());
         Result->SetBoolField(TEXT("movingPlatform"),bMovingPlatform);
+        Result->SetBoolField(TEXT("grounded"),bGrounded);
+        Result->SetNumberField(TEXT("maximumGroundedDrift"),MaximumGroundedDrift);
         if (bMovingPlatform)
         {
             auto* Floor=FindPlatform(Player->GetWorld()); const FVector Relative=Floor->GetActorTransform().InverseTransformPositionNoScale(Player->GetActorLocation());
@@ -318,6 +337,8 @@ struct FProbe
             Deadline=FPlatformTime::Seconds()+(ExpectedDirection==INDEX_NONE?180.:600.);
             Role=Server?TEXT("server"):FParse::Param(FCommandLine::Get(),TEXT("RPGGuardianMelee2Owner"))?TEXT("owner"):TEXT("observer");
             if (Directory.IsEmpty()) { Fail(TEXT("OutputDirectoryMissing")); return false; }
+            if (bGrounded && (ExpectedDirection<0 || ExpectedDirection>3 || bMovingPlatform))
+            { Fail(TEXT("GroundedFixtureRequiresStationaryDirectionalCase")); return false; }
         }
         if (FPlatformTime::Seconds()>Deadline) { Fail(TEXT("Deadline")); return false; }
         auto* Driver=World->GetNetDriver(); if (!Driver || !Driver->IsUsingIrisReplication()) return true;
@@ -391,7 +412,8 @@ struct FProbe
                     WarmAttackMontage.Reset(LoadObject<UAnimMontage>(nullptr,AttackMontagePath));
                     WarmMontage(WarmAttackMontage.Get());
                     const auto Direction=static_cast<ERPGHitReactionDirection>(ExpectedDirection);
-                    for (const auto Phase : {ERPGAirbornePhase::Airborne,ERPGAirbornePhase::Downed,ERPGAirbornePhase::GettingUp})
+                    for (const auto Phase : {bGrounded?ERPGAirbornePhase::GroundFall:ERPGAirbornePhase::Airborne,
+                        ERPGAirbornePhase::Downed,ERPGAirbornePhase::GettingUp})
                         WarmMontage(Profile(Control)->ResolveMontage(Phase,Direction).Montage);
                 }
                 ReadyAt=FPlatformTime::Seconds()+1.;
@@ -399,6 +421,7 @@ struct FProbe
             if (FPlatformTime::Seconds()<ReadyAt) return true;
             auto Ready=MakeShared<FJsonObject>(); Ready->SetBoolField(TEXT("ready"),true); Write(Role+TEXT(".ready.json"),Ready); Step=1;
             InitialHP=HP(Player); InitialZ=MaximumZ=Player->GetActorLocation().Z;
+            InitialLocation=Player->GetActorLocation();
         }
         if (Server && Step==1)
         {
@@ -426,11 +449,21 @@ struct FProbe
                     || Player->GetMesh()->GetAnimInstance()->IsAnyMontagePlaying()) return true;
             }
             InitialHP=HP(Player); InitialZ=MaximumZ=Player->GetActorLocation().Z;
+            InitialLocation=Player->GetActorLocation();
             const int32 Side=ExpectedDirection==INDEX_NONE?2:ExpectedDirection;
             const FVector TowardAttacker=Player->GetActorForwardVector().RotateAngleAxis(90.f*Side,FVector::UpVector);
             NPC->SetActorLocation(Player->GetActorLocation()+160.f*TowardAttacker+FVector(0,0,6),false,nullptr,ETeleportType::TeleportPhysics);
             NPC->SetActorRotation((-TowardAttacker).Rotation());
-            if (!NPC->GetRPGAbilitySystemComponent()->TryActivateAbilityByClass(LoadClass<UGameplayAbility>(nullptr,AbilityPath),false)) { Fail(TEXT("OriginalGrantActivation")); return false; }
+            auto* ASC=NPC->GetRPGAbilitySystemComponent();
+            const auto Ability=LoadClass<UGameplayAbility>(nullptr,AbilityPath);
+            if (bGrounded)
+            {
+                // Exercise a grounded attack configuration through the authored weapon and damage path.
+                auto* Spec=ASC->FindAbilitySpecFromClass(Ability);
+                if (!Spec || !RPGKnockback::SetGrantedSettings(*Spec,GroundedSettings))
+                { Fail(TEXT("GroundedAttackMetadata")); return false; }
+            }
+            if (!ASC->TryActivateAbilityByClass(Ability,false)) { Fail(TEXT("OriginalGrantActivation")); return false; }
             AttackAt=FPlatformTime::Seconds(); Step=2;
             UE_LOG(LogTemp,Display,TEXT("GUARDIAN_MELEE2_NETWORK_ACTIVATED NaturalWeaponHit=1 OriginalGrant=1"));
         }
@@ -440,11 +473,18 @@ struct FProbe
             if (ExpectedDirection!=INDEX_NONE && State.IsActive()
                 && static_cast<int32>(State.PresentationDirection)!=ExpectedDirection)
             { Fail(TEXT("UnexpectedApprovedHitDirection")); return false; }
+            if (bGrounded && State.IsActive())
+            {
+                if (!Player->GetCharacterMovement()->IsMovingOnGround() || State.bMotionActive || Control->HasAirborneMotion()
+                    || (State.Phase==ERPGAirbornePhase::Downed && (GroundFallEnd<=0.
+                        || !FMath::IsNearlyEqual(GroundFallEnd, State.PhaseStartServerTime, .07))))
+                { Fail(TEXT("GroundedFallMotionOrContactTime")); return false; }
+            }
             if (bMovingPlatform && Player->IsLocallyControlled() && (State.Phase==ERPGAirbornePhase::Downed || State.Phase==ERPGAirbornePhase::GettingUp))
                 Player->AddMovementInput(FVector::RightVector,1.f,true);
             if (State.Phase==ERPGAirbornePhase::Airborne && (!FMath::IsNearlyEqual(State.Distance,240.f) || !FMath::IsNearlyEqual(State.Height,180.f)
                 || !FMath::IsWithinInclusive(State.DownDuration,1.f,1.6f) || !FMath::IsNearlyEqual(State.GetUpDuration,.8f))) { Fail(TEXT("AuthoredSpecChanged")); return false; }
-            if ((Phases&2) && State.Phase==ERPGAirbornePhase::None)
+            if ((Phases&(bGrounded?16:2)) && State.Phase==ERPGAirbornePhase::None)
             {
                 if (!CompleteAt) CompleteAt=FPlatformTime::Seconds()+.5;
                 if (FPlatformTime::Seconds()>=CompleteAt) Complete(Player,Driver);

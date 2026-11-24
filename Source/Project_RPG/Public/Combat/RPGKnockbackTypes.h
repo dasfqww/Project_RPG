@@ -7,7 +7,7 @@
 
 struct FGameplayAbilitySpec;
 
-/** Shared displacement for Player/NPC attacks. Height selects airborne; both zero disable it. */
+/** Shared attack reaction for Player/NPC. GroundFallDuration selects a stationary knockdown. */
 USTRUCT(BlueprintType)
 struct PROJECT_RPG_API FRPGKnockbackSettings
 {
@@ -18,16 +18,20 @@ struct PROJECT_RPG_API FRPGKnockbackSettings
 	float Duration = .4f;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0", ClampMax="600", Units="cm"))
 	float Height = 0.f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0.1", ClampMax="4", Units="s", EditCondition="Height > 0"))
+	/** Time from impact until the grounded fall reaches the down pose. Zero disables grounded knockdown. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0", ClampMax="2", Units="s"))
+	float GroundFallDuration = 0.f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0.1", ClampMax="4", Units="s", EditCondition="Height > 0 || GroundFallDuration > 0"))
 	float DownDuration = .8f;
 	/** Optional upper bound for the down time. Zero uses DownDuration as a fixed time. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0", ClampMax="4", Units="s", EditCondition="Height > 0"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0", ClampMax="4", Units="s", EditCondition="Height > 0 || GroundFallDuration > 0"))
 	float MaxDownDuration = 0.f;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0.1", ClampMax="3", Units="s", EditCondition="Height > 0"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0.1", ClampMax="3", Units="s", EditCondition="Height > 0 || GroundFallDuration > 0"))
 	float GetUpDuration = 1.2f;
 	bool IsValid() const;
-	bool IsEnabled() const { return (Distance > 0.f || Height > 0.f) && IsValid(); }
+	bool IsEnabled() const { return (Distance > 0.f || Height > 0.f || GroundFallDuration > 0.f) && IsValid(); }
 	bool IsAirborne() const { return Height > 0.f && IsValid(); }
+	bool IsGroundedKnockdown() const { return GroundFallDuration > 0.f && IsValid(); }
 };
 
 UENUM(BlueprintType)

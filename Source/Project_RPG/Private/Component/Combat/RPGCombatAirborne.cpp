@@ -39,21 +39,30 @@ namespace
 	}
 }
 
-bool URPGCombatControlComponent::ApplyApprovedDamageAirborne(AActor* Source, const FHitResult& Hit,
+bool URPGCombatControlComponent::ApplyApprovedDamageKnockdown(AActor* Source, const FHitResult& Hit,
 	const FGuid& Receipt, const FRPGKnockbackSettings& Settings, const FVector& AwayDirection)
 {
 	auto* Character = Cast<ACharacter>(GetOwner());
 	auto* Movement = Character ? Cast<URPGCharacterMovementComponent>(Character->GetCharacterMovement()) : nullptr;
+	const bool bGrounded = Settings.IsGroundedKnockdown();
 	if (bEnding || bApplyingAirborne || bEndingAirborne || bChangingAirbornePhase || bApplyingKnockback || bEndingKnockback || !Character || !Character->HasAuthority()
 		|| !Source || !Source->HasAuthority() || Source == Character || Source->GetWorld() != GetWorld()
-		|| Hit.GetActor() != Character || !Receipt.IsValid() || !Settings.IsAirborne() || !Supported(Movement)
+		|| Hit.GetActor() != Character || !Receipt.IsValid() || (!bGrounded && !Settings.IsAirborne()) || !Supported(Movement)
 		|| !Character->GetActorEnableCollision() || AwayDirection.ContainsNaN()
 		|| !FMath::IsNearlyEqual(AwayDirection.SizeSquared2D(), 1., .01) || !FMath::IsNearlyZero(AwayDirection.Z)
 		|| !IsLivingAvatar(Source) || !IsLivingAvatar(Character)) return false;
-	const float Gravity = Movement->GetGravityZ();
-	if (!FMath::IsFinite(Gravity) || Gravity >= -1.f || !Movement->GetGravityDirection().Equals(FVector(0, 0, -1))) return false;
-	const float Duration = FMath::Sqrt(8.f * Settings.Height / -Gravity);
-	if (!FMath::IsFinite(Duration) || Duration < .2f || Duration > 4.f || Settings.Distance / Duration > 2500.f) return false;
+	float Duration = 0.f;
+	if (bGrounded)
+	{
+		if (!Movement->IsMovingOnGround()) return false;
+	}
+	else
+	{
+		const float Gravity = Movement->GetGravityZ();
+		if (!FMath::IsFinite(Gravity) || Gravity >= -1.f || !Movement->GetGravityDirection().Equals(FVector(0, 0, -1))) return false;
+		Duration = FMath::Sqrt(8.f * Settings.Height / -Gravity);
+		if (!FMath::IsFinite(Duration) || Duration < .2f || Duration > 4.f || Settings.Distance / Duration > 2500.f) return false;
+	}
 	auto* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Character);
 	InitializeWithAbilitySystem(*ASC);
 	if (RecentAirborneHits.Contains(Receipt)) return false;
@@ -91,6 +100,8 @@ bool URPGCombatControlComponent::ApplyApprovedDamageAirborne(AActor* Source, con
 	if (bEnding || BoundASC.Get() != ASC || !Lifetime.IsCurrent(Source, Character))
 	{ EndAirborne(ERPGAirborneEndReason::LifeChanged); return false; }
 	if (ForeignMotion(Movement, NAME_None)) { EndAirborne(ERPGAirborneEndReason::ForeignMovement); return false; }
+	if (bGrounded && !Movement->IsMovingOnGround())
+	{ EndAirborne(ERPGAirborneEndReason::UnsupportedMovement); return false; }
 	auto* Security = Character->FindComponentByClass<URPGSecurityValidationComponent>();
 	if ((Character->IsPlayerControlled() && !Security) || (Security && Security->IsMovementAuthorizationActive()))
 	{ EndAirborne(ERPGAirborneEndReason::ForeignMovement); return false; }
@@ -102,7 +113,7 @@ bool URPGCombatControlComponent::ApplyApprovedDamageAirborne(AActor* Source, con
 	AirborneState.Yaw = AwayDirection.Rotation().Yaw;
 	AirborneState.PresentationDirection = PresentationDirection;
 	AirborneState.ArcDuration = Duration;
-	AirborneState.MaximumFlightDuration = Duration + 2.f;
+	AirborneState.MaximumFlightDuration = bGrounded ? 0.f : Duration + 2.f;
 	// Resolve once on the authority; the chosen duration travels with the airborne state.
 	AirborneState.DownDuration = Settings.MaxDownDuration > Settings.DownDuration
 		? FMath::FRandRange(Settings.DownDuration, Settings.MaxDownDuration) : Settings.DownDuration;
@@ -110,7 +121,7 @@ bool URPGCombatControlComponent::ApplyApprovedDamageAirborne(AActor* Source, con
 	AirborneState.StartServerTime = ServerNow(GetWorld());
 	AirborneState.MovementStartClientTime = -1.f;
 	AirborneState.EndReason = ERPGAirborneEndReason::None;
-	if (Security)
+	if (!bGrounded && Security)
 	{
 		// ValidateMovement consumes a 3D distance budget. Bound both the arc and its horizontal travel.
 		AirborneMovementAuthorization = Security->BeginMovementAuthorization(Duration + 2.2f,
@@ -120,8 +131,17 @@ bool URPGCombatControlComponent::ApplyApprovedDamageAirborne(AActor* Source, con
 	bAirborneHasMoved = false;
 	AirborneLastLocation = Character->GetActorLocation();
 	DisplacementLastBaseMovementTotal = Movement->GetServerBasedMovementTotal();
-	Character->LandedDelegate.AddUniqueDynamic(this, &ThisClass::OnAirborneLanded);
 	Character->OnCharacterMovementUpdated.AddUniqueDynamic(this, &ThisClass::OnAirborneMovementUpdated);
+	if (bGrounded)
+	{
+		Movement->StopMovementImmediately();
+		if (!ChangeAirbornePhase(ERPGAirbornePhase::GroundFall, Settings.GroundFallDuration)) return false;
+		RidingOutcome.CompleteControl(Handle);
+		if (bEnding || BoundASC.Get() != ASC || !Lifetime.IsCurrent(Source, Character))
+		{ if (OwnedAirborneSequence == Handle) EndAirborne(ERPGAirborneEndReason::LifeChanged); return false; }
+		return AirborneState.Phase == ERPGAirbornePhase::GroundFall;
+	}
+	Character->LandedDelegate.AddUniqueDynamic(this, &ThisClass::OnAirborneLanded);
 	if (!ChangeAirbornePhase(ERPGAirbornePhase::Airborne)) return false;
 	Movement->SetMovementMode(MOVE_Falling);
 	AirborneState.bMotionActive = true;
@@ -140,7 +160,7 @@ void URPGCombatControlComponent::PublishAirborneState()
 	OnAirborneStateChanged.Broadcast(AirborneState); UpdateAirbornePose();
 }
 
-bool URPGCombatControlComponent::ChangeAirbornePhase(ERPGAirbornePhase Phase)
+bool URPGCombatControlComponent::ChangeAirbornePhase(ERPGAirbornePhase Phase, float GroundFallDuration)
 {
 	if (bEnding || bEndingAirborne || bChangingAirbornePhase || !BoundASC.IsValid()) return false;
 	TGuardValue<bool> Changing(bChangingAirbornePhase, true);
@@ -153,6 +173,14 @@ bool URPGCombatControlComponent::ChangeAirbornePhase(ERPGAirbornePhase Phase)
 	if (Previous.IsValid()) ASC->RemoveActiveGameplayEffect(Previous);
 	if (bEnding || BoundASC.Get() != ASC || Epoch != LifetimeEpoch || Id != AirborneState.ExecutionId
 		|| !IsLivingAvatar(GetOwner()) || !ASC->GetActiveGameplayEffect(OwnedAirborneSequence)) return false;
+	if (Phase == ERPGAirbornePhase::GroundFall)
+	{
+		// The sequence effect already owns the action lock during the grounded fall.
+		AirborneState.Phase = Phase; ++AirborneState.PhaseRevision;
+		AirborneState.PhaseStartServerTime = ServerNow(GetWorld());
+		AirborneState.PhaseEndServerTime = AirborneState.PhaseStartServerTime + GroundFallDuration;
+		PublishAirborneState(); return AirborneState.Phase == Phase;
+	}
 	const UGameplayEffect* Definition = Phase == ERPGAirbornePhase::Airborne ? static_cast<const UGameplayEffect*>(GetDefault<URPGAirborneEffect>())
 		: Phase == ERPGAirbornePhase::Downed ? static_cast<const UGameplayEffect*>(GetDefault<URPGDownedEffect>()) : GetDefault<URPGGettingUpEffect>();
 	FGameplayEffectSpec Spec(Definition, Context, 1.f);
@@ -322,9 +350,10 @@ void URPGCombatControlComponent::OnAirborneMovementUpdated(float DeltaSeconds, F
 	// PerformMovement. Remove only that measured carry; CMC's teleport flag and
 	// LastUpdateLocation cannot distinguish it from a genuine external move.
 	const FVector PreviousLocation = OldLocation - (BaseTotal - DisplacementLastBaseMovementTotal);
+	const float SpeedBudget = AirborneState.ArcDuration > 0.f ? AirborneState.Distance / AirborneState.ArcDuration : 0.f;
 	if (OldLocation.ContainsNaN() || Location.ContainsNaN() || !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.f
 		|| PreviousLocation.ContainsNaN() || FVector::Dist(AirborneLastLocation, PreviousLocation) > 25.f
-		|| FVector::Dist2D(OldLocation, Location) > AirborneState.Distance / AirborneState.ArcDuration * DeltaSeconds + 25.f)
+		|| FVector::Dist2D(OldLocation, Location) > SpeedBudget * DeltaSeconds + 25.f)
 	{ EndAirborne(ERPGAirborneEndReason::ForeignMovement); return; }
 	if (AirborneState.Phase == ERPGAirbornePhase::Airborne && (Location.Z > OldLocation.Z + .01f || OldVelocity.Z < -.01f)) bAirborneHasMoved = true;
 	AirborneLastLocation = Location;
@@ -341,7 +370,11 @@ void URPGCombatControlComponent::TickAirborne()
 		if (!IsLivingAvatar(GetOwner()) || AirborneState.RecoveryRevision != RecoveryRevision()) EndAirborne(ERPGAirborneEndReason::LifeChanged);
 		else if (!Supported(Movement) || (AirborneState.Phase != ERPGAirbornePhase::Airborne && !Movement->IsMovingOnGround())) EndAirborne(ERPGAirborneEndReason::UnsupportedMovement);
 		else if (ForeignMotion(Movement, AirborneMotionName)) EndAirborne(ERPGAirborneEndReason::ForeignMovement);
-		else if (!BoundASC.IsValid() || !BoundASC->GetActiveGameplayEffect(OwnedAirborneSequence) || !BoundASC->GetActiveGameplayEffect(OwnedAirbornePhase)) EndAirborne(ERPGAirborneEndReason::Cleansed);
+		else if (!BoundASC.IsValid() || !BoundASC->GetActiveGameplayEffect(OwnedAirborneSequence)
+			|| (AirborneState.Phase != ERPGAirbornePhase::GroundFall && !BoundASC->GetActiveGameplayEffect(OwnedAirbornePhase)))
+			EndAirborne(ERPGAirborneEndReason::Cleansed);
+		else if (AirborneState.Phase == ERPGAirbornePhase::GroundFall && ServerNow(GetWorld()) >= AirborneState.PhaseEndServerTime)
+			ChangeAirbornePhase(ERPGAirbornePhase::Downed);
 		else if (AirborneState.Phase == ERPGAirbornePhase::Airborne)
 		{
 			if (ServerNow(GetWorld()) >= AirborneState.PhaseEndServerTime) EndAirborne(ERPGAirborneEndReason::LandingTimeout);
@@ -388,10 +421,11 @@ void URPGCombatControlComponent::UpdateAirbornePose()
 	{
 		// The get-up snapshot can arrive after the down timer. Keep an existing down loop
 		// through that gap, at most until recovery itself was due to finish.
-		const bool bAwaitingGetUp = AirborneState.Phase == ERPGAirbornePhase::Downed
+		const bool bGroundFall = AirborneState.Phase == ERPGAirbornePhase::GroundFall;
+		const bool bAwaitingNextPhase = (bGroundFall || AirborneState.Phase == ERPGAirbornePhase::Downed)
 			&& AirbornePoseRevision == AirborneState.PhaseRevision && AirborneMontageInstanceId != INDEX_NONE
-			&& Now < AirborneState.PhaseEndServerTime + AirborneState.GetUpDuration;
-		if (!bAwaitingGetUp) StopAirbornePose();
+			&& Now < AirborneState.PhaseEndServerTime + (bGroundFall ? AirborneState.DownDuration : AirborneState.GetUpDuration);
+		if (!bAwaitingNextPhase) StopAirbornePose();
 		return;
 	}
 	if (Now < AirborneState.PhaseStartServerTime) return;
@@ -418,9 +452,11 @@ void URPGCombatControlComponent::UpdateAirbornePose()
 	const int32 Section = Selected.Section.IsNone() ? 0 : Selected.Montage->GetSectionIndex(Selected.Section);
 	float Start = 0.f, End = 0.f; Selected.Montage->GetSectionStartAndEndTime(Section, Start, End);
 	if (!FMath::IsFinite(Start) || !FMath::IsFinite(End) || End <= Start) return;
-	const bool bLoop = AirborneState.Phase != ERPGAirbornePhase::GettingUp;
-	// Align the authored clip with the same server duration that releases action blocking.
-	const float Rate = bLoop ? 1.f : (End - Start) / AirborneState.GetUpDuration;
+	const bool bLoop = AirborneState.Phase == ERPGAirbornePhase::Airborne || AirborneState.Phase == ERPGAirbornePhase::Downed;
+	// Align both one-shot clips with the server's phase boundary.
+	const double PoseDuration = AirborneState.Phase == ERPGAirbornePhase::GroundFall
+		? AirborneState.PhaseEndServerTime - AirborneState.PhaseStartServerTime : AirborneState.GetUpDuration;
+	const float Rate = bLoop ? 1.f : (End - Start) / PoseDuration;
 	if (!FMath::IsFinite(Rate) || Rate <= 0.f) return;
 	const float Elapsed = (Now - AirborneState.PhaseStartServerTime) * Rate;
 	const float Offset = bLoop ? FMath::Fmod(Elapsed, End - Start) : Elapsed;

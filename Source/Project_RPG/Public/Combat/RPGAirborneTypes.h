@@ -6,7 +6,7 @@
 #include "RPGAirborneTypes.generated.h"
 
 UENUM(BlueprintType)
-enum class ERPGAirbornePhase : uint8 { None, Airborne, Downed, GettingUp };
+enum class ERPGAirbornePhase : uint8 { None, Airborne, Downed, GettingUp, GroundFall };
 
 UENUM(BlueprintType)
 enum class ERPGAirborneEndReason : uint8

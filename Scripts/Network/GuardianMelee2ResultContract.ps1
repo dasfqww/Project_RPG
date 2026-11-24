@@ -1,7 +1,7 @@
 # Shared by the live runner and offline result audits. No engine/process access.
 function Test-GuardianMelee2Results {
  [CmdletBinding()]
- param([Parameter(Mandatory)][string]$Directory,[switch]$MovingPlatform)
+ param([Parameter(Mandatory)][string]$Directory,[switch]$MovingPlatform,[switch]$Grounded)
  $proof=@{passed=$false;movingPlatform=[bool]$MovingPlatform;maximumPositionErrorCm=30;maximumRecoveryDriftCm=50;inputs=@{};positionErrors=@{}}
  function Require-Number($Report,[string]$Field,[string]$Role){
   $value=$Report.$Field
@@ -33,14 +33,20 @@ function Test-GuardianMelee2Results {
    Require-Boolean $result 'locallyControlledReceiver' ($role -eq 'owner') $role
    if($result.role -isnot [string] -or $result.role -cne $role){throw "Mismatched $role role identity"}
    if($result.playerClass -isnot [string] -or $result.playerClass -cne '/Game/Blueprints/Character/Player/BP_Player.BP_Player_C'){throw "Unexpected $role player class"}
-   foreach($entry in @{phases=15;lagMin=80;lagMax=160;loss=5;securityViolations=0}.GetEnumerator()){
+   if($Grounded){Require-Boolean $result 'grounded' $true $role}
+   $expectedPhases=if($Grounded){29}else{15}
+   $expectedPoses=if($Grounded){28}else{14}
+   foreach($entry in @{phases=$expectedPhases;lagMin=80;lagMax=160;loss=5;securityViolations=0}.GetEnumerator()){
     if((Require-Number $result $entry.Key $role) -ne $entry.Value){throw "Unexpected $role.$($entry.Key)"}
    }
    $poses=Require-Number $result 'poses' $role
-   if($poses -lt 0 -or $poses -gt 15 -or [Math]::Floor($poses) -ne $poses -or ($role -ne 'server' -and $poses -ne 14)){throw "Invalid $role pose phases"}
+   if($poses -lt 0 -or $poses -gt $expectedPhases -or [Math]::Floor($poses) -ne $poses -or ($role -ne 'server' -and $poses -ne $expectedPoses)){throw "Invalid $role pose phases"}
    foreach($field in @('initialHP','finalHP','initialZ','finalX','finalY','finalZ','rise')){$null=Require-Number $result $field $role}
    if($result.initialHP -le 0 -or $result.finalHP -le 0 -or $result.finalHP -ge $result.initialHP){throw "Invalid $role damage observation"}
-   if($result.rise -lt 50 -or [Math]::Abs($result.finalZ-$result.initialZ) -gt 8){throw "Invalid $role ascent or landing observation"}
+   if($Grounded){
+    $drift=Require-Number $result 'maximumGroundedDrift' $role
+    if($drift -lt 0 -or $drift -gt 5 -or $result.rise -gt 5){throw "Grounded knockdown moved the $role capsule"}
+   }elseif($result.rise -lt 50 -or [Math]::Abs($result.finalZ-$result.initialZ) -gt 8){throw "Invalid $role ascent or landing observation"}
    if($MovingPlatform){
     foreach($field in @('finalRelativeX','finalRelativeY','platformTravel','maximumRecoveryRelativeDrift','downBasedSamples','getUpBasedSamples')){$null=Require-Number $result $field $role}
     Require-Boolean $result 'recoveryBaseLost' $false $role

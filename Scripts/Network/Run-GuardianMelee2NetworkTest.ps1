@@ -7,6 +7,7 @@ param(
  [string]$AuditResultRun,
  [string]$OutputRoot,
  [switch]$MovingPlatform,
+ [switch]$Grounded,
  [ValidateSet('Front','Right','Back','Left')][string]$Direction,
  [string]$AssetRegistryCacheRoot
 )
@@ -39,9 +40,12 @@ function Test-MotionContract([string]$Directory){
  }
  $contract|ConvertTo-Json|Set-Content -Encoding UTF8 (Join-Path $Directory 'MotionContract.proof.json')
 }
+if($Grounded -and ($MovingPlatform -or $AuditRun -or (!$Direction -and !$AuditResultRun))){
+ throw 'Grounded verification requires a direction and a stationary floor.'
+}
 if($AuditRun -and $AuditResultRun){throw 'Choose one audit mode.'}
 if($AuditRun){Test-MotionContract ([IO.Path]::GetFullPath($AuditRun));return}
-if($AuditResultRun){$null=Test-GuardianMelee2Results -Directory ([IO.Path]::GetFullPath($AuditResultRun)) -MovingPlatform:$MovingPlatform;return}
+if($AuditResultRun){$null=Test-GuardianMelee2Results -Directory ([IO.Path]::GetFullPath($AuditResultRun)) -MovingPlatform:$MovingPlatform -Grounded:$Grounded;return}
 if(!$RuntimeProject){throw 'Specify -RuntimeProject with a coordinated, built project directory; archived verification modules are discarded after use.'}
 $RuntimeProject=[IO.Path]::GetFullPath($RuntimeProject)
 if($AssetRegistryCacheRoot){$AssetRegistryCacheRoot=(Resolve-Path -LiteralPath $AssetRegistryCacheRoot).Path}
@@ -69,6 +73,7 @@ function Start-Probe([string]$Role,[string]$Destination,[string]$Mode,[string]$C
   '-ini:Engine:[OnlineSubsystem]:DefaultPlatformService=Null')
  if($Role -eq 'owner'){$arguments+='-RPGGuardianMelee2Owner'}
  if($MovingPlatform){$arguments+='-RPGGuardianMelee2MovingPlatform'}
+ if($Grounded){$arguments+='-RPGGuardianMelee2Grounded'}
  if($AssetRegistryCacheRoot){
   $arguments+=('-AssetRegistryCacheRootFolder="'+$AssetRegistryCacheRoot+'"')
   $arguments+='-NoAssetRegistryCacheWrite'
@@ -121,15 +126,24 @@ try{
  Wait-Marker $server 'GUARDIAN_MELEE2_NETWORK_FIRST_PLAYER_READY'
  $observer=Start-Probe 'observer' '/Engine/Maps/Entry' '-game' ('t.MaxFPS 30,open 127.0.0.1:'+$Port)
  foreach($log in $logs){Wait-Marker $log 'GUARDIAN_MELEE2_NETWORK_COMPLETE'}
- $results=Test-GuardianMelee2Results -Directory $run -MovingPlatform:$MovingPlatform
+ $results=Test-GuardianMelee2Results -Directory $run -MovingPlatform:$MovingPlatform -Grounded:$Grounded
  if($Direction){
   $motion=@{Front='Flyback_F';Right='Launch_R';Back='Launch_B';Left='Launch_L'}[$Direction]
   $phases=@('airborne','downed','getting_up')
-  for($phase=1;$phase -le $phases.Count;$phase++){
+  $firstPhase=if($Grounded){2}else{1}
+  for($phase=$firstPhase;$phase -le $phases.Count;$phase++){
    $asset="AM_${motion}_$($phases[$phase-1])"
    $expected="/Game/Blueprints/Combat/Reactions/DirectionalAirborne/Player/$asset.$asset"
    foreach($role in @('owner','observer')){
     if($results[$role].montages."$phase" -cne $expected){throw "$role did not play $expected"}
+   }
+  }
+  if($Grounded){
+   $side=@{Front='F';Right='R';Back='B';Left='L'}[$Direction]
+   $asset="AM_Knockdown_Torso_$side"
+   $expected="/Game/Blueprints/Combat/Reactions/GroundedKnockdown/Player/$asset.$asset"
+   foreach($role in @('owner','observer')){
+    if($results[$role].montages.'4' -cne $expected){throw "$role did not play $expected"}
    }
   }
  }
@@ -139,8 +153,8 @@ try{
  foreach($process in $processes){if(!$process.HasExited){throw 'Owned probe did not exit'};$process.WaitForExit();if($process.ExitCode -ne 0){throw 'Owned probe exit was nonzero'}}
  if((Get-FileHash -LiteralPath $module -Algorithm SHA256).Hash -ne $moduleHash){throw 'Isolated DLL changed during verification'}
  if($loadedModules.Count -ne 3){throw 'Actual module was not observed in all three probes'}
- Test-MotionContract $run
- @{passed=$true;run=$run;module=$module;moduleSHA256=$moduleHash;port=$Port;processExitCodes=@($processes|ForEach-Object{$_.ExitCode});source='original Guardian Melee2 montage/weapon';server=$results.server;owner=$results.owner;observer=$results.observer}|ConvertTo-Json -Depth 9|Set-Content -Encoding UTF8 (Join-Path $run 'Network.proof.json')
+ if(!$Grounded){Test-MotionContract $run}
+ @{passed=$true;run=$run;module=$module;moduleSHA256=$moduleHash;port=$Port;groundedFixture=[bool]$Grounded;direction=$Direction;processExitCodes=@($processes|ForEach-Object{$_.ExitCode});source='original Guardian Melee2 montage/weapon';server=$results.server;owner=$results.owner;observer=$results.observer}|ConvertTo-Json -Depth 9|Set-Content -Encoding UTF8 (Join-Path $run 'Network.proof.json')
  Write-Output "PASS Guardian Melee2 original attack / BP_Player / owner+observer / Iris lag80-160 loss5: $run"
 }catch{
  @{passed=$false;error=$_.Exception.Message;run=$run}|ConvertTo-Json|Set-Content -Encoding UTF8 (Join-Path $run 'Failure.json')

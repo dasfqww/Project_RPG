@@ -189,6 +189,84 @@ bool FRPGAirborneLandingTest::RunTest(const FString&)
 	TestFalse(TEXT("Input released"), RPGCombatControl::IsActionBlocked(T)); TestTrue(TEXT("CMC owns final walking mode"), M->IsMovingOnGround()); return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGGroundedKnockdownTest, "ProjectRPG.Combat.GroundedKnockdown.StationaryFallAndRecovery", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRPGGroundedKnockdownTest::RunTest(const FString&)
+{
+	using namespace RPGAirborneTests;
+	FRPGKnockbackSettings Settings;
+	Settings.GroundFallDuration = .55f;
+	Settings.DownDuration = .65f;
+	Settings.MaxDownDuration = .85f;
+	Settings.GetUpDuration = .7f;
+
+	FGameplayAbilitySpec Spec;
+	TestTrue(TEXT("Grounded knockdown travels through attack grant metadata"), RPGKnockback::SetGrantedSettings(Spec, Settings));
+	const FRPGKnockbackSettings Granted = RPGKnockback::GetGrantedSettings(&Spec);
+	TestTrue(TEXT("Grounded knockdown remains enabled without displacement"), Granted.IsGroundedKnockdown());
+	TestEqual(TEXT("Fall duration is preserved"), Granted.GroundFallDuration, Settings.GroundFallDuration);
+	TestEqual(TEXT("Down range is preserved"), Granted.MaxDownDuration, Settings.MaxDownDuration);
+	auto Invalid = Settings;
+	Invalid.Distance = 1.f;
+	TestFalse(TEXT("Grounded knockdown cannot combine with shove distance"), Invalid.IsValid());
+	Invalid = Settings;
+	Invalid.Height = 120.f;
+	TestFalse(TEXT("Grounded knockdown cannot combine with launch height"), Invalid.IsValid());
+	TestTrue(TEXT("Replacing the attack clears the fall metadata"), RPGKnockback::SetGrantedSettings(Spec, FRPGKnockbackSettings()));
+	TestFalse(TEXT("Empty attack does not knock down"), RPGKnockback::GetGrantedSettings(&Spec).IsEnabled());
+
+	FScope W; if (!W.Init()) return false;
+	auto* Target = W.Spawn(FVector(0, 0, 300));
+	auto* Source = W.Spawn(FVector(-500, 0, 300));
+	TestFalse(TEXT("An airborne target cannot begin the grounded fall"), Apply(Source, Target, Granted));
+	W.Tick(1.f);
+	auto* Class = LoadClass<ARPGBaseCharacter>(nullptr, TEXT("/Game/Blueprints/Character/Player/BP_Player.BP_Player_C"));
+	if (!TestNotNull(TEXT("Authored player profile fixture"), Class)) return false;
+	const auto* Player = Class->GetDefaultObject<ARPGBaseCharacter>();
+	Target->GetMesh()->SetSkeletalMesh(Player->GetMesh()->GetSkeletalMeshAsset());
+	Target->GetMesh()->SetAnimInstanceClass(UAnimInstance::StaticClass());
+	auto* Control = Target->GetCombatControlComponent();
+	FRPGAirborneTestAccess::Presentation(*Control, *Player->GetCombatControlComponent());
+	auto* Movement = Target->GetCharacterMovement();
+	const FVector Origin = Target->GetActorLocation();
+	const TCHAR* Sides[] = {TEXT("F"), TEXT("R"), TEXT("B"), TEXT("L")};
+	for (int32 Side = 0; Side < UE_ARRAY_COUNT(Sides); ++Side)
+	{
+		const FVector TowardSource = Target->GetActorForwardVector().RotateAngleAxis(90.f * Side, FVector::UpVector);
+		Source->SetActorLocation(Origin + TowardSource * 500.0, false, nullptr, ETeleportType::TeleportPhysics);
+		Movement->Velocity = TowardSource * 220.0;
+		if (!TestTrue(TEXT("Grounded hit begins the fall"), Apply(Source, Target, Granted))) return false;
+		const auto Started = Control->GetAirborneState();
+		TestEqual(TEXT("Fall has its own replicated phase"), Started.Phase, ERPGAirbornePhase::GroundFall);
+		TestEqual(TEXT("Server snapshots the source side"), Started.PresentationDirection, static_cast<ERPGHitReactionDirection>(Side));
+		TestTrue(TEXT("Fall locks controls immediately"), RPGCombatControl::IsActionBlocked(Target));
+		TestFalse(TEXT("No airborne tag"), Target->GetRPGAbilitySystemComponent()->HasMatchingGameplayTag(RPGAirborne::AirborneTag()));
+		TestFalse(TEXT("No down tag until pose reaches the ground"), Target->GetRPGAbilitySystemComponent()->HasMatchingGameplayTag(RPGAirborne::DownedTag()));
+		const auto* Fall = FRPGAirborneTestAccess::Pose(*Control);
+		if (TestNotNull(TEXT("Grounded fall montage starts"), Fall))
+			TestEqual(TEXT("Directional torso fall plays"), Fall->GetName(), FString::Printf(TEXT("AM_Knockdown_Torso_%s"), Sides[Side]));
+
+		double DownStart = 0.;
+		double GetUpStart = 0.;
+		for (int32 Frame = 0; Frame < 180 && Control->GetAirborneState().IsActive(); ++Frame)
+		{
+			Target->AddMovementInput(TowardSource, 1.f, true);
+			W.Tick(1.f / 60.f);
+			const auto& State = Control->GetAirborneState();
+			if (State.Phase == ERPGAirbornePhase::Downed && DownStart == 0.) DownStart = State.PhaseStartServerTime;
+			if (State.Phase == ERPGAirbornePhase::GettingUp && GetUpStart == 0.) GetUpStart = State.PhaseStartServerTime;
+			TestTrue(TEXT("Capsule stays grounded without displacement"), Movement->IsMovingOnGround() && Target->GetActorLocation().Equals(Origin, .1));
+			TestFalse(TEXT("Grounded sequence creates no launch source"), Control->HasAirborneMotion());
+			if (State.IsActive()) TestTrue(TEXT("Action lock covers every phase"), RPGCombatControl::IsActionBlocked(Target));
+		}
+		TestTrue(TEXT("Down time starts at the authored contact boundary"), FMath::IsNearlyEqual(DownStart, Started.PhaseEndServerTime, .035));
+		TestTrue(TEXT("Get-up waits for the selected down duration"), FMath::IsNearlyEqual(GetUpStart - DownStart, double(Started.DownDuration), .035));
+		TestEqual(TEXT("Sequence finishes normally"), Control->GetAirborneState().EndReason, ERPGAirborneEndReason::Completed);
+		TestFalse(TEXT("Actions unlock after get-up"), RPGCombatControl::IsActionBlocked(Target));
+		W.Tick(.2f);
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGAirborneOwnershipTest, "ProjectRPG.Combat.Airborne.ImmunityReplacementAndCleanse", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FRPGAirborneOwnershipTest::RunTest(const FString&)
 {

@@ -308,9 +308,9 @@ private:
 	UFUNCTION() void OnKnockbackMovementUpdated(float DeltaSeconds, FVector OldLocation, FVector OldVelocity);
 	UFUNCTION() void OnRep_KnockbackState();
 	UFUNCTION() void OnRep_StunState();
-	bool ApplyApprovedDamageAirborne(AActor* Source, const FHitResult& Hit, const FGuid& Receipt,
+	bool ApplyApprovedDamageKnockdown(AActor* Source, const FHitResult& Hit, const FGuid& Receipt,
 		const FRPGKnockbackSettings& Settings, const FVector& AwayDirection);
-	bool ChangeAirbornePhase(ERPGAirbornePhase Phase);
+	bool ChangeAirbornePhase(ERPGAirbornePhase Phase, float GroundFallDuration = 0.f);
 	void TickAirborne();
 	void EndAirborne(ERPGAirborneEndReason Reason);
 	void ApplyAirborneMotion();

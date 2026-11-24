@@ -617,6 +617,16 @@ GPU 실행은 전투 검사를 통과했으나 첫 표본이 Niagara 비동기 �
 
 `Scripts/Network/Run-GuardianMelee2NetworkTest.ps1`의 `-Direction Front|Right|Back|Left`로 대검의 검을 뽑은 상태에서 실제 Guardian Melee2 무기 적중을 재현한다. 전용 서버와 두 Iris 클라이언트에서 승인 방향, 피격자와 관찰자의 단계별 몽타주 경로, 위치 수렴과 회복 완료를 확인한다. `ProjectRPG.Combat.DirectionalAirborne.GruntlingPresentation`은 두 Gruntling BP에서 네 방향의 공중·다운·기상을 검사한다.
 
+### 방향별 제자리 다운
+
+공격 데이터에서 `GroundFallDuration`을 0.1~2초로 지정하고 `Distance`와 `Height`를 0으로 두면 지상 다운을 사용한다. 예를 들어 `GroundFallDuration=0.65`, `DownDuration=1.2`, `GetUpDuration=0.8`이면 적중 후 0.65초에 쓰러지는 모션이 다운 자세에 도달하고 1.2초 동안 다운 상태를 유지한 뒤 0.8초 동안 일어난다. 세 값은 초 단위다. `GroundFallDuration=0`인 기존 공격은 원래 넉백·에어본 설정에 따라 동작한다.
+
+서버는 바닥을 딛고 있는 피격자에게 `GroundFall → Downed → GettingUp`을 적용하고, 기존 공용 피격이상 면역·정화·행동 차단을 사용한다. 지상 다운은 캐릭터 캡슐에 이동 소스나 이동 승인을 부여하지 않는다. 쓰러지는 클립의 끝을 바닥 접촉 시점으로 저작하고, 서버가 확정한 그 시각부터 다운 시간을 센다. 바닥을 잃으면 시퀀스를 종료한다.
+
+플레이어와 공용 Gruntling 프로필은 `Knockdown_Torso_F/R/B/L` 사본을 재생한다. 각 클립은 같은 방향의 다운 자세로 끝나고 해당 방향의 기상 클립으로 이어진다. 지상 다운의 방향과 단계 시각은 기존 피격이상 스냅샷으로 복제된다.
+
+`Run-GuardianMelee2NetworkTest.ps1 -Grounded -Direction Front|Right|Back|Left`는 검증 월드의 Melee2 부여 데이터에 지상 다운을 설정하고, 기존 무기 적중 경로로 피격자와 관찰자의 몽타주, 위치 유지, 다운 진입 및 조작 복귀를 기록한다.
+
 ## 20. 공용 둔화와 이동 속성 소비 — 2026-10-26
 
 ### 구현 방법과 정책

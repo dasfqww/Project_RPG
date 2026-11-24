@@ -9,6 +9,7 @@ namespace
 	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_KnockbackDistance, "Ability.Data.Control.KnockbackDistance");
 	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_KnockbackDuration, "Ability.Data.Control.KnockbackSeconds");
 	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_AirborneHeight, "Ability.Data.Control.AirborneHeight");
+	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_GroundFallDuration, "Ability.Data.Control.GroundFallSeconds");
 	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_DownDuration, "Ability.Data.Control.DownSeconds");
 	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_MaxDownDuration, "Ability.Data.Control.MaxDownSeconds");
 	UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_GetUpDuration, "Ability.Data.Control.GetUpSeconds");
@@ -19,6 +20,8 @@ bool FRPGKnockbackSettings::IsValid() const
 	return FMath::IsFinite(Distance) && Distance >= 0.f && Distance <= 1000.f
 		&& FMath::IsFinite(Duration) && Duration >= .1f && Duration <= 2.f
 		&& FMath::IsFinite(Height) && (Height == 0.f || (Height >= 50.f && Height <= 600.f))
+		&& (GroundFallDuration == 0.f || (FMath::IsFinite(GroundFallDuration)
+			&& GroundFallDuration >= .1f && GroundFallDuration <= 2.f && Distance == 0.f && Height == 0.f))
 		&& (Height > 0.f || Distance / Duration <= 2500.f)
 		&& FMath::IsFinite(DownDuration) && DownDuration >= .1f && DownDuration <= 4.f
 		&& (MaxDownDuration == 0.f || (FMath::IsFinite(MaxDownDuration) && MaxDownDuration >= DownDuration && MaxDownDuration <= 4.f))
@@ -34,6 +37,7 @@ bool RPGKnockback::SetGrantedSettings(FGameplayAbilitySpec& Spec, const FRPGKnoc
 	Spec.SetByCallerTagMagnitudes.Remove(TAG_KnockbackDistance);
 	Spec.SetByCallerTagMagnitudes.Remove(TAG_KnockbackDuration);
 	Spec.SetByCallerTagMagnitudes.Remove(TAG_AirborneHeight);
+	Spec.SetByCallerTagMagnitudes.Remove(TAG_GroundFallDuration);
 	Spec.SetByCallerTagMagnitudes.Remove(TAG_DownDuration);
 	Spec.SetByCallerTagMagnitudes.Remove(TAG_MaxDownDuration);
 	Spec.SetByCallerTagMagnitudes.Remove(TAG_GetUpDuration);
@@ -41,9 +45,10 @@ bool RPGKnockback::SetGrantedSettings(FGameplayAbilitySpec& Spec, const FRPGKnoc
 	{
 		Spec.SetByCallerTagMagnitudes.Add(TAG_KnockbackDistance, Settings.Distance);
 		Spec.SetByCallerTagMagnitudes.Add(TAG_KnockbackDuration, Settings.Duration);
-		if (Settings.IsAirborne())
+		if (Settings.Height > 0.f || Settings.GroundFallDuration > 0.f)
 		{
-			Spec.SetByCallerTagMagnitudes.Add(TAG_AirborneHeight, Settings.Height);
+			if (Settings.Height > 0.f) Spec.SetByCallerTagMagnitudes.Add(TAG_AirborneHeight, Settings.Height);
+			else Spec.SetByCallerTagMagnitudes.Add(TAG_GroundFallDuration, Settings.GroundFallDuration);
 			Spec.SetByCallerTagMagnitudes.Add(TAG_DownDuration, Settings.DownDuration);
 			if (Settings.MaxDownDuration > 0.f)
 				Spec.SetByCallerTagMagnitudes.Add(TAG_MaxDownDuration, Settings.MaxDownDuration);
@@ -62,13 +67,17 @@ FRPGKnockbackSettings RPGKnockback::GetGrantedSettings(const FGameplayAbilitySpe
 	if (!Distance || !Duration) return Result;
 	Result.Distance = *Distance; Result.Duration = *Duration;
 	const float* Height = Spec->SetByCallerTagMagnitudes.Find(TAG_AirborneHeight);
+	const float* GroundFall = Spec->SetByCallerTagMagnitudes.Find(TAG_GroundFallDuration);
 	const float* Down = Spec->SetByCallerTagMagnitudes.Find(TAG_DownDuration);
 	const float* MaxDown = Spec->SetByCallerTagMagnitudes.Find(TAG_MaxDownDuration);
 	const float* GetUp = Spec->SetByCallerTagMagnitudes.Find(TAG_GetUpDuration);
-	if (Height || Down || MaxDown || GetUp)
+	if (Height || GroundFall || Down || MaxDown || GetUp)
 	{
-		if (!Height || !Down || !GetUp || *Height <= 0.f) return FRPGKnockbackSettings();
-		Result.Height = *Height; Result.DownDuration = *Down; Result.GetUpDuration = *GetUp;
+		if (bool(Height) == bool(GroundFall) || !Down || !GetUp
+			|| (Height && *Height <= 0.f) || (GroundFall && *GroundFall <= 0.f)) return FRPGKnockbackSettings();
+		if (Height) Result.Height = *Height;
+		else Result.GroundFallDuration = *GroundFall;
+		Result.DownDuration = *Down; Result.GetUpDuration = *GetUp;
 		if (MaxDown) Result.MaxDownDuration = *MaxDown;
 	}
 	return Result.IsValid() ? Result : FRPGKnockbackSettings();

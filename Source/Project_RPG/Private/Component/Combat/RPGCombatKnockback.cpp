@@ -33,7 +33,8 @@ namespace
 bool URPGCombatControlComponent::ApplyApprovedDamageKnockback(AActor* Source, const FHitResult& Hit,
 	const FGuid& Receipt, const FRPGKnockbackSettings& Settings, const FVector& AwayDirection)
 {
-	if (Settings.IsAirborne()) return ApplyApprovedDamageAirborne(Source, Hit, Receipt, Settings, AwayDirection);
+	if (Settings.IsAirborne() || Settings.IsGroundedKnockdown())
+		return ApplyApprovedDamageKnockdown(Source, Hit, Receipt, Settings, AwayDirection);
 	if (AirborneState.IsActive() || bApplyingAirborne || bEndingAirborne) return false;
 	auto* Character = Cast<ACharacter>(GetOwner());
 	auto* Movement = Character ? Cast<URPGCharacterMovementComponent>(Character->GetCharacterMovement()) : nullptr;

@@ -24,6 +24,8 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FRPGHitReactionMontage GettingUp;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	TMap<ERPGHitReactionDirection, FRPGAirborneDirectionalMontages> DirectionMontages;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TMap<ERPGHitReactionDirection, FRPGHitReactionMontage> GroundFallMontages;
 
 	const FRPGHitReactionMontage& ResolveMontage(ERPGAirbornePhase Phase, ERPGHitReactionDirection Direction) const
 	{
@@ -36,6 +38,12 @@ public:
 			return Clips && Clips->Downed.Montage ? Clips->Downed : Downed;
 		case ERPGAirbornePhase::GettingUp:
 			return Clips && Clips->GettingUp.Montage ? Clips->GettingUp : GettingUp;
+		case ERPGAirbornePhase::GroundFall:
+		{
+			static const FRPGHitReactionMontage Empty;
+			const auto* Fall = GroundFallMontages.Find(Direction);
+			return Fall ? *Fall : Empty;
+		}
 		default:
 			checkNoEntry();
 			return Airborne;
