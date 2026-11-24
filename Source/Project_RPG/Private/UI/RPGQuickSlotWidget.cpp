@@ -3,6 +3,7 @@
 
 #include "UI/RPGQuickSlotWidget.h"
 #include "Riding/RPGMountDefinition.h"
+#include "UI/Riding/RPGMountDragDrop.h"
 #include "UI/Riding/RPGMountQuickSlots.h"
 #include "UI/Riding/RPGRidingCollectionWidget.h"
 #include "UI/HUD/RPGHUD.h"
@@ -54,6 +55,20 @@
 
 namespace
 {
+class SRPGMountSlotFrame final : public SRPGSlotFrame
+{
+public:
+	DECLARE_DELEGATE_RetVal_OneParam(bool, FOnMountDropped, const URPGRidingBrowseButton*);
+	FOnMountDropped OnMountDropped;
+
+	virtual FReply OnDrop(const FGeometry&, const FDragDropEvent& Event) override
+	{
+		const auto Drag = Event.GetOperationAs<FRPGMountDragDrop>();
+		return Drag && OnMountDropped.IsBound() && OnMountDropped.Execute(Drag->GetRow())
+			? FReply::Handled() : FReply::Unhandled();
+	}
+};
+
 FText ResolveQuickSlotInputKeyText(
 	const UQuickSlotComponent* Component,
 	bool bIsSkillSlot,
@@ -464,7 +479,7 @@ TSharedRef<SWidget> URPGQuickSlotWidget::RebuildWidget()
 	if (!bIsSkillSlot && (!WidgetTree || !WidgetTree->RootWidget)) BuildNativeItemCell();
 	const TSharedRef<SWidget> Content = Super::RebuildWidget();
 	const TWeakObjectPtr<URPGQuickSlotWidget> WeakThis(this);
-	const auto Frame = SNew(SRPGSlotFrame).Appearance_Lambda([WeakThis] {
+	const auto Appearance = [WeakThis] {
 		FRPGSlotAppearance Appearance;
 		if (const auto* Self = WeakThis.Get())
 		{
@@ -473,7 +488,21 @@ TSharedRef<SWidget> URPGQuickSlotWidget::RebuildWidget()
 			Appearance.FadeInDuration = Self->HoverHighlightFadeDuration;
 		}
 		return Appearance;
-	})[Content];
+	};
+	if (!bIsSkillSlot && RPGMountQuickSlots::IsMountSlot(SlotIndex))
+	{
+		const auto Frame = SNew(SRPGMountSlotFrame).Appearance_Lambda(Appearance)[Content];
+		Frame->OnMountDropped = SRPGMountSlotFrame::FOnMountDropped::CreateWeakLambda(this,
+			[this](const URPGRidingBrowseButton* Row)
+			{
+				CancelPendingItemClick();
+				const auto* Collection = Row ? Row->Collection.Get() : nullptr;
+				return Collection && Collection->AssignHudSlot(Row, this, SlotIndex);
+			});
+		SlotFrame = Frame;
+		return Frame;
+	}
+	const auto Frame = SNew(SRPGSlotFrame).Appearance_Lambda(Appearance)[Content];
 	SlotFrame = Frame;
 	return Frame;
 }
@@ -691,9 +720,6 @@ bool URPGQuickSlotWidget::NativeOnDrop(
 			FRPGSkillQuickSlotDragDrop::Drop(*Drag, *Slots, SlotIndex);
 	}
 
-	if (const auto* Library = InOperation ? Cast<URPGRidingCollectionWidget>(InOperation->GetOuter()) : nullptr)
-		return Library->AssignHudSlot(InOperation, this, SlotIndex);
-
 	const URPGItemIdDragDropOperation* Drag =
 		Cast<URPGItemIdDragDropOperation>(InOperation);
 	UQuickSlotComponent* QuickSlots = LinkedQuickSlotComponent.Get();
@@ -734,25 +760,29 @@ void URPGQuickSlotWidget::BuildNativeItemCell()
 	Border->SetBrushColor(FLinearColor(.36f, .27f, .16f, 1.f)); Border->SetPadding(FMargin(1.f));
 	Size->AddChild(Border);
 	auto* Inner = WidgetTree->ConstructWidget<UBorder>();
-	Inner->SetBrushColor(FLinearColor(.035f, .026f, .021f, .98f)); Inner->SetPadding(FMargin(3.f));
+	Inner->SetBrushColor(FLinearColor(.035f, .026f, .021f, .98f)); Inner->SetPadding(FMargin(0.f));
 	Border->AddChild(Inner);
 	auto* Overlay = WidgetTree->ConstructWidget<UOverlay>(); Inner->AddChild(Overlay);
 	SlotItemImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("SlotItemImage"));
-	Overlay->AddChildToOverlay(SlotItemImage)->SetPadding(FMargin(3.f));
+	Overlay->AddChildToOverlay(SlotItemImage)->SetPadding(FMargin(6.f));
 	SetImageAlpha(SlotItemImage, 0.f);
 	if (RPGMountQuickSlots::IsMountSlot(SlotIndex))
 	{
 		MountImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("MountSlotImage"));
 		MountImage->SetVisibility(ESlateVisibility::Hidden);
-		Overlay->AddChildToOverlay(MountImage)->SetPadding(FMargin(3.f));
+		auto* MountSlot = Overlay->AddChildToOverlay(MountImage);
+		MountSlot->SetHorizontalAlignment(HAlign_Fill);
+		MountSlot->SetVerticalAlignment(VAlign_Fill);
 	}
 	InputKeyText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("InputKeyText"));
 	InputKeyText->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 12));
 	InputKeyText->SetColorAndOpacity(FSlateColor(FLinearColor(.95f, .82f, .61f)));
 	auto* KeySlot = Overlay->AddChildToOverlay(InputKeyText); KeySlot->SetHorizontalAlignment(HAlign_Left); KeySlot->SetVerticalAlignment(VAlign_Top);
+	KeySlot->SetPadding(FMargin(3.f));
 	SlotItemCountText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("SlotItemCountText"));
 	SlotItemCountText->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 12));
 	auto* CountSlot = Overlay->AddChildToOverlay(SlotItemCountText); CountSlot->SetHorizontalAlignment(HAlign_Right); CountSlot->SetVerticalAlignment(VAlign_Bottom);
+	CountSlot->SetPadding(FMargin(3.f));
 	auto* Status = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ItemStatusText"));
 	Status->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 10));
 	auto* StatusSlot = Overlay->AddChildToOverlay(Status); StatusSlot->SetHorizontalAlignment(HAlign_Center); StatusSlot->SetVerticalAlignment(VAlign_Center);

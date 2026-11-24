@@ -38,7 +38,7 @@ public:
     using FPresenter = TFunction<FText(const FString&)>;
     void SetReadOwner(TSharedRef<FRPGRidingCollectionReader> InReader, FPresenter InPresenter, FPresenter InDescription = {});
     void SetGameplayQuickSlots(URPGItemQuickSlotBar* Bar);
-    bool AssignHudSlot(const UDragDropOperation* Operation, const URPGQuickSlotWidget* Cell, int32 Index) const;
+    bool AssignHudSlot(const URPGRidingBrowseButton* Row, const URPGQuickSlotWidget* Cell, int32 Index) const;
     void SetMountAction(TFunction<bool(const FRPGRidingSelector&)> InAction) { MountAction = MoveTemp(InAction); }
     void SetRegistrationOwner(TSharedRef<FRPGRidingRegistrationClient> InOwner);
     void SetPreferencesOwner(TSharedRef<FRPGRidingPreferencesClient> InOwner);
@@ -52,8 +52,6 @@ protected:
     virtual void NativeDestruct() override;
     virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry&, const FPointerEvent&) override;
     virtual FReply NativeOnMouseButtonUp(const FGeometry&, const FPointerEvent&) override;
-    virtual void NativeOnDragDetected(const FGeometry&, const FPointerEvent&, UDragDropOperation*&) override;
-    virtual bool NativeOnDrop(const FGeometry&, const FDragDropEvent&, UDragDropOperation*) override;
     virtual FReply NativeOnKeyDown(const FGeometry&, const FKeyEvent&) override;
 private:
     friend struct FRPGRidingCollectionWidgetTestAccess;
@@ -68,11 +66,12 @@ private:
     UPROPERTY(Transient) TObjectPtr<UButton> MountButton;
     UPROPERTY(Transient) TObjectPtr<class UScrollBox> RosterScroll;
     TWeakObjectPtr<URPGRidingBrowseButton> DragSource;
+    FReply BeginMountDrag(const FPointerEvent& Event);
     FText MountFeedback;
     TFunction<bool(const FRPGRidingSelector&)> MountAction;
     UPROPERTY(Transient) TObjectPtr<UButton> BackButton;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> RegistrationUnavailable;
-    FSlateBrush MountPortrait(const FString& Id, float Size);
+    TSharedRef<struct FSlateDynamicImageBrush> MountPortrait(const FString& Id);
     TMap<FName,TSharedPtr<struct FSlateDynamicImageBrush>> PortraitBrushes;
     FString BrowsedMount;
     bool bSortByName = false;

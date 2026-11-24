@@ -1,6 +1,7 @@
 #include "UI/Riding/RPGRidingCollectionWidget.h"
 #include "UI/Riding/RPGRidingPreferencesWidget.h"
 #include "UI/Riding/RPGMountQuickSlots.h"
+#include "UI/Riding/RPGMountDragDrop.h"
 #include "UI/ItemQuickSlot/RPGItemQuickSlotBar.h"
 #include "UI/RPGQuickSlotWidget.h"
 #include "Riding/RPGRidingSessionComponent.h"
@@ -8,7 +9,7 @@
 #include "Engine/AssetManager.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Blueprint/WidgetTree.h"
-#include "Blueprint/DragDropOperation.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
@@ -30,11 +31,39 @@
 #include "Brushes/SlateImageBrush.h"
 #include "Misc/Paths.h"
 #include "InputCoreTypes.h"
+#include "Widgets/Images/SImage.h"
+#include "Widgets/Layout/SDPIScaler.h"
+#include "Widgets/SCompoundWidget.h"
 
 namespace
 {
     const FLinearColor Gold(.88f, .64f, .30f);
     const FLinearColor Ink(.008f, .009f, .010f);
+
+    DECLARE_DELEGATE_RetVal_OneParam(FReply, FBeginMountDrag, const FPointerEvent&);
+
+    class SRPGMountDragSource final : public SCompoundWidget
+    {
+    public:
+        SLATE_BEGIN_ARGS(SRPGMountDragSource) {}
+            SLATE_EVENT(FBeginMountDrag, OnBeginMountDrag)
+            SLATE_DEFAULT_SLOT(FArguments, Content)
+        SLATE_END_ARGS()
+
+        void Construct(const FArguments& Args)
+        {
+            OnBeginMountDrag = Args._OnBeginMountDrag;
+            ChildSlot[Args._Content.Widget];
+        }
+
+        virtual FReply OnDragDetected(const FGeometry&, const FPointerEvent& Event) override
+        {
+            return OnBeginMountDrag.IsBound() ? OnBeginMountDrag.Execute(Event) : FReply::Unhandled();
+        }
+
+    private:
+        FBeginMountDrag OnBeginMountDrag;
+    };
 
     UTextBlock* Label(UWidgetTree* Tree, const FText& Value, int32 FontSize = 12, bool Bold = false)
     {
@@ -77,16 +106,45 @@ namespace
     }
 }
 
-FSlateBrush URPGRidingCollectionWidget::MountPortrait(const FString& Id, float Size)
+FRPGMountDragDrop::FRPGMountDragDrop(URPGRidingBrowseButton& InRow, TSharedRef<FSlateDynamicImageBrush> InPortrait,
+    float ViewportScale, const FPointerEvent& Event)
+    : Row(&InRow), Portrait(MoveTemp(InPortrait)), PointerIndex(Event.GetPointerIndex())
+{
+    MouseCursor = EMouseCursor::Default;
+    Decorator = SNew(SDPIScaler).DPIScale(ViewportScale)
+        [SNew(SImage).Image(&Portrait.Get())];
+    Decorator->SlatePrepass();
+    PositionAt(Event);
+}
+
+const URPGRidingBrowseButton* FRPGMountDragDrop::GetRow() const
+{
+    return Row.Get();
+}
+
+bool FRPGMountDragDrop::AffectedByPointerEvent(const FPointerEvent& Event)
+{
+    return Event.GetPointerIndex() == PointerIndex;
+}
+
+void FRPGMountDragDrop::OnDragged(const FDragDropEvent& Event)
+{
+    if (AffectedByPointerEvent(Event)) PositionAt(Event);
+}
+
+void FRPGMountDragDrop::PositionAt(const FPointerEvent& Event)
+{
+    DecoratorPosition = Event.GetScreenSpacePosition() - FVector2D(Decorator->GetDesiredSize()) * 0.5;
+}
+
+TSharedRef<FSlateDynamicImageBrush> URPGRidingCollectionWidget::MountPortrait(const FString& Id)
 {
     const TCHAR* File = Id.StartsWith(TEXT("wolf")) ? TEXT("Fang.png") :
                         Id.StartsWith(TEXT("stag")) ? TEXT("Hart.png") : TEXT("Courser.png");
     const FName Resource(*(FPaths::ProjectContentDir() / TEXT("Slate/Riding") / File));
     auto& Cached = PortraitBrushes.FindOrAdd(Resource);
-    if (!Cached) Cached = MakeShared<FSlateDynamicImageBrush>(Resource, FVector2D(Size));
-    FSlateBrush Brush = *Cached;
-    Brush.SetImageSize(FVector2D(Size));
-    return Brush;
+    if (!Cached) Cached = MakeShared<FSlateDynamicImageBrush>(Resource, FVector2D(46));
+    return Cached.ToSharedRef();
 }
 
 TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
@@ -276,7 +334,11 @@ TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
         CloseButton->OnClicked.AddUniqueDynamic(this, &ThisClass::CloseScreen);
         Search->OnTextChanged.AddUniqueDynamic(this, &ThisClass::SearchChanged); FavoritesOnly->OnCheckStateChanged.AddUniqueDynamic(this, &ThisClass::FavoritesChanged);
     }
-    SetIsFocusable(true); RowsKey.Reset(); RefreshView(); RefreshRegistration(); return Super::RebuildWidget();
+    SetIsFocusable(true); RowsKey.Reset(); RefreshView(); RefreshRegistration();
+    return SNew(SRPGMountDragSource)
+        .Visibility(EVisibility::SelfHitTestInvisible)
+        .OnBeginMountDrag(FBeginMountDrag::CreateUObject(this, &ThisClass::BeginMountDrag))
+        [Super::RebuildWidget()];
 }
 void URPGRidingCollectionWidget::SetReadOwner(TSharedRef<FRPGRidingCollectionReader> InReader, FPresenter InPresenter, FPresenter InDescription)
 {
@@ -322,14 +384,13 @@ void URPGRidingCollectionWidget::SetGameplayQuickSlots(URPGItemQuickSlotBar* Bar
     };
 }
 
-bool URPGRidingCollectionWidget::AssignHudSlot(const UDragDropOperation* Operation,
+bool URPGRidingCollectionWidget::AssignHudSlot(const URPGRidingBrowseButton* Row,
     const URPGQuickSlotWidget* Cell, int32 Index) const
 {
     const auto* Bar = GameplayQuickSlots.Get();
-    if (bClosing || !Pages || Pages->GetActiveWidgetIndex() != 0 || !Operation || Operation->GetOuter() != this ||
+    if (bClosing || !Pages || Pages->GetActiveWidgetIndex() != 0 ||
         !Bar || !Cell || !RPGMountQuickSlots::IsMountSlot(Index) || Bar->GetCell(Index) != Cell ||
         Cell->GetOwningPlayer() != GetOwningPlayer()) return false;
-    const auto* Row = Cast<URPGRidingBrowseButton>(Operation->Payload);
     return Row && Row->Collection.Get() == this && Row->GetParent() == Rows &&
         RPGMountQuickSlots::Assign(GetOwningPlayer(), Index, Row->MountId);
 }
@@ -420,7 +481,7 @@ void URPGRidingCollectionWidget::RefreshView()
         StarSlot->SetVerticalAlignment(VAlign_Center);
         StarSlot->SetPadding(FMargin(2,0,7,0));
         auto* Icon = WidgetTree->ConstructWidget<UImage>();
-        Icon->SetBrush(MountPortrait(Id, 46));
+        Icon->SetBrush(*MountPortrait(Id));
         Row->DragIcon = Icon;
         auto* IconFrame = Surface(WidgetTree, FLinearColor(.20f,.16f,.10f), FMargin(1));
         IconFrame->SetContent(Icon);
@@ -500,7 +561,8 @@ FReply URPGRidingCollectionWidget::NativeOnPreviewMouseButtonDown(const FGeometr
             if (Row && Row->DragIcon && Row->DragIcon->GetCachedGeometry().IsUnderLocation(Event.GetScreenSpacePosition()))
             {
                 DragSource = Row;
-                return FReply::Handled().DetectDrag(GetCachedWidget().ToSharedRef(), EKeys::LeftMouseButton);
+                // The Slate child built in RebuildWidget owns the cursor-centered drag.
+                return FReply::Handled().DetectDrag(GetCachedWidget()->GetChildren()->GetChildAt(0), EKeys::LeftMouseButton);
             }
         }
     }
@@ -519,34 +581,13 @@ FReply URPGRidingCollectionWidget::NativeOnMouseButtonUp(const FGeometry& Geomet
     return Super::NativeOnMouseButtonUp(Geometry, Event);
 }
 
-void URPGRidingCollectionWidget::NativeOnDragDetected(const FGeometry& Geometry, const FPointerEvent& Event, UDragDropOperation*& Operation)
+FReply URPGRidingCollectionWidget::BeginMountDrag(const FPointerEvent& Event)
 {
-    Super::NativeOnDragDetected(Geometry, Event, Operation);
     auto* Row = DragSource.Get();
     DragSource.Reset();
-    if (bClosing || !Row || Row->GetParent() != Rows) return;
-    Operation = NewObject<UDragDropOperation>(this);
-    Operation->Payload = Row;
-    auto* Visual = NewObject<UImage>(this);
-    Visual->SetBrush(MountPortrait(Row->MountId, 46));
-    Operation->DefaultDragVisual = Visual;
-    Operation->Pivot = EDragPivot::CenterCenter;
-}
-
-bool URPGRidingCollectionWidget::NativeOnDrop(const FGeometry& Geometry, const FDragDropEvent& Event, UDragDropOperation* Operation)
-{
-    if (Operation && Operation->GetOuter() == this && !bClosing && Pages && Pages->GetActiveWidgetIndex() == 0)
-    {
-        const auto* Bar = GameplayQuickSlots.Get();
-        if (Bar)
-        {
-            for (int32 Index = 0; RPGMountQuickSlots::IsMountSlot(Index); ++Index)
-                if (const auto* Cell = Bar->GetCell(Index);
-                    Cell && Cell->GetCachedGeometry().IsUnderLocation(Event.GetScreenSpacePosition()))
-                    return AssignHudSlot(Operation, Cell, Index);
-        }
-    }
-    return Super::NativeOnDrop(Geometry, Event, Operation);
+    if (bClosing || !Row || Row->GetParent() != Rows) return FReply::Unhandled();
+    return FReply::Handled().BeginDragDrop(MakeShared<FRPGMountDragDrop>(
+        *Row, MountPortrait(Row->MountId), UWidgetLayoutLibrary::GetViewportScale(this), Event));
 }
 
 void URPGRidingCollectionWidget::OpenRegistration()
