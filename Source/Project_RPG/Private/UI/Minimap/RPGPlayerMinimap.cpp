@@ -46,8 +46,8 @@ namespace
 
 	struct FMinimapRegion
 	{
-		FMinimapRegion(FName InLevel, const FVector2D& Center, const TCHAR* TexturePath)
-			: Level(InLevel), Bounds(Center - FVector2D(1800, 1800), Center + FVector2D(1800, 1800))
+		FMinimapRegion(FName InLevel, const FBox2D& InBounds, const TCHAR* TexturePath)
+			: Level(InLevel), Bounds(InBounds)
 		{
 			Image.Load(TexturePath);
 		}
@@ -74,8 +74,10 @@ namespace
 			PlayerIcon.Load(TEXT("/Game/Minimap/T_UI_Icons_MainHud_Compass_Marker_01.T_UI_Icons_MainHud_Compass_Marker_01"));
 			PortalIcon.Load(TEXT("/Game/Minimap/T_UI_Icons_Map_Portal_01.T_UI_Icons_Map_Portal_01"));
 			Regions.Reserve(2);
-			Regions.Emplace(NAME_None, FVector2D::ZeroVector, TEXT("/Game/Minimap/T_TownMinimap.T_TownMinimap"));
-			Regions.Emplace(FName(TEXT("/Game/Maps/RegionTravel/L_Field")), FVector2D(50000, 0),
+			Regions.Emplace(NAME_None, FBox2D(FVector2D(-1800, -1800), FVector2D(1800, 1800)),
+				TEXT("/Game/Minimap/T_TownMinimap.T_TownMinimap"));
+			Regions.Emplace(FName(TEXT("/Game/Maps/RegionTravel/L_Field")),
+				FBox2D(FVector2D(47600, -7800), FVector2D(63200, 7800)),
 				TEXT("/Game/Minimap/T_FieldMinimap.T_FieldMinimap"));
 
 			for (TActorIterator<ARPGRegionGate> It(InPawn.GetWorld()); It; ++It)
