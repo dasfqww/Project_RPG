@@ -246,7 +246,6 @@ namespace
 		{
 			Pawn = &InPawn;
 			Host = &InHost;
-			Frame.Load(TEXT("/Game/Minimap/T_UI_HUD_Map_Bg_02.T_UI_HUD_Map_Bg_02"));
 			PlayerIcon.Load(TEXT("/Game/Minimap/T_UI_Icons_MainHud_Compass_Marker_01.T_UI_Icons_MainHud_Compass_Marker_01"));
 			PortalIcon.Load(TEXT("/Game/Minimap/T_UI_Icons_Map_Portal_01.T_UI_Icons_Map_Portal_01"));
 			MapLoad = UAssetManager::GetStreamableManager().RequestAsyncLoad(MapPath);
@@ -289,13 +288,9 @@ namespace
 			const double Side = FMath::Min(View.X * .55, View.Y * .68);
 			const FVector2D Size(Side, Side);
 			const FVector2D TopLeft = View * FVector2D(.5, .45) - Size * .5;
-			const FPaintGeometry Panel = Geometry.ToPaintGeometry(Size, FSlateLayoutTransform(TopLeft));
 			const FLinearColor Tint = Style.GetColorAndOpacityTint();
-			if (Frame.Texture.IsValid())
-			{
-				FSlateDrawElement::MakeBox(Elements, Layer, Panel, &Frame.Brush, ESlateDrawEffect::None, Tint * FLinearColor(1, 1, 1, .72f));
-			}
-			FSlateDrawElement::MakeBox(Elements, Layer + 1, Panel, &Terrain.Brush, ESlateDrawEffect::None, Tint);
+			FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(Size, FSlateLayoutTransform(TopLeft)),
+				&Terrain.Brush, ESlateDrawEffect::None, Tint);
 			if (PortalIcon.Texture.IsValid())
 			{
 				for (const TWeakObjectPtr<ARPGRegionGate>& Gate : Gates)
@@ -304,16 +299,16 @@ namespace
 					{
 						const FVector2D UV = ProjectToMap(Current->GetActorLocation(), FieldBounds);
 						if (!IsOnMap(UV)) continue;
-						FSlateDrawElement::MakeBox(Elements, Layer + 2, MarkerAt(Geometry, TopLeft + UV * Size, 23.f),
+						FSlateDrawElement::MakeBox(Elements, Layer + 1, MarkerAt(Geometry, TopLeft + UV * Size, 23.f),
 							&PortalIcon.Brush, ESlateDrawEffect::None, Tint);
 					}
 				}
 			}
 			if (PlayerIcon.Texture.IsValid())
 			{
-				DrawPlayer(Elements, Layer + 3, Geometry, TopLeft + PlayerUV * Size, *LocalPawn, PlayerIcon.Brush, Tint);
+				DrawPlayer(Elements, Layer + 2, Geometry, TopLeft + PlayerUV * Size, *LocalPawn, PlayerIcon.Brush, Tint);
 			}
-			return Layer + 3;
+			return Layer + 2;
 		}
 
 	private:
@@ -322,7 +317,6 @@ namespace
 		TWeakObjectPtr<APawn> Pawn;
 		TWeakObjectPtr<UNativeWidgetHost> Host;
 		TArray<TWeakObjectPtr<ARPGRegionGate>> Gates;
-		FMinimapImage Frame;
 		FMinimapImage Terrain;
 		FMinimapImage PlayerIcon;
 		FMinimapImage PortalIcon;
