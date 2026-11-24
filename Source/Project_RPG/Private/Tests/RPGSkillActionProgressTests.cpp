@@ -120,13 +120,25 @@ bool FSkillProgressChargeTest::RunTest(const FString&)
 	TestTrue(TEXT("Full charge remains active while held"), S.bActive && S.Handle == Handle);
 	TestEqual(TEXT("Ready is not end"), S.Data.Phase, ERPGActionProgressPhase::Ready);
 	TestEqual(TEXT("All charge stages shown"), S.Data.Stage, 3);
+	TestTrue(TEXT("Ready charge still accepts a release aim sample"), P->RequiresInputTargetRefresh());
 	P->OnInputReleased(); S = F.UI->GetActionProgressSnapshot();
 	TestFalse(TEXT("Release ends only its display"), S.bActive);
+	TestTrue(TEXT("Released charge locks its aim"), P->IsAimLocked());
+	TestFalse(TEXT("Further input cannot refresh released charge aim"), P->RequiresInputTargetRefresh());
 	TestTrue(TEXT("Training release receipt preserved"), P->WasReleasedAtMaximumCharge());
 	TestEqual(TEXT("Release section still entered"), F.Host.Jumps, 1);
 	TestEqual(TEXT("No legacy broadcast path used"), F.Host.LegacyCalls, 0);
+	P->OnMontageCompleted();
+	TestFalse(TEXT("Released charge finishes normally"), F.Host.bCancelled);
 	P->EndExecution(); F.Host.Spec.Reset();
 	TestTrue(TEXT("Release fact survives reset"), P->WasReleasedAtMaximumCharge());
+
+	F.Charge();
+	auto* Unreleased = F.Make<URPGSkillExecutionPolicy_Charge>();
+	if (!TestTrue(TEXT("Next charge starts"), Unreleased->StartExecution())) return false;
+	Unreleased->OnMontageCompleted();
+	TestTrue(TEXT("Montage ending before release cancels the charge"), F.Host.bCancelled);
+	TestFalse(TEXT("Premature end has no release receipt"), Unreleased->WasReleasedAtMaximumCharge());
 	return true;
 }
 
@@ -143,8 +155,11 @@ bool FSkillProgressModesTest::RunTest(const FString&)
 	if (!TestTrue(TEXT("Holding starts"), H->StartExecution())) return false;
 	F.Step(.25f);
 	TestEqual(TEXT("Perfect window is ready"), F.UI->GetActionProgressSnapshot().Data.Phase, ERPGActionProgressPhase::Ready);
+	TestTrue(TEXT("Holding still accepts a release aim sample"), H->RequiresInputTargetRefresh());
 	H->OnInputReleased();
 	TestFalse(TEXT("Holding resolution hides display"), F.UI->GetActionProgressSnapshot().bActive);
+	TestTrue(TEXT("Holding finisher locks its aim"), H->IsAimLocked());
+	TestFalse(TEXT("Further input cannot refresh holding finisher aim"), H->RequiresInputTargetRefresh());
 	H->EndExecution();
 	F.Cast(); auto* Cast = F.Make<URPGSkillExecutionPolicy_Casting>();
 	TestTrue(TEXT("Casting starts"), Cast->StartExecution()); F.Step(.1f);

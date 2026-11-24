@@ -7,6 +7,7 @@
 #include "Component/RPGCharacterMovementComponent.h"
 #include "Component/RPGSecurityValidationComponent.h"
 #include "Component/UI/PlayerUIComponent.h"
+#include "Engine/Texture2D.h"
 #include "GameFramework/Character.h"
 #include "Engine/World.h"
 #include "Skill/RPGSkillExecutionTypes.h"
@@ -417,6 +418,14 @@ void URPGSkillExecutionPolicy_Charge::OnInputReleased()
 	if (!bReleased)
 	{
 		ReleaseCharge();
+	}
+}
+
+void URPGSkillExecutionPolicy_Charge::OnMontageCompleted()
+{
+	if (GetHost())
+	{
+		GetHost()->FinishSkillExecution(!bReleased);
 	}
 }
 

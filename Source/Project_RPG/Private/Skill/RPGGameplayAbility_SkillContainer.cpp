@@ -914,6 +914,15 @@ void URPGGameplayAbility_SkillContainer::HandleReplicatedTargetData(
 		return;
 	}
 
+	// A client release can arrive after the server's own hold timer resolved the attack.
+	if (!ApplicationTag.IsValid() && !bWaitingForInitialTargetData
+		&& ActiveExecutionPolicy && ActiveExecutionPolicy->IsAimLocked())
+	{
+		ASC->ConsumeClientReplicatedTargetData(
+			CurrentSpecHandle, CurrentActivationInfo.GetActivationPredictionKey());
+		return;
+	}
+
 	FRPGSkillTargetResult SubmittedResult;
 	FRPGSkillTargetResult ValidatedResult;
 	FText ValidationError;

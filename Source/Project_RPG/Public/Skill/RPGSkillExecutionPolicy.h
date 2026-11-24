@@ -70,7 +70,9 @@ public:
 	virtual void OnInputPressed();
 	virtual void OnInputReleased();
 	/** Whether input transitions need a fresh aim sample before input replication. */
-	virtual bool RequiresInputTargetRefresh() const { return true; }
+	virtual bool RequiresInputTargetRefresh() const { return !IsAimLocked(); }
+	/** Whether this execution has committed to its release direction. */
+	virtual bool IsAimLocked() const { return false; }
 	/** Optional Gameplay Event observed through an ability-owned GAS task. */
 	virtual FGameplayTag GetExecutionEventTag() const;
 	virtual void OnExecutionEvent(const FGameplayEventData& Payload);
@@ -135,6 +137,8 @@ public:
 		const FRPGSkillRuntimeSpec& RuntimeSpec,
 		FText& OutError) const override;
 	virtual void OnInputReleased() override;
+	virtual bool IsAimLocked() const override { return bReleased; }
+	virtual void OnMontageCompleted() override;
 	virtual void EndExecution() override;
 	virtual void CancelExecution() override;
 
@@ -175,6 +179,7 @@ public:
 		FText& OutError) const override;
 	virtual bool ValidateRuntimeSpec(FText& OutError) const override;
 	virtual void OnInputReleased() override;
+	virtual bool IsAimLocked() const override { return bResolved; }
 	virtual void OnMontageCompleted() override;
 	virtual void EndExecution() override;
 	virtual void CancelExecution() override;
