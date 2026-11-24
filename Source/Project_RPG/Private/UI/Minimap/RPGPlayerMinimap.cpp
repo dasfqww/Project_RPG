@@ -11,13 +11,14 @@
 #include "GameFramework/Pawn.h"
 #include "RegionTravel/RPGRegionGate.h"
 #include "Rendering/DrawElements.h"
+#include "UObject/Package.h"
+#include "UObject/StrongObjectPtr.h"
 #include "Widgets/SLeafWidget.h"
 
 namespace
 {
 	constexpr float MapSize = 208.f;
 	constexpr float MapInset = 10.f;
-	const FBox2D TownBounds(FVector2D(-1800, -1800), FVector2D(1800, 1800));
 
 	FVector2D ProjectToMap(const FVector& Location, const FBox2D& Bounds)
 	{
@@ -43,10 +44,24 @@ namespace
 		}
 	};
 
-	class SRPGTownMinimap final : public SLeafWidget
+	struct FMinimapRegion
+	{
+		FMinimapRegion(FName InLevel, const FVector2D& Center, const TCHAR* TexturePath)
+			: Level(InLevel), Bounds(Center - FVector2D(1800, 1800), Center + FVector2D(1800, 1800))
+		{
+			Image.Load(TexturePath);
+		}
+
+		FName Level;
+		FBox2D Bounds;
+		FMinimapImage Image;
+		TArray<TWeakObjectPtr<ARPGRegionGate>> Gates;
+	};
+
+	class SRPGRegionMinimap final : public SLeafWidget
 	{
 	public:
-		SLATE_BEGIN_ARGS(SRPGTownMinimap) {}
+		SLATE_BEGIN_ARGS(SRPGRegionMinimap) {}
 		SLATE_END_ARGS()
 
 		void Construct(const FArguments& Args, APawn& InPawn)
@@ -56,16 +71,25 @@ namespace
 			ForceVolatile(true);
 
 			Frame.Load(TEXT("/Game/Minimap/T_UI_HUD_Map_Bg_02.T_UI_HUD_Map_Bg_02"));
-			Map.Load(TEXT("/Game/Minimap/T_TownMinimap.T_TownMinimap"));
 			PlayerIcon.Load(TEXT("/Game/Minimap/T_UI_Icons_MainHud_Compass_Marker_01.T_UI_Icons_MainHud_Compass_Marker_01"));
 			PortalIcon.Load(TEXT("/Game/Minimap/T_UI_Icons_Map_Portal_01.T_UI_Icons_Map_Portal_01"));
+			Regions.Reserve(2);
+			Regions.Emplace(NAME_None, FVector2D::ZeroVector, TEXT("/Game/Minimap/T_TownMinimap.T_TownMinimap"));
+			Regions.Emplace(FName(TEXT("/Game/Maps/RegionTravel/L_Field")), FVector2D(50000, 0),
+				TEXT("/Game/Minimap/T_FieldMinimap.T_FieldMinimap"));
 
 			for (TActorIterator<ARPGRegionGate> It(InPawn.GetWorld()); It; ++It)
 			{
-				if (It->GetLevel() == InPawn.GetWorld()->PersistentLevel && It->RegionLevel.IsNull()
-					&& IsValid(It->Destination) && It->Destination != *It)
+				if (It->GetLevel() != InPawn.GetWorld()->PersistentLevel || !IsValid(It->Destination) || It->Destination == *It)
 				{
-					TownGates.Add(*It);
+					continue;
+				}
+				const FName GateLevel = It->RegionLevel.IsNull() ? NAME_None
+					: FName(UWorld::RemovePIEPrefix(It->RegionLevel.ToSoftObjectPath().GetLongPackageName()));
+				if (FMinimapRegion* Region = Regions.FindByPredicate([GateLevel](const FMinimapRegion& Candidate)
+					{ return Candidate.Level == GateLevel; }))
+				{
+					Region->Gates.Add(*It);
 				}
 			}
 		}
@@ -79,10 +103,15 @@ namespace
 			FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle& Style, bool bParentEnabled) const override
 		{
 			const APawn* LocalPawn = Pawn.Get();
-			if (!LocalPawn || !Map.Texture.IsValid()) return Layer;
+			if (!LocalPawn) return Layer;
 
-			const FVector2D PlayerUV = ProjectToMap(LocalPawn->GetActorLocation(), TownBounds);
-			if (!IsOnMap(PlayerUV)) return Layer;
+			// Both regions share one world. Use the local pawn's position after it reaches the destination.
+			const FVector PlayerLocation = LocalPawn->GetActorLocation();
+			const FMinimapRegion* Region = Regions.FindByPredicate([&PlayerLocation](const FMinimapRegion& Candidate)
+				{ return IsOnMap(ProjectToMap(PlayerLocation, Candidate.Bounds)); });
+			if (!Region || !Region->Image.Texture.IsValid()) return Layer;
+
+			const FVector2D PlayerUV = ProjectToMap(PlayerLocation, Region->Bounds);
 
 			const FVector2D Size = Geometry.GetLocalSize();
 			const FVector2D Inset(MapInset, MapInset);
@@ -94,7 +123,7 @@ namespace
 					&Frame.Brush, ESlateDrawEffect::None, Tint);
 			}
 			FSlateDrawElement::MakeBox(Elements, Layer + 1, Geometry.ToPaintGeometry(InnerSize, FSlateLayoutTransform(Inset)),
-				&Map.Brush, ESlateDrawEffect::None, Tint);
+				&Region->Image.Brush, ESlateDrawEffect::None, Tint);
 
 			const auto MarkerGeometry = [&](const FVector2D& UV, float Diameter)
 			{
@@ -108,11 +137,11 @@ namespace
 
 			if (PortalIcon.Texture.IsValid())
 			{
-				for (const TWeakObjectPtr<ARPGRegionGate>& TownGate : TownGates)
+				for (const TWeakObjectPtr<ARPGRegionGate>& RegionGate : Region->Gates)
 				{
-					const ARPGRegionGate* Gate = TownGate.Get();
+					const ARPGRegionGate* Gate = RegionGate.Get();
 					if (!Gate) continue;
-					const FVector2D PortalUV = ProjectToMap(Gate->GetActorLocation(), TownBounds);
+					const FVector2D PortalUV = ProjectToMap(Gate->GetActorLocation(), Region->Bounds);
 					if (!IsOnMap(PortalUV)) continue;
 					FSlateDrawElement::MakeBox(Elements, Layer + 2, MarkerGeometry(PortalUV, 23.f),
 						&PortalIcon.Brush, ESlateDrawEffect::None, Tint);
@@ -132,9 +161,8 @@ namespace
 
 	private:
 		TWeakObjectPtr<APawn> Pawn;
-		TArray<TWeakObjectPtr<ARPGRegionGate>> TownGates;
+		TArray<FMinimapRegion> Regions;
 		FMinimapImage Frame;
-		FMinimapImage Map;
 		FMinimapImage PlayerIcon;
 		FMinimapImage PortalIcon;
 	};
@@ -154,7 +182,7 @@ void RPGPlayerMinimap::Attach(UUserWidget& PlayerHUD, APawn& Pawn)
 
 	auto* Host = Tree->ConstructWidget<UNativeWidgetHost>(UNativeWidgetHost::StaticClass(), TEXT("PlayerMinimap"));
 	Host->SetVisibility(ESlateVisibility::HitTestInvisible);
-	Host->SetContent(SNew(SRPGTownMinimap, Pawn));
+	Host->SetContent(SNew(SRPGRegionMinimap, Pawn));
 	auto* Slot = Canvas->AddChildToCanvas(Host);
 	Slot->SetAnchors(FAnchors(0.f, 0.f));
 	Slot->SetPosition(FVector2D(24.f, 24.f));
