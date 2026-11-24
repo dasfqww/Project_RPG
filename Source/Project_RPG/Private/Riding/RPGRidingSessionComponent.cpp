@@ -39,6 +39,7 @@ void URPGRidingSessionComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProp
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME_CONDITION(ThisClass, OwnerState, COND_OwnerOnly);
+    DOREPLIFETIME_CONDITION(ThisClass, OwnedMountIds, COND_OwnerOnly);
 }
 
 bool URPGRidingSessionComponent::IsContextCurrent() const
@@ -218,14 +219,19 @@ void URPGRidingSessionComponent::PublishOwnerState()
     FRPGRidingAdmissionSnapshot Snapshot;
     if (OwnerState.bReady && Runtime->CopySnapshot(Snapshot))
     {
+        if (OwnedMountIds != Snapshot.OwnedMountIds)
+        {
+            OwnedMountIds = MoveTemp(Snapshot.OwnedMountIds);
+            MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, OwnedMountIds, this);
+        }
         switch (Snapshot.Shortcut.Kind)
         {
         case ERPGRidingSelectorKind::Specific:
-            OwnerState.bQuickSlotAssigned = Snapshot.OwnedMountIds.Contains(Snapshot.Shortcut.MountId);
+            OwnerState.bQuickSlotAssigned = OwnedMountIds.Contains(Snapshot.Shortcut.MountId);
             if (OwnerState.bQuickSlotAssigned) OwnerState.QuickSlotMountId = Snapshot.Shortcut.MountId;
             break;
         case ERPGRidingSelectorKind::Selected:
-            OwnerState.bQuickSlotAssigned = Snapshot.OwnedMountIds.Contains(Snapshot.SelectedMountId);
+            OwnerState.bQuickSlotAssigned = OwnedMountIds.Contains(Snapshot.SelectedMountId);
             if (OwnerState.bQuickSlotAssigned) OwnerState.QuickSlotMountId = Snapshot.SelectedMountId;
             break;
         case ERPGRidingSelectorKind::RandomFavorites:
@@ -234,6 +240,11 @@ void URPGRidingSessionComponent::PublishOwnerState()
         default:
             break;
         }
+    }
+    else if (!OwnedMountIds.IsEmpty())
+    {
+        OwnedMountIds.Reset();
+        MARK_PROPERTY_DIRTY_FROM_NAME(ThisClass, OwnedMountIds, this);
     }
     if (Timing.bValid)
     {

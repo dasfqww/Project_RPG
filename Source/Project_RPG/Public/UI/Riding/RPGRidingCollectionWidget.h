@@ -15,6 +15,8 @@ class UEditableTextBox;
 class UTextBlock;
 class UVerticalBox;
 class UComboBoxString;
+class URPGItemQuickSlotBar;
+class URPGQuickSlotWidget;
 
 UCLASS()
 class PROJECT_RPG_API URPGRidingBrowseButton final : public UButton
@@ -35,6 +37,8 @@ class PROJECT_RPG_API URPGRidingCollectionWidget final : public UUserWidget
 public:
     using FPresenter = TFunction<FText(const FString&)>;
     void SetReadOwner(TSharedRef<FRPGRidingCollectionReader> InReader, FPresenter InPresenter, FPresenter InDescription = {});
+    void SetGameplayQuickSlots(URPGItemQuickSlotBar* Bar);
+    bool AssignHudSlot(const UDragDropOperation* Operation, const URPGQuickSlotWidget* Cell, int32 Index) const;
     void SetMountAction(TFunction<bool(const FRPGRidingSelector&)> InAction) { MountAction = MoveTemp(InAction); }
     void SetRegistrationOwner(TSharedRef<FRPGRidingRegistrationClient> InOwner);
     void SetPreferencesOwner(TSharedRef<FRPGRidingPreferencesClient> InOwner);
@@ -58,15 +62,11 @@ private:
     friend class URPGRidingBrowseButton;
     void Browse(const FString& MountId);
     UFUNCTION() void MountSelected();
-    bool AcceptQuickSlotDrop(const URPGRidingBrowseButton* Row);
     UFUNCTION() void BackToCollection();
     UPROPERTY(Transient) TObjectPtr<class UWidgetSwitcher> Pages;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> PreferencesMountName;
     UPROPERTY(Transient) TObjectPtr<UButton> MountButton;
     UPROPERTY(Transient) TObjectPtr<class UScrollBox> RosterScroll;
-    UPROPERTY(Transient) TObjectPtr<class UBorder> QuickSlotDropZone;
-    UPROPERTY(Transient) TObjectPtr<class UImage> QuickSlotIcon;
-    UPROPERTY(Transient) TObjectPtr<UTextBlock> QuickSlotLabel;
     TWeakObjectPtr<URPGRidingBrowseButton> DragSource;
     FText MountFeedback;
     TFunction<bool(const FRPGRidingSelector&)> MountAction;
@@ -104,6 +104,8 @@ private:
     UFUNCTION() void SearchChanged(const FText& Value);
     UFUNCTION() void FavoritesChanged(bool bChecked);
     TWeakPtr<FRPGRidingCollectionReader> Reader;
+    TWeakObjectPtr<URPGItemQuickSlotBar> GameplayQuickSlots;
+    bool bGameplayCollection = false;
     FPresenter Presenter;
     FPresenter Description;
     FRPGRidingCollectionContext BoundContext;

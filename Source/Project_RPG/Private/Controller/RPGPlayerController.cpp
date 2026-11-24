@@ -84,6 +84,8 @@
 #include "Narrative/RPGNarrativeProgressComponent.h"
 #include "Riding/RPGRidingComponent.h"
 #include "Riding/RPGRidingSessionComponent.h"
+#include "UI/Riding/RPGMountQuickSlots.h"
+#include "UI/ItemQuickSlot/RPGItemQuickSlotBar.h"
 #include "Riding/RPGRidingLocalInteractionComponent.h"
 #include "Riding/RPGRidingTimedInteractionComponent.h"
 #include "Widgets/Layout/Anchors.h"
@@ -410,19 +412,20 @@ bool ARPGPlayerController::CanCallQuickSlotMount() const
     const auto* PS = CurrentPawn ? CurrentPawn->GetPlayerState() : nullptr;
     const auto* Session = PS ? PS->FindComponentByClass<URPGRidingSessionComponent>() : nullptr;
     if (!IsValid(Riding) || !Riding->IsRegistered() || !Session) return false;
-    const auto OwnerState = Session->GetOwnerState();
-    if (OwnerState.bReady && !OwnerState.bQuickSlotAssigned) return false;
+    if (Session->GetOwnedMountIds().IsEmpty()) return false;
 
     const auto State = Riding->GetRidingState();
     return State.Key.RiderEpoch.IsValid() && RPGRiding::IsCanonical(State) && State.Mode == ERPGRidingMode::OnFoot;
 }
 
-void ARPGPlayerController::CallQuickSlotMount()
+void ARPGPlayerController::CallQuickSlotMount(int32 SlotIndex)
 {
     if (!CanCallQuickSlotMount()) return;
-    FRPGRidingSelector Selector;
-    Selector.Kind = ERPGRidingSelectorKind::SavedShortcut;
-    GetPawn()->FindComponentByClass<URPGRidingComponent>()->RequestSetMounted(true, Selector);
+    const FString MountId = RPGMountQuickSlots::Read(this, SlotIndex);
+    const auto* Session = RPGMountQuickSlots::FindSession(this);
+    if (Session && Session->GetOwnerState().bReady && Session->GetOwnedMountIds().Contains(MountId))
+        GetPawn()->FindComponentByClass<URPGRidingComponent>()->RequestSetMounted(
+            true, {ERPGRidingSelectorKind::Specific, MountId});
 }
 
 void ARPGPlayerController::PressSkillSlot(const int32 SlotIndex)
@@ -452,11 +455,28 @@ void ARPGPlayerController::UseItemSlot(int32 SlotIndex)
 {
 	if (WindowInputState->HasOpenWindows()) return;
 	if (FSlateApplication::IsInitialized() && FSlateApplication::Get().AnyMenusVisible()) return;
+    const auto* PlayerHUD = Cast<ARPGHUD>(GetHUD());
+    const auto* ItemBar = PlayerHUD ? PlayerHUD->GetItemQuickSlotBar() : nullptr;
+    if (!RPGMountQuickSlots::Read(this, SlotIndex).IsEmpty())
+    {
+        CallQuickSlotMount(SlotIndex);
+        return;
+    }
+    if (ItemBar && ItemBar->IsMountCollectionOpen()) return;
 	if (APawn* PlayerPawn = GetPawn())
 	{
 		if (UQuickSlotComponent* QuickSlotComp = PlayerPawn->FindComponentByClass<UQuickSlotComponent>())
 			QuickSlotComp->UseItemSlot(SlotIndex, this);
 	}
+}
+
+void ARPGPlayerController::ToggleMountCollection()
+{
+    if (bItemPresentationEnded || WindowInputState->HasOpenWindows() || ContentEntryPopup ||
+        GameplayAbandonmentWidget || !IsLocalController()) return;
+    auto* PlayerHUD = Cast<ARPGHUD>(GetHUD());
+    if (!PlayerHUD || PlayerHUD->bIsMenuVisible || PlayerHUD->bIsOptionMenuVisible) return;
+    if (auto* Bar = PlayerHUD->GetItemQuickSlotBar()) Bar->ToggleMountCollection();
 }
 
 void ARPGPlayerController::EnableCameraZoom()
@@ -495,6 +515,7 @@ void ARPGPlayerController::SetupInputComponent()
 	if (InputComponent)
 	{
 		InputComponent->BindKey(EKeys::P, IE_Pressed, this, &ThisClass::ToggleEquipmentProjection).bConsumeInput = true;
+		InputComponent->BindKey(EKeys::M, IE_Pressed, this, &ThisClass::ToggleMountCollection).bConsumeInput = true;
 	}
 	if (!InputConfigDataAsset || !GetLocalPlayer()) return;
 	const auto ObservePartyInputSetup = [this](const TCHAR* Phase)

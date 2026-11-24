@@ -7,7 +7,7 @@
 #include "UI/ActionBar/RPGActionBarContext.h"
 #include "UI/ActionBar/RPGActionBarWidget.h"
 #include "UI/ItemQuickSlot/RPGItemQuickSlotBar.h"
-#include "Widgets/Input/SButton.h"
+#include "UI/Riding/RPGMountQuickSlots.h"
 #include "Component/RPGInputComponent.h"
 #include "Component/UI/QuickSlotComponent.h"
 #include "Component/UI/RPGSkillWindowComponent.h"
@@ -154,11 +154,15 @@ bool FRidingToggleKeyInput::RunTest(const FString&)
     TStrongObjectPtr<URPGItemQuickSlotBar> Bar(CreateWidget<URPGItemQuickSlotBar>(F.PC));
     if (!TestTrue(TEXT("HUD bar created"), Bar.IsValid())) return false;
     auto Grid = Bar->RebuildWidget();
-    if (!TestEqual(TEXT("Potion, consumables, and mount"), Grid->GetChildren()->Num(), 3)) return false;
-    auto Frame = Grid->GetChildren()->GetChildAt(2);
-    auto Button = StaticCastSharedRef<SButton>(Frame->GetChildren()->GetChildAt(0));
-    Button->SimulateClick();
+    if (!TestEqual(TEXT("Potion and F1–F8 sections"), Grid->GetChildren()->Num(), 2)) return false;
+    TestFalse(TEXT("Potion slot refuses a mount"), RPGMountQuickSlots::Assign(F.PC, UQuickSlotComponent::PotionSlotIndex, TEXT("wolf")));
+    TestFalse(TEXT("Unowned mounts cannot be saved"), RPGMountQuickSlots::Assign(F.PC, 7, TEXT("unowned")));
+    const FString Previous = RPGMountQuickSlots::Read(F.PC, 7);
+    if (!TestTrue(TEXT("F8 accepts the owned wolf"), RPGMountQuickSlots::Assign(F.PC, 7, TEXT("wolf")))) return false;
+    F.PC->CallQuickSlotMount(7);
+    RPGMountQuickSlots::Assign(F.PC, 7, Previous);
     if (!TestTrue(TEXT("Quick-slot call uses the real server mount path"), F.Context->HasOverride())) return false;
+    TestEqual(TEXT("F8 calls its own mount"), F.Riding->GetRidingState().MountId, FString(TEXT("wolf")));
     TestTrue(TEXT("Dismount slot has no fixed keyboard label"), F.Context->ReadAction(TEXT("Dismount")).KeyLabel.IsEmpty());
     F.SendKey(EKeys::F9, IE_Pressed);
     TestTrue(TEXT("F9 no longer dismounts"), F.Context->HasOverride());

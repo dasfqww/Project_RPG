@@ -78,16 +78,6 @@ bool FRPGRidingPreferencesClient::SetMode(FGuid S, ERPGRidingSelectorKind Mode)
     RefreshContext(); if (!Editable(S) || (Mode != ERPGRidingSelectorKind::Selected && Mode != ERPGRidingSelectorKind::Specific && Mode != ERPGRidingSelectorKind::RandomFavorites)) return false;
     if (Draft.Shortcut.Kind != Mode) Draft.Shortcut = {Mode, FString()}; Changed(); return true;
 }
-bool FRPGRidingPreferencesClient::AssignQuickSlot(FGuid S, const FString& Id)
-{
-    RefreshContext();
-    if (!Editable(S) || !Owned(Id, false)) return false;
-    if (Draft.Shortcut.Kind == ERPGRidingSelectorKind::Specific && Draft.Shortcut.MountId == Id)
-        return Dirty();
-    Draft.Shortcut = { ERPGRidingSelectorKind::Specific, Id };
-    Changed();
-    return true;
-}
 bool FRPGRidingPreferencesClient::SetSpecific(FGuid S, const FString& Id)
 { RefreshContext(); if (!Editable(S) || Draft.Shortcut.Kind != ERPGRidingSelectorKind::Specific || !Owned(Id)) return false; Draft.Shortcut.MountId = Id; Changed(); return true; }
 bool FRPGRidingPreferencesClient::ClearAll(FGuid S)

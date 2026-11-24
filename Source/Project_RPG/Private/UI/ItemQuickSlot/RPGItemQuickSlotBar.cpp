@@ -2,95 +2,14 @@
 #include "UI/RPGQuickSlotWidget.h"
 #include "Controller/RPGPlayerController.h"
 #include "Component/UI/QuickSlotComponent.h"
-#include "Engine/AssetManager.h"
-#include "Engine/StreamableManager.h"
-#include "Engine/Texture2D.h"
 #include "GameFramework/Pawn.h"
-#include "GameFramework/PlayerState.h"
-#include "Riding/RPGMountDefinition.h"
 #include "Riding/RPGRidingSessionComponent.h"
-#include "Slate/DeferredCleanupSlateBrush.h"
-#include "Widgets/SOverlay.h"
-#include "Widgets/Images/SImage.h"
+#include "UI/Riding/RPGMountQuickSlots.h"
+#include "UI/Riding/RPGRidingCollectionWidget.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
-
-namespace
-{
-class SRPGMountQuickSlotContent final : public SCompoundWidget
-{
-public:
-    SLATE_BEGIN_ARGS(SRPGMountQuickSlotContent) {}
-    SLATE_END_ARGS()
-
-    void Construct(const FArguments&, TWeakObjectPtr<ARPGPlayerController> InController)
-    {
-        Controller = InController;
-        ChildSlot
-        [
-            SNew(SOverlay)
-            + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
-            [
-                SAssignNew(Label, STextBlock).Text(NSLOCTEXT("RidingQuickSlot", "Call", "탈것"))
-            ]
-            + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
-            [
-                SAssignNew(Image, SImage).Visibility(EVisibility::Collapsed)
-            ]
-        ];
-    }
-
-    void Tick(const FGeometry&, const double, const float) override
-    {
-        const auto* PC = Controller.Get();
-        const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
-        const auto* PS = Pawn ? Pawn->GetPlayerState() : nullptr;
-        const auto* Session = PS ? PS->FindComponentByClass<URPGRidingSessionComponent>() : nullptr;
-        const FString CurrentMountId = Session ? Session->GetOwnerState().QuickSlotMountId : FString();
-        if (CurrentMountId != MountId)
-        {
-            MountId = CurrentMountId;
-            Load.Reset();
-            Image->SetImage(nullptr);
-            Image->SetVisibility(EVisibility::Collapsed);
-            Icon.Reset();
-            Label->SetVisibility(EVisibility::HitTestInvisible);
-            if (!MountId.IsEmpty() && UAssetManager::IsInitialized())
-            {
-                auto& Assets = UAssetManager::Get();
-                const FPrimaryAssetId Id(URPGMountDefinition::PrimaryAssetType, FName(*MountId));
-                const FSoftObjectPath Path = Assets.GetPrimaryAssetPath(Id);
-                if (Path.IsValid()) Load = Assets.GetStreamableManager().RequestAsyncLoad(Path);
-            }
-        }
-
-        if (!Load || !Load->HasLoadCompleted()) return;
-        const auto Completed = MoveTemp(Load);
-        if (const auto* Definition = Cast<URPGMountDefinition>(Completed->GetLoadedAsset()))
-        {
-            if (Definition->MountId == MountId && !Definition->Icon.IsNull())
-                Load = UAssetManager::GetStreamableManager().RequestAsyncLoad(Definition->Icon.ToSoftObjectPath());
-        }
-        else if (auto* Texture = Cast<UTexture2D>(Completed->GetLoadedAsset()))
-        {
-            Icon = FDeferredCleanupSlateBrush::CreateBrush(Texture, FVector2D(52.f, 52.f));
-            Image->SetImage(Icon->GetSlateBrush());
-            Image->SetVisibility(EVisibility::HitTestInvisible);
-            Label->SetVisibility(EVisibility::Collapsed);
-        }
-    }
-
-private:
-    TWeakObjectPtr<ARPGPlayerController> Controller;
-    FString MountId;
-    TSharedPtr<FStreamableHandle> Load;
-    TSharedPtr<FDeferredCleanupSlateBrush> Icon;
-    TSharedPtr<STextBlock> Label;
-    TSharedPtr<SImage> Image;
-};
-}
 
 TSharedRef<SWidget> URPGItemQuickSlotBar::RebuildWidget()
 {
@@ -115,7 +34,6 @@ TSharedRef<SWidget> URPGItemQuickSlotBar::RebuildWidget()
                 [Cells[Row * 4 + Column]->TakeWidget()];
         Grid->AddSlot().AutoHeight().Padding(0.f, Row ? 4.f : 0.f, 0.f, 0.f)[Line];
     }
-    const TWeakObjectPtr<ARPGPlayerController> Controller(Cast<ARPGPlayerController>(GetOwningPlayer()));
     return SNew(SHorizontalBox)
         + SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 12.f, 0.f)
         [SNew(SBox).WidthOverride(64.f)
@@ -138,17 +56,48 @@ TSharedRef<SWidget> URPGItemQuickSlotBar::RebuildWidget()
                     [SNew(STextBlock).Font(FCoreStyle::GetDefaultFontStyle("Regular", 9)).MinDesiredWidth(60.f).Justification(ETextJustify::Center)
                         .Text_Lambda([Slots] { return FText::Format(NSLOCTEXT("ItemQuickSlots", "Threshold", "HP {0}%"),
                             FText::AsNumber(Slots.IsValid() ? Slots->GetPotionHealthThreshold() : 50)); })]]]]
-        + SHorizontalBox::Slot().AutoWidth()[Grid]
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(8.f, 0.f, 0.f, 0.f)
-        [SNew(SBox).WidthOverride(64.f).HeightOverride(64.f)
-            [SNew(SButton).IsFocusable(false).HAlign(HAlign_Center).VAlign(VAlign_Center)
-                .IsEnabled_Lambda([Controller] { const auto* PC = Controller.Get(); return PC && PC->CanCallQuickSlotMount(); })
-                .ToolTipText(NSLOCTEXT("RidingQuickSlot", "CallHelp", "탈것 보관함에서 등록한 탈것을 호출합니다."))
-                .OnClicked_Lambda([Controller]
-                {
-                    if (auto* PC = Controller.Get()) PC->CallQuickSlotMount();
-                    return FReply::Handled();
-                })
-                [SNew(SRPGMountQuickSlotContent, Controller)]]];
+        + SHorizontalBox::Slot().AutoWidth()[Grid];
+}
 
+bool URPGItemQuickSlotBar::IsMountCollectionOpen() const
+{
+    return MountCollection && MountCollection->IsInViewport();
+}
+
+void URPGItemQuickSlotBar::ToggleMountCollection()
+{
+    if (IsMountCollectionOpen()) MountCollection->CloseScreen();
+    else OpenMountCollection();
+}
+
+void URPGItemQuickSlotBar::OpenMountCollection()
+{
+    auto* PC = GetOwningPlayer();
+    if (!PC || IsMountCollectionOpen() || !RPGMountQuickSlots::FindSession(PC)) return;
+    MountCollection = CreateWidget<URPGRidingCollectionWidget>(PC);
+    if (!MountCollection) return;
+
+    const bool bRestoreGameInput = !PC->ShouldShowMouseCursor();
+    MountCollection->SetGameplayQuickSlots(this);
+    MountCollection->OnClosed.AddWeakLambda(this, [this, bRestoreGameInput]
+    {
+        MountCollection = nullptr;
+        if (auto* Controller = GetOwningPlayer(); Controller && bRestoreGameInput)
+        {
+            Controller->SetInputMode(FInputModeGameOnly());
+            Controller->SetShowMouseCursor(false);
+        }
+    });
+    MountCollection->AddToViewport(140);
+    FInputModeGameAndUI Mode;
+    Mode.SetWidgetToFocus(MountCollection->TakeWidget());
+    Mode.SetHideCursorDuringCapture(false);
+    PC->SetInputMode(Mode);
+    PC->SetShowMouseCursor(true);
+}
+
+void URPGItemQuickSlotBar::NativeDestruct()
+{
+    if (MountCollection) MountCollection->CloseScreen();
+    Super::NativeDestruct();
 }

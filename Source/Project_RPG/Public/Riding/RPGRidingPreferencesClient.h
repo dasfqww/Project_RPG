@@ -27,7 +27,6 @@ public:
     bool Select(FGuid Snapshot, const FString& Mount);
     bool ToggleFavorite(FGuid Snapshot, const FString& Mount);
     bool SetMode(FGuid Snapshot, ERPGRidingSelectorKind Mode);
-    bool AssignQuickSlot(FGuid Snapshot, const FString& Mount);
     bool SetSpecific(FGuid Snapshot, const FString& Mount);
     bool ClearAll(FGuid Snapshot);
     bool ResetDraft(FGuid Snapshot);

@@ -127,7 +127,7 @@ public:
 	FKey GetCurrentKeyForTag(FGameplayTag InTag) const;
 	/** Fixed gameplay toggle. Returns an invalid key while an active Enhanced Input mapping owns it. */
 	bool CanCallQuickSlotMount() const;
-	void CallQuickSlotMount();
+	void CallQuickSlotMount(int32 SlotIndex);
 	const UDataAsset_InputConfig* GetInputConfig() const { return InputConfigDataAsset; }
 	virtual const UDataAsset_InputConfig* GetSourceInputConfig() const override
 	{
@@ -240,6 +240,7 @@ protected:
 
 	UFUNCTION()
 	void UseItemSlot(int32 SlotIndex);
+	void ToggleMountCollection();
 
 	void RefreshControlledPawnReferences();
 	friend struct FRPGQuickSlotProjectionTestAccess;

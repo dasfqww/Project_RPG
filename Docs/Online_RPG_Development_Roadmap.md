@@ -296,6 +296,8 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 ## 12. 현재 현황과 다음 작업 체크리스트 (2026-10-20)
 
+- [x] **2026-11-24 기존 F1~F8에 탈것 배치** — 게임 내 보관함에서 기존 우측 슬롯에 드롭하고 슬롯 키·클릭으로 탑승한다. 같은 칸에서 교체, 캐릭터별 로컬 배치 저장, 기존 내리기를 D3D12에서 확인했다. [탈것 슬롯 계약](RIDING_SYSTEM_CODE_DESIGN.md#준비-로비-탈것-보관함-목록-2026-11-23).
+
 - [x] **2026-11-24 우측 탈것 퀵슬롯 아이콘** — 서버가 확정한 빠른 호출 ID로 탈것 DA 아이콘을 비동기 로드하고 교체된 설정을 같은 슬롯에 반영한다. D3D12 게임 HUD 미등록·말·늑대와 늑대 클릭 탑승·하차, 퀵슬롯 native 15건 확인. [탈것 퀵슬롯 계약](RIDING_SYSTEM_CODE_DESIGN.md#준비-로비-탈것-보관함-목록-2026-11-23).
 
 - [x] 2026-11-20 장비창 프리뷰 색감 보정. 고정 노출 +0.35와 카메라 색 균형 적용. 사설 CPP 1개 및 Editor 모듈 링크 통과, 동일 캐릭터 D3D12 PIE에서 따뜻한 픽셀 3,664→1,687 및 전신·대검 확인. 임시 6,124,050,867 bytes 폐기. [장비창 외형](ITEM_INVENTORY_PROJECTION.md#장비창-플레이어-외형-2026-11-20).
@@ -1007,6 +1009,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| 탈것 F1–F8 / mount-item-slots-24 | 우측 공용 F1–F8에 보관함 탈것 드롭·아이콘 교체·키/클릭 탑승 | Controller, Riding Session/Preferences, ItemQuickSlotBar, QuickSlotWidget, Riding Collection, RPGMountQuickSlots, 직접 검사와 계약 및 본인 기록 | UE 5.8 격리 UHT·집중 오브젝트·모듈 링크, 실제 D3D12 포인터 F3 말→늑대와 F7 늑대, 클릭/키 호출·하차, 로컬 설정 파일, native 17건 성공. 임시 6150649397 bytes와 정션 75개 정리. Saved/BuildChecks/MountItemSlots24/Result.json | 구현·검증 완료. 본인 경로만 main index/ref 및 origin/main에 게시 예약. 원격 일치 시 예약 해제 |
 | illustrated-loading-24 | 전체 화면 일러스트와 하단 로딩 표시 적용 | Private/UI/Loading/RPGExperienceLoadingScreen.cpp, Private/Tests/RPGExperienceClientUIProbe.cpp, Content/UI/Loading/T_LoadingCitadel.uasset, Config/DefaultGame.ini의 UI cook 경로 한 줄, 본인 행 | 사설 컴파일·링크 및 D3D12 정상 전환·실패 상태 통과. Saved/BuildChecks/IllustratedLoading24에 캡처 2장과 결과를 보관하고 임시 139,150,983 bytes와 정션 13개 정리 | 검증 완료. 본인 4파일과 이 행만 main index/ref 및 origin/main 순차 게시, 원격 반영 시 전체 예약 해제 |
 | ash-court-24 | Ruined Crypt 회랑과 보스 뜰 레벨 디자인 | Content/Maps/L_AshCourt.umap 및 본인 행 | UE 5.8 D3D12 단독 PIE에서 대검 캐릭터로 입구·회랑·뜰·제단 약 67m 이동 확인, 사용자 플레이 창 인계. 시연 에디터가 기존 로컬 수정 SM_ChamferCube를 자동 재임포트·저장, 해당 파일은 게시 제외 | 제작·플레이 확인 완료. 본인 맵·조율 행만 main index/ref 및 origin/main 순차 게시 예약, 원격 반영 시 해제 |
 | gladiator-minimap-24 | 임시 마을 미니맵, 내 위치·방향과 지역 이동 문 | RPGHUD.cpp, Private/UI/Minimap, Content/Minimap, Docs/PLAYER_MINIMAP.md, 본인 행 | UE 5.8 Editor C++ 2개·격리 링크, NullRHI PIE HUD 부착·에셋 재로드·왕복, D3D11 1280×720에서 화살표 이동·회전과 문 표시·필드 숨김·마을 복귀 확인. Saved/BuildChecks/GladiatorMinimap24/Result.json. 임시 343,247,294 bytes 및 정션 37개 정리 | 소스·검증 예약 해제. 본인 10경로 main index/ref·origin/main 게시 순차 예약, 원격 일치 시 해제 |

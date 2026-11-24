@@ -1,5 +1,12 @@
 #include "UI/Riding/RPGRidingCollectionWidget.h"
 #include "UI/Riding/RPGRidingPreferencesWidget.h"
+#include "UI/Riding/RPGMountQuickSlots.h"
+#include "UI/ItemQuickSlot/RPGItemQuickSlotBar.h"
+#include "UI/RPGQuickSlotWidget.h"
+#include "Riding/RPGRidingSessionComponent.h"
+#include "Riding/RPGMountDefinition.h"
+#include "Engine/AssetManager.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Blueprint/WidgetTree.h"
 #include "Blueprint/DragDropOperation.h"
 #include "Components/Border.h"
@@ -87,9 +94,12 @@ TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
     if (!WidgetTree) WidgetTree = NewObject<UWidgetTree>(this, TEXT("WidgetTree"));
     if (!WidgetTree->RootWidget)
     {
-        auto* Backdrop = Surface(WidgetTree, FLinearColor(.004f,.007f,.012f,.82f), FMargin(14));
+        auto* Backdrop = Surface(WidgetTree, bGameplayCollection ? FLinearColor::Transparent
+            : FLinearColor(.004f,.007f,.012f,.82f), FMargin(14));
+        if (bGameplayCollection) Backdrop->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
         WidgetTree->RootWidget = Backdrop;
         auto* Fit = WidgetTree->ConstructWidget<UScaleBox>();
+        if (bGameplayCollection) Fit->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
         Fit->SetStretch(EStretch::ScaleToFit);
         Fit->SetStretchDirection(EStretchDirection::DownOnly);
         Backdrop->SetContent(Fit);
@@ -97,7 +107,7 @@ TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
         Size->SetWidthOverride(465);
         Size->SetHeightOverride(650);
         Fit->SetContent(Size);
-        CastChecked<UScaleBoxSlot>(Size->Slot)->SetHorizontalAlignment(HAlign_Center);
+        CastChecked<UScaleBoxSlot>(Size->Slot)->SetHorizontalAlignment(bGameplayCollection ? HAlign_Left : HAlign_Center);
         CastChecked<UScaleBoxSlot>(Size->Slot)->SetVerticalAlignment(VAlign_Center);
         auto* Rim = Surface(WidgetTree, FLinearColor(.30f,.23f,.15f), FMargin(1));
         Size->SetContent(Rim);
@@ -190,21 +200,13 @@ TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
         List->AddChildToVerticalBox(RosterScroll)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
         Rows = WidgetTree->ConstructWidget<UVerticalBox>();
         RosterScroll->AddChild(Rows);
-        QuickSlotDropZone = Surface(WidgetTree, FLinearColor(.14f,.10f,.063f), FMargin(6));
-        List->AddChildToVerticalBox(QuickSlotDropZone)->SetPadding(FMargin(0, 4, 0, 0));
-        auto* SlotContent = WidgetTree->ConstructWidget<UHorizontalBox>();
-        QuickSlotDropZone->SetContent(SlotContent);
-        QuickSlotIcon = WidgetTree->ConstructWidget<UImage>();
-        SlotContent->AddChild(QuickSlotIcon);
-        QuickSlotLabel = Label(WidgetTree, FText::GetEmpty(), 11);
-        auto* DropLabelSlot = SlotContent->AddChildToHorizontalBox(QuickSlotLabel);
-        DropLabelSlot->SetVerticalAlignment(VAlign_Center);
-        DropLabelSlot->SetPadding(FMargin(4,0));
         Status = Label(WidgetTree, FText::GetEmpty(), 11);
         Status->SetAutoWrapText(true);
         List->AddChildToVerticalBox(Status)->SetPadding(FMargin(0, 4, 0, 0));
 
-        auto* Hint = Label(WidgetTree, NSLOCTEXT("RidingCollection", "QuickSlotHint", "탈것을 퀵슬롯에 등록하여 탑승할수 있습니다."), 11);
+        auto* Hint = Label(WidgetTree, bGameplayCollection
+            ? NSLOCTEXT("RidingCollection", "DropOnHud", "탈것을 우측 F1~F8 슬롯에 끌어다 놓으세요.")
+            : NSLOCTEXT("RidingCollection", "OpenFromHud", "게임에서 M 키로 탈것 보관함을 열고 우측 퀵슬롯에 배치하세요."), 11);
         Hint->SetColorAndOpacity(Gold);
         Hint->SetJustification(ETextJustify::Center);
         Hint->SetAutoWrapText(true);
@@ -213,6 +215,7 @@ TSharedRef<SWidget> URPGRidingCollectionWidget::RebuildWidget()
         CollectionPage->AddChild(Footer);
 
         MountButton = Action(WidgetTree, TEXT("RidingCollectionMount"), NSLOCTEXT("RidingCollection", "Mount", "탑승"));
+        if (bGameplayCollection) MountButton->SetVisibility(ESlateVisibility::Collapsed);
         auto* MountSlot = Footer->AddChildToHorizontalBox(MountButton);
         MountSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
         MountSlot->SetPadding(FMargin(0, 0, 3, 0));
@@ -301,6 +304,36 @@ void URPGRidingCollectionWidget::NativeConstruct()
     if (CloseButton && GetOwningPlayer()) CloseButton->SetKeyboardFocus();
 }
 void URPGRidingCollectionWidget::NativeDestruct() { Detach(); Super::NativeDestruct(); }
+
+void URPGRidingCollectionWidget::SetGameplayQuickSlots(URPGItemQuickSlotBar* Bar)
+{
+    GameplayQuickSlots = Bar;
+    bGameplayCollection = true;
+    SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+    Presenter = [](const FString& Id)
+    {
+        if (UAssetManager::IsInitialized())
+        {
+            const auto* Def = Cast<URPGMountDefinition>(UAssetManager::Get().GetPrimaryAssetObject(
+                FPrimaryAssetId(URPGMountDefinition::PrimaryAssetType, FName(*Id))));
+            if (Def && Def->MountId == Id) return Def->DisplayName;
+        }
+        return FText::FromString(Id);
+    };
+}
+
+bool URPGRidingCollectionWidget::AssignHudSlot(const UDragDropOperation* Operation,
+    const URPGQuickSlotWidget* Cell, int32 Index) const
+{
+    const auto* Bar = GameplayQuickSlots.Get();
+    if (bClosing || !Pages || Pages->GetActiveWidgetIndex() != 0 || !Operation || Operation->GetOuter() != this ||
+        !Bar || !Cell || !RPGMountQuickSlots::IsMountSlot(Index) || Bar->GetCell(Index) != Cell ||
+        Cell->GetOwningPlayer() != GetOwningPlayer()) return false;
+    const auto* Row = Cast<URPGRidingBrowseButton>(Operation->Payload);
+    return Row && Row->Collection.Get() == this && Row->GetParent() == Rows &&
+        RPGMountQuickSlots::Assign(GetOwningPlayer(), Index, Row->MountId);
+}
+
 bool URPGRidingCollectionWidget::TickView(float) { if (bClosing) return false; RefreshView(); RefreshRegistration(); return !bClosing; }
 void URPGRidingCollectionWidget::Reload() { MountFeedback = FText::GetEmpty(); if (!bClosing) if (const auto Owner = Reader.Pin()) Owner->Read(); RefreshView(); }
 void URPGRidingCollectionWidget::SearchChanged(const FText&) { RowsKey.Reset(); RefreshView(); }
@@ -309,11 +342,22 @@ void URPGRidingCollectionWidget::RefreshView()
 {
     if (bClosing || bUpdating) return; TGuardValue<bool> Guard(bUpdating, true);
     const auto Owner = Reader.Pin(); const auto Current = Owner ? Owner->GetContext() : FRPGRidingCollectionContext{};
-    if (!Owner || !Current.bEligible || !Current.SameIdentity(BoundContext)) { CloseScreen(); return; }
+    if (bGameplayCollection ? !GameplayQuickSlots.IsValid()
+        : (!Owner || !Current.bEligible || !Current.SameIdentity(BoundContext))) { CloseScreen(); return; }
     if (!Status || !Rows) return;
-    const auto State = Owner->GetState(); const auto* C = Owner->GetCollection(); const double Retry = Owner->GetRetryAfterSeconds();
+    FRPGRidingCollection GameplayRoster;
+    const auto* Session = bGameplayCollection ? RPGMountQuickSlots::FindSession(GetOwningPlayer()) : nullptr;
+    if (Session && Session->GetOwnerState().bReady)
+    {
+        GameplayRoster.bCatalogReady = true;
+        for (const auto& Id : Session->GetOwnedMountIds()) GameplayRoster.Mounts.Add({Id});
+    }
+    const auto State = Owner ? Owner->GetState() : ERPGRidingCollectionReadState::Empty;
+    const auto* C = bGameplayCollection ? (GameplayRoster.bCatalogReady ? &GameplayRoster : nullptr)
+        : Owner->GetCollection();
+    const double Retry = Owner ? Owner->GetRetryAfterSeconds() : 0.;
     const bool bReady = C != nullptr;
-    Search->SetIsEnabled(bReady); FavoritesOnly->SetIsEnabled(bReady);
+    Search->SetIsEnabled(bReady); FavoritesOnly->SetIsEnabled(bReady && !bGameplayCollection);
     FText Message = NSLOCTEXT("RidingCollection", "Prompt", "보유 탈것을 확인하고 있습니다.");
     if (State == ERPGRidingCollectionReadState::Loading) Message = NSLOCTEXT("RidingCollection", "Loading", "보유 탈것을 불러오는 중입니다.");
     else if (State == ERPGRidingCollectionReadState::Failed) Message = NSLOCTEXT("RidingCollection", "Failed", "탈것 정보를 불러오지 못했습니다. 창을 닫고 다시 열어 주세요.");
@@ -339,18 +383,10 @@ void URPGRidingCollectionWidget::RefreshView()
     }
     const FString Filter = Search->GetText().ToString().TrimStartAndEnd(); const bool bFavorites = FavoritesOnly->IsChecked();
     Key += TEXT("/") + Filter + (bFavorites ? TEXT("/favorite") : TEXT("/all"));
-    if (Key == RowsKey) return;
+    if (Key == RowsKey || (bGameplayCollection && FSlateApplication::IsInitialized() &&
+        FSlateApplication::Get().IsDragDropping())) return;
     RowsKey = Key;
     Rows->ClearChildren();
-
-    const FString Assigned = C && C->Shortcut.Kind == ERPGRidingSelectorKind::Specific ? C->Shortcut.MountId
-        : C && C->Shortcut.Kind == ERPGRidingSelectorKind::Selected ? C->SelectedMountId : FString();
-    const bool bAssigned = Names.Contains(Assigned);
-    QuickSlotIcon->SetVisibility(bAssigned ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
-    if (bAssigned) QuickSlotIcon->SetBrush(MountPortrait(Assigned, 30));
-    QuickSlotLabel->SetText(bAssigned
-        ? FText::Format(NSLOCTEXT("RidingCollection", "SlotAssigned", "퀵슬롯 · {0}"), Names.FindChecked(Assigned))
-        : NSLOCTEXT("RidingCollection", "SlotDrop", "퀵슬롯 · 탈것 아이콘을 여기에 놓으세요."));
 
     TArray<FString> Visible;
     if (C) for (const auto& M : C->Mounts)
@@ -499,32 +535,18 @@ void URPGRidingCollectionWidget::NativeOnDragDetected(const FGeometry& Geometry,
 
 bool URPGRidingCollectionWidget::NativeOnDrop(const FGeometry& Geometry, const FDragDropEvent& Event, UDragDropOperation* Operation)
 {
-    if (Operation && Operation->GetOuter() == this && QuickSlotDropZone
-        && QuickSlotDropZone->GetCachedGeometry().IsUnderLocation(Event.GetScreenSpacePosition()))
-        return AcceptQuickSlotDrop(Cast<URPGRidingBrowseButton>(Operation->Payload));
-    return Super::NativeOnDrop(Geometry, Event, Operation);
-}
-
-bool URPGRidingCollectionWidget::AcceptQuickSlotDrop(const URPGRidingBrowseButton* Row)
-{
-    const auto Preferences = PreferencesOwner.Pin();
-    if (bClosing || !Preferences || Pages->GetActiveWidgetIndex() != 0 || !Row
-        || Row->Collection.Get() != this || Row->GetParent() != Rows) return false;
-
-    const auto View = Preferences->GetView();
-    if (View.bCanRecover || View.bCanRetry || View.bCanStorage || View.bCanRefreshAssets
-        || (!View.bCanEdit && View.bCanReload))
+    if (Operation && Operation->GetOuter() == this && !bClosing && Pages && Pages->GetActiveWidgetIndex() == 0)
     {
-        OpenPreferences();
-        return true;
+        const auto* Bar = GameplayQuickSlots.Get();
+        if (Bar)
+        {
+            for (int32 Index = 0; RPGMountQuickSlots::IsMountSlot(Index); ++Index)
+                if (const auto* Cell = Bar->GetCell(Index);
+                    Cell && Cell->GetCachedGeometry().IsUnderLocation(Event.GetScreenSpacePosition()))
+                    return AssignHudSlot(Operation, Cell, Index);
+        }
     }
-
-    const FString Id = Row->MountId;
-    if (!Preferences->AssignQuickSlot(View.Snapshot, Id)) return false;
-    Browse(Id);
-    Preferences->Review(View.Snapshot);
-    OpenPreferences();
-    return true;
+    return Super::NativeOnDrop(Geometry, Event, Operation);
 }
 
 void URPGRidingCollectionWidget::OpenRegistration()

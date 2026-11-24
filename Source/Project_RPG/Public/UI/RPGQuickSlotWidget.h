@@ -105,6 +105,11 @@ private:
 	void HandleItemCommandFieldChanged(UObject* Object, UE::FieldNotification::FFieldId FieldId);
 	TWeakObjectPtr<URPGInventoryProjectionViewModel> ItemCommandViewModel;
 	void RefreshItemIcon(TSoftObjectPtr<UTexture2D> Icon);
+	void RefreshMountIcon();
+	FString VisibleMountId;
+	FString PressedMountId;
+	TSharedPtr<FStreamableHandle> MountIconLoad;
+	UPROPERTY(Transient) TObjectPtr<UImage> MountImage;
 	void ApplyItemIcon(UTexture2D* Icon);
 	void CancelItemIconLoad();
 	TSoftObjectPtr<UTexture2D> ItemIconReference;

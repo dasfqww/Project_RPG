@@ -19,8 +19,6 @@
 struct FRPGRidingPreferencesUiTestAccess
 {
     static URPGRidingPreferencesWidget* Panel(URPGRidingCollectionWidget& W) { return W.PreferencesPanel; }
-    static bool Drop(URPGRidingCollectionWidget& W, int32 Index)
-    { return W.AcceptQuickSlotDrop(Cast<URPGRidingBrowseButton>(W.Rows->GetChildAt(Index))); }
     static void Load(URPGRidingPreferencesWidget& W) { W.ReloadButton->OnClicked.Broadcast(); }
     static void Selected(URPGRidingPreferencesWidget& W, int32 I) { W.BrowseMount(W.MountIds[I-1]); W.DefaultButton->OnClicked.Broadcast(); }
     static void Favorite(URPGRidingPreferencesWidget& W, int32 I) { W.BrowseMount(W.MountIds[I]); W.FavoriteButton->OnClicked.Broadcast(); }
@@ -98,8 +96,10 @@ bool FRidingPreferencesUiModes::RunTest(const FString&)
     if(!Ready(*this))return false;
     FOwner Slot;
     Slot.Load();
-    TestTrue(TEXT("Dropping an owned icon is handled"), A::Drop(*Slot.Parent, 0));
-    TestTrue(TEXT("Register opens review for the clicked mount"), Slot.Client->GetView().bCanConfirm);
+    A::Mode(*Slot.Widget, 1);
+    A::Specific(*Slot.Widget, 1);
+    A::Review(*Slot.Widget);
+    TestTrue(TEXT("Review asks for consent for the selected mount"), Slot.Client->GetView().bCanConfirm);
     TestEqual(TEXT("Review sends nothing until confirmed"), Slot.WT->Writes, 0);
     A::Confirm(*Slot.Widget);
     const auto Command = Object(Slot.WT->Body);

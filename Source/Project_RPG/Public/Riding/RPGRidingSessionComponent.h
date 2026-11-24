@@ -30,6 +30,7 @@ public:
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out) const override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     UFUNCTION(BlueprintPure, Category="Riding") FRPGRidingOwnerState GetOwnerState() const { return OwnerState; }
+    const TArray<FString>& GetOwnedMountIds() const { return OwnedMountIds; }
 
 private:
     friend class ARPGPlayerState;
@@ -74,4 +75,5 @@ private:
     UPROPERTY(EditDefaultsOnly, Category="Riding") TObjectPtr<URPGRidingPolicy> Policy;
     bool bResolvedConfiguredPolicy = false;
     UPROPERTY(Replicated) FRPGRidingOwnerState OwnerState;
+    UPROPERTY(Replicated) TArray<FString> OwnedMountIds;
 };

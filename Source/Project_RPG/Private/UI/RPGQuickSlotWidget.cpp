@@ -2,6 +2,11 @@
 
 
 #include "UI/RPGQuickSlotWidget.h"
+#include "Riding/RPGMountDefinition.h"
+#include "UI/Riding/RPGMountQuickSlots.h"
+#include "UI/Riding/RPGRidingCollectionWidget.h"
+#include "UI/HUD/RPGHUD.h"
+#include "UI/ItemQuickSlot/RPGItemQuickSlotBar.h"
 #include "Item/RPGItemBase.h"
 #include "Engine/GameInstance.h"
 #include "Engine/AssetManager.h"
@@ -265,7 +270,9 @@ void URPGQuickSlotWidget::RefreshItemCommandState()
 			: State == EState::Pending ? NSLOCTEXT("ItemQuickSlots", "Pending", "대기")
 			: State == EState::RecoveryRequired ? NSLOCTEXT("ItemQuickSlots", "Recovery", "확인") : FText::GetEmpty());
 	}
-	SetToolTipText(!SlotItemId.IsValid() ? (SlotIndex == UQuickSlotComponent::PotionSlotIndex
+	SetToolTipText(!VisibleMountId.IsEmpty()
+		? NSLOCTEXT("ItemQuickSlots", "MountUse", "탈것 · 단축키 또는 클릭으로 탑승 · 우클릭으로 슬롯 해제")
+		: !SlotItemId.IsValid() ? (SlotIndex == UQuickSlotComponent::PotionSlotIndex
 		? NSLOCTEXT("ItemQuickSlots", "PotionEmpty", "회복 물약 · 클릭하여 등록\nX 또는 클릭으로 사용 · 우클릭으로 변경/해제")
 		: NSLOCTEXT("ItemQuickSlots", "ItemEmpty", "소모품 · 클릭하여 등록\n단축키 또는 클릭으로 사용 · 우클릭으로 변경/해제"))
 		: Details.IsEmpty() ? Status : Status.IsEmpty() ? Details
@@ -407,7 +414,48 @@ void URPGQuickSlotWidget::NativeTick(const FGeometry& Geometry, const float Delt
 	{
 		SkillRefreshElapsed = 0.f;
 		if (bIsSkillSlot) RefreshSkillSlotView(IsHovered());
-		else SetInputKeyText(ResolveQuickSlotInputKeyText(LinkedQuickSlotComponent.Get(), false, SlotIndex, InputText));
+		else
+		{
+			SetInputKeyText(ResolveQuickSlotInputKeyText(LinkedQuickSlotComponent.Get(), false, SlotIndex, InputText));
+			RefreshMountIcon();
+		}
+	}
+}
+
+void URPGQuickSlotWidget::RefreshMountIcon()
+{
+	if (!MountImage) return;
+	const FString Current = RPGMountQuickSlots::Read(GetOwningPlayer(), SlotIndex);
+	if (VisibleMountId != Current)
+	{
+		VisibleMountId = Current;
+		MountIconLoad.Reset();
+		MountImage->SetBrushFromTexture(nullptr);
+		const bool bMount = !Current.IsEmpty();
+		const auto ItemVisibility = bMount ? ESlateVisibility::Hidden : ESlateVisibility::HitTestInvisible;
+		SlotItemImage->SetVisibility(ItemVisibility);
+		SlotItemCountText->SetVisibility(ItemVisibility);
+		if (auto* Status = GetWidgetFromName(TEXT("ItemStatusText"))) Status->SetVisibility(ItemVisibility);
+		MountImage->SetVisibility(bMount ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Hidden);
+		RefreshItemCommandState();
+		if (bMount && UAssetManager::IsInitialized())
+		{
+			auto& Assets = UAssetManager::Get();
+			const auto Path = Assets.GetPrimaryAssetPath(
+				FPrimaryAssetId(URPGMountDefinition::PrimaryAssetType, FName(*Current)));
+			if (Path.IsValid()) MountIconLoad = Assets.GetStreamableManager().RequestAsyncLoad(Path);
+		}
+	}
+	if (!MountIconLoad || !MountIconLoad->HasLoadCompleted()) return;
+	const auto Completed = MoveTemp(MountIconLoad);
+	if (const auto* Def = Cast<URPGMountDefinition>(Completed->GetLoadedAsset()))
+	{
+		if (Def->MountId == Current && !Def->Icon.IsNull())
+			MountIconLoad = UAssetManager::GetStreamableManager().RequestAsyncLoad(Def->Icon.ToSoftObjectPath());
+	}
+	else if (auto* Texture = Cast<UTexture2D>(Completed->GetLoadedAsset()))
+	{
+		MountImage->SetBrushFromTexture(Texture);
 	}
 }
 
@@ -436,6 +484,19 @@ FReply URPGQuickSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry,
 	if (Reply.IsEventHandled())
 	{
 		return Reply;
+	}
+	if (!bIsSkillSlot && GetIsEnabled() && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+	{
+		const FString Mount = RPGMountQuickSlots::Read(GetOwningPlayer(), SlotIndex);
+		if (!Mount.IsEmpty())
+		{
+			CancelPendingItemClick();
+			PressedMountId = Mount;
+			PressedUserIndex = InMouseEvent.GetUserIndex();
+			PressedPointerIndex = InMouseEvent.GetPointerIndex();
+			ItemClickScreenOrigin = InMouseEvent.GetScreenSpacePosition();
+			return FReply::Handled().CaptureMouse(TakeWidget());
+		}
 	}
 	if (!bIsSkillSlot && GetIsEnabled() && LinkedQuickSlotComponent.IsValid() &&
 		(InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton ||
@@ -493,6 +554,17 @@ FReply URPGQuickSlotWidget::NativeOnMouseButtonUp(const FGeometry& InGeometry,
 	const FPointerEvent& InMouseEvent)
 {
 	const FReply Reply = Super::NativeOnMouseButtonUp(InGeometry, InMouseEvent);
+	if (!PressedMountId.IsEmpty() && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton &&
+		InMouseEvent.GetUserIndex() == PressedUserIndex && InMouseEvent.GetPointerIndex() == PressedPointerIndex)
+	{
+		const bool bCall = GetIsEnabled() && IsVisible() &&
+			InGeometry.IsUnderLocation(InMouseEvent.GetScreenSpacePosition()) &&
+			PressedMountId == RPGMountQuickSlots::Read(GetOwningPlayer(), SlotIndex);
+		CancelPendingItemClick();
+		if (bCall)
+			if (auto* PC = Cast<ARPGPlayerController>(GetOwningPlayer())) PC->CallQuickSlotMount(SlotIndex);
+		return FReply::Handled();
+	}
 	if (bIsSkillSlot && InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton && LinkedQuickSlotComponent.IsValid())
 	{
 		LinkedQuickSlotComponent->ClearSlot(true, SlotIndex);
@@ -537,7 +609,7 @@ FReply URPGQuickSlotWidget::NativeOnMouseButtonDoubleClick(
 
 FReply URPGQuickSlotWidget::NativeOnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-	if (PressedItemId.IsValid() && InMouseEvent.GetUserIndex() == PressedUserIndex &&
+	if ((PressedItemId.IsValid() || !PressedMountId.IsEmpty()) && InMouseEvent.GetUserIndex() == PressedUserIndex &&
 		InMouseEvent.GetPointerIndex() == PressedPointerIndex)
 	{
 		if (!InMouseEvent.IsMouseButtonDown(EKeys::LeftMouseButton) ||
@@ -554,10 +626,11 @@ FReply URPGQuickSlotWidget::NativeOnMouseMove(const FGeometry& InGeometry, const
 
 void URPGQuickSlotWidget::CancelPendingItemClick()
 {
-	const bool bHadItemPress = PressedItemId.IsValid();
+	const bool bHadItemPress = PressedItemId.IsValid() || !PressedMountId.IsEmpty();
 	const int32 UserIndex = PressedUserIndex;
 	const uint32 PointerIndex = PressedPointerIndex;
 	PressedItemId.Invalidate();
+	PressedMountId.Reset();
 	PressedQuickSlotComponent.Reset();
 	PressedSlotIndex = INDEX_NONE;
 	PressedUserIndex = INDEX_NONE;
@@ -618,6 +691,9 @@ bool URPGQuickSlotWidget::NativeOnDrop(
 			FRPGSkillQuickSlotDragDrop::Drop(*Drag, *Slots, SlotIndex);
 	}
 
+	if (const auto* Library = InOperation ? Cast<URPGRidingCollectionWidget>(InOperation->GetOuter()) : nullptr)
+		return Library->AssignHudSlot(InOperation, this, SlotIndex);
+
 	const URPGItemIdDragDropOperation* Drag =
 		Cast<URPGItemIdDragDropOperation>(InOperation);
 	UQuickSlotComponent* QuickSlots = LinkedQuickSlotComponent.Get();
@@ -634,6 +710,7 @@ bool URPGQuickSlotWidget::NativeOnDrop(
 		Entry.GetQuantity() > 0 && QuickSlots->IsItemAllowedInSlot(SlotIndex, Entry))
 	{
 		QuickSlots->SetItemSlotById(SlotIndex, Entry.GetItemId());
+		RPGMountQuickSlots::Assign(Controller, SlotIndex, {});
 		return true;
 	}
 	return false;
@@ -663,6 +740,12 @@ void URPGQuickSlotWidget::BuildNativeItemCell()
 	SlotItemImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("SlotItemImage"));
 	Overlay->AddChildToOverlay(SlotItemImage)->SetPadding(FMargin(3.f));
 	SetImageAlpha(SlotItemImage, 0.f);
+	if (RPGMountQuickSlots::IsMountSlot(SlotIndex))
+	{
+		MountImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("MountSlotImage"));
+		MountImage->SetVisibility(ESlateVisibility::Hidden);
+		Overlay->AddChildToOverlay(MountImage)->SetPadding(FMargin(3.f));
+	}
 	InputKeyText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("InputKeyText"));
 	InputKeyText->SetFont(FCoreStyle::GetDefaultFontStyle("Bold", 12));
 	InputKeyText->SetColorAndOpacity(FSlateColor(FLinearColor(.95f, .82f, .61f)));
@@ -687,16 +770,33 @@ void URPGQuickSlotWidget::OpenItemPicker(const FVector2D& ScreenPosition)
 	const TWeakObjectPtr<URPGQuickSlotWidget> Weak(this);
 	const TWeakObjectPtr<UQuickSlotComponent> ExpectedSlots(LinkedQuickSlotComponent);
 	const int32 ExpectedIndex = SlotIndex;
+	const bool bMountAssigned = !RPGMountQuickSlots::Read(PC, SlotIndex).IsEmpty();
 	const auto Assign = [Weak, ExpectedSlots, ExpectedIndex](FGuid Id)
 	{
 		auto* Self = Weak.Get(); auto* Current = ExpectedSlots.Get();
 		if (!Self || !Current || Self->LinkedQuickSlotComponent != ExpectedSlots || Self->SlotIndex != ExpectedIndex
 			|| !Self->GetOwningPlayer() || Self->GetOwningPlayerPawn() != Current->GetOwner()) return;
 		Current->SetItemSlotById(ExpectedIndex, Id);
+		RPGMountQuickSlots::Assign(Self->GetOwningPlayer(), ExpectedIndex, {});
 	};
 	FMenuBuilder Menu(true, nullptr);
 	Menu.BeginSection(NAME_None, NSLOCTEXT("ItemQuickSlots", "Register", "아이템 등록"));
-	if (SlotItemId.IsValid())
+	if (RPGMountQuickSlots::IsMountSlot(SlotIndex))
+		Menu.AddMenuEntry(NSLOCTEXT("ItemQuickSlots", "MountCollection", "탈것 보관함"), FText::GetEmpty(), FSlateIcon(),
+			FUIAction(FExecuteAction::CreateLambda([Weak]
+			{
+				const auto* Self = Weak.Get();
+				const auto* Controller = Self ? Self->GetOwningPlayer() : nullptr;
+				const auto* HUD = Controller ? Cast<ARPGHUD>(Controller->GetHUD()) : nullptr;
+				if (auto* Bar = HUD ? HUD->GetItemQuickSlotBar() : nullptr) Bar->OpenMountCollection();
+			})));
+	if (bMountAssigned)
+		Menu.AddMenuEntry(NSLOCTEXT("ItemQuickSlots", "ClearMount", "탈것 슬롯 해제"), FText::GetEmpty(), FSlateIcon(),
+			FUIAction(FExecuteAction::CreateLambda([Weak, ExpectedIndex]
+			{
+				if (const auto* Self = Weak.Get()) RPGMountQuickSlots::Assign(Self->GetOwningPlayer(), ExpectedIndex, {});
+			})));
+	else if (SlotItemId.IsValid())
 		Menu.AddMenuEntry(NSLOCTEXT("ItemQuickSlots", "Clear", "슬롯 해제"), FText::GetEmpty(), FSlateIcon(),
 			FUIAction(FExecuteAction::CreateLambda([Assign] { Assign(FGuid()); })));
 	int32 Eligible = 0;
