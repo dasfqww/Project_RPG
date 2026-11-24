@@ -417,34 +417,34 @@ struct FExperienceFailureUIProof : TSharedFromThis<FExperienceFailureUIProof>
     FClientUIInputSnapshot Baseline;
     TArray<FString> Screenshots;
 
-    static void ReadSlate(const TSharedRef<SWidget>& Widget, TArray<FString>& Texts, int32& VisibleSpinners, int32 Depth = 0)
+    static void ReadSlate(const TSharedRef<SWidget>& Widget, TArray<FString>& Texts, int32& VisibleIndicators, int32 Depth = 0)
     {
-        if (Depth > 32) { return; }
+        if (Depth > 32 || !Widget->GetVisibility().IsVisible()) { return; }
         if (Widget->GetType() == FName(TEXT("STextBlock")))
         {
             Texts.Add(StaticCastSharedRef<STextBlock>(Widget)->GetText().ToString());
         }
-        if (Widget->GetType() == FName(TEXT("SThrobber")) && Widget->GetVisibility().IsVisible())
+        if (Widget->GetType() == FName(TEXT("SProgressBar")))
         {
-            ++VisibleSpinners;
+            ++VisibleIndicators;
         }
         FChildren* Children = Widget->GetChildren();
         for (int32 Index = 0; Children && Index < Children->Num(); ++Index)
         {
-            ReadSlate(Children->GetChildAt(Index), Texts, VisibleSpinners, Depth + 1);
+            ReadSlate(Children->GetChildAt(Index), Texts, VisibleIndicators, Depth + 1);
         }
     }
 
-    bool HasSafeFailureText(UUserWidget& Widget, bool CheckSpinner) const
+    bool HasSafeFailureText(UUserWidget& Widget, bool CheckIndicator) const
     {
         const TSharedPtr<SWidget> Root = Widget.GetCachedWidget();
         if (!Root) { return false; }
         TArray<FString> Texts;
-        int32 Spinners = 0;
-        ReadSlate(Root.ToSharedRef(), Texts, Spinners);
+        int32 Indicators = 0;
+        ReadSlate(Root.ToSharedRef(), Texts, Indicators);
         const FString Title = TEXT("\uAC8C\uC784\uC744 \uC2DC\uC791\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4");
         const FString Message = GetDefault<URPGExperienceSettings>()->LoadingFailureMessage.ToString();
-        if (!Texts.Contains(Title) || !Texts.Contains(Message) || (CheckSpinner && Spinners != 0)) { return false; }
+        if (!Texts.Contains(Title) || !Texts.Contains(Message) || (CheckIndicator && Indicators != 0)) { return false; }
         for (const FString& Text : Texts)
         {
             if (Text.Contains(TEXT("/Game/")) || Text.Contains(TEXT("DA_FailureUIAbsent"))
@@ -597,7 +597,7 @@ struct FExperienceFailureUIProof : TSharedFromThis<FExperienceFailureUIProof>
             }
             if (!Screen || !HasSafeFailureText(*Screen, true))
             {
-                return Finish(TEXT("Failed loading screen has incorrect text, spinner or raw diagnostics"));
+                return Finish(TEXT("Failed loading screen has incorrect text, a visible loading indicator or raw diagnostics"));
             }
             if (CountNotices(true) != 0) { return Finish(TEXT("Passive notice overlaps the global loading screen")); }
             Baseline.Read(*PC, *Viewport, *User);

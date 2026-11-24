@@ -1,16 +1,89 @@
 #include "UI/Loading/RPGExperienceLoadingScreen.h"
 
+#include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "GameFramework/GameStateBase.h"
 #include "Manager/Component/RPGExperienceManagerComponent.h"
 #include "Settings/RPGExperienceSettings.h"
+#include "Brushes/SlateColorBrush.h"
+#include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h"
-#include "Widgets/Images/SThrobber.h"
+#include "UObject/StrongObjectPtr.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SLeafWidget.h"
+#include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "RPGExperienceUI"
+
+namespace
+{
+    const FLinearColor Accent(0.76f, 0.49f, 0.23f);
+    const FSlateColorBrush Backdrop(FLinearColor(0.018f, 0.024f, 0.035f));
+    const FSlateColorBrush Footer(FLinearColor(0.005f, 0.008f, 0.013f, 0.72f));
+    const FSlateColorBrush Track(FLinearColor(0.32f, 0.25f, 0.17f, 0.44f));
+
+    class SLoadingArt final : public SLeafWidget
+    {
+    public:
+        SLATE_BEGIN_ARGS(SLoadingArt) {}
+        SLATE_END_ARGS()
+
+        void Construct(const FArguments&)
+        {
+            Texture.Reset(LoadObject<UTexture2D>(nullptr, TEXT("/Game/UI/Loading/T_LoadingCitadel.T_LoadingCitadel")));
+            if (Texture)
+            {
+                Brush.SetResourceObject(Texture.Get());
+            }
+        }
+
+        virtual FVector2D ComputeDesiredSize(float) const override
+        {
+            return FVector2D::ZeroVector;
+        }
+
+        virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&,
+            FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle& Style, bool) const override
+        {
+            const FVector2D ViewSize = Geometry.GetLocalSize();
+            if (!Texture || Texture->GetSizeX() <= 0 || Texture->GetSizeY() <= 0)
+            {
+                FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(),
+                    &Backdrop, ESlateDrawEffect::None, Backdrop.GetTint(Style));
+                return Layer;
+            }
+
+            const FVector2D ArtSize(Texture->GetSizeX(), Texture->GetSizeY());
+            const double Scale = FMath::Max(ViewSize.X / ArtSize.X, ViewSize.Y / ArtSize.Y);
+            const FVector2D DrawSize = ArtSize * Scale;
+            const FVector2D Offset = (ViewSize - DrawSize) * 0.5;
+            FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(DrawSize, FSlateLayoutTransform(Offset)),
+                &Brush, ESlateDrawEffect::None, Style.GetColorAndOpacityTint());
+            return Layer;
+        }
+
+    private:
+        TStrongObjectPtr<UTexture2D> Texture;
+        FSlateBrush Brush;
+    };
+
+    const FProgressBarStyle& GetLoadingBarStyle()
+    {
+        static const FProgressBarStyle Style = []
+        {
+            FProgressBarStyle LoadingBarStyle =
+                FCoreStyle::Get().GetWidgetStyle<FProgressBarStyle>("ProgressBar");
+            LoadingBarStyle.SetBackgroundImage(Track);
+            LoadingBarStyle.MarqueeImage.TintColor = FSlateColor(Accent);
+            return LoadingBarStyle;
+        }();
+        return Style;
+    }
+}
 
 URPGExperienceLoadingScreen::URPGExperienceLoadingScreen(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -43,49 +116,59 @@ FText URPGExperienceLoadingScreen::GetMessageText() const
 TSharedRef<SWidget> URPGExperienceLoadingScreen::RebuildWidget()
 {
     const TWeakObjectPtr<URPGExperienceLoadingScreen> WeakThis(this);
-    return SNew(SBorder)
-        .BorderImage(FCoreStyle::Get().GetBrush("GenericWhiteBox"))
-        .BorderBackgroundColor(FLinearColor(0.018f, 0.024f, 0.035f, 1.f))
-        .HAlign(HAlign_Center)
-        .VAlign(VAlign_Center)
-        .Padding(FMargin(48.f))
+    return SNew(SOverlay)
+        .Clipping(EWidgetClipping::ClipToBounds)
+        + SOverlay::Slot()
         [
-            SNew(SVerticalBox)
-            + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 0.f, 0.f, 22.f)
+            SNew(SLoadingArt)
+        ]
+        + SOverlay::Slot().VAlign(VAlign_Bottom)
+        [
+            SNew(SBorder)
+            .BorderImage(&Footer)
+            .Padding(FMargin(44.f, 24.f, 44.f, 27.f))
             [
-                SNew(SThrobber)
-                .NumPieces(3)
-                .Visibility_Lambda([WeakThis]()
-                {
-                    const URPGExperienceLoadingScreen* Screen = WeakThis.Get();
-                    return Screen && !Screen->IsExperienceFailed()
-                        ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-                })
-            ]
-            + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
-            [
-                SNew(STextBlock)
-                .Text_Lambda([WeakThis]()
-                {
-                    const URPGExperienceLoadingScreen* Screen = WeakThis.Get();
-                    return Screen ? Screen->GetTitleText() : FText::GetEmpty();
-                })
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 26))
-                .ColorAndOpacity(FLinearColor(0.94f, 0.96f, 1.f))
-                .Justification(ETextJustify::Center)
-            ]
-            + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 12.f, 0.f, 0.f)
-            [
-                SNew(STextBlock)
-                .Text_Lambda([WeakThis]()
-                {
-                    const URPGExperienceLoadingScreen* Screen = WeakThis.Get();
-                    return Screen ? Screen->GetMessageText() : FText::GetEmpty();
-                })
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 16))
-                .ColorAndOpacity(FLinearColor(0.72f, 0.78f, 0.86f))
-                .Justification(ETextJustify::Center)
-                .WrapTextAt(640.f)
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([WeakThis]()
+                    {
+                        const URPGExperienceLoadingScreen* Screen = WeakThis.Get();
+                        return Screen ? Screen->GetTitleText() : FText::GetEmpty();
+                    })
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 30))
+                    .ColorAndOpacity(FLinearColor(0.94f, 0.89f, 0.79f))
+                    .AutoWrapText(true)
+                ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0.f, 7.f, 0.f, 0.f)
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([WeakThis]()
+                    {
+                        const URPGExperienceLoadingScreen* Screen = WeakThis.Get();
+                        return Screen ? Screen->GetMessageText() : FText::GetEmpty();
+                    })
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 15))
+                    .ColorAndOpacity(FLinearColor(0.77f, 0.78f, 0.78f))
+                    .AutoWrapText(true)
+                ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0.f, 20.f, 0.f, 0.f)
+                [
+                    SNew(SBox)
+                    .HeightOverride(4.f)
+                    .Visibility_Lambda([WeakThis]()
+                    {
+                        const URPGExperienceLoadingScreen* Screen = WeakThis.Get();
+                        return Screen && !Screen->IsExperienceFailed()
+                            ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+                    })
+                    [
+                        SNew(SProgressBar)
+                        .Style(&GetLoadingBarStyle())
+                        .Percent(TOptional<float>())
+                    ]
+                ]
             ]
         ];
 }
