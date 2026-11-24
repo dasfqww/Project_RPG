@@ -11,7 +11,7 @@ class PROJECT_RPG_API URPGExperienceLoadingScreen : public UUserWidget
     GENERATED_BODY()
 public:
     URPGExperienceLoadingScreen(const FObjectInitializer& ObjectInitializer);
-    static TSharedRef<SWidget> MakeMapTravelScreen();
+    static TSharedRef<SWidget> MakeMapTravelScreen(double ShownTime);
 
 protected:
     virtual TSharedRef<SWidget> RebuildWidget() override;

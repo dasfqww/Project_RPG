@@ -2,9 +2,11 @@
 
 
 #include "GameInstance/RPGGameInstance.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
 #include "UI/Option/RPGGraphicsOptionsRuntime.h"
 #include "UI/Option/RPGSoundOptionsRuntime.h"
 #include "MoviePlayer.h"
+#include "LoadingScreenManager.h"
 #include "UI/Loading/RPGExperienceLoadingScreen.h"
 #include "Manager/DataManager.h"
 #include "Manager/SoundManager.h"
@@ -73,10 +75,17 @@ void URPGGameInstance::OnPreLoadMap(const FString& MapName)
     }
     FLoadingScreenAttributes LoadingScreenAttributes;
     LoadingScreenAttributes.bAutoCompleteWhenLoadingCompletes = true;
-    LoadingScreenAttributes.MinimumLoadingScreenDisplayTime = 2.f;
-    LoadingScreenAttributes.WidgetLoadingScreen = URPGExperienceLoadingScreen::MakeMapTravelScreen();
+    const ULoadingScreenManager* LoadingManager = GetSubsystem<ULoadingScreenManager>();
+    const double ShownTime = LoadingManager && LoadingManager->GetLoadingScreenDisplayStatus()
+        ? LoadingManager->GetLoadingScreenShownTime() : FPlatformTime::Seconds();
+    LoadingScreenAttributes.WidgetLoadingScreen = URPGExperienceLoadingScreen::MakeMapTravelScreen(ShownTime);
 
-    GetMoviePlayer()->SetupLoadingScreen(LoadingScreenAttributes);
+    IGameMoviePlayer* MoviePlayer = GetMoviePlayer();
+    if (const UGameViewportClient* Viewport = GetGameViewportClient())
+    {
+        MoviePlayer->SetViewportDPIScale(UWidgetLayoutLibrary::GetViewportScale(Viewport));
+    }
+    MoviePlayer->SetupLoadingScreen(LoadingScreenAttributes);
 
     
 }

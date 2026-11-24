@@ -54,6 +54,10 @@ public:
 		return bCurrentlyShowingLoadingScreen;
 	}
 
+	FORCEINLINE double GetLoadingScreenShownTime() const { return TimeLoadingScreenShown; }
+	/** Negative until the world and loading processors are ready. */
+	FORCEINLINE double GetLoadingScreenReadyTime() const { return TimeLoadingScreenLastDismissed; }
+
 	/** Called when the loading screen visibility changes  */
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnLoadingScreenVisibilityChangedDelegate, bool);
 	FORCEINLINE FOnLoadingScreenVisibilityChangedDelegate& OnLoadingScreenVisibilityChangedDelegate() { return LoadingScreenVisibilityChanged; }

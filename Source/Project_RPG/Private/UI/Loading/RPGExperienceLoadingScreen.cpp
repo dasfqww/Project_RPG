@@ -3,6 +3,8 @@
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "GameFramework/GameStateBase.h"
+#include "HAL/IConsoleManager.h"
+#include "LoadingScreenManager.h"
 #include "Manager/Component/RPGExperienceManagerComponent.h"
 #include "Settings/RPGExperienceSettings.h"
 #include "Brushes/SlateColorBrush.h"
@@ -79,10 +81,19 @@ namespace
             FProgressBarStyle LoadingBarStyle =
                 FCoreStyle::Get().GetWidgetStyle<FProgressBarStyle>("ProgressBar");
             LoadingBarStyle.SetBackgroundImage(Track);
-            LoadingBarStyle.MarqueeImage.TintColor = FSlateColor(Accent);
+            LoadingBarStyle.SetFillImage(FSlateColorBrush(Accent));
             return LoadingBarStyle;
         }();
         return Style;
+    }
+
+    float EstimateLoadingProgress(double ElapsedSeconds)
+    {
+        constexpr double TimeAtZero = 0.10;
+        constexpr double PendingProgressSeconds = 1.5;
+        constexpr float PendingProgressLimit = 0.85f;
+        const float Alpha = FMath::Clamp((ElapsedSeconds - TimeAtZero) / PendingProgressSeconds, 0.0, 1.0);
+        return FMath::InterpEaseOut(0.0f, PendingProgressLimit, Alpha, 2.0f);
     }
 }
 
@@ -115,7 +126,7 @@ FText URPGExperienceLoadingScreen::GetMessageText() const
 }
 
 static TSharedRef<SWidget> MakeLoadingLayout(TAttribute<FText> Title, TAttribute<FText> Message,
-    TAttribute<EVisibility> IndicatorVisibility)
+    TAttribute<EVisibility> IndicatorVisibility, TAttribute<TOptional<float>> Progress)
 {
     return SNew(SOverlay)
         .Clipping(EWidgetClipping::ClipToBounds)
@@ -148,35 +159,87 @@ static TSharedRef<SWidget> MakeLoadingLayout(TAttribute<FText> Title, TAttribute
                 ]
                 + SVerticalBox::Slot().AutoHeight().Padding(0.f, 20.f, 0.f, 0.f)
                 [
-                    SNew(SBox)
-                    .HeightOverride(4.f)
+                    SNew(SHorizontalBox)
                     .Visibility(IndicatorVisibility)
+                    + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
                     [
-                        SNew(SProgressBar)
-                        .Style(&GetLoadingBarStyle())
-                        .Percent(TOptional<float>())
+                        SNew(SBox).HeightOverride(5.f)
+                        [
+                            SNew(SProgressBar)
+                            .Style(&GetLoadingBarStyle())
+                            .FillColorAndOpacity(FLinearColor::White)
+                            .Percent(Progress)
+                        ]
+                    ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(14.f, 0.f, 0.f, 0.f)
+                    [
+                        SNew(SBox).WidthOverride(54.f).HAlign(HAlign_Right)
+                        [
+                            SNew(STextBlock)
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 15))
+                            .ColorAndOpacity(FLinearColor(0.94f, 0.89f, 0.79f))
+                            .Text_Lambda([Progress]()
+                            {
+                                const float Value = Progress.Get().Get(0.0f);
+                                return FText::AsPercent(FMath::FloorToInt(Value * 100.0f) / 100.0);
+                            })
+                        ]
                     ]
                 ]
             ]
         ];
 }
 
-TSharedRef<SWidget> URPGExperienceLoadingScreen::MakeMapTravelScreen()
+TSharedRef<SWidget> URPGExperienceLoadingScreen::MakeMapTravelScreen(double ShownTime)
 {
     // MoviePlayer paints while the game thread tears down the departing world.
     return MakeLoadingLayout(LOCTEXT("TravelTitle", "지역을 불러오고 있습니다"),
-        LOCTEXT("PreparingMessage", "잠시만 기다려 주세요."), EVisibility::HitTestInvisible);
+        LOCTEXT("PreparingMessage", "잠시만 기다려 주세요."), EVisibility::HitTestInvisible,
+        TAttribute<TOptional<float>>::CreateLambda([ShownTime]() -> TOptional<float>
+        {
+            return EstimateLoadingProgress(FPlatformTime::Seconds() - ShownTime);
+        }));
 }
 
 TSharedRef<SWidget> URPGExperienceLoadingScreen::RebuildWidget()
 {
     using FTextGetter = TAttribute<FText>::FGetter;
+    const UGameInstance* GameInstance = GetGameInstance();
+    const TWeakObjectPtr<const ULoadingScreenManager> LoadingManager =
+        GameInstance ? GameInstance->GetSubsystem<ULoadingScreenManager>() : nullptr;
     return MakeLoadingLayout(TAttribute<FText>::Create(FTextGetter::CreateUObject(this, &ThisClass::GetTitleText)),
         TAttribute<FText>::Create(FTextGetter::CreateUObject(this, &ThisClass::GetMessageText)),
         TAttribute<EVisibility>::CreateLambda([WeakThis = TWeakObjectPtr<ThisClass>(this)]()
         {
             return WeakThis.IsValid() && !WeakThis->IsExperienceFailed()
                 ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+        }),
+        TAttribute<TOptional<float>>::CreateLambda([LoadingManager]() -> TOptional<float>
+        {
+            const ULoadingScreenManager* Manager = LoadingManager.Get();
+            if (!Manager)
+            {
+                return 0.0f;
+            }
+            const double Now = FPlatformTime::Seconds();
+            const double ShownTime = Manager->GetLoadingScreenShownTime();
+            const double ReadyTime = Manager->GetLoadingScreenReadyTime();
+            if (ReadyTime < 0.0)
+            {
+                return EstimateLoadingProgress(Now - ShownTime);
+            }
+
+            // Finish within the existing texture-streaming hold, leaving time to see 100%.
+            constexpr double FullGaugeSeconds = 0.20;
+            const IConsoleVariable* Hold = IConsoleManager::Get().FindConsoleVariable(
+                TEXT("CommonLoadingScreen.HoldLoadingScreenAdditionalSecs"));
+            const double FillSeconds = Hold ? Hold->GetFloat() - FullGaugeSeconds : 0.0;
+            if (FillSeconds <= 0.0 || Now - ReadyTime >= FillSeconds)
+            {
+                return 1.0f;
+            }
+            const float Alpha = FMath::Max((Now - ReadyTime) / FillSeconds, 0.0);
+            return FMath::Lerp(EstimateLoadingProgress(ReadyTime - ShownTime), 1.0f, Alpha);
         }));
 }
 
