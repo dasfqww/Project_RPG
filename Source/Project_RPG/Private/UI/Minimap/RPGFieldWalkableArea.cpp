@@ -108,6 +108,7 @@ void FRPGFieldWalkableArea::Begin(const ACharacter& Character, ULevel& Level, co
 			Visit(Cell, StandingPosition.Z);
 		}
 	}
+	EntranceCount = Pending.Num();
 }
 
 bool FRPGFieldWalkableArea::Advance(const ACharacter& Character)
@@ -178,6 +179,36 @@ UTexture2D* FRPGFieldWalkableArea::CreateTexture() const
 {
 	if (Pending.IsEmpty()) return nullptr;
 
+	// Trim up to two cells from one-cell-wide dead ends without cutting through a narrow passage.
+	TBitArray<> VisibleCells = WalkableCells;
+	const auto IsVisible = [this, &VisibleCells](FIntPoint Cell)
+	{
+		return Cell.X >= 0 && Cell.X < GridSize.X && Cell.Y >= 0 && Cell.Y < GridSize.Y
+			&& VisibleCells[CellIndex(Cell)];
+	};
+	constexpr int32 TrimPasses = 2;
+	TArray<int32> Tips;
+	for (int32 Pass = 0; Pass < TrimPasses; ++Pass)
+	{
+		Tips.Reset();
+		for (int32 VisitIndex = EntranceCount; VisitIndex < Pending.Num(); ++VisitIndex)
+		{
+			const FIntPoint Cell = Pending[VisitIndex];
+			if (!IsVisible(Cell)) continue;
+			int32 NeighborCount = 0;
+			for (const FIntPoint Direction : Neighbors)
+			{
+				NeighborCount += IsVisible(Cell + Direction);
+			}
+			if (NeighborCount == 1) Tips.Add(CellIndex(Cell));
+		}
+		if (Tips.IsEmpty()) break;
+		for (const int32 Tip : Tips)
+		{
+			VisibleCells[Tip] = false;
+		}
+	}
+
 	// Outline the boundary inside each cell, preserving transparent pixels outside the reachable area.
 	constexpr int32 PixelsPerCell = 4;
 	const FIntPoint Size = GridSize * PixelsPerCell;
@@ -185,11 +216,11 @@ UTexture2D* FRPGFieldWalkableArea::CreateTexture() const
 	Pixels.Init(FColor::Transparent, Size.X * Size.Y);
 	for (const FIntPoint Cell : Pending)
 	{
-		const int32 Index = CellIndex(Cell);
-		const bool bLeft = Cell.X == 0 || !WalkableCells[Index - 1];
-		const bool bRight = Cell.X == GridSize.X - 1 || !WalkableCells[Index + 1];
-		const bool bTop = Cell.Y == 0 || !WalkableCells[Index - GridSize.X];
-		const bool bBottom = Cell.Y == GridSize.Y - 1 || !WalkableCells[Index + GridSize.X];
+		if (!IsVisible(Cell)) continue;
+		const bool bLeft = !IsVisible(Cell + FIntPoint(-1, 0));
+		const bool bRight = !IsVisible(Cell + FIntPoint(1, 0));
+		const bool bTop = !IsVisible(Cell + FIntPoint(0, -1));
+		const bool bBottom = !IsVisible(Cell + FIntPoint(0, 1));
 		for (int32 Y = 0; Y < PixelsPerCell; ++Y)
 		{
 			for (int32 X = 0; X < PixelsPerCell; ++X)

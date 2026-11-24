@@ -30,5 +30,6 @@ private:
 	TBitArray<> WalkableCells;
 	TArray<double> StandingHeights;
 	TArray<FIntPoint> Pending;
+	int32 EntranceCount = 0;
 	int32 NextCell = 0;
 };
