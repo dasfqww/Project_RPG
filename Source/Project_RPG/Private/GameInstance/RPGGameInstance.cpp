@@ -5,6 +5,7 @@
 #include "UI/Option/RPGGraphicsOptionsRuntime.h"
 #include "UI/Option/RPGSoundOptionsRuntime.h"
 #include "MoviePlayer.h"
+#include "UI/Loading/RPGExperienceLoadingScreen.h"
 #include "Manager/DataManager.h"
 #include "Manager/SoundManager.h"
 #include "FunctionLibrary/RPGCoreFunctionLibrary.h"
@@ -37,7 +38,14 @@ void URPGGameInstance::Init()
 {
 	Super::Init();
 
-    FCoreUObjectDelegates::PreLoadMap.AddUObject(this, &ThisClass::OnPreLoadMap);
+    FCoreUObjectDelegates::PreLoadMapWithContext.AddWeakLambda(this,
+        [this](const FWorldContext& Context, const FString& MapName)
+        {
+            if (&Context == GetWorldContext())
+            {
+                OnPreLoadMap(MapName);
+            }
+        });
     FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &ThisClass::OnDestinationWorldLoaded);
     FWorldDelegates::OnPostWorldInitialization.AddUObject(this, &ThisClass::OnPostWorldInitialization);
 
@@ -47,7 +55,7 @@ void URPGGameInstance::Init()
 
 void URPGGameInstance::Shutdown()
 {
-	FCoreUObjectDelegates::PreLoadMap.RemoveAll(this);
+	FCoreUObjectDelegates::PreLoadMapWithContext.RemoveAll(this);
 	FCoreUObjectDelegates::PostLoadMapWithWorld.RemoveAll(this);
 	FWorldDelegates::OnPostWorldInitialization.RemoveAll(this);
 	Super::Shutdown();
@@ -59,14 +67,14 @@ void URPGGameInstance::OnPreLoadMap(const FString& MapName)
 {
     // Dedicated servers have no Slate application. Keep loading-screen widgets
     // on presentation instances while retaining the authored gameplay data.
-    if (IsDedicatedServerInstance() || !FSlateApplication::IsInitialized())
+    if (IsDedicatedServerInstance() || !FSlateApplication::IsInitialized() || !IsMoviePlayerEnabled())
     {
         return;
     }
     FLoadingScreenAttributes LoadingScreenAttributes;
     LoadingScreenAttributes.bAutoCompleteWhenLoadingCompletes = true;
     LoadingScreenAttributes.MinimumLoadingScreenDisplayTime = 2.f;
-    LoadingScreenAttributes.WidgetLoadingScreen = FLoadingScreenAttributes::NewTestLoadingScreenWidget();
+    LoadingScreenAttributes.WidgetLoadingScreen = URPGExperienceLoadingScreen::MakeMapTravelScreen();
 
     GetMoviePlayer()->SetupLoadingScreen(LoadingScreenAttributes);
 

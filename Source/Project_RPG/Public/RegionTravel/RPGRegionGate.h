@@ -28,4 +28,8 @@ public:
 
 	UPROPERTY(EditInstanceOnly, Category="Region")
 	TObjectPtr<ARPGRegionGate> Destination;
+
+	/** In standalone play, enter this persistent world through its default PlayerStart. */
+	UPROPERTY(EditInstanceOnly, Category="Region")
+	TSoftObjectPtr<UWorld> StandaloneDestinationMap;
 };

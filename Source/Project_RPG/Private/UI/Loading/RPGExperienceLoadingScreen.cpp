@@ -38,6 +38,7 @@ namespace
             if (Texture)
             {
                 Brush.SetResourceObject(Texture.Get());
+                ArtSize = FVector2D(Texture->GetSizeX(), Texture->GetSizeY());
             }
         }
 
@@ -50,14 +51,13 @@ namespace
             FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle& Style, bool) const override
         {
             const FVector2D ViewSize = Geometry.GetLocalSize();
-            if (!Texture || Texture->GetSizeX() <= 0 || Texture->GetSizeY() <= 0)
+            if (ArtSize.X <= 0 || ArtSize.Y <= 0)
             {
                 FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(),
                     &Backdrop, ESlateDrawEffect::None, Backdrop.GetTint(Style));
                 return Layer;
             }
 
-            const FVector2D ArtSize(Texture->GetSizeX(), Texture->GetSizeY());
             const double Scale = FMath::Max(ViewSize.X / ArtSize.X, ViewSize.Y / ArtSize.Y);
             const FVector2D DrawSize = ArtSize * Scale;
             const FVector2D Offset = (ViewSize - DrawSize) * 0.5;
@@ -68,6 +68,7 @@ namespace
 
     private:
         TStrongObjectPtr<UTexture2D> Texture;
+        FVector2D ArtSize = FVector2D::ZeroVector;
         FSlateBrush Brush;
     };
 
@@ -113,9 +114,9 @@ FText URPGExperienceLoadingScreen::GetMessageText() const
         : LOCTEXT("PreparingMessage", "잠시만 기다려 주세요.");
 }
 
-TSharedRef<SWidget> URPGExperienceLoadingScreen::RebuildWidget()
+static TSharedRef<SWidget> MakeLoadingLayout(TAttribute<FText> Title, TAttribute<FText> Message,
+    TAttribute<EVisibility> IndicatorVisibility)
 {
-    const TWeakObjectPtr<URPGExperienceLoadingScreen> WeakThis(this);
     return SNew(SOverlay)
         .Clipping(EWidgetClipping::ClipToBounds)
         + SOverlay::Slot()
@@ -132,11 +133,7 @@ TSharedRef<SWidget> URPGExperienceLoadingScreen::RebuildWidget()
                 + SVerticalBox::Slot().AutoHeight()
                 [
                     SNew(STextBlock)
-                    .Text_Lambda([WeakThis]()
-                    {
-                        const URPGExperienceLoadingScreen* Screen = WeakThis.Get();
-                        return Screen ? Screen->GetTitleText() : FText::GetEmpty();
-                    })
+                    .Text(Title)
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 30))
                     .ColorAndOpacity(FLinearColor(0.94f, 0.89f, 0.79f))
                     .AutoWrapText(true)
@@ -144,11 +141,7 @@ TSharedRef<SWidget> URPGExperienceLoadingScreen::RebuildWidget()
                 + SVerticalBox::Slot().AutoHeight().Padding(0.f, 7.f, 0.f, 0.f)
                 [
                     SNew(STextBlock)
-                    .Text_Lambda([WeakThis]()
-                    {
-                        const URPGExperienceLoadingScreen* Screen = WeakThis.Get();
-                        return Screen ? Screen->GetMessageText() : FText::GetEmpty();
-                    })
+                    .Text(Message)
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 15))
                     .ColorAndOpacity(FLinearColor(0.77f, 0.78f, 0.78f))
                     .AutoWrapText(true)
@@ -157,12 +150,7 @@ TSharedRef<SWidget> URPGExperienceLoadingScreen::RebuildWidget()
                 [
                     SNew(SBox)
                     .HeightOverride(4.f)
-                    .Visibility_Lambda([WeakThis]()
-                    {
-                        const URPGExperienceLoadingScreen* Screen = WeakThis.Get();
-                        return Screen && !Screen->IsExperienceFailed()
-                            ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-                    })
+                    .Visibility(IndicatorVisibility)
                     [
                         SNew(SProgressBar)
                         .Style(&GetLoadingBarStyle())
@@ -171,6 +159,25 @@ TSharedRef<SWidget> URPGExperienceLoadingScreen::RebuildWidget()
                 ]
             ]
         ];
+}
+
+TSharedRef<SWidget> URPGExperienceLoadingScreen::MakeMapTravelScreen()
+{
+    // MoviePlayer paints while the game thread tears down the departing world.
+    return MakeLoadingLayout(LOCTEXT("TravelTitle", "지역을 불러오고 있습니다"),
+        LOCTEXT("PreparingMessage", "잠시만 기다려 주세요."), EVisibility::HitTestInvisible);
+}
+
+TSharedRef<SWidget> URPGExperienceLoadingScreen::RebuildWidget()
+{
+    using FTextGetter = TAttribute<FText>::FGetter;
+    return MakeLoadingLayout(TAttribute<FText>::Create(FTextGetter::CreateUObject(this, &ThisClass::GetTitleText)),
+        TAttribute<FText>::Create(FTextGetter::CreateUObject(this, &ThisClass::GetMessageText)),
+        TAttribute<EVisibility>::CreateLambda([WeakThis = TWeakObjectPtr<ThisClass>(this)]()
+        {
+            return WeakThis.IsValid() && !WeakThis->IsExperienceFailed()
+                ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+        }));
 }
 
 #undef LOCTEXT_NAMESPACE
