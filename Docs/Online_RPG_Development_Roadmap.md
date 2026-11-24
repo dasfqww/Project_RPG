@@ -1011,6 +1011,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| 검풍 서버 발사 / swordwave-flight-25 | 몽타주 인스턴스 검증·서버 단발 직선 투사체·승인 피해 및 시전별 폭주 배율 | RPGSwordWaveAbility.h/.cpp, RPGSwordWaveProjectile.h/.cpp, RPGProjectileBase.h/.cpp, 본인 행 | UE 5.8 격리 UHT·CPP 3개 성공, 임시 226358632 bytes 정리. Saved/BuildChecks/SwordWaveFlight25/VerifiedBuild.json | 네이티브 구현 완료. 스킬 에셋·직업 편성·실제 전투 검증 후속. 본인 7경로 main index/ref와 origin/main 게시 예약, 원격 일치 시 해제 |
 | field-walkable-overview-25 | Tab 필드 지도에 연결된 이동 가능 영역 표시 및 히든 루트 제외 | Private/UI/Minimap/{RPGPlayerMinimap.cpp,RPGFieldWalkableArea.h,RPGFieldWalkableArea.cpp}, Docs/PLAYER_MINIMAP.md, 본인 행 | UE 5.8 C++ 2개 및 격리 링크, D3D11 PIE Tab 토글·포털 왕복·숲 공터 표시·테스트 숨김 구역과 그 너머 제외 확인. 격리 빌드·실행 자원 해제 | 본인 5경로 main index/ref·origin/main 게시 예약. 원격 일치 시 예약 해제 |
 | mine-visibility-25 | M03 폐광 조사 동선의 캐릭터·주변 가시성 복구 | Content/Maps/Progression/L_ProgressionIntro1.umap, 본인 행 | 수레·버팀대·점검 통로·보급 상자 방향에 국소 보조광 4개. 맵 재로드·D3D11 PIE 동일 좌표/시선 4쌍 확인, 시연 결과 Saved/BuildChecks/MineVisibility25. Temp 삭제 정책 차단으로 1,103,507 bytes 잔류 | 구현·검증 완료. main index/ref 및 origin/main 본인 맵·본인 행만 게시, 원격 일치 시 해제 |
 | 대검 검풍 착수 / greatsword-swordwave-25 | 세 번째 분노기 검풍의 첫 모션, Combo04_1 복제·전진 고정·0.18초 발사 마커 | 신규 SwordWave/{A_SwordWave,AM_SwordWave}.uasset, 본인 행 | UE 5.8 후보 3종 포즈 대조, FullBodySlot·0.90초·새 프로세스 재로드 및 원본 2개 SHA 일치, 임시 1,305,945 bytes 정리. Saved/BuildChecks/SwordWave25/Completion.json | 모션 제작 완료. 발사·피해·편성 연결 후속. 본인 3경로 main index/ref와 origin/main 게시 예약, 원격 일치 시 해제 |

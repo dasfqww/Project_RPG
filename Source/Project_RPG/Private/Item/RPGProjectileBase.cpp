@@ -387,20 +387,14 @@ void ARPGProjectileBase::HandleApplyProjectileDamage(
 	const FHitResult& ServerHit,
 	const FGameplayEventData& InPayload)
 {
-	if (!HasAuthority() || !IsValid(InHitPawn) ||
-		!ProjectileDamageEffectSpecHandle.IsValid())
+	if (!HasAuthority() || !IsValid(InHitPawn))
 	{
 		return;
 	}
 
-	const bool bWasApplied =
-		URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
-			GetInstigator(),
-			ServerHit,
-			ProjectileDamageEffectSpecHandle,
-			SecurityProfile);
+	const bool bWasApplied = ApplyDamageFromImpact(InHitPawn, ServerHit);
 
-	if (bWasApplied && !RPGCombatImmunity::IsImmune(InHitPawn, ERPGCombatEffectKind::HitReaction))
+	if (bWasApplied && IsValid(InHitPawn) && !RPGCombatImmunity::IsImmune(InHitPawn, ERPGCombatEffectKind::HitReaction))
 	{
 		UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(
 			InHitPawn,
@@ -408,4 +402,11 @@ void ARPGProjectileBase::HandleApplyProjectileDamage(
 			InPayload
 		);
 	}
+}
+
+bool ARPGProjectileBase::ApplyDamageFromImpact(APawn* Target, const FHitResult& ServerHit)
+{
+	return ProjectileDamageEffectSpecHandle.IsValid()
+		&& URPGAbilityFunctionLibrary::ApplyGameplayEffectSpecHandleToServerHit(
+			GetInstigator(), ServerHit, ProjectileDamageEffectSpecHandle, SecurityProfile);
 }

@@ -95,6 +95,9 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, meta = (DisplayName = "On Spawn Projectile Hit FX"))
 		void BP_OnSpawnProjectileHitFX(const FVector& HitLocation);
 
+	/** Called once for an authoritative, hostile, unblocked impact. */
+	virtual bool ApplyDamageFromImpact(APawn* Target, const FHitResult& ServerHit);
+
 private:
 	void Relaunch(const FVector& Location, const FRotator& Rotation, APawn* ShootingPawn,
 		const FGameplayEffectSpecHandle& DamageEffectSpec);
