@@ -9,8 +9,10 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
+#include "Layout/Clipping.h"
 #include "RegionTravel/RPGRegionGate.h"
 #include "Rendering/DrawElements.h"
+#include "Textures/SlateShaderResource.h"
 #include "UI/HUD/RPGHUDLayout.h"
 #include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
@@ -19,6 +21,29 @@
 namespace
 {
 	constexpr float MapInset = 14.f;
+	constexpr double ViewRadiusCm = 1200.0;
+
+	struct FMinimapDisc
+	{
+		TArray<FVector2D> Points;
+		TArray<SlateIndex> Indices;
+
+		FMinimapDisc()
+		{
+			constexpr int32 Sides = 64;
+			Points.Reserve(Sides + 1);
+			Indices.Reserve(Sides * 3);
+			Points.Add(FVector2D::ZeroVector);
+			for (int32 Side = 0; Side < Sides; ++Side)
+			{
+				const double Angle = Side * UE_TWO_PI / Sides;
+				Points.Emplace(FMath::Cos(Angle), FMath::Sin(Angle));
+				Indices.Add(0);
+				Indices.Add(Side + 1);
+				Indices.Add((Side + 1) % Sides + 1);
+			}
+		}
+	};
 
 	FVector2D ProjectToMap(const FVector& Location, const FBox2D& Bounds)
 	{
@@ -57,6 +82,37 @@ namespace
 		FMinimapImage Image;
 		TArray<TWeakObjectPtr<ARPGRegionGate>> Gates;
 	};
+
+	void DrawLocalTerrain(FSlateWindowElementList& Elements, int32 Layer, const FGeometry& Geometry,
+		const FMinimapRegion& Region, FVector2D PlayerUV, FVector2D Center, double PixelRadius, FLinearColor Tint)
+	{
+		const FSlateResourceHandle& Handle = Region.Image.Brush.GetRenderingResource();
+		const FSlateShaderResourceProxy* Resource = Handle.GetResourceProxy();
+		if (!Resource) return;
+
+		const FVector2D Span = Region.Bounds.GetSize();
+		const FVector2D TextureSize = FVector2D(Span.Y, Span.X) * (PixelRadius / ViewRadiusCm);
+		const FVector2D TextureTopLeft = Center - PlayerUV * TextureSize;
+		const FVector2D DiscExtent(PixelRadius, PixelRadius);
+		const FVector2D ClipMin = FVector2D::Max(TextureTopLeft, Center - DiscExtent);
+		const FVector2D ClipMax = FVector2D::Min(TextureTopLeft + TextureSize, Center + DiscExtent);
+
+		// Clip to the authored texture extent so its edge pixels do not stretch into unexplored space.
+		Elements.PushClip(FSlateClippingZone(Geometry.ToPaintGeometry(ClipMax - ClipMin, FSlateLayoutTransform(ClipMin))));
+		static const FMinimapDisc Disc;
+		TArray<FSlateVertex> Vertices;
+		Vertices.Reserve(Disc.Points.Num());
+		const FColor VertexTint = Tint.ToFColor(false);
+		for (const FVector2D& Point : Disc.Points)
+		{
+			const FVector2D Position = Center + Point * PixelRadius;
+			const FVector2f UV((Position - TextureTopLeft) / TextureSize);
+			Vertices.Add(FSlateVertex::Make(Geometry.GetAccumulatedRenderTransform(), FVector2f(Position),
+				Resource->StartUV + UV * Resource->SizeUV, VertexTint));
+		}
+		FSlateDrawElement::MakeCustomVerts(Elements, Layer, Handle, Vertices, Disc.Indices, nullptr, 0, 0);
+		Elements.PopClip();
+	}
 
 	class SRPGRegionMinimap final : public SLeafWidget
 	{
@@ -116,25 +172,22 @@ namespace
 			const FVector2D PlayerUV = ProjectToMap(PlayerLocation, Region->Bounds);
 
 			const FVector2D Size = Geometry.GetLocalSize();
-			const FVector2D Inset(MapInset, MapInset);
-			const FVector2D InnerSize = Size - 2 * Inset;
+			const FVector2D Center = Size * .5;
+			const double PixelRadius = FMath::Min(Center.X, Center.Y) - MapInset;
+			if (PixelRadius <= 0.0) return Layer;
 			const FLinearColor Tint = Style.GetColorAndOpacityTint();
 			if (Frame.Texture.IsValid())
 			{
 				FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(Size, FSlateLayoutTransform()),
 					&Frame.Brush, ESlateDrawEffect::None, Tint);
 			}
-			FSlateDrawElement::MakeBox(Elements, Layer + 1, Geometry.ToPaintGeometry(InnerSize, FSlateLayoutTransform(Inset)),
-				&Region->Image.Brush, ESlateDrawEffect::None, Tint);
+			DrawLocalTerrain(Elements, Layer + 1, Geometry, *Region, PlayerUV, Center, PixelRadius, Tint);
 
-			const auto MarkerGeometry = [&](const FVector2D& UV, float Diameter)
+			const auto MarkerGeometry = [&](const FVector2D& Pixel, float Diameter)
 			{
 				const float Radius = Diameter / 2.f;
-				const FVector2D Pixel = UV * InnerSize;
-				const FVector2D Center(FMath::Clamp(Pixel.X, Radius, InnerSize.X - Radius),
-					FMath::Clamp(Pixel.Y, Radius, InnerSize.Y - Radius));
 				return Geometry.ToPaintGeometry(FVector2D(Diameter, Diameter),
-					FSlateLayoutTransform(Inset + Center - FVector2D(Radius, Radius)));
+					FSlateLayoutTransform(Pixel - FVector2D(Radius, Radius)));
 			};
 
 			if (PortalIcon.Texture.IsValid())
@@ -143,9 +196,10 @@ namespace
 				{
 					const ARPGRegionGate* Gate = RegionGate.Get();
 					if (!Gate) continue;
-					const FVector2D PortalUV = ProjectToMap(Gate->GetActorLocation(), Region->Bounds);
-					if (!IsOnMap(PortalUV)) continue;
-					FSlateDrawElement::MakeBox(Elements, Layer + 2, MarkerGeometry(PortalUV, 23.f),
+					const FVector Delta = Gate->GetActorLocation() - PlayerLocation;
+					if (Delta.SizeSquared2D() > FMath::Square(ViewRadiusCm)) continue;
+					const FVector2D PortalPixel = Center + FVector2D(Delta.Y, -Delta.X) * (PixelRadius / ViewRadiusCm);
+					FSlateDrawElement::MakeBox(Elements, Layer + 2, MarkerGeometry(PortalPixel, 23.f),
 						&PortalIcon.Brush, ESlateDrawEffect::None, Tint);
 				}
 			}
@@ -154,7 +208,7 @@ namespace
 			{
 				// The Gladiator arrow points down in the texture. World yaw zero points up on this map.
 				const float Angle = FMath::DegreesToRadians(LocalPawn->GetActorRotation().Yaw + 180.f);
-				FSlateDrawElement::MakeRotatedBox(Elements, Layer + 3, MarkerGeometry(PlayerUV, 20.f),
+				FSlateDrawElement::MakeRotatedBox(Elements, Layer + 3, MarkerGeometry(Center, 20.f),
 					&PlayerIcon.Brush, ESlateDrawEffect::None, Angle, TOptional<FVector2D>(),
 					FSlateDrawElement::RelativeToElement, Tint);
 			}
