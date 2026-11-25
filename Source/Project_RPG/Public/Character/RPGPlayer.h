@@ -81,7 +81,7 @@ private:
 	float CameraZoomMin = 100.f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Camera")
-	float CameraZoomMax = 400.f;
+	float CameraZoomMax = 700.f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Camera")
 	float CameraZoomStep = 150.f;
