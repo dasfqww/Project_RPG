@@ -4,6 +4,7 @@
 #include "Components/BoxComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Character.h"
+#include "GameMode/RPGGameModeBase.h"
 #include "Kismet/GameplayStatics.h"
 
 ARPGRegionGate::ARPGRegionGate()
@@ -24,6 +25,11 @@ void ARPGRegionGate::NotifyActorBeginOverlap(AActor* OtherActor)
 	Super::NotifyActorBeginOverlap(OtherActor);
 	ACharacter* Character = Cast<ACharacter>(OtherActor);
 	APlayerController* PC = Character ? Cast<APlayerController>(Character->GetController()) : nullptr;
+	if (HasAuthority() && PC && PC->GetPawn() == Character)
+	{
+		const auto* Mode = GetWorld()->GetAuthGameMode<ARPGGameModeBase>();
+		if (Mode && Mode->TryManagedRegionTravel(*PC, *this)) return;
+	}
 	if (GetNetMode() == NM_Standalone && PC && PC->GetPawn() == Character && !StandaloneDestinationMap.IsNull())
 	{
 		UGameplayStatics::OpenLevelBySoftObjectPtr(this, StandaloneDestinationMap);

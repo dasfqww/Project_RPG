@@ -14,6 +14,7 @@
 class URPGItemBase;
 class UDataTable;
 class ARPGPlayer;
+class ARPGRegionGate;
 class URPGContentClearPanel;
 class URPGDungeonRewardDefinition;
 class URPGDungeonServerDefinition;
@@ -61,6 +62,7 @@ public:
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	virtual void Logout(AController* Exiting) override;
 	virtual void RestartPlayer(AController* NewPlayer) override;
+	bool TryManagedRegionTravel(APlayerController& Player, ARPGRegionGate& Gate) const;
 
 	/** Native owning-controller RPC target. Marks only the socket it closes now. */
 	bool RequestPlannedDungeonLobbyDisconnect(APlayerController* Controller);

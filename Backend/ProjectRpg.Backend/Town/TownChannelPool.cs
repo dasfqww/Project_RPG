@@ -21,18 +21,27 @@ internal sealed record TownAdmission(int Channel, string Address, Guid Ticket);
 // the same OS account. Renaming pending to active competes atomically with expiry.
 internal sealed class TownChannelPool : BackgroundService
 {
-    private sealed class Worker(int port, int number, string world, string directory, Process process)
+    private enum Region { Town, Field }
+
+    private sealed class Worker(int port, int number, string world, Region region, string directory, Process process)
     {
         public readonly int Port = port;
         public readonly int Number = number;
         public readonly string World = world;
+        public readonly Region Region = region;
         public readonly string Directory = directory;
         public readonly Process Process = process;
         public readonly Dictionary<Guid, Guid> Tickets = [];
+        public readonly Dictionary<Guid, Transfer> Transfers = [];
         public readonly DateTime Started = DateTime.UtcNow;
         public DateTime LastOccupied = DateTime.UtcNow;
         public bool Ready;
         public DateTime? Closing;
+    }
+
+    private sealed record Transfer(Guid Request, Guid Character, Worker Destination, Guid Ticket)
+    {
+        public bool Published { get; set; }
     }
 
     private readonly object gate = new();
@@ -63,40 +72,38 @@ internal sealed class TownChannelPool : BackgroundService
         lock (gate)
         {
             if (!Enabled || stopping) return Results.StatusCode(503);
-            var existing = workers.Find(w => w.Tickets.ContainsKey(character));
-            if (existing is { Ready: true })
+            Worker? existing = null;
+            foreach (var candidate in workers.Where(w => w.Tickets.ContainsKey(character)))
             {
-                ReapSeat(existing, character, existing.Tickets[character], DateTime.UtcNow);
-                if (!existing.Tickets.ContainsKey(character)) existing = null;
+                var current = candidate.Tickets[character];
+                if (candidate.Ready) ReapSeat(candidate, character, current, DateTime.UtcNow);
+                if (!candidate.Tickets.ContainsKey(character)) continue;
+                if (candidate.Region != Region.Town || File.Exists(Seat(candidate, current, "active")))
+                    return Results.Conflict();
+                existing = candidate;
             }
             if (existing != null)
             {
                 worker = existing;
                 ticket = worker.Tickets[character];
-                if (File.Exists(Seat(worker, ticket, "active"))) return Results.Conflict();
             }
             else
             {
-                var available = workers.Where(w => w.World == world && w.Closing == null && w.Tickets.Count < options.Capacity)
-                    .OrderBy(w => w.Number).FirstOrDefault();
-                if (available == null && workers.Count >= options.MaxProcesses)
+                var available = FindAvailable(world, Region.Town);
+                if (available == null && !CanLaunch())
                 {
-                    var idle = workers.FirstOrDefault(w => w.World != world && w.Ready && w.Closing == null && w.Tickets.Count == 0 &&
-                        (DateTime.UtcNow - w.LastOccupied).TotalSeconds >= options.IdleSeconds);
+                    var idle = workers.FirstOrDefault(w => w.World != world && w.Ready && w.Closing == null &&
+                        w.Tickets.Count == 0 && (DateTime.UtcNow - w.LastOccupied).TotalSeconds >= options.IdleSeconds);
                     if (idle != null) BeginClose(idle);
                     return Results.StatusCode(503);
                 }
-                worker = available ?? Launch(world);
-                ticket = Guid.NewGuid();
-                worker.Tickets.Add(character, ticket);
-                try { File.WriteAllText(Seat(worker, ticket, "pending"), $"{steamId}\n{name}"); }
-                catch { worker.Tickets.Remove(character); throw; }
-                worker.LastOccupied = DateTime.UtcNow;
-                if (worker.Tickets.Count == options.Capacity && workers.Count < options.MaxProcesses &&
-                    !workers.Any(w => w.World == world && w.Closing == null && w.Tickets.Count < options.Capacity))
+                worker = available ?? Launch(world, Region.Town);
+                ticket = Reserve(worker, character, $"{steamId}\n{name}");
+                if (worker.Tickets.Count == options.Capacity && CanLaunch() &&
+                    FindAvailable(world, Region.Town) == null)
                 {
                     // Keep the accepted seat even if starting the spare fails.
-                    try { Launch(world); }
+                    try { Launch(world, Region.Town); }
                     catch (Exception e) { log.LogWarning(e, "Could not start the next town channel"); }
                 }
             }
@@ -118,10 +125,27 @@ internal sealed class TownChannelPool : BackgroundService
     private static string Seat(Worker worker, Guid ticket, string state) =>
         Path.Combine(worker.Directory, $"{ticket:N}.{state}");
 
-    private Worker Launch(string world)
+    private Worker? FindAvailable(string world, Region region) =>
+        workers.Where(w => w.World == world && w.Region == region && w.Closing == null && !w.Process.HasExited &&
+            w.Tickets.Count < options.Capacity).OrderBy(w => w.Number).FirstOrDefault();
+
+    private bool CanLaunch() => workers.Count < options.MaxProcesses;
+
+    private static Guid Reserve(Worker worker, Guid character, string identity)
+    {
+        var ticket = Guid.NewGuid();
+        worker.Tickets.Add(character, ticket);
+        try { File.WriteAllText(Seat(worker, ticket, "pending"), identity); }
+        catch { worker.Tickets.Remove(character); throw; }
+        worker.LastOccupied = DateTime.UtcNow;
+        return ticket;
+    }
+
+    private Worker Launch(string world, Region region)
     {
         int port = Enumerable.Range(options.FirstPort, options.MaxProcesses).First(p => workers.All(w => w.Port != p));
-        int number = Enumerable.Range(1, options.MaxProcesses).First(n => workers.All(w => w.World != world || w.Number != n));
+        int number = Enumerable.Range(1, options.MaxProcesses)
+            .First(n => workers.All(w => w.World != world || w.Region != region || w.Number != n));
         string dir = Directory.CreateTempSubdirectory("ProjectRpg-Town-").FullName;
         try
         {
@@ -132,13 +156,14 @@ internal sealed class TownChannelPool : BackgroundService
             start.Environment.Remove("PROJECT_RPG_DUNGEON_SESSION_ID");
             start.Environment["PROJECT_RPG_TOWN_DIRECTORY"] = dir;
             if (options.Project.Length > 0) start.ArgumentList.Add(options.Project);
-            start.ArgumentList.Add($"/Game/Maps/RegionTravel/L_Town?MaxPlayers={options.Capacity}");
+            string map = region == Region.Town ? "L_Town" : "L_PortalField";
+            start.ArgumentList.Add($"/Game/Maps/RegionTravel/{map}?MaxPlayers={options.Capacity}");
             foreach (var argument in new[] { "-server", "-unattended", "-NoLiveCoding", "-nosound", $"-port={port}",
                 "-RPGManagedTown", $"-RPGRegionChannel={number}" })
                 start.ArgumentList.Add(argument);
             if (options.DevelopmentNoSteam) start.ArgumentList.Add("-nosteam");
             var process = Process.Start(start) ?? throw new InvalidOperationException("Town server failed to launch.");
-            var worker = new Worker(port, number, world, dir, process);
+            var worker = new Worker(port, number, world, region, dir, process);
             workers.Add(worker);
             return worker;
         }
@@ -152,9 +177,14 @@ internal sealed class TownChannelPool : BackgroundService
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))
                 lock (gate)
+                {
                     foreach (var worker in workers.ToArray())
                         try { Maintain(worker); }
                         catch (Exception e) { log.LogError(e, "Town channel maintenance failed on port {Port}", worker.Port); }
+                    foreach (var worker in workers.Where(w => w.Ready && w.Closing == null).ToArray())
+                        try { MaintainTransfers(worker); }
+                        catch (Exception e) { log.LogError(e, "Region handoff failed on port {Port}", worker.Port); }
+                }
         }
         finally
         {
@@ -197,8 +227,94 @@ internal sealed class TownChannelPool : BackgroundService
         foreach (var (character, ticket) in worker.Tickets.ToArray())
             ReapSeat(worker, character, ticket, now);
         if (worker.Tickets.Count > 0) worker.LastOccupied = now;
-        else if ((worker.Number != 1 || workers.Any(w => w.World != worker.World)) &&
+        else if ((worker.Region == Region.Field || worker.Number != 1 || workers.Any(w => w.World != worker.World)) &&
             now - worker.LastOccupied >= TimeSpan.FromSeconds(options.IdleSeconds)) BeginClose(worker);
+    }
+
+    private void MaintainTransfers(Worker source)
+    {
+        foreach (var (character, ticket) in source.Tickets)
+        {
+            string active = Seat(source, ticket, "active");
+            string requestPath = Seat(source, ticket, "travel");
+            if (!File.Exists(active) || !File.Exists(requestPath) ||
+                !Guid.TryParseExact(File.ReadAllText(requestPath), "N", out var request)) continue;
+
+            source.Transfers.TryGetValue(ticket, out var transfer);
+            if (transfer != null && transfer.Request != request)
+            {
+                CancelPending(transfer);
+                source.Transfers.Remove(ticket);
+                transfer = null;
+            }
+            string reply = Seat(source, request, "arrival");
+            if (transfer == null)
+            {
+                if (File.Exists(reply)) continue;
+                var region = source.Region == Region.Town ? Region.Field : Region.Town;
+                if (workers.Any(w => w != source && w.Tickets.ContainsKey(character)))
+                {
+                    WriteReply(reply, "unavailable");
+                    continue;
+                }
+                var destination = FindAvailable(source.World, region);
+                if (destination == null && CanLaunch()) destination = Launch(source.World, region);
+                if (destination == null)
+                {
+                    if (workers.Any(w => w.Closing != null)) continue;
+                    var idle = workers.FirstOrDefault(w => w != source && w.Ready &&
+                        w.Tickets.Count == 0 && (w.World != source.World || w.Region != region));
+                    if (idle != null)
+                    {
+                        BeginClose(idle);
+                        continue;
+                    }
+                    WriteReply(reply, "unavailable");
+                    continue;
+                }
+                string identity = File.ReadAllText(active);
+                if (!identity.EndsWith("\nregion", StringComparison.Ordinal)) identity += "\nregion";
+                var nextTicket = Reserve(destination, character, identity);
+                transfer = new Transfer(request, character, destination, nextTicket);
+                source.Transfers.Add(ticket, transfer);
+            }
+            if (transfer.Published) continue;
+            if (!workers.Contains(transfer.Destination) || transfer.Destination.Process.HasExited)
+            {
+                WriteReply(reply, "unavailable");
+                source.Transfers.Remove(ticket);
+            }
+            else if (transfer.Destination.Ready)
+            {
+                WriteReply(reply, $"{options.Address}:{transfer.Destination.Port}\n{transfer.Ticket:D}");
+                transfer.Published = true;
+            }
+        }
+
+        foreach (var (ticket, transfer) in source.Transfers.ToArray())
+        {
+            if (File.Exists(Seat(source, ticket, "active")) && File.Exists(Seat(source, ticket, "travel"))) continue;
+            if (!transfer.Published) CancelPending(transfer);
+            File.Delete(Seat(source, transfer.Request, "arrival"));
+            source.Transfers.Remove(ticket);
+        }
+    }
+
+    private void CancelPending(Transfer transfer)
+    {
+        var destination = transfer.Destination;
+        if (!workers.Contains(destination)) return;
+        File.Delete(Seat(destination, transfer.Ticket, "pending"));
+        if (!File.Exists(Seat(destination, transfer.Ticket, "active")) &&
+            destination.Tickets.TryGetValue(transfer.Character, out var current) && current == transfer.Ticket)
+            destination.Tickets.Remove(transfer.Character);
+    }
+
+    private static void WriteReply(string path, string content)
+    {
+        string pending = path + ".writing";
+        File.WriteAllText(pending, content);
+        File.Move(pending, path, overwrite: true);
     }
 
     private static void ReapSeat(Worker worker, Guid character, Guid ticket, DateTime now)
@@ -228,6 +344,8 @@ internal sealed class TownChannelPool : BackgroundService
         }
         if (Directory.Exists(worker.Directory)) Directory.Delete(worker.Directory, true);
         workers.Remove(worker);
+        foreach (var transfer in worker.Transfers.Values)
+            if (!transfer.Published) CancelPending(transfer);
         worker.Process.Dispose();
     }
 }

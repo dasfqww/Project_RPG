@@ -126,7 +126,11 @@ namespace
 void ARPGGameModeBase::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	if (TownChannel) TownChannel->CheckOwner();
+	if (TownChannel)
+	{
+		TownChannel->CheckOwner();
+		TownChannel->PollTransfers();
+	}
 	PollDungeonPreLoginConnections();
 }
 
@@ -861,7 +865,21 @@ void ARPGGameModeBase::RestartPlayer(AController* NewPlayer)
 			|| !GetDungeonAdmissionRevocationReason(State->GetBackendDungeonSessionId(),
 				State->GetBackendCharacterId(), State->GetAuthenticatedSteamId()).IsEmpty()) return;
 	}
+	FTransform Arrival;
+	if (TownChannel && IsValid(NewPlayer) && !NewPlayer->GetPawn() &&
+		TownChannel->TakeTownArrival(NewPlayer, Arrival))
+	{
+		RestartPlayerAtTransform(NewPlayer, Arrival);
+		if (NewPlayer->GetPawn()) return;
+	}
 	Super::RestartPlayer(NewPlayer);
+}
+
+bool ARPGGameModeBase::TryManagedRegionTravel(APlayerController& Player, ARPGRegionGate& Gate) const
+{
+	if (!TownChannel) return false;
+	TownChannel->BeginTransfer(Player, Gate);
+	return true;
 }
 
 void ARPGGameModeBase::CompleteDungeonAdmission(APlayerController* Controller,

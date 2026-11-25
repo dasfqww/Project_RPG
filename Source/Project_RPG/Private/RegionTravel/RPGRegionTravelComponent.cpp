@@ -51,6 +51,25 @@ URPGRegionTravelComponent::URPGRegionTravelComponent()
 	SetIsReplicatedByDefault(true);
 }
 
+void URPGRegionTravelComponent::ClientManagedRegionNotice_Implementation(const FText& Message)
+{
+	ShowFailure(Message);
+}
+
+bool URPGRegionTravelComponent::HoldForServerTravel(ACharacter& Character)
+{
+	const auto* Controller = Cast<APlayerController>(GetOwner());
+	if (!Controller || !Controller->HasAuthority() || bServerPending || Controller->GetPawn() != &Character)
+		return false;
+	LockServer(Character);
+	return true;
+}
+
+void URPGRegionTravelComponent::ReleaseServerTravel()
+{
+	ReleaseServer();
+}
+
 void URPGRegionTravelComponent::BeginTransfer(ARPGRegionGate* Source, ACharacter* Character)
 {
 	auto* PC = Cast<APlayerController>(GetOwner());
@@ -64,21 +83,26 @@ void URPGRegionTravelComponent::BeginTransfer(ARPGRegionGate* Source, ACharacter
 		|| !RequestLevel(GetWorld(), To, true)) return;
 
 	Serial = Serial == MAX_int32 ? 1 : Serial + 1;
-	bServerPending = true;
 	bReady = false;
 	SourceGate = Source;
 	TargetGate = Source->Destination;
-	LockedCharacter = Character;
-	auto* Movement = Character->GetCharacterMovement();
+	LockServer(*Character);
+	ServerDeadline = GetWorld()->GetRealTimeSeconds() + 30.0;
+	GetWorld()->GetTimerManager().SetTimer(ServerTimer, this, &ThisClass::PollServer, 0.05f, true);
+	ClientPrepare(Serial, From, To);
+}
+
+void URPGRegionTravelComponent::LockServer(ACharacter& Character)
+{
+	bServerPending = true;
+	LockedCharacter = &Character;
+	auto* Movement = Character.GetCharacterMovement();
 	PreviousMode = Movement->MovementMode;
 	PreviousCustomMode = Movement->CustomMovementMode;
 	Movement->StopMovementImmediately();
 	Movement->DisableMovement();
-	BlockedAbilities = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Character);
+	BlockedAbilities = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(&Character);
 	if (BlockedAbilities.IsValid()) BlockedAbilities->BlockAbilitiesWithTags(PlayerAbilities());
-	ServerDeadline = GetWorld()->GetRealTimeSeconds() + 30.0;
-	GetWorld()->GetTimerManager().SetTimer(ServerTimer, this, &ThisClass::PollServer, 0.05f, true);
-	ClientPrepare(Serial, From, To);
 }
 
 FName URPGRegionTravelComponent::GetCurrentRegion() const

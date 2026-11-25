@@ -17,6 +17,10 @@ class PROJECT_RPG_API URPGRegionTravelComponent : public UActorComponent
 public:
 	URPGRegionTravelComponent();
 	void BeginTransfer(ARPGRegionGate* Source, ACharacter* Character);
+	bool HoldForServerTravel(ACharacter& Character);
+	void ReleaseServerTravel();
+	UFUNCTION(Client, Reliable)
+	void ClientManagedRegionNotice(const FText& Message);
 	/** Level package confirmed for this controller's current pawn. None denotes the persistent region. */
 	UFUNCTION(BlueprintPure, BlueprintAuthorityOnly, Category="Region")
 	FName GetCurrentRegion() const;
@@ -36,6 +40,7 @@ private:
 	void PollClient();
 	void ReleaseClient();
 	void ReleaseServer();
+	void LockServer(ACharacter& Character);
 
 	int32 Serial = 0;
 	bool bServerPending = false;
