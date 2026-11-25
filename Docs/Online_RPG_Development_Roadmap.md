@@ -1015,6 +1015,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| greatsword-eight-26 | 대검 8종 확장 1차, 빠른 횡베기 | 횡베기 시퀀스·몽타주·DA·GA, 확장 피해표·대검 직업/개발 프로필, 입문3 성장·로비 편성, 본인 행 | UE 재로드로 6종·슬롯6·0.23초 타격 확인, 백엔드 Release/성장 검증·로비 C++ 성공 | 횡베기 본인 파일 main index/ref 및 origin/main 게시. 반격·후퇴 별도 구현 중 |
 | city-channel-26 | 대도시 채널용 벨마켓 및 지역 맵 cook 규칙 | Config/DefaultGame.ini, 본인 행 | UE 월드 기본 에셋 ID를 전체 패키지 경로로 수정. Windows·WindowsServer CookList에서 로비·벨마켓·지역 맵 5개 및 벨마켓 아트 7개 확인. 벨마켓 PIE 전용 서버에서 2명 빙의·이동 복제 확인. Saved/BuildChecks/CityCook26/Result.json, 임시 27,383,833 bytes·정션 2개 정리 | 맵 준비 완료. 본인 설정·행만 main index/ref 및 origin/main 순차 게시 예약, 원격 일치 시 해제. 도시별 배정·17번째 실제 접속은 mo-region-handoff-26의 할당기·호스트 인계 대기 |
 | loot-interaction-exclusive-26 | 월드 픽업 진행 시작부터 서버 점유, 다른 플레이어의 루팅 입력 차단 | InteractionInterface.h, RPGRidingTimedInteractionComponent.cpp, RPGPickUpBase.h/.cpp, RPGCurrencyPickup.cpp, RPGItemCommandComponent.cpp, RPGPlayerController.cpp, RPGTreasureChest.h/.cpp, RPGLootSourceTests.cpp, Scripts/Tests/Run-LootSourceTests.ps1, ITEM_LOOT_SOURCES.md, 본인 행 | 격리 컴파일과 검증, 본인 Saved/LS 실행 GUID 경로 및 폐기, 완료 시 본인 경로만 main index/ref 및 origin/main 순차 게시 | 격리 UHT·C++ 14개 컴파일 통과, 임시 249,252,781 bytes 정리. 본인 13경로만 게시. 원격 해시 일치 시 본인 예약 해제 |
 | field-overview-clutter-26 | Tab 지도에서 작은 나무·소품 크기의 내부 구멍 생략 | Private/UI/Minimap/RPGFieldWalkableArea.h·cpp, Docs/PLAYER_MINIMAP.md, 본인 행 | UE 5.8 CPP 2개 컴파일과 고립 2×2 구멍·외곽·긴 벽·큰 장애물·히든 셀 C++ 검사 통과. 임시 4,220,592 bytes 정리 | 본인 4경로 main index/ref·origin/main 게시 예약. 원격 일치 시 예약 해제 |

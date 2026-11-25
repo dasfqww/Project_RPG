@@ -34,7 +34,11 @@ public static class FirstSliceProgression
     public const string Whirlwind = "Player.Ability.Skill.WhirlWind";
     public const string Jump = "Player.Ability.Skill.JumpSmash";
     public const string SwordWave = "Player.Ability.Skill.SwordWave";
+    public const string QuickSlash = "Player.Ability.Skill.QuickSlash";
     private const int Intro2Cleared = 4;
+    private const int Intro3Cleared = 8;
+    private static readonly (int Milestone, string SkillTag)[] ExpansionUnlocks =
+        [(Intro2Cleared, SwordWave), (Intro3Cleared, QuickSlash)];
     public const long MaximumRevision = 9_007_199_254_740_991;
     private static readonly int[] SkillPoints = [0, 3, 6, 9, 12, 14, 15, 16, 17, 18];
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -45,7 +49,8 @@ public static class FirstSliceProgression
             [Charge] = [["FullCharge", "QuickCharge"], ["Stagger", "PartBreak"]],
             [Whirlwind] = [["Mobile", "Stationary"], ["WideArea", "FinalStagger"]],
             [Jump] = [["WideArea", "PartBreak"], ["ExtraArea", "Stagger"]],
-            [SwordWave] = [[], []]
+            [SwordWave] = [[], []],
+            [QuickSlash] = [[], []]
         };
 
     public static int Level(CharacterProgressionState state) => state.Experience / 100 + 1;
@@ -61,7 +66,7 @@ public static class FirstSliceProgression
             (Training, "Normal") => (1, 0),
             (Intro1, "Normal") => (2, 1),
             (Intro2, "Normal") => (Intro2Cleared, 3),
-            (Intro3, "Normal") => (8, 7),
+            (Intro3, "Normal") => (Intro3Cleared, 7),
             (Boss, "Normal") => (16, 15),
             (Boss, "Hard") => (32, 31),
             _ => null
@@ -84,21 +89,25 @@ public static class FirstSliceProgression
     public static CharacterProgressionState MigrateStoredState(CharacterProgressionState state)
     {
         ValidateState(state, allowLegacyState: true);
-        bool grantWave = (state.Milestones & Intro2Cleared) != 0 && !state.Skills.Any(skill => skill.SkillTag == SwordWave);
-        if (state.ClassId != LegacyClassId && !grantWave) return state;
+        var missing = ExpansionUnlocks.Where(unlock => (state.Milestones & unlock.Milestone) != 0
+                && !state.Skills.Any(skill => skill.SkillTag == unlock.SkillTag))
+            .Select(unlock => NewSkill(unlock.SkillTag)).ToArray();
+        if (state.ClassId != LegacyClassId && missing.Length == 0) return state;
         CharacterProgressionState migrated = state with
         {
             ClassId = ClassId, Revision = NextRevision(state.Revision),
-            Skills = grantWave ? [.. state.Skills, NewSkill(SwordWave)] : state.Skills
+            Skills = [.. state.Skills, .. missing]
         };
         ValidateState(migrated);
         return Copy(migrated);
     }
 
-    private static string[] Acquired(int flags, bool includeSwordWave = true) => new[] { Assault, Charge }
+    private static string[] Acquired(int flags, IReadOnlyList<ProgressionSkill>? legacySkills = null) => new[] { Assault, Charge }
         .Concat((flags & 1) != 0 ? [Whirlwind] : Array.Empty<string>())
         .Concat((flags & 2) != 0 ? [Jump] : Array.Empty<string>())
-        .Concat(includeSwordWave && (flags & Intro2Cleared) != 0 ? [SwordWave] : Array.Empty<string>()).ToArray();
+        .Concat(ExpansionUnlocks.Where(unlock => (flags & unlock.Milestone) != 0 &&
+            (legacySkills is null || legacySkills.Any(skill => skill?.SkillTag == unlock.SkillTag)))
+            .Select(unlock => unlock.SkillTag)).ToArray();
 
     public static CharacterProgressionState Copy(CharacterProgressionState state) => state with
     {
@@ -176,7 +185,7 @@ public static class FirstSliceProgression
                 throw new ProgressionConflictException("invalid_progression_milestones");
         if (state.Experience < System.Numerics.BitOperations.PopCount((uint)state.Milestones) * 100)
             throw new ProgressionConflictException("invalid_progression_milestones");
-        string[] acquired = Acquired(state.Milestones, includeSwordWave: !allowLegacyState || state.Skills.Any(skill => skill?.SkillTag == SwordWave));
+        string[] acquired = Acquired(state.Milestones, allowLegacyState ? state.Skills : null);
         if (state.Skills.Count != acquired.Length
             || state.Skills.Any(skill => skill is null || !acquired.Contains(skill.SkillTag, StringComparer.Ordinal))
             || state.Skills.Select(skill => skill.SkillTag).Distinct(StringComparer.Ordinal).Count() != acquired.Length)

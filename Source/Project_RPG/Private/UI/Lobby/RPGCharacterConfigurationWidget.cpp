@@ -35,7 +35,8 @@ namespace
 		{TEXT("Player.Ability.Skill.JumpSmash"), TEXT("도약 강타"),
 			{{{TEXT("WideArea"), TEXT("범위 확대")}, {TEXT("PartBreak"), TEXT("부위 파괴 강화")}},
 			 {{TEXT("ExtraArea"), TEXT("추가 범위 확대")}, {TEXT("Stagger"), TEXT("무력화 강화")}}}},
-		{TEXT("Player.Ability.Skill.SwordWave"), TEXT("검풍"), {}}
+		{TEXT("Player.Ability.Skill.SwordWave"), TEXT("검풍"), {}},
+		{TEXT("Player.Ability.Skill.QuickSlash"), TEXT("빠른 횡베기"), {}}
 	};
 	const FSkillPresentation* Presentation(FGameplayTag Tag)
 	{

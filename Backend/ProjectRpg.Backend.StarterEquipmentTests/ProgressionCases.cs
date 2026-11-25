@@ -112,7 +112,9 @@ internal static class ProgressionCases
             "invalid_tripod_selection");
         await Clear(FirstSliceProgression.Intro3);
         state = await Read();
-        Require(state.Experience == 400 && state.Skills.Count == 5 && FirstSliceProgression.TotalSP(state) == 12,
+        ProgressionSkill quick = new(FirstSliceProgression.QuickSlash, 1, ["", ""]);
+        Require(state.Experience == 400 && state.Skills.Count == 6 && FirstSliceProgression.TotalSP(state) == 12
+            && state.Skills.Single(skill => skill.SkillTag == quick.SkillTag).Level == 1 && state.SkillSlots[5] == "",
             "The three intro milestones must produce the documented basic build budget.");
         Require(FirstSliceProgression.CanEnter(state, FirstSliceProgression.Boss, "Normal")
             && !FirstSliceProgression.CanEnter(state, FirstSliceProgression.Boss, "Hard"), "Normal and hard must unlock separately.");
@@ -122,7 +124,7 @@ internal static class ProgressionCases
             FirstSliceProgression.Assault => "LongReach", FirstSliceProgression.Charge => "FullCharge",
             FirstSliceProgression.Whirlwind => "Mobile", FirstSliceProgression.Jump => "WideArea", _ => throw new Exception()
         };
-        ProgressionSkill[] baseline = state.Skills.Select(skill => skill.SkillTag == wave.SkillTag ? skill : skill with
+        ProgressionSkill[] baseline = state.Skills.Select(skill => skill.SkillTag == wave.SkillTag || skill.SkillTag == quick.SkillTag ? skill : skill with
             { Level = 4, Tripods = new[] { FirstChoice(skill.SkillTag), "" } }).ToArray();
         string[] slots = baseline.Select(skill => skill.SkillTag).Concat(Enumerable.Repeat("", 8 - baseline.Length)).ToArray();
         SkillConfigurationCommand command = new(Guid.NewGuid(), state.Revision, baseline, slots);
@@ -134,10 +136,11 @@ internal static class ProgressionCases
         await Reject(() => game.CommitSkillConfigurationAsync(id, steam,
             command with { SkillSlots = Enumerable.Repeat(FirstSliceProgression.Charge, 8).ToArray() }, now, default), "invalid_sp_or_skill_slots");
         CharacterProgressionState saved = await game.CommitSkillConfigurationAsync(id, steam, command, now, default);
-        Require((await Read()).SkillSlots[4] == wave.SkillTag, "Fifth skill must round-trip through the saved loadout.");
+        Require((await Read()).SkillSlots[4] == wave.SkillTag && (await Read()).SkillSlots[5] == quick.SkillTag,
+            "Fifth and sixth skills must round-trip through the saved loadout.");
         CharacterProgressionState old = saved with
         {
-            Skills = saved.Skills.Where(skill => skill.SkillTag != wave.SkillTag).ToArray(),
+            Skills = saved.Skills.Where(skill => skill.SkillTag != wave.SkillTag && skill.SkillTag != quick.SkillTag).ToArray(),
             SkillSlots = ["", FirstSliceProgression.Charge, "", FirstSliceProgression.Jump, "", "", "", ""]
         };
         CharacterProgressionState backfilled = FirstSliceProgression.MigrateStoredState(old);
@@ -146,9 +149,10 @@ internal static class ProgressionCases
             && FirstSliceProgression.UsedSP(backfilled) == FirstSliceProgression.UsedSP(old)
             && backfilled.Skills.Take(old.Skills.Count).Zip(old.Skills).All(pair => pair.First.SkillTag == pair.Second.SkillTag
                 && pair.First.Level == pair.Second.Level && pair.First.Tripods.SequenceEqual(pair.Second.Tripods))
-            && backfilled.Skills.Last().SkillTag == wave.SkillTag && backfilled.Skills.Last().Level == 1
+            && backfilled.Skills.Skip(old.Skills.Count).Select(skill => skill.SkillTag).SequenceEqual([wave.SkillTag, quick.SkillTag])
+            && backfilled.Skills.Skip(old.Skills.Count).All(skill => skill.Level == 1)
             && FirstSliceProgression.MigrateStoredState(backfilled).Revision == backfilled.Revision,
-            "Legacy Intro2 clears must acquire Sword Wave once while preserving investments and slot positions.");
+            "Legacy clears must acquire missing expansion skills once while preserving investments and slot positions.");
         Require(FirstSliceProgression.UsedSP(saved) == 12 && saved.Revision == state.Revision + 1, "Valid 4/4/4/4 configuration must persist.");
         Require((await game.CommitSkillConfigurationAsync(id, steam, command, now, default)).Revision == saved.Revision,
             "Exact request replay must return its original receipt.");
