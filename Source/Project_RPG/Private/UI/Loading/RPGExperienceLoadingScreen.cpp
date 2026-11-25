@@ -2,6 +2,7 @@
 
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
+#include "Framework/Application/SlateApplication.h"
 #include "GameFramework/GameStateBase.h"
 #include "HAL/IConsoleManager.h"
 #include "LoadingScreenManager.h"
@@ -95,6 +96,51 @@ namespace
         const float Alpha = FMath::Clamp((ElapsedSeconds - TimeAtZero) / PendingProgressSeconds, 0.0, 1.0);
         return FMath::InterpEaseOut(0.0f, PendingProgressLimit, Alpha, 2.0f);
     }
+
+    class FLoadingGaugePresentation
+    {
+    public:
+        explicit FLoadingGaugePresentation(TAttribute<float> InProgress)
+            : Progress(MoveTemp(InProgress)), Label(FText::AsPercent(0.0))
+        {
+        }
+
+        TOptional<float> GetFraction()
+        {
+            Refresh();
+            return Percent / 100.0f;
+        }
+
+        FText GetLabel()
+        {
+            Refresh();
+            return Label;
+        }
+
+    private:
+        void Refresh()
+        {
+            // Text layout and bar paint can ask for progress separately in one Slate frame.
+            const double FrameTime = FSlateApplication::Get().GetCurrentTime();
+            if (FrameTime == LastSampleTime)
+            {
+                return;
+            }
+            LastSampleTime = FrameTime;
+
+            const int32 Value = FMath::FloorToInt(FMath::Clamp(Progress.Get(), 0.0f, 1.0f) * 100.0f);
+            if (Value != Percent)
+            {
+                Percent = Value;
+                Label = FText::AsPercent(Percent / 100.0);
+            }
+        }
+
+        TAttribute<float> Progress;
+        FText Label;
+        double LastSampleTime = -1.0;
+        int32 Percent = 0;
+    };
 }
 
 URPGExperienceLoadingScreen::URPGExperienceLoadingScreen(const FObjectInitializer& ObjectInitializer)
@@ -126,8 +172,9 @@ FText URPGExperienceLoadingScreen::GetMessageText() const
 }
 
 static TSharedRef<SWidget> MakeLoadingLayout(TAttribute<FText> Title, TAttribute<FText> Message,
-    TAttribute<EVisibility> IndicatorVisibility, TAttribute<TOptional<float>> Progress)
+    TAttribute<EVisibility> IndicatorVisibility, TAttribute<float> Progress)
 {
+    const TSharedRef<FLoadingGaugePresentation> Gauge = MakeShared<FLoadingGaugePresentation>(MoveTemp(Progress));
     return SNew(SOverlay)
         .Clipping(EWidgetClipping::ClipToBounds)
         + SOverlay::Slot()
@@ -168,7 +215,7 @@ static TSharedRef<SWidget> MakeLoadingLayout(TAttribute<FText> Title, TAttribute
                             SNew(SProgressBar)
                             .Style(&GetLoadingBarStyle())
                             .FillColorAndOpacity(FLinearColor::White)
-                            .Percent(Progress)
+                            .Percent_Lambda([Gauge]() { return Gauge->GetFraction(); })
                         ]
                     ]
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(14.f, 0.f, 0.f, 0.f)
@@ -178,11 +225,7 @@ static TSharedRef<SWidget> MakeLoadingLayout(TAttribute<FText> Title, TAttribute
                             SNew(STextBlock)
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 15))
                             .ColorAndOpacity(FLinearColor(0.94f, 0.89f, 0.79f))
-                            .Text_Lambda([Progress]()
-                            {
-                                const float Value = Progress.Get().Get(0.0f);
-                                return FText::AsPercent(FMath::FloorToInt(Value * 100.0f) / 100.0);
-                            })
+                            .Text_Lambda([Gauge]() { return Gauge->GetLabel(); })
                         ]
                     ]
                 ]
@@ -195,7 +238,7 @@ TSharedRef<SWidget> URPGExperienceLoadingScreen::MakeMapTravelScreen(double Show
     // MoviePlayer paints while the game thread tears down the departing world.
     return MakeLoadingLayout(LOCTEXT("TravelTitle", "지역을 불러오고 있습니다"),
         LOCTEXT("PreparingMessage", "잠시만 기다려 주세요."), EVisibility::HitTestInvisible,
-        TAttribute<TOptional<float>>::CreateLambda([ShownTime]() -> TOptional<float>
+        TAttribute<float>::CreateLambda([ShownTime]()
         {
             return EstimateLoadingProgress(FPlatformTime::Seconds() - ShownTime);
         }));
@@ -207,6 +250,8 @@ TSharedRef<SWidget> URPGExperienceLoadingScreen::RebuildWidget()
     const UGameInstance* GameInstance = GetGameInstance();
     const TWeakObjectPtr<const ULoadingScreenManager> LoadingManager =
         GameInstance ? GameInstance->GetSubsystem<ULoadingScreenManager>() : nullptr;
+    const IConsoleVariable* Hold = IConsoleManager::Get().FindConsoleVariable(
+        TEXT("CommonLoadingScreen.HoldLoadingScreenAdditionalSecs"));
     return MakeLoadingLayout(TAttribute<FText>::Create(FTextGetter::CreateUObject(this, &ThisClass::GetTitleText)),
         TAttribute<FText>::Create(FTextGetter::CreateUObject(this, &ThisClass::GetMessageText)),
         TAttribute<EVisibility>::CreateLambda([WeakThis = TWeakObjectPtr<ThisClass>(this)]()
@@ -214,7 +259,7 @@ TSharedRef<SWidget> URPGExperienceLoadingScreen::RebuildWidget()
             return WeakThis.IsValid() && !WeakThis->IsExperienceFailed()
                 ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
         }),
-        TAttribute<TOptional<float>>::CreateLambda([LoadingManager]() -> TOptional<float>
+        TAttribute<float>::CreateLambda([LoadingManager, Hold]()
         {
             const ULoadingScreenManager* Manager = LoadingManager.Get();
             if (!Manager)
@@ -231,8 +276,6 @@ TSharedRef<SWidget> URPGExperienceLoadingScreen::RebuildWidget()
 
             // Finish within the existing texture-streaming hold, leaving time to see 100%.
             constexpr double FullGaugeSeconds = 0.20;
-            const IConsoleVariable* Hold = IConsoleManager::Get().FindConsoleVariable(
-                TEXT("CommonLoadingScreen.HoldLoadingScreenAdditionalSecs"));
             const double FillSeconds = Hold ? Hold->GetFloat() - FullGaugeSeconds : 0.0;
             if (FillSeconds <= 0.0 || Now - ReadyTime >= FillSeconds)
             {
