@@ -14,6 +14,7 @@
 #include "Component/Skill/RPGPlayerSkillComponent.h"
 #include "Component/Combat/PlayerCombatComponent.h"
 #include "Component/Combat/RPGCombatControlComponent.h"
+#include "DataTable/SkillData.h"
 #include "Engine/World.h"
 #include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
 #include "PlayerClass/RPGPlayerClassComponent.h"
@@ -334,6 +335,20 @@ bool URPGGreatSwordResolveAbility::CommitClassSkill(URPGGameplayAbility_SkillCon
 
 void URPGGreatSwordResolveAbility::OnClassSkillHitConfirmed(URPGGameplayAbility_SkillContainer& Skill) const
 {
+	const auto* Definition = Skill.GetSkillDefinition();
+	if (Definition)
+	{
+		// The original skills keep their established gain. The expansion uses
+		// authored values so a faster skill does not fill the gauge by default.
+		const FName Tag = Definition->SkillTag.GetTagName();
+		if (Tag == TEXT("Player.Ability.Skill.QuickSlash") || Tag == TEXT("Player.Ability.Skill.CounterSlash")
+			|| Tag == TEXT("Player.Ability.Skill.RetreatSlash"))
+		{
+			const auto* Row = Definition->SkillDataHandle.GetRow<FRPGSkillDataTable>(TEXT("GreatSword Resolve Gain"));
+			if (Row) AwardConfirmedSkillHit(Skill, Row->IdentityGainAmount);
+			return;
+		}
+	}
 	AwardConfirmedSkillHit(Skill);
 }
 

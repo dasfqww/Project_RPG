@@ -35,10 +35,15 @@ public static class FirstSliceProgression
     public const string Jump = "Player.Ability.Skill.JumpSmash";
     public const string SwordWave = "Player.Ability.Skill.SwordWave";
     public const string QuickSlash = "Player.Ability.Skill.QuickSlash";
+    public const string CounterSlash = "Player.Ability.Skill.CounterSlash";
+    public const string RetreatSlash = "Player.Ability.Skill.RetreatSlash";
     private const int Intro2Cleared = 4;
     private const int Intro3Cleared = 8;
+    private const int NormalBossCleared = 16;
+    private const int HardBossCleared = 32;
     private static readonly (int Milestone, string SkillTag)[] ExpansionUnlocks =
-        [(Intro2Cleared, SwordWave), (Intro3Cleared, QuickSlash)];
+        [(Intro2Cleared, SwordWave), (Intro3Cleared, QuickSlash),
+         (NormalBossCleared, CounterSlash), (HardBossCleared, RetreatSlash)];
     public const long MaximumRevision = 9_007_199_254_740_991;
     private static readonly int[] SkillPoints = [0, 3, 6, 9, 12, 14, 15, 16, 17, 18];
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -50,7 +55,9 @@ public static class FirstSliceProgression
             [Whirlwind] = [["Mobile", "Stationary"], ["WideArea", "FinalStagger"]],
             [Jump] = [["WideArea", "PartBreak"], ["ExtraArea", "Stagger"]],
             [SwordWave] = [[], []],
-            [QuickSlash] = [[], []]
+            [QuickSlash] = [[], []],
+            [CounterSlash] = [[], []],
+            [RetreatSlash] = [[], []]
         };
 
     public static int Level(CharacterProgressionState state) => state.Experience / 100 + 1;
@@ -67,8 +74,8 @@ public static class FirstSliceProgression
             (Intro1, "Normal") => (2, 1),
             (Intro2, "Normal") => (Intro2Cleared, 3),
             (Intro3, "Normal") => (Intro3Cleared, 7),
-            (Boss, "Normal") => (16, 15),
-            (Boss, "Hard") => (32, 31),
+            (Boss, "Normal") => (NormalBossCleared, 15),
+            (Boss, "Hard") => (HardBossCleared, 31),
             _ => null
         };
 

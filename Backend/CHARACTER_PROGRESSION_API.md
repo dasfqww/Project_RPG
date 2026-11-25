@@ -27,8 +27,8 @@
 | `Progression.Intro1` | `Normal` | 1 | 2 | 도약 강타 |
 | `Progression.Intro2` | `Normal` | 3 | 4 | 검풍 |
 | `Progression.Intro3` | `Normal` | 7 | 8 | 빠른 횡베기, 일반 보스 진입 |
-| `Progression.FirstBoss` | `Normal` | 15 | 16 | 고난도 진입 |
-| `Progression.FirstBoss` | `Hard` | 31 | 32 | 고난도 완료 기록 |
+| `Progression.FirstBoss` | `Normal` | 15 | 16 | 반격 베기, 고난도 진입 |
+| `Progression.FirstBoss` | `Hard` | 31 | 32 | 후퇴 베기 |
 
 필요 플래그는 비트 합계다. 이미 연 진행을 다시 클리어해도 새 세션이면 상한까지 경험치를 얻는다. 레벨 상한 뒤에도 아직 받지 않은 고난도 완료 플래그는 저장한다.
 
@@ -54,7 +54,7 @@
 
 시작 스킬은 `Player.Ability.Skill.AssultBlade`와 `Player.Ability.Skill.Charge`다. 훈련 완료 시 `Player.Ability.Skill.WhirlWind`, 첫 입문 완료 시 `Player.Ability.Skill.JumpSmash`, 두 번째 입문 일반 난이도 첫 완료 시 `Player.Ability.Skill.SwordWave`를 1레벨로 습득한다. 새 스킬은 로비에서 직접 편성한다.
 
-세 번째 입문 일반 난이도를 처음 완료하면 `Player.Ability.Skill.QuickSlash`를 1레벨로 습득한다. 해당 입문을 이미 완료한 캐릭터는 성장 기록을 불러올 때 미지급된 검풍과 빠른 횡베기를 받는다. 기존 투자와 8개 슬롯을 유지하고 revision을 한 번 올린다. 캐릭터 목록 조회는 읽기 전용이며 과거 저장 요청의 재전송은 당시 영수증을 반환한다.
+세 번째 입문 일반 첫 완료로 `Player.Ability.Skill.QuickSlash`, 첫 보스 일반·고난도 첫 완료로 각각 `Player.Ability.Skill.CounterSlash`·`Player.Ability.Skill.RetreatSlash`를 1레벨로 습득한다. 해당 단계를 이미 완료한 캐릭터는 성장 기록을 불러올 때 미지급된 확장 스킬을 받는다. 기존 투자와 8개 슬롯을 유지하고 revision을 한 번 올린다. 캐릭터 목록 조회는 읽기 전용이며 과거 저장 요청의 재전송은 당시 영수증을 반환한다.
 
 ## 4. 스킬·연마 효과·편성 저장
 
@@ -86,6 +86,8 @@
 | 도약 | `WideArea`, `PartBreak` | `ExtraArea`, `Stagger` |
 | 검풍 | 미선택 (`""`) | 미선택 (`""`) |
 | 빠른 횡베기 | 미선택 (`""`) | 미선택 (`""`) |
+| 반격 베기 | 미선택 (`""`) | 미선택 (`""`) |
+| 후퇴 베기 | 미선택 (`""`) | 미선택 (`""`) |
 
 UE에는 옵션의 `PersistenceId`를 해금 레벨 4·7과 함께 찾아 실제 옵션 인덱스로 변환하는 연결을 추가했다. 2026-10-26 차지의 4레벨 `FullCharge`/`QuickCharge`를 기존 옵션 뒤의 인덱스 1/2에 실제 작성·저장했다. 나머지 표의 ID·효과는 아직 콘텐츠 작성이 남아 있다. 저장 API 통과가 해당 효과의 GAS 실행 성공을 뜻하지 않는다.
 

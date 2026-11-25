@@ -2,7 +2,9 @@
 
 
 #include "Component/Combat/NPCCombatComponent.h"
+#include "Ability/Skill/RPGGreatSwordCounterAbility.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemComponent.h"
 #include "RPGGameplayTags.h"
 #include "FunctionLibrary/RPGAbilityFunctionLibrary.h"
 #include "FunctionLibrary/RPGCombatFunctionLibrary.h"
@@ -26,6 +28,20 @@ void UNPCCombatComponent::OnHitTargetActor(AActor* HitActor)
 		URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(HitActor, RPGGameplayTags::Player_Status_Blocking);
 	const bool bIsMyAttackUnblockable =
 		URPGAbilityFunctionLibrary::NativeDoesActorHaveTag(GetOwningPawn(), RPGGameplayTags::NPC_Status_Unblockable);
+
+	if (!bIsMyAttackUnblockable)
+	{
+		auto* Attacker = GetOwningPawn();
+		auto* Defender = Cast<APawn>(HitActor);
+		auto* ASC = Defender ? UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Defender) : nullptr;
+		auto* Counter = ASC ? Cast<URPGGreatSwordCounterAbility>(ASC->GetAnimatingAbility()) : nullptr;
+		// This hook receives native NPC weapon and hand overlaps. Area effects
+		// and projectile impacts dispatch through their own server paths.
+		if (Counter && Attacker && Attacker->HasAuthority() && Counter->TryInterceptWeaponHit(*Attacker, *Defender))
+		{
+			return;
+		}
+	}
 
 	if (bIsPlayerBlocking&&!bIsMyAttackUnblockable)
 	{

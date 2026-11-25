@@ -168,6 +168,8 @@ internal static class ProgressionCases
         state = await Read();
         Require(state.Experience == 500 && FirstSliceProgression.CanEnter(state, FirstSliceProgression.Boss, "Hard")
             && FirstSliceProgression.UsedSP(state) == 12, "Growth must preserve saved skill investments and unlock hard after normal.");
+        Require(state.Skills.Count == 7 && state.Skills[^1].SkillTag == FirstSliceProgression.CounterSlash
+            && state.Skills[^1].Level == 1 && state.SkillSlots[6] == "", "Normal boss must grant an unslotted Counter Slash.");
         long currentRevision = state.Revision;
         Require((await game.CommitSkillConfigurationAsync(id, steam, command, now, default)).Revision == saved.Revision
             && (await Read()).Revision == currentRevision, "Old receipt replay must not overwrite newer earned progression.");
@@ -183,18 +185,24 @@ internal static class ProgressionCases
         Require(FirstSliceProgression.UsedSP(state) == 18, "The documented 7/4/4/4 build must fit exactly.");
         await Clear(FirstSliceProgression.Boss, "Hard");
         state = await Read();
-        Require(state.Experience == 900 && (state.Milestones & 32) != 0 && FirstSliceProgression.UsedSP(state) == 18,
+        Require(state.Experience == 900 && (state.Milestones & 32) != 0 && FirstSliceProgression.UsedSP(state) == 18
+            && state.Skills.Count == 8 && state.Skills[^1].SkillTag == FirstSliceProgression.RetreatSlash
+            && state.Skills[^1].Level == 1 && state.SkillSlots[7] == "",
             "Hard unlock must persist at XP cap without discarding the configuration.");
 
+        slots[6] = FirstSliceProgression.CounterSlash;
+        slots[7] = FirstSliceProgression.RetreatSlash;
+        var expanded = state.Skills;
         long expected = state.Revision;
         async Task<bool> Race()
         {
-            try { await game.CommitSkillConfigurationAsync(id, steam, new(Guid.NewGuid(), expected, focused, slots), now, default); return true; }
+            try { await game.CommitSkillConfigurationAsync(id, steam, new(Guid.NewGuid(), expected, expanded, slots), now, default); return true; }
             catch (ProgressionConflictException exception) when (exception.Message == "stale_progression_revision") { return false; }
         }
         bool[] outcomes = await Task.WhenAll(Task.Run(Race), Task.Run(Race));
         Require(outcomes.Count(success => success) == 1 && (await Read()).Revision == expected + 1,
             "Concurrent updates to one revision must have exactly one winner.");
+        Require((await Read()).SkillSlots.SequenceEqual(slots), "All eight skills must survive saving and reloading.");
         Console.WriteLine("CharacterProgression: creation, settlement authority/deduplication, unlocks, save ownership, SP/tripods/slots, replay, failure, cap and concurrent revision checks passed.");
     }
 
