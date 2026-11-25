@@ -34,7 +34,8 @@ namespace
 			 {{TEXT("WideArea"), TEXT("범위 확대")}, {TEXT("FinalStagger"), TEXT("마지막 타격 무력화")}}}},
 		{TEXT("Player.Ability.Skill.JumpSmash"), TEXT("도약 강타"),
 			{{{TEXT("WideArea"), TEXT("범위 확대")}, {TEXT("PartBreak"), TEXT("부위 파괴 강화")}},
-			 {{TEXT("ExtraArea"), TEXT("추가 범위 확대")}, {TEXT("Stagger"), TEXT("무력화 강화")}}}}
+			 {{TEXT("ExtraArea"), TEXT("추가 범위 확대")}, {TEXT("Stagger"), TEXT("무력화 강화")}}}},
+		{TEXT("Player.Ability.Skill.SwordWave"), TEXT("검풍"), {}}
 	};
 	const FSkillPresentation* Presentation(FGameplayTag Tag)
 	{
@@ -46,14 +47,15 @@ namespace
 	int32 ChoiceIndex(const FSkillPresentation& Info, int32 Tier, const FString& Id)
 	{
 		if (Id.IsEmpty()) return 0;
-		for (int32 Index = 0; Index < 2; ++Index) if (Id == Info.Tiers[Tier][Index].Id) return Index + 1;
+		for (int32 Index = 0; Index < 2; ++Index)
+			if (Info.Tiers[Tier][Index].Id && Id == Info.Tiers[Tier][Index].Id) return Index + 1;
 		return INDEX_NONE;
 	}
 	bool IsSupported(const FRPGCharacterProgressionSnapshot& Record)
 	{
 		if (Record.ProfileId != TEXT("FirstSlice.GreatSword.v1")
 			|| Record.ClassId.ToString() != TEXT("RPGPlayerClassDefinition:GreatSwordWarrior")
-			|| Record.Skills.Num() < 2 || Record.Skills.Num() > 4) return false;
+			|| Record.Skills.Num() < 2 || Record.Skills.Num() > UE_ARRAY_COUNT(Catalog)) return false;
 		int32 UsedSP = 0;
 		for (const auto& Skill : Record.Skills)
 		{
@@ -404,6 +406,7 @@ void URPGCharacterConfigurationWidget::RebuildChoices()
 		AddChoice(0, Row, 0, FText::Format(LOCTEXT("SkillLevel", "{0} — 레벨"), FText::FromString(Info->Label)), Levels);
 		for (int32 Tier = 0; Tier < 2; ++Tier)
 		{
+			if (!Info->Tiers[Tier][0].Id) continue;
 			TArray<FString> Options{LOCTEXT("NoTripod", "선택 안 함").ToString(), Info->Tiers[Tier][0].Label, Info->Tiers[Tier][1].Label};
 			AddChoice(1, Row, Tier, FText::Format(LOCTEXT("TripodTier", "{0}레벨 스킬 연마"), FText::AsNumber(UnlockLevel(Tier))), Options);
 		}
@@ -505,7 +508,7 @@ void URPGCharacterConfigurationWidget::HandleChoice(const URPGCharacterConfigura
 		const FGameplayTag Tag = DraftSkills[Binding.Row].SkillTag;
 		if (Binding.Kind == 0) SetSkillLevel(Tag, Choice + 1);
 		else if (Binding.Tier >= 0 && Binding.Tier < 2 && Choice >= 0 && Choice <= 2)
-			if (const auto* Info = Presentation(Tag))
+			if (const auto* Info = Presentation(Tag); Info && Info->Tiers[Binding.Tier][0].Id)
 				SetRefinementChoice(Tag, Binding.Tier, Choice == 0 ? FString() : FString(Info->Tiers[Binding.Tier][Choice - 1].Id));
 	}
 	RefreshControls();

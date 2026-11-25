@@ -11,7 +11,7 @@ public sealed record CharacterProgressionSummary(string State, string? ClassId =
         if (stored is null) return Missing;
         try
         {
-            FirstSliceProgression.ValidateState(stored, allowLegacyClass: true);
+            FirstSliceProgression.ValidateState(stored, allowLegacyState: true);
             if (stored.CharacterId != characterId) return Unavailable;
             // The known draft alias has the same presentation identity. A roster
             // read does not migrate the save or advance its revision.

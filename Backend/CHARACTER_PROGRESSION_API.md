@@ -25,7 +25,7 @@
 |---|---|---:|---:|---|
 | `Progression.Training` | `Normal` | 0 | 1 | 회전 베기·고유 능력 |
 | `Progression.Intro1` | `Normal` | 1 | 2 | 도약 강타 |
-| `Progression.Intro2` | `Normal` | 3 | 4 | 두 번째 입문 진행 |
+| `Progression.Intro2` | `Normal` | 3 | 4 | 검풍 |
 | `Progression.Intro3` | `Normal` | 7 | 8 | 일반 보스 진입 |
 | `Progression.FirstBoss` | `Normal` | 15 | 16 | 고난도 진입 |
 | `Progression.FirstBoss` | `Hard` | 31 | 32 | 고난도 완료 기록 |
@@ -52,7 +52,9 @@
 - 습득한 `skills`: `skillTag`, `level`, 길이 2의 `tripods`.
 - 길이 8의 `skillSlots`. 빈 위치는 빈 문자열이다.
 
-서버가 저장한 습득 목록만 반환하며 새로 습득한 스킬을 빈 슬롯에 자동으로 넣지 않는다. 시작 스킬은 `Player.Ability.Skill.AssultBlade`와 `Player.Ability.Skill.Charge`, 훈련 해금은 `Player.Ability.Skill.WhirlWind`, 첫 입문 해금은 `Player.Ability.Skill.JumpSmash`다. 이 태그는 현재 UE 태그 정의와 일치한다.
+시작 스킬은 `Player.Ability.Skill.AssultBlade`와 `Player.Ability.Skill.Charge`다. 훈련 완료 시 `Player.Ability.Skill.WhirlWind`, 첫 입문 완료 시 `Player.Ability.Skill.JumpSmash`, 두 번째 입문 일반 난이도 첫 완료 시 `Player.Ability.Skill.SwordWave`를 1레벨로 습득한다. 새 스킬은 로비에서 직접 편성한다.
+
+두 번째 입문을 이미 완료한 기존 캐릭터는 성장 기록을 불러올 때 검풍을 한 번 지급받는다. 기존 투자와 8개 슬롯을 유지하고 revision을 한 번 올린다. 캐릭터 목록 조회는 읽기 전용이며 과거 저장 요청의 재전송은 당시 영수증을 반환한다.
 
 ## 4. 스킬·연마 효과·편성 저장
 
@@ -82,6 +84,7 @@
 | 차지 | `FullCharge`, `QuickCharge` | `Stagger`, `PartBreak` |
 | 회전 | `Mobile`, `Stationary` | `WideArea`, `FinalStagger` |
 | 도약 | `WideArea`, `PartBreak` | `ExtraArea`, `Stagger` |
+| 검풍 | 미선택 (`""`) | 미선택 (`""`) |
 
 UE에는 옵션의 `PersistenceId`를 해금 레벨 4·7과 함께 찾아 실제 옵션 인덱스로 변환하는 연결을 추가했다. 2026-10-26 차지의 4레벨 `FullCharge`/`QuickCharge`를 기존 옵션 뒤의 인덱스 1/2에 실제 작성·저장했다. 나머지 표의 ID·효과는 아직 콘텐츠 작성이 남아 있다. 저장 API 통과가 해당 효과의 GAS 실행 성공을 뜻하지 않는다.
 

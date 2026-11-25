@@ -90,7 +90,7 @@ public sealed partial class PostgresGameRepository : ICharacterProgressionReposi
         {
             query.Parameters.AddWithValue("character_id", characterId);
             if (await query.ExecuteScalarAsync(cancellationToken) is not string json) return null;
-            state = ReadProgression(json, characterId, allowLegacyClass: true);
+            state = ReadProgression(json, characterId);
         }
 
         CharacterProgressionState originalState = state;
@@ -160,7 +160,7 @@ public sealed partial class PostgresGameRepository : ICharacterProgressionReposi
             if (await reader.ReadAsync(cancellationToken))
             {
                 if (reader.GetString(0) != fingerprint) throw new ProgressionConflictException("idempotency_conflict");
-                CharacterProgressionState original = ReadProgression(reader.GetString(1), characterId, allowLegacyClass: true);
+                CharacterProgressionState original = ReadProgression(reader.GetString(1), characterId);
                 await reader.DisposeAsync();
                 await transaction.CommitAsync(cancellationToken);
                 return original;
@@ -194,11 +194,11 @@ public sealed partial class PostgresGameRepository : ICharacterProgressionReposi
         return updated;
     }
 
-    private static CharacterProgressionState ReadProgression(string json, Guid characterId, bool allowLegacyClass = false)
+    private static CharacterProgressionState ReadProgression(string json, Guid characterId)
     {
         CharacterProgressionState state = JsonSerializer.Deserialize<CharacterProgressionState>(json, ProgressionJson)
             ?? throw new ProgressionConflictException("invalid_progression_state");
-        FirstSliceProgression.ValidateState(state, allowLegacyClass);
+        FirstSliceProgression.ValidateState(state, allowLegacyState: true);
         if (state.CharacterId != characterId) throw new ProgressionConflictException("invalid_progression_owner");
         return state;
     }

@@ -33,6 +33,8 @@ public static class FirstSliceProgression
     public const string Charge = "Player.Ability.Skill.Charge";
     public const string Whirlwind = "Player.Ability.Skill.WhirlWind";
     public const string Jump = "Player.Ability.Skill.JumpSmash";
+    public const string SwordWave = "Player.Ability.Skill.SwordWave";
+    private const int Intro2Cleared = 4;
     public const long MaximumRevision = 9_007_199_254_740_991;
     private static readonly int[] SkillPoints = [0, 3, 6, 9, 12, 14, 15, 16, 17, 18];
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -42,7 +44,8 @@ public static class FirstSliceProgression
             [Assault] = [["LongReach", "QuickApproach"], ["ExtraReach", "ExtraRecovery"]],
             [Charge] = [["FullCharge", "QuickCharge"], ["Stagger", "PartBreak"]],
             [Whirlwind] = [["Mobile", "Stationary"], ["WideArea", "FinalStagger"]],
-            [Jump] = [["WideArea", "PartBreak"], ["ExtraArea", "Stagger"]]
+            [Jump] = [["WideArea", "PartBreak"], ["ExtraArea", "Stagger"]],
+            [SwordWave] = [[], []]
         };
 
     public static int Level(CharacterProgressionState state) => state.Experience / 100 + 1;
@@ -57,7 +60,7 @@ public static class FirstSliceProgression
         {
             (Training, "Normal") => (1, 0),
             (Intro1, "Normal") => (2, 1),
-            (Intro2, "Normal") => (4, 3),
+            (Intro2, "Normal") => (Intro2Cleared, 3),
             (Intro3, "Normal") => (8, 7),
             (Boss, "Normal") => (16, 15),
             (Boss, "Hard") => (32, 31),
@@ -77,20 +80,25 @@ public static class FirstSliceProgression
 
     private static ProgressionSkill NewSkill(string tag) => new(tag, 1, ["", ""]);
 
-    // Explicit correction of the first-slice draft ID to the already-authored class identity.
-    // Unknown profiles/classes are never redirected and receipts retain their original result.
+    // Migrate live records only. Replayed receipts keep their original state and revision.
     public static CharacterProgressionState MigrateStoredState(CharacterProgressionState state)
     {
-        ValidateState(state, allowLegacyClass: true);
-        if (state.ClassId != LegacyClassId) return state;
-        CharacterProgressionState migrated = state with { ClassId = ClassId, Revision = NextRevision(state.Revision) };
+        ValidateState(state, allowLegacyState: true);
+        bool grantWave = (state.Milestones & Intro2Cleared) != 0 && !state.Skills.Any(skill => skill.SkillTag == SwordWave);
+        if (state.ClassId != LegacyClassId && !grantWave) return state;
+        CharacterProgressionState migrated = state with
+        {
+            ClassId = ClassId, Revision = NextRevision(state.Revision),
+            Skills = grantWave ? [.. state.Skills, NewSkill(SwordWave)] : state.Skills
+        };
         ValidateState(migrated);
         return Copy(migrated);
     }
 
-    private static string[] Acquired(int flags) => new[] { Assault, Charge }
+    private static string[] Acquired(int flags, bool includeSwordWave = true) => new[] { Assault, Charge }
         .Concat((flags & 1) != 0 ? [Whirlwind] : Array.Empty<string>())
-        .Concat((flags & 2) != 0 ? [Jump] : Array.Empty<string>()).ToArray();
+        .Concat((flags & 2) != 0 ? [Jump] : Array.Empty<string>())
+        .Concat(includeSwordWave && (flags & Intro2Cleared) != 0 ? [SwordWave] : Array.Empty<string>()).ToArray();
 
     public static CharacterProgressionState Copy(CharacterProgressionState state) => state with
     {
@@ -125,7 +133,7 @@ public static class FirstSliceProgression
     public static string Fingerprint(SkillConfigurationCommand command)
     {
         if (command.RequestId == Guid.Empty || command.ExpectedRevision is < 1 or > MaximumRevision
-            || command.Skills is null || command.Skills.Count is < 2 or > 4
+            || command.Skills is null || command.Skills.Count < 2 || command.Skills.Count > Choices.Count
             || command.SkillSlots is null || command.SkillSlots.Count != 8
             || command.Skills.Any(skill => skill is null || string.IsNullOrEmpty(skill.SkillTag) || skill.SkillTag.Length > 96
                 || skill.Tripods is null || skill.Tripods.Count != 2
@@ -155,10 +163,10 @@ public static class FirstSliceProgression
         return Copy(result);
     }
 
-    public static void ValidateState(CharacterProgressionState state, bool allowLegacyClass = false)
+    public static void ValidateState(CharacterProgressionState state, bool allowLegacyState = false)
     {
         if (state.CharacterId == Guid.Empty || state.ProfileId != ProfileId
-            || (state.ClassId != ClassId && (!allowLegacyClass || state.ClassId != LegacyClassId))
+            || (state.ClassId != ClassId && (!allowLegacyState || state.ClassId != LegacyClassId))
             || state.Revision is < 1 or > MaximumRevision || state.Experience is < 0 or > 900
             || state.Experience % 100 != 0 || state.Milestones is < 0 or > 63
             || state.Skills is null || state.SkillSlots is null || state.SkillSlots.Count != 8)
@@ -168,7 +176,7 @@ public static class FirstSliceProgression
                 throw new ProgressionConflictException("invalid_progression_milestones");
         if (state.Experience < System.Numerics.BitOperations.PopCount((uint)state.Milestones) * 100)
             throw new ProgressionConflictException("invalid_progression_milestones");
-        string[] acquired = Acquired(state.Milestones);
+        string[] acquired = Acquired(state.Milestones, includeSwordWave: !allowLegacyState || state.Skills.Any(skill => skill?.SkillTag == SwordWave));
         if (state.Skills.Count != acquired.Length
             || state.Skills.Any(skill => skill is null || !acquired.Contains(skill.SkillTag, StringComparer.Ordinal))
             || state.Skills.Select(skill => skill.SkillTag).Distinct(StringComparer.Ordinal).Count() != acquired.Length)
