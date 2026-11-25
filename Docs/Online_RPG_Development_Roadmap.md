@@ -1013,6 +1013,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| field-overview-clutter-26 | Tab 지도에서 작은 나무·소품 크기의 내부 구멍 생략 | Private/UI/Minimap/RPGFieldWalkableArea.h·cpp, Docs/PLAYER_MINIMAP.md, 본인 행 | UE 5.8 CPP 2개 컴파일과 고립 2×2 구멍·외곽·긴 벽·큰 장애물·히든 셀 C++ 검사 통과. 임시 4,220,592 bytes 정리 | 본인 4경로 main index/ref·origin/main 게시 예약. 원격 일치 시 예약 해제 |
 | swordwave-growth-26 | 입문2 일반 첫 완료 검풍 습득·기존 저장 보정·로비 편성 | 성장 도메인·목록·PG 읽기, 회귀 사례, API 계약, 로비 위젯, 본인 행 | 백엔드 Release 경고·오류 0, 메모리 정산·5스킬 저장·보정·재전송 검증 및 UE 5.8 위젯 C++ 컴파일 통과. 임시 25792243 bytes 정리 | 구현 완료. 본인 7경로 main index/ref·origin/main 게시 예약, 원격 일치 시 해제 |
 | 검풍 스킬 등록 / swordwave-content-25 | 분노 검풍 정의·피해 행·전용 능력/투사체 연출, 개발 프로필 5번 편성 | 검풍 태그·저작기, DA_Skill_SwordWave·DT_Skill·대검 클래스·개발 프로필·전용 BP 2개, 본인 행 | UE 5.8 호환 Editor 모듈 사본으로 6개 저장·새 프로세스 재로드, 정의/직업/프로필 Valid 3건, 임시 4039797135 bytes·정션 2개 정리. Saved/BuildChecks/SwordWaveContent25/Completion.json | 개발 편성 완료. 일반 성장 해금·실제 전투 확인 후속. 본인 9경로 main index/ref와 origin/main 게시 예약, 원격 일치 시 해제 |
 | field-overview-detail-25 | Tab 지도에서 좁고 짧은 끝자락 생략 | Private/UI/Minimap/RPGFieldWalkableArea.h·cpp, Docs/PLAYER_MINIMAP.md, 본인 행 | 격리 C++·링크 및 D3D11 PIE 통과. 22셀 생략, 포털에서 숲 공터와 폐성당까지 연결 검증. 본인 임시 38,018,808 bytes·정션 3개 정리 | 본인 4경로 main index/ref·origin/main 게시 예약. 원격 일치 시 예약 해제 |

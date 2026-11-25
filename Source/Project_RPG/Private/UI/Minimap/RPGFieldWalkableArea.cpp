@@ -175,6 +175,75 @@ void FRPGFieldWalkableArea::Visit(FIntPoint Cell, double StandingZ)
 	Pending.Add(Cell);
 }
 
+void FRPGFieldWalkableArea::FillSmallHoles(TBitArray<>& VisibleCells) const
+{
+	// Protect the entire projection of a hidden route, even when a small hole encloses it.
+	TArray<FBox2D> HiddenFootprints;
+	for (const TWeakObjectPtr<ATriggerBox>& Route : HiddenRoutes)
+	{
+		const ATriggerBox* Box = Route.Get();
+		const UBoxComponent* Shape = Box ? Cast<UBoxComponent>(Box->GetCollisionComponent()) : nullptr;
+		if (Shape)
+		{
+			const FBox Bounds = Shape->CalcBounds(Shape->GetComponentTransform()).GetBox();
+			HiddenFootprints.Emplace(FVector2D(Bounds.Min), FVector2D(Bounds.Max));
+		}
+	}
+
+	// Only fill holes surrounded by mapped terrain. Keep the original collision and reachability.
+	TBitArray<> Checked = VisibleCells;
+	TArray<FIntPoint> Hole;
+	const FVector2D HalfCell(CellSize.Y * 0.5, CellSize.X * 0.5);
+	for (int32 Seed = 0; Seed < Checked.Num(); ++Seed)
+	{
+		if (Checked[Seed]) continue;
+		Checked[Seed] = true;
+		const FIntPoint Start(Seed % GridSize.X, Seed / GridSize.X);
+		FIntPoint Min = Start;
+		FIntPoint Max = Start;
+		bool bTouchesEdge = false;
+		Hole.Reset();
+		Hole.Add(Start);
+		for (int32 Next = 0; Next < Hole.Num(); ++Next)
+		{
+			const FIntPoint Cell = Hole[Next];
+			Min.X = FMath::Min(Min.X, Cell.X);
+			Min.Y = FMath::Min(Min.Y, Cell.Y);
+			Max.X = FMath::Max(Max.X, Cell.X);
+			Max.Y = FMath::Max(Max.Y, Cell.Y);
+			for (const FIntPoint Direction : Neighbors)
+			{
+				const FIntPoint Neighbor = Cell + Direction;
+				if (Neighbor.X < 0 || Neighbor.X >= GridSize.X || Neighbor.Y < 0 || Neighbor.Y >= GridSize.Y)
+				{
+					bTouchesEdge = true;
+					continue;
+				}
+				const int32 Index = CellIndex(Neighbor);
+				if (!Checked[Index])
+				{
+					Checked[Index] = true;
+					Hole.Add(Neighbor);
+				}
+			}
+		}
+		constexpr int32 MaxHoleWidth = 2;
+		if (bTouchesEdge || Max.X - Min.X >= MaxHoleWidth || Max.Y - Min.Y >= MaxHoleWidth) continue;
+
+		const FVector2D First = CellCenter(Min);
+		const FVector2D Last = CellCenter(Max);
+		const FBox2D WorldFootprint(FVector2D::Min(First, Last) - HalfCell, FVector2D::Max(First, Last) + HalfCell);
+		if (HiddenFootprints.ContainsByPredicate([&WorldFootprint](const FBox2D& Hidden) { return Hidden.Intersect(WorldFootprint); }))
+		{
+			continue;
+		}
+		for (const FIntPoint Cell : Hole)
+		{
+			VisibleCells[CellIndex(Cell)] = true;
+		}
+	}
+}
+
 UTexture2D* FRPGFieldWalkableArea::CreateTexture() const
 {
 	if (Pending.IsEmpty()) return nullptr;
@@ -209,14 +278,17 @@ UTexture2D* FRPGFieldWalkableArea::CreateTexture() const
 		}
 	}
 
+	FillSmallHoles(VisibleCells);
+
 	// Outline the boundary inside each cell, preserving transparent pixels outside the reachable area.
 	constexpr int32 PixelsPerCell = 4;
 	const FIntPoint Size = GridSize * PixelsPerCell;
 	TArray<FColor> Pixels;
 	Pixels.Init(FColor::Transparent, Size.X * Size.Y);
-	for (const FIntPoint Cell : Pending)
+	for (TConstSetBitIterator<> CellIt(VisibleCells); CellIt; ++CellIt)
 	{
-		if (!IsVisible(Cell)) continue;
+		const int32 Index = CellIt.GetIndex();
+		const FIntPoint Cell(Index % GridSize.X, Index / GridSize.X);
 		const bool bLeft = !IsVisible(Cell + FIntPoint(-1, 0));
 		const bool bRight = !IsVisible(Cell + FIntPoint(1, 0));
 		const bool bTop = !IsVisible(Cell + FIntPoint(0, -1));

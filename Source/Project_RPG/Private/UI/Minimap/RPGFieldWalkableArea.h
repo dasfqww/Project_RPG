@@ -21,6 +21,7 @@ private:
 	FVector2D CellCenter(FIntPoint Cell) const;
 	int32 CellIndex(FIntPoint Cell) const { return Cell.Y * GridSize.X + Cell.X; }
 	void Visit(FIntPoint Cell, double StandingZ);
+	void FillSmallHoles(TBitArray<>& VisibleCells) const;
 
 	TWeakObjectPtr<ULevel> FieldLevel;
 	TArray<TWeakObjectPtr<ATriggerBox>> HiddenRoutes;
