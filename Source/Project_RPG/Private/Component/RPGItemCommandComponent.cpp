@@ -518,7 +518,7 @@ void URPGItemCommandComponent::ServerPickupItem_Implementation(ARPGPickUpBase* P
 	APlayerController* Controller = Cast<APlayerController>(GetOwner());
 	APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
 	if (!IsValid(Pickup) || !Pickup->HasAuthority() || Pickup->GetWorld() != GetWorld() ||
-		Pickup->IsA<ARPGCurrencyPickup>() || !Pickup->IsAvailableForPickup() || Pickup->IsHidden() || !IsValid(Pawn) ||
+		Pickup->IsA<ARPGCurrencyPickup>() || !Pickup->CanSubmitPickup(Controller) || !IsValid(Pawn) ||
 		!FMath::IsFinite(MaximumPickupDistance) || MaximumPickupDistance <= 0.f ||
 		!(FVector::DistSquared(Pawn->GetActorLocation(), Pickup->GetActorLocation()) <=
 			FMath::Square(MaximumPickupDistance)))
@@ -579,7 +579,7 @@ void URPGItemCommandComponent::ServerPickupItem_Implementation(ARPGPickUpBase* P
 			|| State->GetBackendDungeonSessionId() != Session || !TryGetAuthenticatedOwner(CurrentOwner)
 			|| !(CurrentOwner == Owner) || !IsAuthenticatedItemOwner(Owner)
 			|| !IsValid(Pickup) || !Pickup->HasAuthority() || Pickup->GetWorld() != GetWorld()
-			|| Pickup->GetPickupDropId() != DropId || !Pickup->IsAvailableForPickup() || Pickup->IsHidden()
+			|| Pickup->GetPickupDropId() != DropId || !Pickup->CanSubmitPickup(Controller)
 			|| !IsValid(Grant) || Pickup->FindComponentByClass<URPGPickupGrantComponent>() != Grant || Grant->IsPending()
 			|| !IsValid(Pawn) || !RPGItemCommandComponent::IsLivingConsumeAvatar(Pawn, Pawn->FindComponentByClass<URPGAbilitySystemComponent>())
 			|| !FMath::IsFinite(MaximumPickupDistance) || MaximumPickupDistance <= 0.f

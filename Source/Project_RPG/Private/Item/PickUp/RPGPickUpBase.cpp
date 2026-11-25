@@ -72,6 +72,7 @@ void ARPGPickUpBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
     DOREPLIFETIME(ThisClass, ItemManifest);
     DOREPLIFETIME(ThisClass, PickupDropId);
     DOREPLIFETIME(ThisClass, bIsAvailableForPickup);
+    DOREPLIFETIME(ThisClass, bTimedPickupReserved);
 }
 
 void ARPGPickUpBase::InitItemManifest(FItemManifest CopyOfManifest, FName InPoolName)
@@ -79,6 +80,8 @@ void ARPGPickUpBase::InitItemManifest(FItemManifest CopyOfManifest, FName InPool
     if (!HasAuthority() || (PickupGrantComponent && PickupGrantComponent->IsPending())) return;
     // Pool reuse / fresh manifest means a NEW logical drop. Pending grants cannot reinitialize it.
     PickupDropId = FGuid::NewGuid();
+    bTimedPickupReserved = false;
+    TimedPickupController.Reset();
     ItemManifest = CopyOfManifest;
     OwningPoolName = InPoolName;
     bIsAvailableForPickup = true;
@@ -101,6 +104,46 @@ void ARPGPickUpBase::InitializeDropPresentation(const FVector& Origin, const int
 bool ARPGPickUpBase::IsAvailableForPickup() const
 {
     return bIsAvailableForPickup && (!LootPresentation || !LootPresentation->IsInFlight());
+}
+
+bool ARPGPickUpBase::CanOfferInteraction() const
+{
+    return IsAvailableForPickup() && !IsHidden() && !bTimedPickupReserved;
+}
+
+bool ARPGPickUpBase::IsInstantPickup() const
+{
+    const float Duration = InteractableData.InteractionDuration;
+    return FMath::IsFinite(Duration) && Duration >= 0.f && FMath::IsNearlyZero(Duration, .1f);
+}
+
+bool ARPGPickUpBase::CanSubmitPickup(const APlayerController* Controller) const
+{
+    return IsValid(Controller) && IsAvailableForPickup() && !IsHidden() &&
+        (bTimedPickupReserved ? bCompletingTimedPickup && TimedPickupController.Get() == Controller : IsInstantPickup());
+}
+
+bool ARPGPickUpBase::TryBeginServerTimedInteraction(APlayerController& Controller)
+{
+    if (!HasAuthority() || !CanOfferInteraction() || !CanApproveRidingTimedInteraction(&Controller)) return false;
+    TimedPickupController = &Controller;
+    bTimedPickupReserved = true;
+    ForceNetUpdate();
+    return true;
+}
+
+void ARPGPickUpBase::EndServerTimedInteraction(const FGuid& Identity, bool bCompleted)
+{
+    if (!HasAuthority() || !bTimedPickupReserved || PickupDropId != Identity) return;
+    if (auto* Controller = TimedPickupController.Get(); Controller && bCompleted)
+    {
+        TGuardValue<bool> Completing(bCompletingTimedPickup, true);
+        TakePickup(Controller);
+    }
+    if (PickupDropId != Identity || IsActorBeingDestroyed()) return;
+    TimedPickupController.Reset();
+    bTimedPickupReserved = false;
+    ForceNetUpdate();
 }
 
 //void ARPGPickUpBase::InitializePickUp(const TSubclassOf<URPGItemBase> BaseClass, const int32 InQuantity)
@@ -247,7 +290,7 @@ void ARPGPickUpBase::EndInteract()
 
 void ARPGPickUpBase::Interact(APlayerController* PlayerController)
 {        
-    TakePickup(PlayerController);
+    if (IsInstantPickup() && CanOfferInteraction()) TakePickup(PlayerController);
 }
 
 void ARPGPickUpBase::UpdateInteractableData()
@@ -276,7 +319,9 @@ bool ARPGPickUpBase::CanApproveRidingTimedInteraction(APlayerController* Control
     const float Range = Commands ? Commands->GetMaximumPickupDistance() : 0;
     return !IsActorBeingDestroyed() && GetWorld() && !GetWorld()->bIsTearingDown
         && IsValid(Controller) && !Controller->IsActorBeingDestroyed() && IsValid(Pawn) && !Pawn->IsActorBeingDestroyed()
-        && Pawn->GetWorld() == GetWorld() && Controller->GetWorld() == GetWorld() && IsAvailableForPickup() && !IsHidden()
+        && Pawn->GetWorld() == GetWorld() && Controller->GetWorld() == GetWorld()
+        && (!HasAuthority() || !bTimedPickupReserved ||
+            (TimedPickupController.Get() == Controller && IsAvailableForPickup() && !IsHidden()))
         && GetPickupDropId().IsValid() && FMath::IsFinite(Range) && Range > 0
         && FVector::DistSquared(Pawn->GetActorLocation(), GetActorLocation()) <= FMath::Square(Range);
 }

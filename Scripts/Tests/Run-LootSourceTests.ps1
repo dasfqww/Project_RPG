@@ -1,4 +1,4 @@
-param([string]$EngineRoot='D:/UE_5.8',[switch]$CompileOnly,[ValidateRange(1,4)][int]$MaxParallelActions=2,[string]$ResumeResult,[switch]$InstalledSnapshot,[string]$InstalledBinaryRoot,[string]$TestFilter='ProjectRPG.Item.LootSources+ProjectRPG.Item.NPCDrop+ProjectRPG.Item.GreatSword',[ValidateRange(1,4)][int]$ExpectedLootTests=4)
+param([string]$EngineRoot='D:/UE_5.8',[switch]$CompileOnly,[ValidateRange(1,4)][int]$MaxParallelActions=2,[string]$ResumeResult,[switch]$InstalledSnapshot,[string]$InstalledBinaryRoot,[string]$TestFilter='ProjectRPG.Item.LootSources+ProjectRPG.Item.NPCDrop+ProjectRPG.Item.GreatSword',[ValidateRange(1,5)][int]$ExpectedLootTests=5)
 $ErrorActionPreference='Stop'
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if(!$InstalledBinaryRoot){$InstalledBinaryRoot=$workspace}
@@ -58,6 +58,7 @@ try {
  $files=@('Source/Project_RPG/Private/Ability/NPC/RPGNPCDropItemAbility.cpp','Source/Project_RPG/Private/Attribute/RPGAttributeSet.cpp',
  'Source/Project_RPG/Private/Controller/RPGPlayerController.cpp','Source/Project_RPG/Private/Component/RPGItemCommandComponent.cpp','Source/Project_RPG/Public/Item/PickUp/RPGPickUpBase.h',
  'Source/Project_RPG/Private/Item/PickUp/RPGPickUpBase.cpp','Source/Project_RPG/Public/Item/PickUp/RPGCurrencyPickup.h',
+ 'Source/Project_RPG/Public/Interface/InteractionInterface.h','Source/Project_RPG/Private/Riding/RPGRidingTimedInteractionComponent.cpp',
  'Source/Project_RPG/Private/Item/PickUp/RPGCurrencyPickup.cpp','Source/Project_RPG/Private/Tests/RPGLootSourceTests.h',
  'Source/Project_RPG/Private/Tests/RPGLootSourceTests.cpp')
  foreach($relative in @('Public/Item/Loot','Private/Item/Loot')) {

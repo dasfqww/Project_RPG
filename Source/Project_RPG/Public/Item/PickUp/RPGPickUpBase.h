@@ -52,6 +52,7 @@ public:
 	void ReleasePickupClaim();
 	void SetPickupQuantity(int32 Quantity);
 	bool IsAvailableForPickup() const;
+	bool CanSubmitPickup(const APlayerController* Controller) const;
 
 protected:
 	UPROPERTY(Transient, Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category = "Pickup | Authority")
@@ -129,6 +130,16 @@ public:
 	FORCEINLINE URPGItemBase* GetRPGItemData() const { return ItemReference; }
 	virtual bool CanApproveRidingTimedInteraction(APlayerController* Controller) const override;
 	virtual FGuid GetRidingTimedInteractionIdentity() const override { return GetPickupDropId(); }
+	virtual bool CanOfferInteraction() const override;
+	virtual bool TryBeginServerTimedInteraction(APlayerController& Controller) override;
+	virtual void EndServerTimedInteraction(const FGuid& Identity, bool bCompleted) override;
 	FORCEINLINE UWidgetComponent* GetWidgetComponent() const { return ItemTextWidgetComponent; }
 	FORCEINLINE FItemManifest GetItemManifest() const { return ItemManifest; }
+
+private:
+	bool IsInstantPickup() const;
+	UPROPERTY(Transient, Replicated)
+	bool bTimedPickupReserved = false;
+	TWeakObjectPtr<APlayerController> TimedPickupController;
+	bool bCompletingTimedPickup = false;
 };

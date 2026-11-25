@@ -73,6 +73,7 @@ public:
 	virtual void BeginInteract();
 	virtual void EndInteract();
 	virtual void Interact(APlayerController* PlayerController);
+	virtual bool CanOfferInteraction() const { return true; }
 
 	/** Opt-in for server-approved dismount before a local screen. Read-only on both peers. */
 	virtual bool CanApproveRidingLocalInteraction(APlayerController* Controller) const { return false; }
@@ -81,4 +82,6 @@ public:
 	/** Timed interaction opt-in; duration is read from the server actor, never an RPC argument. */
 	virtual bool CanApproveRidingTimedInteraction(APlayerController* Controller) const { return CanApproveRidingLocalInteraction(Controller); }
 	virtual FGuid GetRidingTimedInteractionIdentity() const { return GetRidingLocalInteractionIdentity(); }
+	virtual bool TryBeginServerTimedInteraction(APlayerController& Controller) { return true; }
+	virtual void EndServerTimedInteraction(const FGuid& Identity, bool bCompleted) {}
 };

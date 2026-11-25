@@ -61,7 +61,8 @@ bool ARPGCurrencyPickup::TryCollect(APlayerController* Controller)
         if (Controller != Claimant || !IsClaimantCurrent()) return false;
         Send(); return true;
     }
-    if (!GetPickupDropId().IsValid() || !CanInitializeServerDropQuantity(ItemQuantity > 0 ? ItemQuantity : 1) || !TryClaimPickup()) return false;
+    if (!CanSubmitPickup(Controller) || !GetPickupDropId().IsValid()
+        || !CanInitializeServerDropQuantity(ItemQuantity > 0 ? ItemQuantity : 1) || !TryClaimPickup()) return false;
     Frozen.RequestId = GetPickupDropId(); Frozen.CharacterId = State->GetBackendCharacterId();
     Frozen.DungeonSessionId = State->GetBackendDungeonSessionId(); Frozen.Operation = TEXT("WorldLoot");
     Frozen.CommandFingerprint = TEXT("world-loot:") + GetPickupDropId().ToString(EGuidFormats::DigitsWithHyphensLower);

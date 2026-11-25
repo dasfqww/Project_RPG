@@ -96,12 +96,39 @@ bool FRPGLootChestTest::RunTest(const FString&)
     const auto Handle=F.World->AddOnActorSpawnedHandler(FOnActorSpawned::FDelegate::CreateLambda([&](AActor* A)
     { if(A->IsA<ARPGCurrencyPickup>()) ReentryAccepted |= Source->TryOpen(F.PC,Source->GetSourceId()); }));
     TestTrue(TEXT("Authenticated opener emits"),Source->TryOpen(F.PC,Source->GetSourceId()));
+    TestFalse(TEXT("Opened chest is unavailable for interaction"),Chest->CanOfferInteraction());
     F.World->RemoveOnActorSpawnedHandler(Handle);
     TestFalse(TEXT("Spawn callback cannot reopen"),ReentryAccepted);
     TestFalse(TEXT("Second party member/callback cannot reopen"),Source->TryOpen(F.PC,Source->GetSourceId()));
     TestEqual(TEXT("One event and one currency pickup"),Source->GetUsedEvents(),1); TestEqual(TEXT("One pickup"),F.Count(),1);
     for(TActorIterator<ARPGCurrencyPickup> I(F.World);I;++I)
     { TestEqual(TEXT("Amount set before callbacks"),I->Amount,21LL); TestFalse(TEXT("Flight cannot be claimed"),I->IsAvailableForPickup()); }
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGTimedLootExclusiveTest,"ProjectRPG.Item.LootSources.TimedPickupExclusive",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FRPGTimedLootExclusiveTest::RunTest(const FString&)
+{
+    using namespace RPGLootSourceTests;
+    FFixture F;
+    auto* Other = F.World->SpawnActor<ARPGLootTestController>();
+    Other->Possess(F.World->SpawnActor<ARPGLootTestPawn>());
+    auto* Commands = NewObject<URPGItemCommandComponent>(Other);
+    Other->AddInstanceComponent(Commands);
+    Commands->RegisterComponent();
+    auto* Pickup = F.World->SpawnActor<ARPGPickUpBase>();
+    Pickup->InteractableData.InteractionDuration = 2.f;
+    const FGuid DropId = Pickup->GetPickupDropId();
+    TestTrue(TEXT("First player can reserve nearby loot"), Pickup->TryBeginServerTimedInteraction(*F.PC));
+    TestFalse(TEXT("Reserved pickup is excluded from discovery"), Pickup->CanOfferInteraction());
+    TestFalse(TEXT("Second player cannot start looting"), Pickup->TryBeginServerTimedInteraction(*Other));
+    TestFalse(TEXT("Second player cannot submit a direct pickup"), Pickup->CanSubmitPickup(Other));
+    TestFalse(TEXT("Reservation owner cannot complete early"), Pickup->CanSubmitPickup(F.PC));
+    Pickup->EndServerTimedInteraction(FGuid::NewGuid(), false);
+    TestFalse(TEXT("Stale drop identity cannot release reservation"), Pickup->CanOfferInteraction());
+    Pickup->EndServerTimedInteraction(DropId, false);
+    TestTrue(TEXT("Cancellation lets the second player reserve the drop"), Pickup->TryBeginServerTimedInteraction(*Other));
+    Pickup->EndServerTimedInteraction(DropId, false);
+    TestTrue(TEXT("Released pickup is discoverable again"), Pickup->CanOfferInteraction());
     return true;
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGLootValidationTest,"ProjectRPG.Item.LootSources.InvalidRowsAndNoReroll",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)

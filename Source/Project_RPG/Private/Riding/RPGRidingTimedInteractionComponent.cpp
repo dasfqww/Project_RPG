@@ -61,7 +61,8 @@ bool URPGRidingTimedInteractionComponent::Prepare(AActor& InTarget, TFunction<vo
     auto* PC = Cast<APlayerController>(GetOwner()); APawn* P = PC ? PC->GetPawn() : nullptr;
     auto* R = P ? P->FindComponentByClass<URPGRidingComponent>() : nullptr;
     const auto* Interaction = IsValid(&InTarget) ? Cast<IInteractionInterface>(&InTarget) : nullptr;
-    if (bEnding || bPreparing || !IsRegistered() || HasRequest() || !PC || !PC->IsLocalController() || !P || !R || !Interaction
+    if (bEnding || bPreparing || !IsRegistered() || HasRequest() || !PC || !PC->IsLocalController() || !P || !R
+        || !Interaction || !Interaction->CanOfferInteraction()
         || !Ready || !Complete || !Interrupted || LocalSequence == MAX_uint32 || R->GetRidingState().Key.StateRevision >= MAX_uint32 - 1) return false;
     TGuardValue<bool> Preparing(bPreparing, true);
     Local = {}; Local.Sequence = ++LocalSequence; Local.Pawn = P; Local.PlayerState = P->GetPlayerState();
@@ -89,8 +90,8 @@ void URPGRidingTimedInteractionComponent::ServerBegin_Implementation(uint32 InSe
     if (bEnding || !IsRegistered() || Server.Sequence || Now < NextServerRequest) { Reject(); return; }
     NextServerRequest = Now + .2;
     auto* R = IsValid(InPawn) ? InPawn->FindComponentByClass<URPGRidingComponent>() : nullptr;
-    const auto* Interaction = IsValid(InTarget) ? Cast<IInteractionInterface>(InTarget) : nullptr;
-    if (PC->GetPawn() != InPawn || !R || !Interaction || InExpected.StateRevision >= MAX_uint32 - 1
+    auto* Interaction = IsValid(InTarget) ? Cast<IInteractionInterface>(InTarget) : nullptr;
+    if (PC->GetPawn() != InPawn || !R || !Interaction || !Interaction->CanOfferInteraction() || InExpected.StateRevision >= MAX_uint32 - 1
         || R->GetRidingState().Key.RiderEpoch != InExpected.RiderEpoch
         || R->GetRidingState().Key.StateRevision != InExpected.StateRevision) { Reject(); return; }
     FContext Candidate; Candidate.Sequence = InSequence; Candidate.Pawn = InPawn; Candidate.PlayerState = InPawn->GetPlayerState();
@@ -99,6 +100,7 @@ void URPGRidingTimedInteractionComponent::ServerBegin_Implementation(uint32 InSe
     if (!FRPGRidingInteractionScope::TryExecute(*InPawn, *InTarget, [&] { return Matches(Candidate, true, false); }, [&]
         {
             auto Held = FRPGRidingTimedInteractionLease::TryAcquire(*InPawn); if (!Held) return false;
+            if (!Interaction->TryBeginServerTimedInteraction(*PC)) return false;
             Candidate.Key = R->GetRidingState().Key; Candidate.Started = FPlatformTime::Seconds();
             Candidate.Expires = Candidate.Started + Candidate.Duration + 10;
             Server = Candidate; Lease = MoveTemp(Held); UpdateTick();
@@ -127,8 +129,10 @@ void URPGRidingTimedInteractionComponent::ServerFinish_Implementation(uint32 InS
     const double Now = FPlatformTime::Seconds();
     if (!Matches(Server, true, true) || Now < Server.Started + Server.Duration || Now > Server.Expires)
     { StopServer(InSequence, true); return; }
-    const auto Key = Server.Key; const auto Pin = MoveTemp(Lease); Server = {}; UpdateTick();
-    ClientFinished(InSequence, true, Key); // Pin still blocks callback mounts until this notification returns.
+    const auto Finished = Server; const auto Pin = MoveTemp(Lease); Server = {}; UpdateTick();
+    if (auto* Interaction = Cast<IInteractionInterface>(Finished.Target.Get()))
+        Interaction->EndServerTimedInteraction(Finished.Identity, true);
+    ClientFinished(InSequence, true, Finished.Key); // Pin still blocks callback mounts until this notification returns.
 }
 void URPGRidingTimedInteractionComponent::ServerCancel_Implementation(uint32 InSequence)
 {
@@ -138,7 +142,9 @@ void URPGRidingTimedInteractionComponent::ServerCancel_Implementation(uint32 InS
 void URPGRidingTimedInteractionComponent::StopServer(uint32 InSequence, bool bNotify)
 {
     if (!InSequence || Server.Sequence != InSequence) return;
-    const auto Pin = MoveTemp(Lease); Server = {}; UpdateTick();
+    const auto Stopped = Server; const auto Pin = MoveTemp(Lease); Server = {}; UpdateTick();
+    if (auto* Interaction = Cast<IInteractionInterface>(Stopped.Target.Get()))
+        Interaction->EndServerTimedInteraction(Stopped.Identity, false);
     if (bNotify) ClientFinished(InSequence, false, {});
 }
 void URPGRidingTimedInteractionComponent::ClientFinished_Implementation(uint32 InSequence, bool bSuccess, FRPGRidingStateKey InKey)

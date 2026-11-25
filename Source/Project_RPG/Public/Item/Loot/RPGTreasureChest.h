@@ -11,6 +11,7 @@ class PROJECT_RPG_API ARPGTreasureChest : public AActor, public IInteractionInte
 public:
     ARPGTreasureChest();
     virtual void Interact(APlayerController* Controller) override;
+    virtual bool CanOfferInteraction() const override;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Loot") TObjectPtr<URPGLootSourceComponent> LootSource;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Loot") TObjectPtr<UStaticMeshComponent> ChestMesh;
 };

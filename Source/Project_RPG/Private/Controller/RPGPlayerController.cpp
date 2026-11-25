@@ -258,7 +258,7 @@ void ARPGPlayerController::PerformInteractionCheck_Around()
 			AActor* OverlappedActor = Result.GetActor();
 			if (!OverlappedActor) continue;
 						
-			if (OverlappedActor->GetClass()->ImplementsInterface(UInteractionInterface::StaticClass()))
+			if (const auto* Interaction = Cast<IInteractionInterface>(OverlappedActor); Interaction && Interaction->CanOfferInteraction())
 			{
 				float DistanceSquared = FVector::DistSquared(PlayerCharacter->GetActorLocation(), OverlappedActor->GetActorLocation());
 				if (DistanceSquared < MinDistanceSquared)

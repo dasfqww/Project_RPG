@@ -14,7 +14,11 @@ ARPGTreasureChest::ARPGTreasureChest()
 }
 void ARPGTreasureChest::Interact(APlayerController* Controller)
 {
-    if (!IsValid(Controller)) return;
+    if (!IsValid(Controller) || !CanOfferInteraction()) return;
     if (auto* Bridge = Controller->FindComponentByClass<URPGLootInteractionComponent>())
         Bridge->Request(*this, LootSource->GetSourceId());
+}
+bool ARPGTreasureChest::CanOfferInteraction() const
+{
+    return LootSource->GetUsedEvents() == 0;
 }

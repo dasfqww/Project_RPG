@@ -296,6 +296,8 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 ## 12. 현재 현황과 다음 작업 체크리스트 (2026-10-20)
 
+- [x] **2026-11-26 루팅 중 다른 플레이어의 상호작용 차단** — 시간형 픽업은 서버가 시작 시 대상 액터를 점유하고 완료 시 기존 획득 경로에 넘긴다. 사용 중인 픽업과 열린 상자를 입력 탐색에서 제외한다. UE 5.8 격리 UHT·C++ 14개 컴파일 통과, 임시 249,252,781 bytes 정리. 회귀 테스트를 추가했으며 런타임 실행은 별도다. [루팅 계약](ITEM_LOOT_SOURCES.md#발생-권한과-단일-실행)
+
 - [x] 2026-11-25 독립 마을·필드 맵 사이에서 포털로 월드를 교체하고 상대 입구에서 다시 조작할 수 있다. PIE와 독립 게임 창에서 양방향 이동을 확인했다. [독립 맵 포털](REGION_TRAVEL.md#독립-맵-포털)
 - [x] 2026-11-25 지역 전환 때 하단 게이지를 0%부터 표시하고 월드·플레이어 준비 후 100%를 표시한다. 독립 게임 창의 포털 왕복에서 양방향 0%·중간값·100%와 도착을 확인했다. [지역 전환](REGION_TRAVEL.md#독립-맵-포털)
 - [x] **공용 마을 채널 자동 분산 / town-channel-pool** — 로그인 로비에서 월드별 마을로 입장한다. 마지막 자리를 예약하면 호스트 한도 내에서 다음 전용 서버를 열고, 빈 추가 채널을 회수한다. [마을 입장 및 운영 설정](REGION_TRAVEL.md#로비에서-공용-마을-입장)
@@ -1013,6 +1015,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| loot-interaction-exclusive-26 | 월드 픽업 진행 시작부터 서버 점유, 다른 플레이어의 루팅 입력 차단 | InteractionInterface.h, RPGRidingTimedInteractionComponent.cpp, RPGPickUpBase.h/.cpp, RPGCurrencyPickup.cpp, RPGItemCommandComponent.cpp, RPGPlayerController.cpp, RPGTreasureChest.h/.cpp, RPGLootSourceTests.cpp, Scripts/Tests/Run-LootSourceTests.ps1, ITEM_LOOT_SOURCES.md, 본인 행 | 격리 컴파일과 검증, 본인 Saved/LS 실행 GUID 경로 및 폐기, 완료 시 본인 경로만 main index/ref 및 origin/main 순차 게시 | 격리 UHT·C++ 14개 컴파일 통과, 임시 249,252,781 bytes 정리. 본인 13경로만 게시. 원격 해시 일치 시 본인 예약 해제 |
 | field-overview-clutter-26 | Tab 지도에서 작은 나무·소품 크기의 내부 구멍 생략 | Private/UI/Minimap/RPGFieldWalkableArea.h·cpp, Docs/PLAYER_MINIMAP.md, 본인 행 | UE 5.8 CPP 2개 컴파일과 고립 2×2 구멍·외곽·긴 벽·큰 장애물·히든 셀 C++ 검사 통과. 임시 4,220,592 bytes 정리 | 본인 4경로 main index/ref·origin/main 게시 예약. 원격 일치 시 예약 해제 |
 | swordwave-growth-26 | 입문2 일반 첫 완료 검풍 습득·기존 저장 보정·로비 편성 | 성장 도메인·목록·PG 읽기, 회귀 사례, API 계약, 로비 위젯, 본인 행 | 백엔드 Release 경고·오류 0, 메모리 정산·5스킬 저장·보정·재전송 검증 및 UE 5.8 위젯 C++ 컴파일 통과. 임시 25792243 bytes 정리 | 구현 완료. 본인 7경로 main index/ref·origin/main 게시 예약, 원격 일치 시 해제 |
 | 검풍 스킬 등록 / swordwave-content-25 | 분노 검풍 정의·피해 행·전용 능력/투사체 연출, 개발 프로필 5번 편성 | 검풍 태그·저작기, DA_Skill_SwordWave·DT_Skill·대검 클래스·개발 프로필·전용 BP 2개, 본인 행 | UE 5.8 호환 Editor 모듈 사본으로 6개 저장·새 프로세스 재로드, 정의/직업/프로필 Valid 3건, 임시 4039797135 bytes·정션 2개 정리. Saved/BuildChecks/SwordWaveContent25/Completion.json | 개발 편성 완료. 일반 성장 해금·실제 전투 확인 후속. 본인 9경로 main index/ref와 origin/main 게시 예약, 원격 일치 시 해제 |
