@@ -84,21 +84,29 @@ bool FRPGActionProgressWidgetPresentationTest::RunTest(const FString&)
 	const auto Handle = F.UI->BeginActionProgress(F.Source, Data);
 	F.Show();
 	if (!TestNotNull(TEXT("Fallback progress control"), Access::Bar(*F.Widget))) return false;
+	if (!TestNotNull(TEXT("Fallback icon control"), Access::Icon(*F.Widget))) return false;
 	TestTrue(TEXT("Late widget sees current execution"), F.Widget->GetDisplayedProgress().Handle == Handle);
 	TestEqual(TEXT("Initial fraction"), Access::Bar(*F.Widget)->GetPercent(), .25f);
 	TestEqual(TEXT("Initial label"), Access::Label(*F.Widget)->GetText().ToString(), FString(TEXT("Cast")));
 	TestFalse(TEXT("Remaining time rendered"), Access::Time(*F.Widget)->GetText().IsEmpty());
+	auto* Icon = NewObject<UTexture2D>(GetTransientPackage());
 	for (const auto Kind : {ERPGActionProgressKind::Holding, ERPGActionProgressKind::Casting,
 		ERPGActionProgressKind::Charge, ERPGActionProgressKind::Interaction})
 	{
 		Data = Timed(); Data.Kind = Kind; Data.ElapsedSeconds = 4.f;
 		Data.Phase = ERPGActionProgressPhase::Ready; Data.Stage = 2; Data.StageCount = 2;
+		Data.Icon = Icon;
 		const auto Active = F.UI->BeginActionProgress(F.Source, Data);
 		TestEqual(TEXT("All kinds display without concrete gameplay dependency"), F.Widget->GetDisplayedProgress().Data.Kind, Kind);
 		TestEqual(TEXT("Full bar"), Access::Bar(*F.Widget)->GetPercent(), 1.f);
 		TestEqual(TEXT("Ready keeps display visible"), F.Widget->GetVisibility(), ESlateVisibility::HitTestInvisible);
 		TestFalse(TEXT("Ready label"), Access::Phase(*F.Widget)->GetText().IsEmpty());
 		TestFalse(TEXT("Stage label"), Access::Stage(*F.Widget)->GetText().IsEmpty());
+		const bool bInteraction = Kind == ERPGActionProgressKind::Interaction;
+		TestEqual(TEXT("Only interactions display their progress icon"), Access::Icon(*F.Widget)->GetVisibility(),
+			bInteraction ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		TestEqual(TEXT("Skills leave no icon brush"), Access::Icon(*F.Widget)->GetBrush().GetResourceObject(),
+			static_cast<UObject*>(bInteraction ? Icon : nullptr));
 		Data.Phase = ERPGActionProgressPhase::AwaitingConfirmation;
 		F.UI->UpdateActionProgress(Active, Data);
 		TestTrue(TEXT("Waiting is still active"), F.Widget->GetDisplayedProgress().bActive);
@@ -108,12 +116,14 @@ bool FRPGActionProgressWidgetPresentationTest::RunTest(const FString&)
 		TestEqual(TEXT("End clears bar"), Access::Bar(*F.Widget)->GetPercent(), 0.f);
 	}
 	Data = Timed(); Data.bHasDuration = false; Data.TimeDisplay = ERPGActionProgressTimeDisplay::None;
-	Data.Icon = NewObject<UTexture2D>(GetTransientPackage());
+	Data.Kind = ERPGActionProgressKind::Interaction;
+	Data.Icon = Icon;
 	F.UI->BeginActionProgress(F.Source, Data);
 	TestTrue(TEXT("Unknown duration uses marquee"), Access::Bar(*F.Widget)->UseMarquee());
 	TestEqual(TEXT("Optional time hidden"), Access::Time(*F.Widget)->GetVisibility(), ESlateVisibility::Collapsed);
 	TestEqual(TEXT("Loaded soft icon displayed"), Access::Icon(*F.Widget)->GetBrush().GetResourceObject(), static_cast<UObject*>(Data.Icon.Get()));
 	Data = Timed(); Data.bReverseFill = true;
+	Data.Icon = Icon;
 	F.UI->BeginActionProgress(F.Source, Data);
 	TestEqual(TEXT("Reverse fill is supplied by state"), Access::Bar(*F.Widget)->GetPercent(), .75f);
 	TestFalse(TEXT("Known duration disables marquee"), Access::Bar(*F.Widget)->UseMarquee());

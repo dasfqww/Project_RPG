@@ -312,7 +312,7 @@ Ability/Task/상호작용의 완료·취소·종료 경로에서 원본이 유�
    최신 상태를 읽는다. 제거/교체는 원본 행동을 취소하거나 종료하지 않는다.
 
 네 행동 종류는 같은 표시 경로를 사용한다. 확정된 시간은 전달된 비율을 그리고, 전체 시간이 없으면
-UMG marquee 연출을 사용한다. 시간·단계·아이콘은 값이 있을 때만 보이며, `Ready`와
+UMG marquee 연출을 사용한다. 시간·단계는 값이 있을 때 보이며 아이콘은 상호작용 진행에서만 표시한다. `Ready`와
 `AwaitingConfirmation` 문구는 종료와 별개로 유지한다. 비활성 상태에서는 위젯 전체를 숨기고
 이전 문구/수치를 비운다. 자체 NativeTick·게임플레이 타이머나 성공/취소 판정을 추가하지 않았다.
 
@@ -328,7 +328,7 @@ UMG marquee 연출을 사용한다. 시간·단계·아이콘은 값이 있을 �
 | `TimeLabel` | TextBlock | 전달된 경과/남은 시간, 1자리 소수 |
 | `StageLabel` | TextBlock | 현재 단계 / 전체 단계 |
 | `PhaseLabel` | TextBlock | 준비/서버 확인 대기 문구 |
-| `ActionIcon` | Image | 선택 soft texture, UImage 비동기 로드/취소 사용 |
+| `ActionIcon` | Image | 상호작용용 선택 soft texture, UImage 비동기 로드/취소 사용 |
 
 `OnProgressPresentationChanged`는 추가 외형 연출용 BP 이벤트다. 여기서
 `GetDisplayedProgress()`로 현재 스냅샷을 읽을 수 있다. 위젯 내부를 부모 HUD가 직접 조회하지 않는다.

@@ -124,7 +124,8 @@ void URPGActionProgressWidget::ApplyPresentation()
 	}
 	if (ActionIcon)
 	{
-		const auto Icon = State.bActive ? Data.Icon : TSoftObjectPtr<UTexture2D>{};
+		const auto Icon = State.bActive && Data.Kind == ERPGActionProgressKind::Interaction
+			? Data.Icon : TSoftObjectPtr<UTexture2D>{};
 		if (DisplayedIcon != Icon || Icon.IsNull())
 		{
 			DisplayedIcon = Icon;
