@@ -172,7 +172,7 @@ void URPGQuickSlotWidget::NativeOnInitialized()
 				TextSlot->SetHorizontalAlignment(HAlign_Center);
 				TextSlot->SetVerticalAlignment(VAlign_Center);
 			}
-			FSlateFontInfo Font = FCoreStyle::GetDefaultFontStyle("Bold", 22);
+			FSlateFontInfo Font = FCoreStyle::GetDefaultFontStyle("Bold", 18);
 			Font.OutlineSettings.OutlineSize = 2;
 			Font.OutlineSettings.OutlineColor = FLinearColor::Black;
 			SlotItemCountText->SetFont(Font);
