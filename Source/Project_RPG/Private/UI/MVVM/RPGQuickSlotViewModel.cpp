@@ -148,8 +148,12 @@ void URPGQuickSlotViewModel::UpdateFromContent(const FRPGQuickSlotContent& InCon
 		SetItemIcon(Skill.Icon);
 		SetIsSlotActive(Skill.bIsGranted);
 		FNumberFormattingOptions Format;
-		Format.SetMinimumFractionalDigits(0).SetMaximumFractionalDigits(1);
-		SetQuantityText(CooldownRemaining > 0.0f ? FText::AsNumber(CooldownRemaining, &Format) : FText::GetEmpty());
+		Format.SetUseGrouping(false)
+			.SetRoundingMode(ERoundingMode::ToPositiveInfinity)
+			.SetMinimumFractionalDigits(0)
+			.SetMaximumFractionalDigits(CooldownRemaining < 1.0f ? 1 : 0);
+		SetQuantityText(Skill.bIsGranted && GetCooldownFraction() > 0.0f
+			? FText::AsNumber(CooldownRemaining, &Format) : FText::GetEmpty());
 		return;
 	}
 	if (InContent.ItemId.IsValid())

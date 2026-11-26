@@ -115,8 +115,7 @@ private:
 	TSoftObjectPtr<UTexture2D> ItemIconReference;
 	TSharedPtr<FStreamableHandle> ItemIconLoadHandle;
 	uint64 ItemIconLoadGeneration = 0;
-	/** Optional WBP image; the authored material owns the radial appearance. */
-	void UpdateSkillCooldownView(float RemainingFraction);
+	void UpdateSkillCooldownView(const FText& RemainingTime);
 	TStrongObjectPtr<URPGQuickSlotViewModel> SkillViewModel;
 	float SkillRefreshElapsed = 0.0f;
 	TWeakPtr<SRPGSlotFrame> SlotFrame;

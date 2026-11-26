@@ -17,7 +17,7 @@
 #include "Manager/DataManager.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
-#include "Materials/MaterialInstanceDynamic.h"
+#include "Brushes/SlateColorBrush.h"
 #include "UI/ItemDragDropOperation.h"
 #include "UI/QuickSlotDragDropOperation.h"
 #include "Character/RPGPlayer.h"
@@ -94,7 +94,29 @@ void URPGQuickSlotWidget::NativeOnInitialized()
 
 	SetInputKeyText(InputText);
 	SetImageAlpha(SlotItemImage, 0.f);
-	UpdateSkillCooldownView(0.0f);
+	if (bIsSkillSlot)
+	{
+		if (UImage* CooldownImage = Cast<UImage>(GetWidgetFromName(TEXT("SkillCooldownImage"))))
+		{
+			CooldownImage->SetBrush(FSlateColorBrush(FLinearColor(0.f, 0.f, 0.f, 0.65f)));
+			CooldownImage->SetColorAndOpacity(FLinearColor::White);
+		}
+		if (SlotItemCountText)
+		{
+			if (UOverlaySlot* TextSlot = Cast<UOverlaySlot>(SlotItemCountText->Slot))
+			{
+				TextSlot->SetPadding(FMargin(0.f));
+				TextSlot->SetHorizontalAlignment(HAlign_Center);
+				TextSlot->SetVerticalAlignment(VAlign_Center);
+			}
+			FSlateFontInfo Font = FCoreStyle::GetDefaultFontStyle("Bold", 22);
+			Font.OutlineSettings.OutlineSize = 2;
+			Font.OutlineSettings.OutlineColor = FLinearColor::Black;
+			SlotItemCountText->SetFont(Font);
+			SlotItemCountText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+		}
+		UpdateSkillCooldownView(FText::GetEmpty());
+	}
 }
 
 void URPGQuickSlotWidget::NativeConstruct()
@@ -211,7 +233,7 @@ void URPGQuickSlotWidget::UnbindFromQuickSlot()
 	ItemCommandViewModel.Reset();
 	CancelItemIconLoad();
 	ItemIconReference.Reset();
-	UpdateSkillCooldownView(0.0f);
+	UpdateSkillCooldownView(FText::GetEmpty());
 	if (SkillViewModel.IsValid()) SkillViewModel->Initialize(INDEX_NONE, nullptr, false);
 	SkillViewModel.Reset();
 	CancelPendingItemClick();
@@ -369,10 +391,9 @@ void URPGQuickSlotWidget::RefreshSkillSlotView(const bool bRefreshTooltip)
 	if (SlotItemImage && SlotItemImage->GetBrush().GetResourceObject() != Icon)
 		SlotItemImage->SetBrushFromTexture(Icon);
 	SetImageAlpha(SlotItemImage, Icon && SkillViewModel->IsSlotActive() ? 1.f : 0.f);
-	if (SlotItemCountText) SlotItemCountText->SetText(SkillViewModel->GetQuantityLabel());
 	SetInputKeyText(SkillViewModel->GetKeyLabel());
 	UpdateSkillCooldownView(SkillViewModel->IsSlotActive()
-		? SkillViewModel->GetCooldownFraction() : 0.0f);
+		? SkillViewModel->GetQuantityLabel() : FText::GetEmpty());
 
 	if (bRefreshTooltip)
 	{
@@ -398,25 +419,19 @@ void URPGQuickSlotWidget::RefreshSkillSlotView(const bool bRefreshTooltip)
 	}
 }
 
-void URPGQuickSlotWidget::UpdateSkillCooldownView(const float RemainingFraction)
+void URPGQuickSlotWidget::UpdateSkillCooldownView(const FText& RemainingTime)
 {
 	if (!bIsSkillSlot) return;
-	UImage* CooldownImage = Cast<UImage>(GetWidgetFromName(TEXT("SkillCooldownImage")));
-	if (!CooldownImage) return; // Existing item/legacy WBPs do not need this image.
-	if (RemainingFraction <= 0.0f)
+	const ESlateVisibility CooldownVisibility = RemainingTime.IsEmpty()
+		? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible;
+	if (UImage* CooldownImage = Cast<UImage>(GetWidgetFromName(TEXT("SkillCooldownImage"))))
 	{
-		CooldownImage->SetVisibility(ESlateVisibility::Collapsed);
-		return;
+		CooldownImage->SetVisibility(CooldownVisibility);
 	}
-	if (UMaterialInstanceDynamic* Material = CooldownImage->GetDynamicMaterial())
+	if (SlotItemCountText)
 	{
-		// The image owns a per-widget MID, never a shared cooldown or UI timer.
-		Material->SetScalarParameterValue(TEXT("ProgressBarFillPercent"), RemainingFraction);
-		CooldownImage->SetVisibility(ESlateVisibility::HitTestInvisible);
-	}
-	else
-	{
-		CooldownImage->SetVisibility(ESlateVisibility::Collapsed);
+		SlotItemCountText->SetText(RemainingTime);
+		SlotItemCountText->SetVisibility(CooldownVisibility);
 	}
 }
 
@@ -964,7 +979,7 @@ void URPGQuickSlotWidget::ClearSlotItem()
 {
 	CancelItemIconLoad();
 	ItemIconReference.Reset();
-	UpdateSkillCooldownView(0.0f);
+	UpdateSkillCooldownView(FText::GetEmpty());
 	CancelPendingItemClick();
 	SlotItem = nullptr;
 	SlotItemId.Invalidate();

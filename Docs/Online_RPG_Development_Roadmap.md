@@ -1017,6 +1017,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| skill-slot-countdown-27 | 스킬 퀵슬롯 중앙 카운트다운과 반투명 검정 배경 | RPGQuickSlotWidget.h·cpp, RPGQuickSlotViewModel.cpp, 본인 행 | UE 5.8 C++ 2개·격리 링크 및 1280×720 testmap에서 Q 스킬 실사용·GAS 8초 쿨타임 표시(8→0.9)·만료 숨김 확인. Saved/BuildChecks/SkillSlotCountdown27. 임시 337,179,784 bytes·정션 2개 정리, 자동 정책으로 23,556,670 bytes 잔류 | 실행 자원 해제. 본인 4경로 main index/ref 및 origin/main 순차 게시 예약. 이 행 포함 커밋 원격 일치 시 예약 해제 |
 | minimap-channel-menu-26 | 미니맵 위 우편 오른쪽에 채널 메뉴 배치 | Private/UI/HUD/RPGHUD.cpp, 본인 행 | UE 5.8 격리 C++·링크 및 마을 HUD 1280×720·1600×900 배치·Slate 메뉴 열기/닫기 확인. 임시 300,106,042 bytes·정션 2개 정리. Saved/BuildChecks/MinimapChannelMenu26/Result.json | UI 구현·검증 완료. 본인 두 경로만 main index/ref·origin/main 순차 게시 예약, 원격 일치 시 해제. 수동 채널 이동 API 미연결 |
 | greatsword-holding-camera-27 | 회전 베기 카메라 전진·우클릭 정지 | Skill/RPGSkillExecutionPolicy.cpp, Component/RPGCharacterMovementComponent.h·cpp, RPGSkillActionProgressTests.cpp, 대검 기획 문서 및 본인 행 | 격리 C++/링크·native 6건 통과. 실제 testmap PIE 전진 69.3cm·제동 0cm·90도 전환 후 52.8cm·유지 종료 후 0cm. 임시 3624888010 bytes·정션 2개 정리, Saved/BuildChecks/GreatSwordHoldingCamera27/Result.json | 실행 자원 해제. 본인 6경로만 main index/ref·origin/main 순차 게시 예약, 원격 일치 시 해제 |
 | player-camera-7m-27 | 플레이어 기본 카메라를 7m로 조정 | Source/Project_RPG/Private/Character/RPGPlayer.cpp 및 본인 행 | MSVC 구문 검사·생성자와 1–7m 휠 범위 확인. 기존 7m PIE 화면 근거 사용, 이번 재실행 없음. 임시 응답 787 bytes 정리 | 구현·검증 완료. 본인 예약 해제 |
