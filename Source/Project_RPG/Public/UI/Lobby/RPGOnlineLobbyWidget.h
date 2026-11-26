@@ -266,6 +266,10 @@ private:
 	UFUNCTION() void JoinSteamParty();
 	UFUNCTION() void AcceptSteamInvite();
 	UFUNCTION() void InviteSteamFriends();
+	UFUNCTION() void LoadSteamFriends();
+	UFUNCTION() void InviteSelectedSteamFriend();
+	UFUNCTION() void HandleSteamFriendSelected(FString Option, ESelectInfo::Type SelectionType);
+	void ResetSteamFriends();
 	UFUNCTION() void LeaveSteamParty();
 	UFUNCTION() void PublishSteamServer();
 	UFUNCTION() void JoinDevelopmentSession();
@@ -291,6 +295,10 @@ private:
 	UPROPERTY(Transient) TObjectPtr<URPGSteamLobbySubsystem> Steam;
 	UPROPERTY(Transient) TArray<FRPGBackendCharacter> OwnedCharacters;
 	UPROPERTY(Transient) TArray<FRPGSteamLobbyInfo> FoundParties;
+	TArray<FRPGSteamFriend> SteamFriends;
+	FText SteamFriendsFeedback;
+	uint32 SteamFriendsRequest = 0;
+	bool bLoadingSteamFriends = false;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> StatusText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> TitleText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> LoginHintText;
@@ -333,6 +341,8 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UVerticalBox> AbandonmentConfirmation;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> CharactersBox;
 	UPROPERTY(Transient) TObjectPtr<UComboBoxString> PartiesBox;
+	UPROPERTY(Transient) TObjectPtr<UComboBoxString> SteamFriendsBox;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> SteamFriendsStatus;
 	UPROPERTY(Transient) TObjectPtr<UEditableTextBox> CharacterName;
 	UPROPERTY(Transient) TObjectPtr<UEditableTextBox> DevelopmentSteamId;
 	UPROPERTY(Transient) TObjectPtr<UEditableTextBox> DevelopmentSessionId;

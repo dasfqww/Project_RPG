@@ -7,8 +7,12 @@
 
 #include "Online/OnlineSessionNames.h"
 #include "Interfaces/OnlineExternalUIInterface.h"
+#include "Interfaces/OnlineFriendsInterface.h"
+#include "Interfaces/OnlineIdentityInterface.h"
+#include "Interfaces/OnlinePresenceInterface.h"
 #include "OnlineSessionSettings.h"
 #include "OnlineSubsystem.h"
+#include "OnlineSubsystemNames.h"
 #include "OnlineSubsystemUtils.h"
 
 namespace
@@ -23,6 +27,7 @@ namespace
 	const FName ServerAddressKey(TEXT("RPG_SERVER_ADDRESS"));
 	const FName BuildIdKey(TEXT("RPG_BUILD_ID"));
 	const FString DungeonLobbyType(TEXT("PVE_DUNGEON"));
+	const FString SteamFriendsList(EFriendsLists::ToString(EFriendsLists::Default));
 
 	constexpr int32 MinPartySize = 1;
 	constexpr int32 MaxPartySize = 4;
@@ -304,6 +309,89 @@ bool URPGSteamLobbySubsystem::ShowPartyInviteOverlay()
 		return false;
 	}
 	return true;
+}
+
+IOnlineSubsystem* URPGSteamLobbySubsystem::GetAuthenticatedSteamSubsystem() const
+{
+	const auto* Web = GetGameInstance() ? GetGameInstance()->GetSubsystem<UHttpWebManager>() : nullptr;
+	if (!Web || !Web->HasAccessToken() || !GetWorld())
+	{
+		return nullptr;
+	}
+
+	IOnlineSubsystem* Steam = Online::GetSubsystem(GetWorld());
+	const IOnlineIdentityPtr Identity = Steam && Steam->GetSubsystemName() == STEAM_SUBSYSTEM
+		? Steam->GetIdentityInterface() : nullptr;
+	const FUniqueNetIdPtr LocalId = Identity ? Identity->GetUniquePlayerId(0) : nullptr;
+	return LocalId && LocalId->IsValid() && Identity->GetLoginStatus(0) == ELoginStatus::LoggedIn
+		&& LocalId->ToString() == Web->GetAuthenticatedSteamId() ? Steam : nullptr;
+}
+
+bool URPGSteamLobbySubsystem::CanReadSteamFriends() const
+{
+	IOnlineSubsystem* Steam = GetAuthenticatedSteamSubsystem();
+	return Steam && Steam->GetFriendsInterface().IsValid();
+}
+
+bool URPGSteamLobbySubsystem::ReadSteamFriends(FRPGSteamFriendsReadComplete Completion)
+{
+	IOnlineSubsystem* Steam = GetAuthenticatedSteamSubsystem();
+	const IOnlineFriendsPtr Friends = Steam ? Steam->GetFriendsInterface() : nullptr;
+	if (!Friends)
+	{
+		return false;
+	}
+
+	const FString Account = GetGameInstance()->GetSubsystem<UHttpWebManager>()->GetAuthenticatedSteamId();
+	return Friends->ReadFriendsList(0, SteamFriendsList, FOnReadFriendsListComplete::CreateWeakLambda(
+		this, [this, Completion = MoveTemp(Completion), Account, RequestedFriends = Friends.Get()](
+			int32 LocalUserNum, bool bSuccess, const FString& ListName, const FString&)
+		{
+			IOnlineSubsystem* CurrentSteam = GetAuthenticatedSteamSubsystem();
+			const IOnlineFriendsPtr CurrentFriends = CurrentSteam ? CurrentSteam->GetFriendsInterface() : nullptr;
+			TArray<TSharedRef<FOnlineFriend>> Entries;
+			const bool bRead = bSuccess && LocalUserNum == 0 && ListName == SteamFriendsList
+				&& CurrentFriends.Get() == RequestedFriends
+				&& GetGameInstance()->GetSubsystem<UHttpWebManager>()->GetAuthenticatedSteamId() == Account
+				&& CurrentFriends->GetFriendsList(0, ListName, Entries);
+			TArray<FRPGSteamFriend> Result;
+			if (bRead)
+			{
+				for (const TSharedRef<FOnlineFriend>& Entry : Entries)
+				{
+					const FUniqueNetIdRef Id = Entry->GetUserId();
+					if (Id->IsValid() && Entry->GetInviteStatus() == EInviteStatus::Accepted)
+					{
+						Result.Add({Id, Entry->GetDisplayName(), Entry->GetPresence().bIsOnline != 0});
+					}
+				}
+				Result.Sort([](const FRPGSteamFriend& Left, const FRPGSteamFriend& Right)
+				{
+					return Left.bOnline != Right.bOnline ? Left.bOnline : Left.DisplayName.Compare(Right.DisplayName) < 0;
+				});
+			}
+			Completion.ExecuteIfBound(bRead, MoveTemp(Result));
+		}));
+}
+
+bool URPGSteamLobbySubsystem::InviteSteamFriend(const FUniqueNetId& FriendId)
+{
+	IOnlineSubsystem* Steam = GetAuthenticatedSteamSubsystem();
+	if (!Steam || !SessionInterface || IsLobbyRequestInFlight() || Steam->GetSessionInterface() != SessionInterface)
+	{
+		return false;
+	}
+
+	const FNamedOnlineSession* Party = SessionInterface->GetNamedSession(PartyLobbySessionName);
+	if (!Party || !Party->SessionSettings.bAllowInvites)
+	{
+		return false;
+	}
+
+	const IOnlineFriendsPtr Friends = Steam->GetFriendsInterface();
+	const TSharedPtr<FOnlineFriend> Friend = Friends ? Friends->GetFriend(0, FriendId, SteamFriendsList) : nullptr;
+	return Friend && Friend->GetInviteStatus() == EInviteStatus::Accepted && Friend->GetPresence().bIsOnline
+		&& SessionInterface->SendSessionInviteToFriend(0, PartyLobbySessionName, *Friend->GetUserId());
 }
 
 bool URPGSteamLobbySubsystem::JoinPartyLobbyByIndex(

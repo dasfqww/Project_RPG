@@ -222,12 +222,18 @@ bool FRPGOnlineLobbyWidgetTest::RunTest(const FString&)
 		TestFalse(TEXT("Native/BP selector cannot bypass context"), Widget->SelectDungeonDifficulty(ERPGGameDifficulty::Easy));
 		TestFalse(TEXT("Native/BP create cannot bypass context"), Widget->CreateSelectedDungeonSession());
 		TestTrue(TEXT("Only loaded roster characters produce options"), Widget->GetCharacterOption(TEXT("invented-id")).IsEmpty());
+		auto* Friends = Cast<UComboBoxString>(Widget->GetWidgetFromName(TEXT("SteamFriendsList")));
+		if (!TestNotNull(TEXT("Steam friends selector exists"), Friends)) return false;
+		TestTrue(TEXT("Friend selection refreshes action availability"), Friends->OnSelectionChanged.IsBound());
+		TestEqual(TEXT("Unauthenticated lobby has no Steam friends"), Friends->GetOptionCount(), 0);
+		TestEqual(TEXT("The empty friends selector is hidden"), Friends->GetVisibility(), ESlateVisibility::Collapsed);
 		for (const FName Name : {TEXT("LoginSteamButton"), TEXT("LogoutBackendButton"), TEXT("ReloadCharactersButton"), TEXT("CreateCharacterButton"),
 			TEXT("ContinueWithCharacterButton"), TEXT("ChangeCharacterButton"), TEXT("ReloadCreationOptionsButton"),
 			TEXT("CreateDungeonSessionButton"), TEXT("ResumeDungeonSessionButton"), TEXT("RefreshDungeonSessionButton"),
 			TEXT("EnterDungeonButton"), TEXT("LeaveDungeonSessionButton"), TEXT("CreateSteamPartyButton"),
 			TEXT("FindSteamPartiesButton"), TEXT("JoinSteamPartyButton"), TEXT("AcceptSteamInviteButton"),
-			TEXT("InviteSteamFriendsButton"), TEXT("PublishSteamServerButton"), TEXT("LeaveSteamPartyButton")})
+			TEXT("InviteSteamFriendsButton"), TEXT("LoadSteamFriendsButton"), TEXT("InviteSelectedSteamFriendButton"),
+			TEXT("PublishSteamServerButton"), TEXT("LeaveSteamPartyButton")})
 		{
 			auto* Button = Cast<UButton>(Widget->GetWidgetFromName(Name));
 			if (!TestNotNull(TEXT("Expected native action"), Button)) return false;

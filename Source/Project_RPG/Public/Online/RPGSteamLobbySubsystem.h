@@ -9,6 +9,7 @@
 class APlayerController;
 class FOnlineSession;
 class FOnlineSessionSearch;
+class IOnlineSubsystem;
 class URPGDungeonSessionSubsystem;
 struct FRPGDungeonSession;
 enum class ERPGDungeonClientFlowState : uint8;
@@ -92,6 +93,15 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	FRPGSteamLobbyInviteAccepted,
 	const FRPGSteamLobbyInfo&, Lobby);
 
+struct FRPGSteamFriend
+{
+	FUniqueNetIdRef Id;
+	FString DisplayName;
+	bool bOnline;
+};
+
+DECLARE_DELEGATE_TwoParams(FRPGSteamFriendsReadComplete, bool, TArray<FRPGSteamFriend>);
+
 /**
  * Steam party-lobby coordinator for small-session PvE.
  *
@@ -122,6 +132,10 @@ public:
 	/** Opens the Steam friends invite overlay for the current party lobby. */
 	UFUNCTION(BlueprintCallable, Category = "RPG|Online|Lobby")
 	bool ShowPartyInviteOverlay();
+
+	bool CanReadSteamFriends() const;
+	bool ReadSteamFriends(FRPGSteamFriendsReadComplete Completion);
+	bool InviteSteamFriend(const FUniqueNetId& FriendId);
 
 	/**
 	 * Joins the Steam lobby, then joins its backend dungeon session.
@@ -218,6 +232,7 @@ private:
 	};
 
 	bool EnsureSessionInterface();
+	IOnlineSubsystem* GetAuthenticatedSteamSubsystem() const;
 	void RegisterSessionDelegates();
 	void ClearSessionDelegates();
 	bool BeginOperation(

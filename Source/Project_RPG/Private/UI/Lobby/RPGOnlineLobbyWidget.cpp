@@ -337,7 +337,13 @@ TSharedRef<SWidget> URPGOnlineLobbyWidget::RebuildWidget()
 		RPGOnlineLobbyLayout::Control(*WidgetTree, *Rows, *PartiesBox);
 		AddAction(TEXT("JoinSteamPartyButton"), NSLOCTEXT("RPGOnlineLobby", "JoinParty", "선택한 Steam 파티 참가"));
 		AddAction(TEXT("AcceptSteamInviteButton"), NSLOCTEXT("RPGOnlineLobby", "AcceptInvite", "받은 Steam 초대 참가"));
-		AddAction(TEXT("InviteSteamFriendsButton"), NSLOCTEXT("RPGOnlineLobby", "InviteFriends", "Steam 친구 초대"));
+		AddAction(TEXT("InviteSteamFriendsButton"), NSLOCTEXT("RPGOnlineLobby", "InviteFriends", "Steam 오버레이에서 친구 초대"));
+		AddAction(TEXT("LoadSteamFriendsButton"), NSLOCTEXT("RPGOnlineLobby", "LoadSteamFriends", "Steam 친구 목록 새로고침"));
+		SteamFriendsStatus = AddText(TEXT("SteamFriendsStatus"), FText::GetEmpty());
+		SteamFriendsBox = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(), TEXT("SteamFriendsList"));
+		SteamFriendsBox->SetMaxListHeight(320.f);
+		RPGOnlineLobbyLayout::Control(*WidgetTree, *Rows, *SteamFriendsBox);
+		AddAction(TEXT("InviteSelectedSteamFriendButton"), NSLOCTEXT("RPGOnlineLobby", "InviteSelectedFriend", "선택한 친구에게 파티 초대 보내기"));
 		AddAction(TEXT("PublishSteamServerButton"), NSLOCTEXT("RPGOnlineLobby", "PublishServer", "준비된 서버 정보를 파티에 게시"));
 		AddAction(TEXT("LeaveSteamPartyButton"), NSLOCTEXT("RPGOnlineLobby", "LeaveParty", "Steam 파티 나가기"));
 		if (IsDevelopmentUIEnabled())
@@ -420,6 +426,8 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 	BIND_ACTION("JoinSteamPartyButton", JoinSteamParty);
 	BIND_ACTION("AcceptSteamInviteButton", AcceptSteamInvite);
 	BIND_ACTION("InviteSteamFriendsButton", InviteSteamFriends);
+	BIND_ACTION("LoadSteamFriendsButton", LoadSteamFriends);
+	BIND_ACTION("InviteSelectedSteamFriendButton", InviteSelectedSteamFriend);
 	BIND_ACTION("PublishSteamServerButton", PublishSteamServer);
 	BIND_ACTION("LeaveSteamPartyButton", LeaveSteamParty);
 	BIND_ACTION("JoinDevelopmentSessionButton", JoinDevelopmentSession);
@@ -437,6 +445,7 @@ void URPGOnlineLobbyWidget::NativeConstruct()
 	if (CreationClassBox) CreationClassBox->OnSelectionChanged.AddUniqueDynamic(this, &ThisClass::HandleCreationClassSelected);
 	if (DifficultyBox) DifficultyBox->OnSelectionChanged.AddUniqueDynamic(this, &ThisClass::HandleDungeonDifficultySelected);
 	if (DungeonsBox) DungeonsBox->OnSelectionChanged.AddUniqueDynamic(this, &ThisClass::HandleDungeonSelected);
+	if (SteamFriendsBox) SteamFriendsBox->OnSelectionChanged.AddUniqueDynamic(this, &ThisClass::HandleSteamFriendSelected);
 	if (Auth) Auth->OnLoginCompleted.AddUniqueDynamic(this, &ThisClass::HandleLogin);
 	if (auto* Lobby = GI ? GI->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr)
 		Lobby->OnLogoutCompleted.AddUniqueDynamic(this, &ThisClass::HandleLogout);
@@ -507,6 +516,8 @@ void URPGOnlineLobbyWidget::NativeDestruct()
 	if (CreationClassBox) CreationClassBox->OnSelectionChanged.RemoveDynamic(this, &ThisClass::HandleCreationClassSelected);
 	if (DifficultyBox) DifficultyBox->OnSelectionChanged.RemoveDynamic(this, &ThisClass::HandleDungeonDifficultySelected);
 	if (DungeonsBox) DungeonsBox->OnSelectionChanged.RemoveDynamic(this, &ThisClass::HandleDungeonSelected);
+	if (SteamFriendsBox) SteamFriendsBox->OnSelectionChanged.RemoveDynamic(this, &ThisClass::HandleSteamFriendSelected);
+	ResetSteamFriends();
 	if (Auth) Auth->OnLoginCompleted.RemoveDynamic(this, &ThisClass::HandleLogin);
 	if (auto* Lobby = GetGameInstance() ? GetGameInstance()->GetSubsystem<URPGOnlineLobbySubsystem>() : nullptr)
 		Lobby->OnLogoutCompleted.RemoveDynamic(this, &ThisClass::HandleLogout);
@@ -796,6 +807,38 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 		{Authenticated, Owned, NoAbandonment, DepartureStorage, NoPendingDeparture, NoParty, NoActive,
 		{Steam && Steam->HasPendingPartyInvite(), Block::InviteRequired}});
 	Enable(TEXT("InviteSteamFriendsButton"), bReady && bParty, {Authenticated, Owned, Party});
+	if (SteamFriendsBox && SteamFriendsStatus)
+	{
+		const bool bFriendsAvailable = Steam && Steam->CanReadSteamFriends();
+		if (!bFriendsAvailable && (bLoadingSteamFriends || !SteamFriends.IsEmpty() || !SteamFriendsFeedback.IsEmpty()))
+		{
+			ResetSteamFriends();
+		}
+		const int32 FriendIndex = SteamFriendsBox->GetSelectedIndex();
+		const bool bOnlineFriendSelected = SteamFriends.IsValidIndex(FriendIndex) && SteamFriends[FriendIndex].bOnline;
+		FText FriendsStatus = SteamFriendsFeedback;
+		if (!bFriendsAvailable)
+		{
+			FriendsStatus = NSLOCTEXT("RPGOnlineLobby", "SteamFriendsUnavailable", "Steam으로 로그인하면 친구 목록을 볼 수 있습니다.");
+		}
+		else if (FriendsStatus.IsEmpty() && SteamFriends.IsEmpty())
+		{
+			FriendsStatus = NSLOCTEXT("RPGOnlineLobby", "SteamFriendsPrompt", "Steam 친구 목록을 불러오세요.");
+		}
+		SteamFriendsStatus->SetText(FriendsStatus);
+		SteamFriendsStatus->SetVisibility(FriendsStatus.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+		SteamFriendsBox->SetVisibility(SteamFriends.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+		SteamFriendsBox->SetIsEnabled(bReady && !bLoadingSteamFriends);
+		Enable(TEXT("LoadSteamFriendsButton"), bReady && bFriendsAvailable && !bLoadingSteamFriends,
+			{Authenticated, Owned, {bFriendsAvailable, Block::SteamDisabled}});
+		Enable(TEXT("InviteSelectedSteamFriendButton"), bReady && bFriendsAvailable && bParty && bOnlineFriendSelected,
+			{Authenticated, Owned, Party});
+		if (auto* Button = Buttons.FindRef(TEXT("InviteSelectedSteamFriendButton")).Get())
+		{
+			RPGOnlineLobbyLayout::SetControlVisibility(*Button,
+				SteamFriends.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+		}
+	}
 	Enable(TEXT("PublishSteamServerButton"), bReady && bParty && View.bCanEnter,
 		{Authenticated, Owned, Party, NoAbandonment, DepartureStorage, NoPendingDeparture, Member,
 		{Flow && Flow->GetDungeonAdmissionBlockReason().IsEmpty(), Block::AdmissionBlocked}, {View.bCanEnter, Block::ServerNotReady}});
@@ -1123,6 +1166,7 @@ void URPGOnlineLobbyWidget::HandleLogout(const bool bSuccess)
 {
 	bLoggingOut = false;
 	if (!bSuccess) { UIError = TEXT("backend_logout_failed"); RefreshPresentation(); return; }
+	ResetSteamFriends();
 	OwnedCharacters.Reset(); FoundParties.Reset(); PolledSessionId.Reset();
 	bPreparationOpen = bHasLoadedCharacterList = false;
 	bCharacterCreationOpen = false;
@@ -1246,6 +1290,96 @@ STEAM_ACTION(InviteSteamFriends, "InviteSteamFriendsButton", Steam->ShowPartyInv
 STEAM_ACTION(LeaveSteamParty, "LeaveSteamPartyButton", Steam->LeavePartyLobby())
 STEAM_ACTION(PublishSteamServer, "PublishSteamServerButton", Steam->PublishDungeonServerAddress())
 #undef STEAM_ACTION
+
+void URPGOnlineLobbyWidget::ResetSteamFriends()
+{
+	++SteamFriendsRequest;
+	bLoadingSteamFriends = false;
+	SteamFriends.Reset();
+	SteamFriendsFeedback = FText::GetEmpty();
+	if (SteamFriendsBox) SteamFriendsBox->ClearOptions();
+}
+
+void URPGOnlineLobbyWidget::LoadSteamFriends()
+{
+	if (!CanUse(TEXT("LoadSteamFriendsButton")) || !SteamFriendsBox || !Steam)
+	{
+		return;
+	}
+
+	ResetSteamFriends();
+	bLoadingSteamFriends = true;
+	SteamFriendsFeedback = NSLOCTEXT("RPGOnlineLobby", "SteamFriendsLoading", "Steam 친구 목록을 불러오는 중입니다.");
+	const uint32 Request = SteamFriendsRequest;
+	auto Complete = [this, Request](bool bSuccess, TArray<FRPGSteamFriend> Friends)
+	{
+		if (Request != SteamFriendsRequest || !bLoadingSteamFriends)
+		{
+			return;
+		}
+		bLoadingSteamFriends = false;
+		SteamFriends = MoveTemp(Friends);
+		SteamFriendsFeedback = !bSuccess
+			? NSLOCTEXT("RPGOnlineLobby", "SteamFriendsFailed", "Steam 친구 목록을 불러오지 못했습니다. 다시 시도하세요.")
+			: SteamFriends.IsEmpty()
+				? NSLOCTEXT("RPGOnlineLobby", "SteamFriendsEmpty", "Steam 친구가 없습니다.")
+				: NSLOCTEXT("RPGOnlineLobby", "SteamFriendsSelect", "목록에서 친구를 선택하세요.");
+
+		TMap<FString, int32> NameCounts;
+		for (const FRPGSteamFriend& Friend : SteamFriends)
+		{
+			++NameCounts.FindOrAdd(Friend.DisplayName);
+		}
+		for (const FRPGSteamFriend& Friend : SteamFriends)
+		{
+			const FText Name = NameCounts.FindChecked(Friend.DisplayName) > 1
+				? FText::Format(NSLOCTEXT("RPGOnlineLobby", "SteamFriendDuplicateName", "{0} (…{1})"),
+					FText::FromString(Friend.DisplayName), FText::FromString(Friend.Id->ToString().Right(8)))
+				: FText::FromString(Friend.DisplayName);
+			const FText Presence = Friend.bOnline
+				? NSLOCTEXT("RPGOnlineLobby", "SteamFriendOnline", "{0} · 온라인")
+				: NSLOCTEXT("RPGOnlineLobby", "SteamFriendOffline", "{0} · 오프라인");
+			SteamFriendsBox->AddOption(FText::Format(Presence, Name).ToString());
+		}
+		RefreshPresentation();
+	};
+	if (!Steam->ReadSteamFriends(FRPGSteamFriendsReadComplete::CreateWeakLambda(this, Complete)))
+	{
+		Complete(false, {});
+	}
+	RefreshPresentation();
+}
+
+void URPGOnlineLobbyWidget::HandleSteamFriendSelected(FString, ESelectInfo::Type SelectionType)
+{
+	if (SelectionType != ESelectInfo::Direct && SteamFriendsBox)
+	{
+		const int32 Index = SteamFriendsBox->GetSelectedIndex();
+		if (SteamFriends.IsValidIndex(Index))
+		{
+			SteamFriendsFeedback = SteamFriends[Index].bOnline
+				? FText::GetEmpty()
+				: NSLOCTEXT("RPGOnlineLobby", "SteamFriendOfflineHint", "오프라인 상태인 친구는 초대할 수 없습니다.");
+			RefreshPresentation();
+		}
+	}
+}
+
+void URPGOnlineLobbyWidget::InviteSelectedSteamFriend()
+{
+	if (!CanUse(TEXT("InviteSelectedSteamFriendButton")) || !SteamFriendsBox || !Steam)
+	{
+		return;
+	}
+	const int32 Index = SteamFriendsBox->GetSelectedIndex();
+	if (SteamFriends.IsValidIndex(Index))
+	{
+		SteamFriendsFeedback = Steam->InviteSteamFriend(*SteamFriends[Index].Id)
+			? NSLOCTEXT("RPGOnlineLobby", "SteamFriendInviteSent", "Steam에 파티 초대를 보냈습니다.")
+			: NSLOCTEXT("RPGOnlineLobby", "SteamFriendInviteFailed", "초대를 보내지 못했습니다. 친구의 접속 상태와 현재 파티를 확인하세요.");
+		RefreshPresentation();
+	}
+}
 
 void URPGOnlineLobbyWidget::JoinSteamParty()
 {
