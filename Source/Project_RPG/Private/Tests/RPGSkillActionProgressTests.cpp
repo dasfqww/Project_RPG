@@ -1,10 +1,16 @@
 #include "CoreMinimal.h"
 #if WITH_DEV_AUTOMATION_TESTS && !UE_BUILD_SHIPPING
 #include "Animation/AnimMontage.h"
+#include "Character/RPGPlayer.h"
+#include "Component/RPGCharacterMovementComponent.h"
 #include "Component/UI/PlayerUIComponent.h"
+#include "Components/BoxComponent.h"
+#include "DataAsset/StartUpData/DataAsset_StartUpDataBase.h"
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/WorldSettings.h"
 #include "Misc/AutomationTest.h"
+#include "RPGAbilityTags.h"
 #include "Skill/RPGSkillExecutionPolicy.h"
 #include "Skill/RPGSkillExecutionTypes.h"
 #include "Skill/RPGSkillRuntimeTypes.h"
@@ -18,6 +24,7 @@
 #include "Tests/RPGTestWorldCleanup.h"
 #include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
+#include "UObject/UnrealType.h"
 
 namespace
 {
@@ -211,6 +218,101 @@ bool FSkillProgressHoldingCancelTest::RunTest(const FString&)
 	Next->CancelExecution();
 	TestEqual(TEXT("Late cleanup cannot rewrite an already completed display"),
 		F.UI->GetActionProgressSnapshot().EndReason, ERPGActionProgressEndReason::Completed);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSkillProgressWhirlwindMovementTest, "ProjectRPG.UI.SkillActionProgress.WhirlwindCameraMovement",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSkillProgressWhirlwindMovementTest::RunTest(const FString&)
+{
+	FFixture F;
+	if (!TestTrue(TEXT("Fixture"), F.Initialize())) return false;
+	F.Host.World->GetWorldSettings()->NotifyBeginPlay();
+	auto* PC = CastChecked<APlayerController>(F.Host.Pawn->GetController());
+	PC->SetPlayer(PC->Player);
+	auto* Floor = F.Host.World->SpawnActor<AActor>();
+	auto* Box = NewObject<UBoxComponent>(Floor);
+	Floor->SetRootComponent(Box);
+	Floor->AddInstanceComponent(Box);
+	Box->SetBoxExtent(FVector(1000.f, 1000.f, 50.f));
+	Box->SetCollisionProfileName(TEXT("BlockAll"));
+	Box->RegisterComponent();
+	Floor->SetActorLocation(FVector(0.f, 0.f, -50.f));
+	auto* Pawn = F.Host.World->SpawnActor<ARPGPlayer>(FVector(0.f, 0.f, 100.f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("Player"), Pawn)) return false;
+	auto* Startup = FindFProperty<FSoftObjectProperty>(ARPGBaseCharacter::StaticClass(), TEXT("CharacterStartUpData"));
+	if (!TestNotNull(TEXT("Player startup property"), Startup)) return false;
+	Startup->SetPropertyValue_InContainer(Pawn, FSoftObjectPtr(NewObject<UDataAsset_StartUpDataBase>(Pawn)));
+	PC->Possess(Pawn);
+	F.Host.Pawn = Pawn;
+	auto* Movement = CastChecked<URPGCharacterMovementComponent>(Pawn->GetCharacterMovement());
+	const auto Step = [&F](int32 Frames) { for (int32 Frame = 0; Frame < Frames; ++Frame) F.Step(1.f / 60.f); };
+	const auto RightMouse = [PC](EInputEvent Event)
+	{
+		PC->InputKey(FInputKeyEventArgs(nullptr, FInputDeviceId::CreateFromInternalId(0),
+			EKeys::RightMouseButton, Event, FPlatformTime::Cycles64()));
+	};
+	Step(24);
+	if (!TestTrue(TEXT("Grounded local pawn"), Pawn->IsLocallyControlled() && Movement->IsMovingOnGround())) return false;
+	const FVector BeforeManual = Pawn->GetActorLocation();
+	for (int32 Frame = 0; Frame < 8; ++Frame)
+	{
+		Pawn->AddMovementInput(FVector::ForwardVector);
+		Step(1);
+	}
+	TestTrue(TEXT("Normal movement is available before holding"), Pawn->GetActorLocation().X > BeforeManual.X + 5.f);
+	Movement->StopMovementImmediately();
+	const float WalkSpeed = Movement->GetMaxSpeed();
+	FRPGSkillHoldingExecutionConfig Config;
+	Config.HoldDuration = 2.f;
+	Config.PerfectZoneStartTime = 1.5f;
+	Config.HoldingSection = TEXT("Hold");
+	Config.SuccessSection = TEXT("Success");
+	F.Host.Spec.SkillTag = RPGGameplayTags::Player_Ability_Skill_WhirlWind;
+	F.Host.Spec.ExecutionConfig.InitializeAs<FRPGSkillHoldingExecutionConfig>(Config);
+	auto* Holding = F.Make<URPGSkillExecutionPolicy_Holding>();
+	if (!TestTrue(TEXT("Whirlwind starts"), Holding->StartExecution())) return false;
+	TestEqual(TEXT("Default travel is capped at 45%"), Movement->GetMaxSpeed(), WalkSpeed * .45f);
+	PC->SetControlRotation(FRotator(-35.f, 0.f, 0.f));
+	const FVector Start = Pawn->GetActorLocation();
+	Step(12);
+	const FVector Advancing = Pawn->GetActorLocation();
+	AddInfo(FString::Printf(TEXT("Advance=%s Velocity=%s Accel=%s LastInput=%s SpeedCap=%.1f"),
+		*(Advancing - Start).ToCompactString(), *Movement->Velocity.ToCompactString(), *Movement->GetCurrentAcceleration().ToCompactString(),
+		*Pawn->GetLastMovementInputVector().ToCompactString(), Movement->GetMaxSpeed()));
+	TestTrue(TEXT("Forward without WASD, ignoring camera pitch"), Advancing.X > Start.X + 10.f &&
+		FMath::IsNearlyEqual(Advancing.Y, Start.Y, 1.f) && FMath::IsNearlyEqual(Advancing.Z, Start.Z, 1.f));
+	RightMouse(IE_Pressed);
+	Step(2);
+	TestTrue(TEXT("Right button reached the controller"), PC->IsInputKeyDown(EKeys::RightMouseButton));
+	const FVector Stopped = Pawn->GetActorLocation();
+	PC->SetControlRotation(FRotator(25.f, 90.f, 0.f));
+	Pawn->AddMovementInput(FVector::ForwardVector);
+	Step(8);
+	TestTrue(TEXT("Brake rejects translation while the camera turns"), Pawn->GetActorLocation().Equals(Stopped, 1.f));
+	TestTrue(TEXT("Brake keeps the holding policy active"), !Holding->IsAimLocked());
+	RightMouse(IE_Released);
+	Step(12);
+	const FVector Resumed = Pawn->GetActorLocation();
+	AddInfo(FString::Printf(TEXT("Brake=%s Resume=%s"),
+		*(Stopped - Advancing).ToCompactString(), *(Resumed - Stopped).ToCompactString()));
+	TestTrue(TEXT("Release resumes in the new camera direction"), Resumed.Y > Stopped.Y + 10.f &&
+		FMath::IsNearlyEqual(Resumed.X, Stopped.X, 1.f));
+	Holding->OnInputReleased();
+	Holding->EndExecution();
+	Step(8);
+	TestTrue(TEXT("Releasing the skill stops automatic movement"), Pawn->GetActorLocation().Equals(Resumed, 1.f));
+	TestEqual(TEXT("Normal walking speed restored"), Movement->GetMaxSpeed(), WalkSpeed);
+
+	Config.bConstrainMovement = true;
+	Config.MovementSpeedScalar = 0.f;
+	F.Host.Spec.ExecutionConfig.InitializeAs<FRPGSkillHoldingExecutionConfig>(Config);
+	auto* Stationary = F.Make<URPGSkillExecutionPolicy_Holding>();
+	if (!TestTrue(TEXT("Stationary refinement starts"), Stationary->StartExecution())) return false;
+	Step(12);
+	TestTrue(TEXT("Stationary refinement never advances"), Pawn->GetActorLocation().Equals(Resumed, 1.f));
+	Stationary->CancelExecution();
+	TestEqual(TEXT("Cancellation clears stationary restriction"), Movement->GetMaxSpeed(), WalkSpeed);
 	return true;
 }
 

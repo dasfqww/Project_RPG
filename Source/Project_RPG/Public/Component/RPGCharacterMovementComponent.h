@@ -16,6 +16,8 @@ public:
 	/** A cast owns its constraint; zero locks voluntary translation, positive values cap its speed. */
 	FGuid BeginSkillMovementConstraint(UObject* Source, float SpeedScalar);
 	void EndSkillMovementConstraint(FGuid Handle);
+	FGuid BeginCameraDrivenSkillMovement(UObject* Source, float SpeedScalar);
+	void EndCameraDrivenSkillMovement(FGuid Handle);
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -45,7 +47,10 @@ private:
 	{
 		TWeakObjectPtr<UObject> Source;
 		float SpeedScalar = 1.f;
+		bool bCameraDriven = false;
 	};
+	bool HasCameraDrivenSkillMovement() const;
+	void StopCameraDrivenTranslation();
 	float GetSkillMovementScalar() const;
 	bool IsVoluntaryMovementBlocked() const;
 	void UpdateSkillMovementRootMotion();

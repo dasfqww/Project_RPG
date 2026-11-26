@@ -4,11 +4,13 @@
 #include "Abilities/GameplayAbilityTypes.h"
 #include "Animation/AnimMontage.h"
 #include "AnimNotify/RPGAnimNotify_SkillFinisher.h"
+#include "Character/RPGPlayer.h"
 #include "Component/RPGCharacterMovementComponent.h"
 #include "Component/RPGSecurityValidationComponent.h"
 #include "Component/UI/PlayerUIComponent.h"
 #include "Engine/Texture2D.h"
 #include "GameFramework/Character.h"
+#include "RPGAbilityTags.h"
 #include "Engine/World.h"
 #include "Skill/RPGSkillExecutionTypes.h"
 #include "Skill/RPGSkillRuntimeTypes.h"
@@ -612,12 +614,17 @@ bool URPGSkillExecutionPolicy_Holding::StartExecution()
 	bExecutionEnded = false;
 	bSuccessfulFinishEntered = false;
 	if (!ValidateRuntimeSpec(ValidationError)) return false;
-	if (Config->bConstrainMovement)
+	auto* Character = Cast<ACharacter>(GetHost()->GetSkillSourceActor());
+	const bool bCameraDriven = Character && Character->IsA<ARPGPlayer>() &&
+		GetRuntimeSpec().SkillTag == RPGGameplayTags::Player_Ability_Skill_WhirlWind &&
+		(!Config->bConstrainMovement || Config->MovementSpeedScalar > 0.f);
+	if (Config->bConstrainMovement || bCameraDriven)
 	{
-		auto* Character = Cast<ACharacter>(GetHost()->GetSkillSourceActor());
 		auto* Movement = Character ? Cast<URPGCharacterMovementComponent>(Character->GetCharacterMovement()) : nullptr;
 		if (!Movement) return false;
-		MovementConstraintHandle = Movement->BeginSkillMovementConstraint(this, Config->MovementSpeedScalar);
+		MovementConstraintHandle = bCameraDriven
+			? Movement->BeginCameraDrivenSkillMovement(this, Config->bConstrainMovement ? Config->MovementSpeedScalar : 0.45f)
+			: Movement->BeginSkillMovementConstraint(this, Config->MovementSpeedScalar);
 		if (!MovementConstraintHandle.IsValid()) return false;
 		ConstrainedMovement = Movement;
 	}
@@ -874,6 +881,7 @@ bool URPGSkillExecutionPolicy_Holding::IsContributionFinisherReady() const
 
 void URPGSkillExecutionPolicy_Holding::CleanupHolding()
 {
+	if (auto* Movement = ConstrainedMovement.Get()) Movement->EndCameraDrivenSkillMovement(MovementConstraintHandle);
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(HoldingUpdateTimerHandle);

@@ -12,6 +12,8 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "GameFramework/Controller.h"
+#include "GameFramework/PlayerController.h"
+#include "InputCoreTypes.h"
 #include "Net/UnrealNetwork.h"
 #include "Net/Core/PushModel/PushModel.h"
 
@@ -47,8 +49,42 @@ FGuid URPGCharacterMovementComponent::BeginSkillMovementConstraint(UObject* Sour
 
 void URPGCharacterMovementComponent::EndSkillMovementConstraint(FGuid Handle)
 {
+	EndCameraDrivenSkillMovement(Handle);
 	SkillMovementConstraints.Remove(Handle);
 	UpdateSkillMovementRootMotion();
+}
+
+FGuid URPGCharacterMovementComponent::BeginCameraDrivenSkillMovement(UObject* Source, float SpeedScalar)
+{
+	const FGuid Handle = BeginSkillMovementConstraint(Source, SpeedScalar);
+	if (auto* Constraint = SkillMovementConstraints.Find(Handle)) Constraint->bCameraDriven = true;
+	return Handle;
+}
+
+void URPGCharacterMovementComponent::EndCameraDrivenSkillMovement(FGuid Handle)
+{
+	auto* Constraint = SkillMovementConstraints.Find(Handle);
+	if (!Constraint || !Constraint->bCameraDriven) return;
+	Constraint->bCameraDriven = false;
+	if (CharacterOwner && !HasCameraDrivenSkillMovement())
+	{
+		CharacterOwner->ConsumeMovementInputVector();
+		StopCameraDrivenTranslation();
+	}
+}
+
+bool URPGCharacterMovementComponent::HasCameraDrivenSkillMovement() const
+{
+	for (const auto& Entry : SkillMovementConstraints)
+		if (Entry.Value.bCameraDriven && Entry.Value.Source.IsValid()) return true;
+	return false;
+}
+
+void URPGCharacterMovementComponent::StopCameraDrivenTranslation()
+{
+	if (!IsMovingOnGround() || HasRootMotionSources()) return;
+	Acceleration = FVector::ZeroVector;
+	Velocity.X = Velocity.Y = 0.f;
 }
 
 float URPGCharacterMovementComponent::GetSkillMovementScalar() const
@@ -119,6 +155,14 @@ void URPGCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick T
 	FActorComponentTickFunction* ThisTickFunction)
 {
 	UpdateSkillMovementRootMotion();
+	const auto* PC = CharacterOwner ? Cast<APlayerController>(CharacterOwner->GetController()) : nullptr;
+	if (PC && PC->IsLocalController() && HasCameraDrivenSkillMovement())
+	{
+		// Feed the normal saved-move path so the server receives the same move or brake input.
+		CharacterOwner->ConsumeMovementInputVector();
+		if (IsMovingOnGround() && !PC->IsMoveInputIgnored() && !PC->IsInputKeyDown(EKeys::RightMouseButton))
+			AddInputVector(FRotator(0.f, PC->GetControlRotation().Yaw, 0.f).Vector());
+	}
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
 
@@ -203,6 +247,10 @@ void URPGCharacterMovementComponent::PerformMovement(float DeltaTime)
 		Velocity.X = Velocity.Y = 0.f;
 		bHasRequestedVelocity = false;
 		CharacterOwner->ConsumeMovementInputVector();
+	}
+	else if (Acceleration.IsZero() && HasCameraDrivenSkillMovement())
+	{
+		StopCameraDrivenTranslation();
 	}
 	Super::PerformMovement(DeltaTime); // Gravity/falling and death's MOVE_None remain owned by movement.
 }
