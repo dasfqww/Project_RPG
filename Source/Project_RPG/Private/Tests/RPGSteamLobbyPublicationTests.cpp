@@ -78,7 +78,54 @@ struct FRPGSteamLobbyPublicationTestAccess
 	{
 		Steam->PendingOperation = URPGSteamLobbySubsystem::EPendingOperation::Create;
 	}
+	static void QueueInvite(URPGSteamLobbySubsystem* Steam, const TCHAR* LobbyId)
+	{
+		Steam->PendingInviteResult = MakeShared<FOnlineSessionSearchResult>();
+		Steam->PendingInviteLobby.LobbyId = LobbyId;
+	}
+	static void BeginInviteJoin(URPGSteamLobbySubsystem* Steam)
+	{
+		Steam->JoiningInviteResult = Steam->PendingInviteResult;
+		Steam->PendingOperation = URPGSteamLobbySubsystem::EPendingOperation::JoinSteam;
+	}
+	static void FinishJoin(URPGSteamLobbySubsystem* Steam, EOnJoinSessionCompleteResult::Type Result)
+	{
+		Steam->HandleJoinSessionComplete(TEXT("RPGPartyLobby"), Result);
+	}
 };
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRPGSteamInviteRetryTest,
+	"ProjectRPG.Online.SteamInvite.Retry",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRPGSteamInviteRetryTest::RunTest(const FString&)
+{
+	using Access = FRPGSteamLobbyPublicationTestAccess;
+	using namespace EOnJoinSessionCompleteResult;
+	auto* GameInstance = NewObject<UGameInstance>(GEngine);
+	auto* Steam = NewObject<URPGSteamLobbySubsystem>(GameInstance);
+
+	Access::QueueInvite(Steam, TEXT("original"));
+	Access::BeginInviteJoin(Steam);
+	Access::FinishJoin(Steam, UnknownError);
+	TestTrue(TEXT("Temporary Steam failure preserves the invite"), Steam->HasPendingPartyInvite());
+	TestFalse(TEXT("The failed join no longer blocks a retry"), Steam->IsLobbyRequestInFlight());
+	TestEqual(TEXT("Steam error is shown"), Steam->GetLastErrorCode(), FString(TEXT("join_lobby_unknown_error")));
+
+	Access::BeginInviteJoin(Steam);
+	Access::FinishJoin(Steam, SessionIsFull);
+	TestFalse(TEXT("A full lobby clears the attempted invite"), Steam->HasPendingPartyInvite());
+	TestEqual(TEXT("Full lobby reason is retained"), Steam->GetLastErrorCode(), FString(TEXT("join_lobby_session_full")));
+
+	Access::QueueInvite(Steam, TEXT("old"));
+	Access::BeginInviteJoin(Steam);
+	Access::QueueInvite(Steam, TEXT("new"));
+	Access::FinishJoin(Steam, SessionDoesNotExist);
+	TestTrue(TEXT("A newer invite survives the older failure"), Steam->HasPendingPartyInvite());
+	TestEqual(TEXT("The newer invite stays selected"), Steam->GetPendingPartyInvite().LobbyId, FString(TEXT("new")));
+	TestEqual(TEXT("Closed lobby reason is retained"), Steam->GetLastErrorCode(), FString(TEXT("join_lobby_not_found")));
+	return true;
+}
 
 namespace RPGSteamLobbyPublicationTests
 {

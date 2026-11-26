@@ -131,6 +131,7 @@ void URPGSteamLobbySubsystem::Deinitialize()
 	SessionInterface.Reset();
 	SessionSearch.Reset();
 	PendingInviteResult.Reset();
+	JoiningInviteResult.Reset();
 	PendingInviteLobby = FRPGSteamLobbyInfo();
 	VisibleSearchResultIndices.Reset();
 	LastSearchResults.Reset();
@@ -438,15 +439,8 @@ bool URPGSteamLobbySubsystem::AcceptPendingPartyInvite()
 	const TSharedPtr<FOnlineSessionSearchResult> InviteResult =
 		PendingInviteResult;
 	const int32 LocalUserNum = PendingInviteLocalUserNum;
-	if (!StartJoinPartyLobby(*InviteResult, LocalUserNum, INDEX_NONE))
-	{
-		return false;
-	}
-
-	PendingInviteResult.Reset();
-	PendingInviteLobby = FRPGSteamLobbyInfo();
-	PendingInviteLocalUserNum = 0;
-	return true;
+	JoiningInviteResult = InviteResult;
+	return StartJoinPartyLobby(*InviteResult, LocalUserNum, INDEX_NONE);
 }
 
 bool URPGSteamLobbySubsystem::PublishDungeonServerAddress()
@@ -865,6 +859,7 @@ bool URPGSteamLobbySubsystem::BeginDestroyLobby(
 void URPGSteamLobbySubsystem::FailOperation(const FString& ErrorCode)
 {
 	PendingOperation = EPendingOperation::None;
+	JoiningInviteResult.Reset();
 	PendingDungeonSessionId.Reset();
 	ErrorAfterDestroy.Reset();
 	SetLobbyState(
@@ -1104,6 +1099,17 @@ void URPGSteamLobbySubsystem::HandleJoinSessionComplete(
 	{
 		return;
 	}
+
+	// Only consume the invitation that started this join. UnknownError can
+	// represent a transient Steam failure, so leave that invitation available.
+	if (JoiningInviteResult && JoiningInviteResult == PendingInviteResult
+		&& Result != EOnJoinSessionCompleteResult::UnknownError)
+	{
+		PendingInviteResult.Reset();
+		PendingInviteLobby = FRPGSteamLobbyInfo();
+		PendingInviteLocalUserNum = 0;
+	}
+	JoiningInviteResult.Reset();
 
 	if (Result != EOnJoinSessionCompleteResult::Success)
 	{

@@ -302,6 +302,7 @@ private:
 	IOnlineSessionPtr SessionInterface;
 	TSharedPtr<FOnlineSessionSearch> SessionSearch;
 	TSharedPtr<FOnlineSessionSearchResult> PendingInviteResult;
+	TSharedPtr<FOnlineSessionSearchResult> JoiningInviteResult;
 	TArray<int32> VisibleSearchResultIndices;
 
 	FDelegateHandle CreateSessionDelegateHandle;

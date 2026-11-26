@@ -296,6 +296,8 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 ## 12. 현재 현황과 다음 작업 체크리스트 (2026-10-20)
 
+- [x] 2026-11-27 Steam 초대 참가 재시도. Steam의 일반 참가 오류 뒤에는 같은 초대를 다시 사용할 수 있으며, 이전 참가 결과가 도착해도 더 최근에 받은 초대는 보존된다. UE Editor 모듈 빌드와 신규 재시도 검사 통과. 추가 회귀 5건 통과, 1건은 로컬 Hitreact 에셋 구조체 로드 오류로 실패. [로비 계약](ONLINE_LOBBY_UI.md#steam-친구-목록과-파티-초대).
+
 - [x] 2026-11-27 Steam 친구 목록과 파티 초대. 로비에서 Steam 친구 닉네임·접속 상태를 보고 온라인 친구를 현재 파티에 초대할 수 있다. UE 5.8 Editor 모듈 링크 및 `-nosteam` 로비 자동화 7건 통과. 실제 Steam 2계정 초대·합류는 미검증. [로비 계약](ONLINE_LOBBY_UI.md#steam-친구-목록과-파티-초대).
 
 - [x] **2026-11-26 루팅 중 다른 플레이어의 상호작용 차단** — 시간형 픽업은 서버가 시작 시 대상 액터를 점유하고 완료 시 기존 획득 경로에 넘긴다. 사용 중인 픽업과 열린 상자를 입력 탐색에서 제외한다. UE 5.8 격리 UHT·C++ 14개 컴파일 통과, 임시 249,252,781 bytes 정리. 회귀 테스트를 추가했으며 런타임 실행은 별도다. [루팅 계약](ITEM_LOOT_SOURCES.md#발생-권한과-단일-실행)
@@ -1019,6 +1021,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| steam-invite-retry | Steam 초대 참가 일시 실패 뒤 재시도 | RPGSteamLobbySubsystem.h·cpp, RPGSteamLobbyPublicationTests.cpp, Docs/ONLINE_LOBBY_UI.md, 본인 기록 | UE Editor 빌드, 신규 포함 자동화 6건 통과. 기존 DeferredDispatch는 로컬 Hitreact 에셋 로드 오류로 실패. 본인 임시 파일 149,142,741 bytes 정리. Saved/BuildChecks/SteamInviteRetry에 요약 보관 | 소스·실행 자원 해제. 본인 5경로만 main index/ref 및 origin/main 순차 게시. 이 행 포함 커밋 원격 일치 시 Git 예약 해제 |
 | steam-friends-lobby-27 | 로비 Steam 친구 목록과 선택 초대 | Online/RPGSteamLobbySubsystem.h·cpp, UI/Lobby/RPGOnlineLobbyWidget.h·cpp, Private/Tests/RPGOnlineLobbyTests.cpp, Docs/ONLINE_LOBBY_UI.md, 본인 행/완료 기록 | UE 5.8 Editor 모듈 링크·로비 자동화 7건 통과, 검사 중 오류 0. 임시 149,165,552 bytes 정리, Saved/BuildChecks/SteamFriendsLobby27에 요약 보관 | 소스·검증 자원 해제. 본인 7경로만 main index/ref 및 origin/main 순차 게시. 이 행 포함 커밋 원격 일치 시 Git 예약 해제 |
 | skill-slot-radial-27 | 스킬 아이콘에 중심 기준 시계방향으로 걷히는 반투명 검정 쿨타임 | RPGQuickSlotWidget.h·cpp, RPGQuickSlotViewModel.h, 본인 행 | UE 5.8 C++·격리 링크, 1280×720 testmap Q 실사용에서 12시 기준 원형 진행·반투명 검정 65%·중앙 숫자·만료 확인. 스크린샷 좌우 픽셀 비교 및 임시 343,068,054 bytes·정션 2개 정리. Saved/BuildChecks/SkillSlotRadial27 | 실행 자원 해제. 본인 4경로 main index/ref 및 origin/main 순차 게시 예약. 이 행 포함 커밋 원격 일치 시 해제 |
 | skill-slot-countdown-27 | 스킬 퀵슬롯 중앙 카운트다운과 반투명 검정 배경 | RPGQuickSlotWidget.h·cpp, RPGQuickSlotViewModel.cpp, 본인 행 | UE 5.8 C++ 2개·격리 링크 및 1280×720 testmap에서 Q 스킬 실사용·GAS 8초 쿨타임 표시(8→0.9)·만료 숨김 확인. Saved/BuildChecks/SkillSlotCountdown27. 임시 337,179,784 bytes·정션 2개 정리, 자동 정책으로 23,556,670 bytes 잔류 | 실행 자원 해제. 본인 4경로 main index/ref 및 origin/main 순차 게시 예약. 이 행 포함 커밋 원격 일치 시 예약 해제 |
