@@ -53,7 +53,23 @@ URPGRegionTravelComponent::URPGRegionTravelComponent()
 
 void URPGRegionTravelComponent::ClientManagedRegionNotice_Implementation(const FText& Message)
 {
-	ShowFailure(Message);
+	if (!FallbackNotice || !FallbackNotice->HasPersistentNotice())
+		ShowFailure(Message);
+}
+
+void URPGRegionTravelComponent::ClientSetManagedRegionWaiting_Implementation(bool bWaiting)
+{
+	auto* PC = CastChecked<APlayerController>(GetOwner());
+	if (!PC->IsLocalController()) return;
+	if (bWaiting)
+	{
+		if (auto* Notice = GetOrCreateFallbackNotice(*PC))
+			Notice->ShowPersistentNotice(NSLOCTEXT("RPGRegionTravel", "PreparingChannel", "목적지 서버를 준비하고 있습니다."));
+	}
+	else if (FallbackNotice && FallbackNotice->HasPersistentNotice())
+	{
+		FallbackNotice->ClearNotice();
+	}
 }
 
 bool URPGRegionTravelComponent::HoldForServerTravel(ACharacter& Character)
@@ -62,12 +78,14 @@ bool URPGRegionTravelComponent::HoldForServerTravel(ACharacter& Character)
 	if (!Controller || !Controller->HasAuthority() || bServerPending || Controller->GetPawn() != &Character)
 		return false;
 	LockServer(Character);
+	ClientSetManagedRegionWaiting(true);
 	return true;
 }
 
 void URPGRegionTravelComponent::ReleaseServerTravel()
 {
 	ReleaseServer();
+	ClientSetManagedRegionWaiting(false);
 }
 
 void URPGRegionTravelComponent::BeginTransfer(ARPGRegionGate* Source, ACharacter* Character)
@@ -246,17 +264,22 @@ void URPGRegionTravelComponent::ShowFailure(const FText& FailureReason)
 		UI->OnNoticeTextChanged.Broadcast(FailureReason);
 		return;
 	}
-	// A possession change can temporarily leave this player without a bound HUD.
+	if (auto* Notice = GetOrCreateFallbackNotice(*PC))
+		Notice->ShowNotice(FailureReason);
+}
+
+URPGPlayerNoticeWidget* URPGRegionTravelComponent::GetOrCreateFallbackNotice(APlayerController& Controller)
+{
 	if (!FallbackNotice)
 	{
-		FallbackNotice = CreateWidget<URPGPlayerNoticeWidget>(PC, URPGPlayerNoticeWidget::StaticClass());
-		if (!FallbackNotice) return;
+		FallbackNotice = CreateWidget<URPGPlayerNoticeWidget>(&Controller, URPGPlayerNoticeWidget::StaticClass());
+		if (!FallbackNotice) return nullptr;
 		FallbackNotice->UseManualNotices();
 		FallbackNotice->AddToPlayerScreen(100);
 		FallbackNotice->SetAnchorsInViewport(FAnchors(0.5f, 0.15f));
 		FallbackNotice->SetAlignmentInViewport(FVector2D(0.5f, 0.f));
 	}
-	FallbackNotice->ShowNotice(FailureReason);
+	return FallbackNotice;
 }
 
 void URPGRegionTravelComponent::ReleaseClient()

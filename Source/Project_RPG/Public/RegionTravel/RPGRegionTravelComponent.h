@@ -6,6 +6,7 @@
 #include "RPGRegionTravelComponent.generated.h"
 
 class ARPGRegionGate;
+class APlayerController;
 class UUserWidget;
 class UAbilitySystemComponent;
 class URPGPlayerNoticeWidget;
@@ -28,6 +29,8 @@ public:
 
 private:
 	UFUNCTION(Client, Reliable)
+	void ClientSetManagedRegionWaiting(bool bWaiting);
+	UFUNCTION(Client, Reliable)
 	void ClientPrepare(int32 Id, FName Source, FName Destination);
 	UFUNCTION(Server, Reliable)
 	void ServerPrepared(int32 Id);
@@ -37,6 +40,7 @@ private:
 	void PollServer();
 	void FinishServer(const FText& FailureReason);
 	void ShowFailure(const FText& FailureReason);
+	URPGPlayerNoticeWidget* GetOrCreateFallbackNotice(APlayerController& Controller);
 	void PollClient();
 	void ReleaseClient();
 	void ReleaseServer();

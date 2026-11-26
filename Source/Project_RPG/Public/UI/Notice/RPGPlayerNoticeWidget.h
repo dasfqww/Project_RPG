@@ -23,6 +23,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="UI|Notice") void ShowNotice(const FText& Text);
     UFUNCTION(BlueprintCallable, Category="UI|Notice") void ClearNotice();
     UFUNCTION(BlueprintPure, Category="UI|Notice") FText GetDisplayedNotice() const { return DisplayedNotice; }
+    void ShowPersistentNotice(const FText& Text);
+    bool HasPersistentNotice() const { return !DisplayedNotice.IsEmpty() && !ExpiryTimer.IsValid(); }
 protected:
     virtual TSharedRef<SWidget> RebuildWidget() override;
     virtual void NativeConstruct() override;
@@ -34,6 +36,7 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category="UI|Notice") void OnNoticePresentationChanged();
 private:
     friend struct FRPGPlayerNoticeWidgetTestAccess;
+    void SetDisplayedNotice(const FText& Text, bool bTimed);
     void UnbindSource();
     void UnbindController();
     void Present();

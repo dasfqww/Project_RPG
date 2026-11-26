@@ -36,20 +36,34 @@ void URPGPlayerNoticeWidget::OnNoticeReceived(FText Text)
 
 void URPGPlayerNoticeWidget::ShowNotice(const FText& Text)
 {
+    SetDisplayedNotice(Text, true);
+}
+
+void URPGPlayerNoticeWidget::ShowPersistentNotice(const FText& Text)
+{
+    SetDisplayedNotice(Text, false);
+}
+
+void URPGPlayerNoticeWidget::SetDisplayedNotice(const FText& Text, bool bTimed)
+{
     const uint64 Current = ++Revision;
-    if (UWorld* World = GetWorld()) World->GetTimerManager().ClearTimer(ExpiryTimer);
-    if (!bConstructed || Text.IsEmptyOrWhitespace() || !GetWorld()
-        || !FMath::IsFinite(DisplayDuration) || DisplayDuration <= 0.f)
+    UWorld* World = GetWorld();
+    if (World) World->GetTimerManager().ClearTimer(ExpiryTimer);
+    if (!bConstructed || Text.IsEmptyOrWhitespace() || !World
+        || (bTimed && (!FMath::IsFinite(DisplayDuration) || DisplayDuration <= 0.f)))
     {
         DisplayedNotice = FText::GetEmpty();
         Present();
         return;
     }
     DisplayedNotice = Text;
-    GetWorld()->GetTimerManager().SetTimer(ExpiryTimer, FTimerDelegate::CreateWeakLambda(this, [this, Current]()
+    if (bTimed)
     {
-        if (Revision == Current) ClearNotice();
-    }), DisplayDuration, false);
+        World->GetTimerManager().SetTimer(ExpiryTimer, FTimerDelegate::CreateWeakLambda(this, [this, Current]()
+        {
+            if (Revision == Current) ClearNotice();
+        }), DisplayDuration, false);
+    }
     Present();
 }
 
