@@ -14,7 +14,7 @@ class URPGPanelShortcutComponent final : public UActorComponent
 
 public:
 	URPGPanelShortcutComponent();
-	void Start(TFunction<bool(ERPGPanelShortcutAction)> Dispatch);
+	void Start(TFunction<bool(ERPGPanelShortcutAction)> Dispatch, TFunction<bool()> ToggleFieldMap);
 
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

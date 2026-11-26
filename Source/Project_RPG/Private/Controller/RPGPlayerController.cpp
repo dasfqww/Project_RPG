@@ -511,25 +511,21 @@ void ARPGPlayerController::SetupInputComponent()
 				break;
 			}
 			return true;
+		}, [this]()
+		{
+			const ARPGHUD* CurrentHUD = Cast<ARPGHUD>(GetHUD());
+			if (!IsLocalController() || IsMoveInputIgnored() || bItemPresentationEnded || WindowInputState->HasOpenWindows()
+				|| ContentEntryPopup || GameplayAbandonmentWidget || !CurrentHUD || CurrentHUD->bIsMenuVisible || CurrentHUD->bIsOptionMenuVisible
+				|| FSlateApplication::Get().AnyMenusVisible()) return false;
+			const APawn* Pawn = GetPawn();
+			UUserWidget* PlayerHUD = CurrentHUD->GetPlayerHUDWidget();
+			return Pawn && PlayerHUD && RPGPlayerMinimap::ToggleFieldOverview(*PlayerHUD, *Pawn);
 		});
 	}
 	if (InputComponent)
 	{
 		InputComponent->BindKey(EKeys::P, IE_Pressed, this, &ThisClass::ToggleEquipmentProjection).bConsumeInput = true;
 		InputComponent->BindKey(EKeys::M, IE_Pressed, this, &ThisClass::ToggleMountCollection).bConsumeInput = true;
-		FInputKeyBinding OverviewKey(FInputChord(EKeys::Tab), IE_Pressed);
-		OverviewKey.bConsumeInput = false;
-		OverviewKey.KeyDelegate.GetDelegateForManualSet().BindWeakLambda(this, [this]()
-		{
-			if (!IsLocalController() || IsMoveInputIgnored() || bItemPresentationEnded || WindowInputState->HasOpenWindows()
-				|| ContentEntryPopup || GameplayAbandonmentWidget || !HUD || HUD->bIsMenuVisible || HUD->bIsOptionMenuVisible
-				|| (FSlateApplication::IsInitialized() && FSlateApplication::Get().AnyMenusVisible())) return;
-			if (const APawn* Pawn = GetPawn())
-			{
-				if (UUserWidget* PlayerHUD = HUD->GetPlayerHUDWidget()) RPGPlayerMinimap::ToggleFieldOverview(*PlayerHUD, *Pawn);
-			}
-		});
-		InputComponent->KeyBindings.Add(MoveTemp(OverviewKey));
 	}
 	if (!InputConfigDataAsset || !GetLocalPlayer()) return;
 	const auto ObservePartyInputSetup = [this](const TCHAR* Phase)

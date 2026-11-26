@@ -15,8 +15,9 @@ class FRPGPanelShortcutInput final : public IInputProcessor
 {
 public:
 	FRPGPanelShortcutInput(APlayerController& InController, TMap<FInputChord, ERPGPanelShortcutAction>&& InShortcuts,
-		TFunction<bool(ERPGPanelShortcutAction)> InDispatch)
-		: Controller(&InController), Shortcuts(MoveTemp(InShortcuts)), Dispatch(MoveTemp(InDispatch))
+		TFunction<bool(ERPGPanelShortcutAction)> InDispatch, TFunction<bool()> InToggleFieldMap)
+		: Controller(&InController), Shortcuts(MoveTemp(InShortcuts)), Dispatch(MoveTemp(InDispatch)),
+			ToggleFieldMap(MoveTemp(InToggleFieldMap))
 	{
 	}
 
@@ -27,7 +28,8 @@ public:
 		const FKey Key = Event.GetKey();
 		const FInputChord Chord(Key, Event.IsShiftDown(), Event.IsControlDown(), Event.IsAltDown(), Event.IsCommandDown());
 		const ERPGPanelShortcutAction* Action = Shortcuts.Find(Chord);
-		if (!Action && !ConsumedKeys.Contains(Key)) return false;
+		const bool bFieldMap = Chord == FInputChord(EKeys::Tab);
+		if (!Action && !bFieldMap && !ConsumedKeys.Contains(Key)) return false;
 
 		UGameViewportClient* Viewport = nullptr;
 		FWidgetPath FocusPath;
@@ -36,12 +38,13 @@ public:
 
 		// A new physical press can arrive after focus loss dropped the previous release.
 		ConsumedKeys.Remove(Key);
-		if (!Action || Viewport->IgnoreInput() || IsEditingText(FocusPath))
+		if (Viewport->IgnoreInput() || IsEditingText(FocusPath))
 		{
 			return false;
 		}
 
-		if (!Dispatch(*Action)) return false;
+		const bool bHandled = bFieldMap ? ToggleFieldMap() : (Action && Dispatch(*Action));
+		if (!bHandled) return false;
 		// A handled press is stopped before either the widget or gameplay input stack sees it.
 		ConsumedKeys.Add(Key);
 		return true;
@@ -98,6 +101,7 @@ private:
 	TWeakObjectPtr<APlayerController> Controller;
 	TMap<FInputChord, ERPGPanelShortcutAction> Shortcuts;
 	TFunction<bool(ERPGPanelShortcutAction)> Dispatch;
+	TFunction<bool()> ToggleFieldMap;
 	TSet<FKey> ConsumedKeys;
 };
 
@@ -107,29 +111,30 @@ URPGPanelShortcutComponent::URPGPanelShortcutComponent()
 		"/Game/System/Input/DA_PanelShortcuts.DA_PanelShortcuts")));
 }
 
-void URPGPanelShortcutComponent::Start(TFunction<bool(ERPGPanelShortcutAction)> Dispatch)
+void URPGPanelShortcutComponent::Start(TFunction<bool(ERPGPanelShortcutAction)> Dispatch, TFunction<bool()> ToggleFieldMap)
 {
 	APlayerController* Controller = Cast<APlayerController>(GetOwner());
-	if (Processor || !Controller || !Controller->GetLocalPlayer() || !FSlateApplication::IsInitialized() || ConfigAsset.IsNull())
+	if (Processor || !Controller || !Controller->GetLocalPlayer() || !FSlateApplication::IsInitialized())
 		return;
-
-	const URPGPanelShortcutConfig* Config = ConfigAsset.LoadSynchronous();
-	if (!Config)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Panel shortcut configuration is unavailable: %s"), *ConfigAsset.ToString());
-		return;
-	}
 
 	TMap<FInputChord, ERPGPanelShortcutAction> Shortcuts;
-	FText Error;
-	if (!Config->BuildShortcutMap(Shortcuts, Error))
+	if (!ConfigAsset.IsNull())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Panel shortcut configuration %s is invalid: %s"), *Config->GetPathName(), *Error.ToString());
-		return;
+		if (const URPGPanelShortcutConfig* Config = ConfigAsset.LoadSynchronous())
+		{
+			FText Error;
+			if (!Config->BuildShortcutMap(Shortcuts, Error))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Panel shortcut configuration %s is invalid: %s"), *Config->GetPathName(), *Error.ToString());
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Panel shortcut configuration is unavailable: %s"), *ConfigAsset.ToString());
+		}
 	}
-	if (Shortcuts.IsEmpty()) return;
 
-	const auto NewProcessor = MakeShared<FRPGPanelShortcutInput>(*Controller, MoveTemp(Shortcuts), MoveTemp(Dispatch));
+	const auto NewProcessor = MakeShared<FRPGPanelShortcutInput>(*Controller, MoveTemp(Shortcuts), MoveTemp(Dispatch), MoveTemp(ToggleFieldMap));
 	if (FSlateApplication::Get().RegisterInputPreProcessor(NewProcessor))
 	{
 		Processor = NewProcessor;
