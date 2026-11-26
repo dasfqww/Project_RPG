@@ -270,7 +270,14 @@ TSharedRef<SWidget> URPGOnlineLobbyWidget::RebuildWidget()
 		Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *Sections, TEXT("OnlineLobbySelectedCharacterSection"), NSLOCTEXT("RPGOnlineLobby", "SelectedCharacterSection", "플레이 중인 캐릭터"));
 		PreparationCharacterText = AddText(TEXT("OnlineLobbyPreparationCharacter"), FText::GetEmpty());
 		if (bTownChannelsEnabled || FParse::Param(FCommandLine::Get(), TEXT("RPGTownChannels")))
-			AddAction(TEXT("EnterTownButton"), NSLOCTEXT("RPGOnlineLobby", "EnterTown", "마을 입장"));
+		{
+			auto* Destination = WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(), TEXT("TownDestination"));
+			Destination->AddOption(NSLOCTEXT("RPGOnlineLobby", "TownDestination", "마을").ToString());
+			Destination->AddOption(NSLOCTEXT("RPGOnlineLobby", "BellmarketDestination", "벨마켓").ToString());
+			Destination->SetSelectedIndex(0);
+			Rows->AddChildToVerticalBox(Destination);
+			AddAction(TEXT("EnterTownButton"), NSLOCTEXT("RPGOnlineLobby", "EnterRegion", "선택한 지역 입장"));
+		}
 		AddAction(TEXT("ChangeCharacterButton"), NSLOCTEXT("RPGOnlineLobby", "ChangeCharacter", "캐릭터 선택으로 돌아가기"));
 		BuildMenuContent(*Sections);
 		Rows = RPGOnlineLobbyLayout::Section(*WidgetTree, *Sections, TEXT("OnlineLobbyConfigurationSection"), NSLOCTEXT("RPGOnlineLobby", "ConfigurationSection", "스킬 구성"));
@@ -731,7 +738,12 @@ void URPGOnlineLobbyWidget::RefreshPresentation()
 		{Authenticated, Owned});
 	const bool bUnsavedConfiguration = ConfigurationPanel && ConfigurationPanel->HasUnsavedChanges();
 	if (auto* TownButton = Buttons.FindRef(TEXT("EnterTownButton")).Get())
-		TownButton->SetIsEnabled(CanEnterTown());
+	{
+		const bool bCanEnter = CanEnterTown();
+		TownButton->SetIsEnabled(bCanEnter);
+		if (auto* Destination = WidgetTree->FindWidget(TEXT("TownDestination")))
+			Destination->SetIsEnabled(bCanEnter);
+	}
 	Enable(TEXT("ChangeCharacterButton"), bPreparationOpen && View.bCanSelectCharacter && !bParty && !bUnsavedConfiguration && !bTutorialEntryActive,
 		{Authenticated, NoAbandonment, NoPendingDeparture, NoActive, NoParty,
 		{!bUnsavedConfiguration, Block::UnsavedConfiguration}});

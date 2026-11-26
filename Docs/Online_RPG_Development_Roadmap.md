@@ -1016,6 +1016,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| city-spawn-26 | 벨마켓 로비 입장·도시 채널 자동 증설·16인 배치 | Backend/ProjectRpg.Backend/Town/{TownEndpoints,TownChannelPool}.cs, Private/Town/{RPGTownChannelHost,RPGTownAdmission}.cpp, Public/Manager/HttpWebManager.h, Private/UI/Lobby/RPGOnlineLobbyWidget.cpp, Content/Maps/L_Bellmarket.umap, Docs/REGION_TRAVEL.md, 본인 행 | 벨마켓 1채널 16명·2채널 1명·마을 1채널 1명 동시 이동 확인. 로비 첫 입장 HTTP 200·69.1초, 캐릭터 배정 확인. 전용 Temp 약 392 MiB 정리, 정션 44개 해제 | 구현·검증 완료. 본인 9경로만 main index/ref 및 origin/main 순차 게시 예약, 원격 일치 시 해제 |
 | greatsword-eight-defense-26 | 대검 8종 완성, 반격·후퇴와 일반/고난도 보스 해금 | 반격 C++·NPC 접점·투지 정책, 일반기 DA/GA·모션·확장 피해표·프로필, 성장·로비·계약, 본인 행 | 8종 슬롯 저장/재로드, UE 에셋 5 Valid, 지상 PIE 횡베기 250/+8, 반격 성공 375/+12·실패 0, 후퇴 212/+6·1.07m. 임시 230185836 bytes·정션 2개 정리 | 구현·검증 완료. 본인 25경로 main index/ref 및 origin/main 순차 게시, 원격 일치 시 해제 |
 | player-camera-framing-26 | 필드·폐광에서 플레이어 카메라 거리 비교 및 줌 범위 확장 | RPGPlayer.cpp·RPGPlayer.h 및 본인 행만 | 격리 C++·Editor 링크 통과. D3D11 PIE 15컷, 5.5m 기본·폐광 장애물에서 4.30m 확인. 검증용 휠 입력 8단계 통과. 본인 임시 정션 2개 해제, 실행 정책이 Temp 삭제를 차단해 약 4.01GB 로컬 잔류 | 구현·검증 완료. 본인 예약 해제 |
 | greatsword-eight-26 | 대검 8종 확장 1차, 빠른 횡베기 | 횡베기 시퀀스·몽타주·DA·GA, 확장 피해표·대검 직업/개발 프로필, 입문3 성장·로비 편성, 본인 행 | UE 재로드로 6종·슬롯6·0.23초 타격 확인, 백엔드 Release/성장 검증·로비 C++ 성공 | 횡베기 본인 파일 main index/ref 및 origin/main 게시. 반격·후퇴 별도 구현 중 |

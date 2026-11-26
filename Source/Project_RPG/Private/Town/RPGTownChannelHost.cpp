@@ -22,7 +22,7 @@ TSharedPtr<FRPGTownChannelHost> FRPGTownChannelHost::Start(UWorld& World)
 	const FString Map = World.GetOutermost()->GetName();
 	const bool bIsField = Map == TEXT("/Game/Maps/RegionTravel/L_PortalField");
 	if (World.GetNetMode() != NM_DedicatedServer ||
-		(!bIsField && Map != TEXT("/Game/Maps/RegionTravel/L_Town")) ||
+		(!bIsField && Map != TEXT("/Game/Maps/RegionTravel/L_Town") && Map != TEXT("/Game/Maps/L_Bellmarket")) ||
 		!FParse::Param(FCommandLine::Get(), TEXT("RPGManagedTown"))) return {};
 
 	auto Host = MakeShared<FRPGTownChannelHost>();

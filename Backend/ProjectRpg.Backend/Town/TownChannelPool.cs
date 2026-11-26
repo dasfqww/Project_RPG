@@ -21,7 +21,7 @@ internal sealed record TownAdmission(int Channel, string Address, Guid Ticket);
 // the same OS account. Renaming pending to active competes atomically with expiry.
 internal sealed class TownChannelPool : BackgroundService
 {
-    private enum Region { Town, Field }
+    internal enum Region { Town, Field, Bellmarket }
 
     private sealed class Worker(int port, int number, string world, Region region, string directory, Process process)
     {
@@ -65,7 +65,7 @@ internal sealed class TownChannelPool : BackgroundService
 
     public bool Enabled => options.Executable.Length > 0;
 
-    public async Task<IResult> AdmitAsync(Guid character, string steamId, string name, string world, CancellationToken ct)
+    public async Task<IResult> AdmitAsync(Guid character, string steamId, string name, string world, CancellationToken ct, Region region = Region.Town)
     {
         Worker worker;
         Guid ticket;
@@ -78,7 +78,7 @@ internal sealed class TownChannelPool : BackgroundService
                 var current = candidate.Tickets[character];
                 if (candidate.Ready) ReapSeat(candidate, character, current, DateTime.UtcNow);
                 if (!candidate.Tickets.ContainsKey(character)) continue;
-                if (candidate.Region != Region.Town || File.Exists(Seat(candidate, current, "active")))
+                if (candidate.Region != region || candidate.World != world || File.Exists(Seat(candidate, current, "active")))
                     return Results.Conflict();
                 existing = candidate;
             }
@@ -89,21 +89,21 @@ internal sealed class TownChannelPool : BackgroundService
             }
             else
             {
-                var available = FindAvailable(world, Region.Town);
+                var available = FindAvailable(world, region);
                 if (available == null && !CanLaunch())
                 {
-                    var idle = workers.FirstOrDefault(w => w.World != world && w.Ready && w.Closing == null &&
+                    var idle = workers.FirstOrDefault(w => (w.World != world || w.Region != region) && w.Ready && w.Closing == null &&
                         w.Tickets.Count == 0 && (DateTime.UtcNow - w.LastOccupied).TotalSeconds >= options.IdleSeconds);
                     if (idle != null) BeginClose(idle);
                     return Results.StatusCode(503);
                 }
-                worker = available ?? Launch(world, Region.Town);
+                worker = available ?? Launch(world, region);
                 ticket = Reserve(worker, character, $"{steamId}\n{name}");
                 if (worker.Tickets.Count == options.Capacity && CanLaunch() &&
-                    FindAvailable(world, Region.Town) == null)
+                    FindAvailable(world, region) == null)
                 {
                     // Keep the accepted seat even if starting the spare fails.
-                    try { Launch(world, Region.Town); }
+                    try { Launch(world, region); }
                     catch (Exception e) { log.LogWarning(e, "Could not start the next town channel"); }
                 }
             }
@@ -156,8 +156,14 @@ internal sealed class TownChannelPool : BackgroundService
             start.Environment.Remove("PROJECT_RPG_DUNGEON_SESSION_ID");
             start.Environment["PROJECT_RPG_TOWN_DIRECTORY"] = dir;
             if (options.Project.Length > 0) start.ArgumentList.Add(options.Project);
-            string map = region == Region.Town ? "L_Town" : "L_PortalField";
-            start.ArgumentList.Add($"/Game/Maps/RegionTravel/{map}?MaxPlayers={options.Capacity}");
+            string map = region switch
+            {
+                Region.Town => "/Game/Maps/RegionTravel/L_Town",
+                Region.Field => "/Game/Maps/RegionTravel/L_PortalField",
+                Region.Bellmarket => "/Game/Maps/L_Bellmarket",
+                _ => throw new ArgumentOutOfRangeException(nameof(region))
+            };
+            start.ArgumentList.Add($"{map}?MaxPlayers={options.Capacity}");
             foreach (var argument in new[] { "-server", "-unattended", "-NoLiveCoding", "-nosound", $"-port={port}",
                 "-RPGManagedTown", $"-RPGRegionChannel={number}" })
                 start.ArgumentList.Add(argument);
@@ -227,7 +233,7 @@ internal sealed class TownChannelPool : BackgroundService
         foreach (var (character, ticket) in worker.Tickets.ToArray())
             ReapSeat(worker, character, ticket, now);
         if (worker.Tickets.Count > 0) worker.LastOccupied = now;
-        else if ((worker.Region == Region.Field || worker.Number != 1 || workers.Any(w => w.World != worker.World)) &&
+        else if ((worker.Region != Region.Town || worker.Number != 1 || workers.Any(w => w.World != worker.World)) &&
             now - worker.LastOccupied >= TimeSpan.FromSeconds(options.IdleSeconds)) BeginClose(worker);
     }
 
@@ -251,6 +257,11 @@ internal sealed class TownChannelPool : BackgroundService
             if (transfer == null)
             {
                 if (File.Exists(reply)) continue;
+                if (source.Region == Region.Bellmarket)
+                {
+                    WriteReply(reply, "unavailable");
+                    continue;
+                }
                 var region = source.Region == Region.Town ? Region.Field : Region.Town;
                 if (workers.Any(w => w != source && w.Tickets.ContainsKey(character)))
                 {
