@@ -15,9 +15,10 @@ class FRPGPanelShortcutInput final : public IInputProcessor
 {
 public:
 	FRPGPanelShortcutInput(APlayerController& InController, TMap<FInputChord, ERPGPanelShortcutAction>&& InShortcuts,
-		TFunction<bool(ERPGPanelShortcutAction)> InDispatch, TFunction<bool()> InToggleFieldMap)
+		TFunction<bool(ERPGPanelShortcutAction)> InDispatch, TFunction<bool()> InToggleFieldMap,
+		TFunction<bool(float)> InResizeFieldMap)
 		: Controller(&InController), Shortcuts(MoveTemp(InShortcuts)), Dispatch(MoveTemp(InDispatch)),
-			ToggleFieldMap(MoveTemp(InToggleFieldMap))
+			ToggleFieldMap(MoveTemp(InToggleFieldMap)), ResizeFieldMap(MoveTemp(InResizeFieldMap))
 	{
 	}
 
@@ -63,8 +64,22 @@ public:
 		return GetGameFocusPath(Slate, Event, Viewport, FocusPath);
 	}
 
+	virtual bool HandleMouseWheelOrGestureEvent(FSlateApplication& Slate, const FPointerEvent& WheelEvent,
+		const FPointerEvent* GestureEvent) override
+	{
+		const float Delta = WheelEvent.GetWheelDelta();
+		if (GestureEvent || !FMath::IsFinite(Delta) || Delta == 0.f || !WheelEvent.IsControlDown()
+			|| WheelEvent.IsShiftDown() || WheelEvent.IsAltDown() || WheelEvent.IsCommandDown())
+			return false;
+
+		UGameViewportClient* Viewport = nullptr;
+		FWidgetPath FocusPath;
+		return GetGameFocusPath(Slate, WheelEvent, Viewport, FocusPath) && !Viewport->IgnoreInput()
+			&& !IsEditingText(FocusPath) && ResizeFieldMap(Delta);
+	}
+
 private:
-	bool GetGameFocusPath(FSlateApplication& Slate, const FKeyEvent& Event,
+	bool GetGameFocusPath(FSlateApplication& Slate, const FInputEvent& Event,
 		UGameViewportClient*& OutViewport, FWidgetPath& OutPath) const
 	{
 		const APlayerController* Owner = Controller.Get();
@@ -102,6 +117,7 @@ private:
 	TMap<FInputChord, ERPGPanelShortcutAction> Shortcuts;
 	TFunction<bool(ERPGPanelShortcutAction)> Dispatch;
 	TFunction<bool()> ToggleFieldMap;
+	TFunction<bool(float)> ResizeFieldMap;
 	TSet<FKey> ConsumedKeys;
 };
 
@@ -111,7 +127,8 @@ URPGPanelShortcutComponent::URPGPanelShortcutComponent()
 		"/Game/System/Input/DA_PanelShortcuts.DA_PanelShortcuts")));
 }
 
-void URPGPanelShortcutComponent::Start(TFunction<bool(ERPGPanelShortcutAction)> Dispatch, TFunction<bool()> ToggleFieldMap)
+void URPGPanelShortcutComponent::Start(TFunction<bool(ERPGPanelShortcutAction)> Dispatch, TFunction<bool()> ToggleFieldMap,
+	TFunction<bool(float)> ResizeFieldMap)
 {
 	APlayerController* Controller = Cast<APlayerController>(GetOwner());
 	if (Processor || !Controller || !Controller->GetLocalPlayer() || !FSlateApplication::IsInitialized())
@@ -134,7 +151,8 @@ void URPGPanelShortcutComponent::Start(TFunction<bool(ERPGPanelShortcutAction)> 
 		}
 	}
 
-	const auto NewProcessor = MakeShared<FRPGPanelShortcutInput>(*Controller, MoveTemp(Shortcuts), MoveTemp(Dispatch), MoveTemp(ToggleFieldMap));
+	const auto NewProcessor = MakeShared<FRPGPanelShortcutInput>(*Controller, MoveTemp(Shortcuts), MoveTemp(Dispatch),
+		MoveTemp(ToggleFieldMap), MoveTemp(ResizeFieldMap));
 	if (FSlateApplication::Get().RegisterInputPreProcessor(NewProcessor))
 	{
 		Processor = NewProcessor;

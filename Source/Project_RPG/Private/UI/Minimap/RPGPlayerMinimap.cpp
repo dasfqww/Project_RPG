@@ -301,6 +301,13 @@ namespace
 
 		virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D::ZeroVector; }
 
+		void Resize(float WheelDelta)
+		{
+			constexpr float ScalePerNotch = 0.1f;
+			// At 130%, the default 68% height still fits around the existing center at 45%.
+			SizeScale = FMath::Clamp(SizeScale + WheelDelta * ScalePerNotch, 0.6f, 1.3f);
+		}
+
 		virtual void Tick(const FGeometry&, double, float) override
 		{
 			const ACharacter* Character = Cast<ACharacter>(Pawn.Get());
@@ -362,7 +369,7 @@ namespace
 			if (!Terrain.Texture.IsValid())
 				return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements, Layer, Style, bParentEnabled);
 			const FVector2D View = Geometry.GetLocalSize();
-			const double Side = FMath::Min(View.X * .55, View.Y * .68);
+			const double Side = FMath::Min(View.X * .55, View.Y * .68) * SizeScale;
 			const FVector2D Size(Side, Side);
 			const FVector2D TopLeft = View * FVector2D(.5, .45) - Size * .5;
 			const FLinearColor Tint = Style.GetColorAndOpacityTint();
@@ -393,6 +400,7 @@ namespace
 		TWeakObjectPtr<UNativeWidgetHost> Host;
 		TArray<TWeakObjectPtr<ARPGRegionGate>> Gates;
 		FRPGFieldWalkableArea WalkableArea;
+		float SizeScale = 1.f;
 		bool bUsesFieldPlayerStarts = false;
 		bool bBuildingTerrain = false;
 		bool bTerrainUnavailable = false;
@@ -449,6 +457,18 @@ bool RPGPlayerMinimap::ToggleFieldOverview(UUserWidget& PlayerHUD, const APawn& 
 		}
 	}
 	return false;
+}
+
+bool RPGPlayerMinimap::ResizeFieldOverview(UUserWidget& PlayerHUD, const APawn& Pawn, float WheelDelta)
+{
+	if (!IsOnMap(ProjectToMap(Pawn.GetActorLocation(), FieldBounds))) return false;
+	const auto* Overview = Cast<UNativeWidgetHost>(PlayerHUD.GetWidgetFromName(FieldOverviewName));
+	if (!Overview || !Overview->IsVisible()) return false;
+	const TSharedPtr<SRPGFieldOverview> Map = StaticCastSharedPtr<SRPGFieldOverview>(Overview->GetContent());
+	if (!Map) return false;
+
+	Map->Resize(WheelDelta);
+	return true;
 }
 
 #undef LOCTEXT_NAMESPACE

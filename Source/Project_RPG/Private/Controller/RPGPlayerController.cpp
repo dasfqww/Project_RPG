@@ -490,6 +490,15 @@ void ARPGPlayerController::SetupInputComponent()
 	Super::SetupInputComponent();
 	if (URPGPanelShortcutComponent* Shortcuts = FindComponentByClass<URPGPanelShortcutComponent>())
 	{
+		const auto GetFieldMapHUD = [this]() -> UUserWidget*
+		{
+			const ARPGHUD* CurrentHUD = Cast<ARPGHUD>(GetHUD());
+			if (!IsLocalController() || IsMoveInputIgnored() || bItemPresentationEnded || WindowInputState->HasOpenWindows()
+				|| ContentEntryPopup || GameplayAbandonmentWidget || !CurrentHUD || CurrentHUD->bIsMenuVisible || CurrentHUD->bIsOptionMenuVisible
+				|| FSlateApplication::Get().AnyMenusVisible()) return nullptr;
+			return CurrentHUD->GetPlayerHUDWidget();
+		};
+
 		Shortcuts->Start([this](ERPGPanelShortcutAction Action)
 		{
 			if (bItemPresentationEnded || ContentEntryPopup || GameplayAbandonmentWidget
@@ -511,15 +520,16 @@ void ARPGPlayerController::SetupInputComponent()
 				break;
 			}
 			return true;
-		}, [this]()
+		}, [this, GetFieldMapHUD]()
 		{
-			const ARPGHUD* CurrentHUD = Cast<ARPGHUD>(GetHUD());
-			if (!IsLocalController() || IsMoveInputIgnored() || bItemPresentationEnded || WindowInputState->HasOpenWindows()
-				|| ContentEntryPopup || GameplayAbandonmentWidget || !CurrentHUD || CurrentHUD->bIsMenuVisible || CurrentHUD->bIsOptionMenuVisible
-				|| FSlateApplication::Get().AnyMenusVisible()) return false;
 			const APawn* Pawn = GetPawn();
-			UUserWidget* PlayerHUD = CurrentHUD->GetPlayerHUDWidget();
+			UUserWidget* PlayerHUD = GetFieldMapHUD();
 			return Pawn && PlayerHUD && RPGPlayerMinimap::ToggleFieldOverview(*PlayerHUD, *Pawn);
+		}, [this, GetFieldMapHUD](float WheelDelta)
+		{
+			const APawn* Pawn = GetPawn();
+			UUserWidget* PlayerHUD = GetFieldMapHUD();
+			return Pawn && PlayerHUD && RPGPlayerMinimap::ResizeFieldOverview(*PlayerHUD, *Pawn, WheelDelta);
 		});
 	}
 	if (InputComponent)
