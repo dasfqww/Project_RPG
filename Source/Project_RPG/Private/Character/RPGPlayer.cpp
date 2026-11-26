@@ -39,7 +39,7 @@
 
 ARPGPlayer::ARPGPlayer(const FObjectInitializer& ObjectInitializer):
 	Super(ObjectInitializer.SetDefaultSubobjectClass<URPGPlayerMovementComponent>(ACharacter::CharacterMovementComponentName)),
-	TargetArmLength(550.f)
+	TargetArmLength(700.f)
 {
 	PrimaryActorTick.bStartWithTickEnabled = true;
 	PrimaryActorTick.bCanEverTick = true;
