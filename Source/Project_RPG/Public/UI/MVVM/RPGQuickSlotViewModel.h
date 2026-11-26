@@ -32,14 +32,14 @@ public:
 	const FText& GetQuantityLabel() const { return QuantityText; }
 	const FText& GetKeyLabel() const { return InputKeyText; }
 	bool IsSlotActive() const { return bIsSlotActive; }
-	float GetCooldownFraction() const
+	float GetCooldownFraction(float ElapsedSinceSample = 0.f) const
 	{
 		if (!FMath::IsFinite(CooldownRemaining) || !FMath::IsFinite(CooldownDuration)
 			|| CooldownDuration <= 0.0f)
 		{
 			return 0.0f;
 		}
-		return FMath::Clamp(CooldownRemaining / CooldownDuration, 0.0f, 1.0f);
+		return FMath::Clamp((CooldownRemaining - ElapsedSinceSample) / CooldownDuration, 0.0f, 1.0f);
 	}
 
 private:

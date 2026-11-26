@@ -115,7 +115,8 @@ private:
 	TSoftObjectPtr<UTexture2D> ItemIconReference;
 	TSharedPtr<FStreamableHandle> ItemIconLoadHandle;
 	uint64 ItemIconLoadGeneration = 0;
-	void UpdateSkillCooldownView(const FText& RemainingTime);
+	void UpdateSkillCooldownView(const FText& RemainingTime, float RemainingFraction = 0.f);
+	void UpdateSkillCooldownMask(float RemainingFraction);
 	TStrongObjectPtr<URPGQuickSlotViewModel> SkillViewModel;
 	float SkillRefreshElapsed = 0.0f;
 	TWeakPtr<SRPGSlotFrame> SlotFrame;

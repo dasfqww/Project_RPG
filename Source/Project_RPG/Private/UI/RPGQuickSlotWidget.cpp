@@ -17,7 +17,9 @@
 #include "Manager/DataManager.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
-#include "Brushes/SlateColorBrush.h"
+#include "Components/NativeWidgetHost.h"
+#include "Rendering/DrawElements.h"
+#include "Widgets/SLeafWidget.h"
 #include "UI/ItemDragDropOperation.h"
 #include "UI/QuickSlotDragDropOperation.h"
 #include "Character/RPGPlayer.h"
@@ -55,6 +57,72 @@
 
 namespace
 {
+const FName SkillCooldownMaskName(TEXT("SkillCooldownMask"));
+
+class SRPGSkillCooldownMask final : public SLeafWidget
+{
+public:
+	SLATE_BEGIN_ARGS(SRPGSkillCooldownMask) {}
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments&) {}
+
+	void SetRemainingFraction(float InFraction)
+	{
+		if (RemainingFraction == InFraction) return;
+		RemainingFraction = InFraction;
+		Invalidate(EInvalidateWidgetReason::Paint);
+	}
+
+	virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D::ZeroVector; }
+
+	virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&,
+		FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle& Style, bool) const override
+	{
+		if (RemainingFraction <= 0.f) return Layer;
+
+		const FVector2f HalfSize = FVector2f(Geometry.GetLocalSize()) * 0.5f;
+		const FColor Shade = FLinearColor(0.f, 0.f, 0.f, 0.65f * Style.GetColorAndOpacityTint().A).ToFColor(false);
+		TArray<FSlateVertex> Vertices;
+		Vertices.Reserve(7);
+		const auto AddPoint = [&](const FVector2f& Point)
+		{
+			Vertices.Add(FSlateVertex::Make(Geometry.GetAccumulatedRenderTransform(),
+				HalfSize + Point * HalfSize, FVector2f(0.5f, 0.5f), Shade));
+		};
+
+		// The uncovered wedge opens at 12 o'clock and sweeps clockwise to the icon edges.
+		const float ElapsedFraction = 1.f - RemainingFraction;
+		const float Angle = 2.f * UE_PI * ElapsedFraction;
+		const FVector2f Ray(FMath::Sin(Angle), -FMath::Cos(Angle));
+		AddPoint(FVector2f::ZeroVector);
+		AddPoint(Ray / FMath::Max(FMath::Abs(Ray.X), FMath::Abs(Ray.Y)));
+		const FVector2f Corners[] = {{1.f, -1.f}, {1.f, 1.f}, {-1.f, 1.f}, {-1.f, -1.f}};
+		for (int32 CornerIndex = 0; CornerIndex < UE_ARRAY_COUNT(Corners); ++CornerIndex)
+		{
+			if (ElapsedFraction < 0.125f + 0.25f * CornerIndex)
+			{
+				AddPoint(Corners[CornerIndex]);
+			}
+		}
+		AddPoint(FVector2f(0.f, -1.f));
+
+		TArray<SlateIndex> Indices;
+		Indices.Reserve(15);
+		for (int32 Vertex = 1; Vertex + 1 < Vertices.Num(); ++Vertex)
+		{
+			Indices.Add(0);
+			Indices.Add(static_cast<SlateIndex>(Vertex));
+			Indices.Add(static_cast<SlateIndex>(Vertex + 1));
+		}
+		FSlateDrawElement::MakeCustomVerts(Elements, Layer, FSlateResourceHandle(), Vertices, Indices, nullptr, 0, 0);
+		return Layer;
+	}
+
+private:
+	float RemainingFraction = 0.f;
+};
+
 class SRPGMountSlotFrame final : public SRPGSlotFrame
 {
 public:
@@ -96,11 +164,6 @@ void URPGQuickSlotWidget::NativeOnInitialized()
 	SetImageAlpha(SlotItemImage, 0.f);
 	if (bIsSkillSlot)
 	{
-		if (UImage* CooldownImage = Cast<UImage>(GetWidgetFromName(TEXT("SkillCooldownImage"))))
-		{
-			CooldownImage->SetBrush(FSlateColorBrush(FLinearColor(0.f, 0.f, 0.f, 0.65f)));
-			CooldownImage->SetColorAndOpacity(FLinearColor::White);
-		}
 		if (SlotItemCountText)
 		{
 			if (UOverlaySlot* TextSlot = Cast<UOverlaySlot>(SlotItemCountText->Slot))
@@ -387,13 +450,14 @@ void URPGQuickSlotWidget::RefreshSkillSlotView(const bool bRefreshTooltip)
 {
 	if (!SkillViewModel.IsValid()) return;
 	SkillViewModel->RefreshSkillState();
+	SkillRefreshElapsed = 0.f;
 	UTexture2D* Icon = SkillViewModel->GetIcon();
 	if (SlotItemImage && SlotItemImage->GetBrush().GetResourceObject() != Icon)
 		SlotItemImage->SetBrushFromTexture(Icon);
 	SetImageAlpha(SlotItemImage, Icon && SkillViewModel->IsSlotActive() ? 1.f : 0.f);
 	SetInputKeyText(SkillViewModel->GetKeyLabel());
 	UpdateSkillCooldownView(SkillViewModel->IsSlotActive()
-		? SkillViewModel->GetQuantityLabel() : FText::GetEmpty());
+		? SkillViewModel->GetQuantityLabel() : FText::GetEmpty(), SkillViewModel->GetCooldownFraction());
 
 	if (bRefreshTooltip)
 	{
@@ -419,15 +483,23 @@ void URPGQuickSlotWidget::RefreshSkillSlotView(const bool bRefreshTooltip)
 	}
 }
 
-void URPGQuickSlotWidget::UpdateSkillCooldownView(const FText& RemainingTime)
+void URPGQuickSlotWidget::UpdateSkillCooldownMask(float RemainingFraction)
+{
+	if (const auto* Host = Cast<UNativeWidgetHost>(GetWidgetFromName(SkillCooldownMaskName)))
+	{
+		if (const auto Mask = StaticCastSharedPtr<SRPGSkillCooldownMask>(Host->GetContent()))
+		{
+			Mask->SetRemainingFraction(RemainingFraction);
+		}
+	}
+}
+
+void URPGQuickSlotWidget::UpdateSkillCooldownView(const FText& RemainingTime, float RemainingFraction)
 {
 	if (!bIsSkillSlot) return;
+	UpdateSkillCooldownMask(RemainingTime.IsEmpty() ? 0.f : RemainingFraction);
 	const ESlateVisibility CooldownVisibility = RemainingTime.IsEmpty()
 		? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible;
-	if (UImage* CooldownImage = Cast<UImage>(GetWidgetFromName(TEXT("SkillCooldownImage"))))
-	{
-		CooldownImage->SetVisibility(CooldownVisibility);
-	}
 	if (SlotItemCountText)
 	{
 		SlotItemCountText->SetText(RemainingTime);
@@ -449,6 +521,10 @@ void URPGQuickSlotWidget::NativeTick(const FGeometry& Geometry, const float Delt
 			SetInputKeyText(ResolveQuickSlotInputKeyText(LinkedQuickSlotComponent.Get(), false, SlotIndex, InputText));
 			RefreshMountIcon();
 		}
+	}
+	else if (bIsSkillSlot && SkillViewModel.IsValid() && !SkillViewModel->GetQuantityLabel().IsEmpty())
+	{
+		UpdateSkillCooldownMask(SkillViewModel->GetCooldownFraction(SkillRefreshElapsed));
 	}
 }
 
@@ -492,6 +568,21 @@ void URPGQuickSlotWidget::RefreshMountIcon()
 TSharedRef<SWidget> URPGQuickSlotWidget::RebuildWidget()
 {
 	if (!bIsSkillSlot && (!WidgetTree || !WidgetTree->RootWidget)) BuildNativeItemCell();
+	if (bIsSkillSlot && WidgetTree)
+	{
+		auto* Host = Cast<UNativeWidgetHost>(GetWidgetFromName(SkillCooldownMaskName));
+		if (UWidget* CooldownImage = GetWidgetFromName(TEXT("SkillCooldownImage")); !Host && CooldownImage)
+		{
+			if (auto* Overlay = Cast<UOverlay>(CooldownImage->GetParent()))
+			{
+				// Keep the authored layer and padding so the mask only covers the icon.
+				Host = WidgetTree->ConstructWidget<UNativeWidgetHost>(UNativeWidgetHost::StaticClass(), SkillCooldownMaskName);
+				Host->SetVisibility(ESlateVisibility::HitTestInvisible);
+				Overlay->ReplaceOverlayChildAt(Overlay->GetChildIndex(CooldownImage), Host);
+			}
+		}
+		if (Host) Host->SetContent(SNew(SRPGSkillCooldownMask));
+	}
 	const TSharedRef<SWidget> Content = Super::RebuildWidget();
 	const TWeakObjectPtr<URPGQuickSlotWidget> WeakThis(this);
 	const auto Appearance = [WeakThis] {
