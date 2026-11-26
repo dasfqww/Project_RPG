@@ -7,8 +7,11 @@
 #include "UI/ItemQuickSlot/RPGItemQuickSlotBar.h"
 #include "UI/Minimap/RPGPlayerMinimap.h"
 #include "Blueprint/WidgetTree.h"
+#include "Components/Button.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Components/NativeWidgetHost.h"
+#include "Components/TextBlock.h"
 #include "Component/UI/QuickSlotComponent.h"
 #include "GameFramework/Pawn.h"
 #include "UI/RPGMainMenuWidget.h"
@@ -24,6 +27,50 @@
 #include "GameFramework/PlayerController.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Blueprint/UserWidget.h"
+#include "Widgets/Input/SComboButton.h"
+#include "Widgets/Text/STextBlock.h"
+
+namespace
+{
+    void AttachChannelMenu(UUserWidget& HUD)
+    {
+        const auto* Minimap = HUD.GetWidgetFromName(TEXT("PlayerMinimap"));
+        auto* MailButton = Cast<UButton>(HUD.GetWidgetFromName(TEXT("RewardMailButton")));
+        auto* MailLabel = Cast<UTextBlock>(HUD.GetWidgetFromName(TEXT("RewardMailLabel")));
+        auto* MailSlot = MailButton ? Cast<UCanvasPanelSlot>(MailButton->Slot) : nullptr;
+        auto* Canvas = MailButton ? Cast<UCanvasPanel>(MailButton->GetParent()) : nullptr;
+        if (!Minimap || !MailLabel || !MailSlot || !Canvas || Minimap->GetParent() != Canvas) return;
+
+        constexpr float MenuWidth = 124.f;
+        constexpr float Gap = 8.f;
+        const FVector2D Position = MailSlot->GetPosition();
+        auto* Host = HUD.WidgetTree->ConstructWidget<UNativeWidgetHost>(UNativeWidgetHost::StaticClass(), TEXT("TownChannelMenu"));
+        Host->SetContent(
+            SNew(SComboButton)
+            .ButtonStyle(&MailButton->GetStyle())
+            .ForegroundColor(MailLabel->GetColorAndOpacity())
+            .ContentPadding(FMargin(8.f, 0.f))
+            .ButtonContent()
+            [
+                SNew(STextBlock)
+                .Text(NSLOCTEXT("RPGTownChannelMenu", "Label", "채널 변경"))
+                .Font(MailLabel->GetFont())
+            ]
+            .MenuContent()
+            [
+                SNew(STextBlock)
+                .Text(NSLOCTEXT("RPGTownChannelMenu", "Unavailable", "변경할 수 있는 채널이 없습니다."))
+                .Font(MailLabel->GetFont())
+                .Margin(FMargin(8.f))
+            ]);
+
+        auto* MenuSlot = Canvas->AddChildToCanvas(Host);
+        MenuSlot->SetLayout(MailSlot->GetLayout());
+        MenuSlot->SetSize(FVector2D(MenuWidth, MailSlot->GetSize().Y));
+        MenuSlot->SetZOrder(MailSlot->GetZOrder());
+        MailSlot->SetPosition(Position - FVector2D(MenuWidth + Gap, 0.f));
+    }
+}
 
 ARPGHUD::ARPGHUD()
 {
@@ -224,6 +271,7 @@ void ARPGHUD::RefreshPlayerHUD()
     if (StillCurrent())
     {
         RPGPlayerMinimap::Attach(*Widget, *Pawn);
+        AttachChannelMenu(*Widget);
 
 		// Keep the authored tree intact; replace only its right-hand item region.
 		auto* Original = Widget->WidgetTree ? Widget->WidgetTree->FindWidget(TEXT("HorizontalBox_QuickSlot")) : nullptr;
