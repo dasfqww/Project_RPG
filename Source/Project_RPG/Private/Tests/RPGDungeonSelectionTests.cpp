@@ -3,6 +3,7 @@
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
 #include "UI/Lobby/RPGOnlineLobbyDevelopmentProfile.h"
 #include "Components/ComboBoxString.h"
+#include "Components/TextBlock.h"
 #include "Engine/Engine.h"
 #include "Engine/AssetManager.h"
 #include "AssetRegistry/AssetData.h"
@@ -156,6 +157,23 @@ bool FRPGDungeonSelectionWidgetTest::RunTest(const FString&)
 		Dungeons->SetSelectedOption(Dungeons->GetOptionAtIndex(1));
 		TestEqual(TEXT("Forced disabled dispatcher restores trusted selection"), Dungeons->GetSelectedOption(), Before);
 		TestFalse(TEXT("No local auth/roster context keeps selector locked"), Dungeons->GetIsEnabled());
+		auto* FirstBoss = Definition(TEXT("Progression.FirstBoss"),
+			{ERPGGameDifficulty::Normal, ERPGGameDifficulty::Hard}, ERPGGameDifficulty::Normal);
+		auto* Selection = Cast<UTextBlock>(Widget->GetWidgetFromName(TEXT("DungeonSelection")));
+		if (!TestNotNull(TEXT("Dungeon selection summary"), Selection)) return false;
+		for (const FString& Mode : {FString(TEXT("Normal")), FString(TEXT("Hard"))})
+		{
+			FRPGDungeonSelectionTestAccess::Configure(Widget, {A, FirstBoss}, FirstBoss->DungeonId, Mode);
+			FRPGDungeonSelectionTestAccess::Refresh(Widget);
+			const FString Summary = Selection->GetText().ToString();
+			TestTrue(TEXT("Selected difficulty shows authored guaranteed material quantities"),
+				Summary.Contains(Mode) && Summary.Contains(TEXT("확정 보상")) && Summary.Contains(TEXT("×4")) && Summary.Contains(TEXT("×2")));
+			TestTrue(TEXT("Selected difficulty shows the total and per-item personal chances"),
+				Summary.Contains(TEXT("개인 추첨")) && Summary.Contains(TEXT("20%")) && Summary.Contains(TEXT("5%")));
+		}
+		FRPGDungeonSelectionTestAccess::Configure(Widget, {A, B}, A->DungeonId);
+		FRPGDungeonSelectionTestAccess::Refresh(Widget);
+		TestFalse(TEXT("Changing to a dungeon with no preview clears the previous loot"), Selection->GetText().ToString().Contains(TEXT("개인 추첨")));
 		auto* Instance = NewObject<UGameInstance>();
 		auto* Flow = NewObject<URPGDungeonSessionSubsystem>(Instance);
 		FRPGDungeonSelectionTestAccess::BindFlow(Widget, Flow);

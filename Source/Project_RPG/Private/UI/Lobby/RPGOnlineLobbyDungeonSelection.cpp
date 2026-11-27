@@ -1,4 +1,5 @@
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
+#include "UI/Lobby/RPGDungeonRewardPreview.h"
 #include "Components/TextBlock.h"
 #include "Online/RPGDungeonDefinition.h"
 #include "UI/Lobby/RPGOnlineLobbyDevelopmentProfile.h"
@@ -222,9 +223,16 @@ bool URPGOnlineLobbyWidget::UpdateDungeonSelectionPresentation()
 		FString Error;
 		if (!HasUnfinishedDungeonSelection() && !ValidateDungeonDefinitions(Error))
 			DungeonSelectionText->SetText(FText::Format(NSLOCTEXT("RPGOnlineLobby", "InvalidDungeonCatalog", "던전 목록 설정 오류: {0}"), FText::FromString(Error)));
-		else DungeonSelectionText->SetText(FText::Format(NSLOCTEXT("RPGOnlineLobby", "AuthoredDungeonSelection", "던전: {0} / 난이도: {1} — 생성 후 변경할 수 없습니다."),
-			bValidId ? GetDungeonDisplayName(Id) : NSLOCTEXT("RPGOnlineLobby", "DungeonRequired", "던전을 선택하세요"),
-			bValidDifficulty ? FText::FromString(DisplayedDifficulty) : NSLOCTEXT("RPGOnlineLobby", "DifficultyRequired", "난이도를 선택하세요")));
+		else
+		{
+			const FText Selection = FText::Format(NSLOCTEXT("RPGOnlineLobby", "AuthoredDungeonSelection", "던전: {0} / 난이도: {1} — 생성 후 변경할 수 없습니다."),
+				bValidId ? GetDungeonDisplayName(Id) : NSLOCTEXT("RPGOnlineLobby", "DungeonRequired", "던전을 선택하세요"),
+				bValidDifficulty ? FText::FromString(DisplayedDifficulty) : NSLOCTEXT("RPGOnlineLobby", "DifficultyRequired", "난이도를 선택하세요"));
+			const FText Rewards = bValidId && bValidDifficulty
+				? RPGDungeonRewardPreview::DescribeClearRewards(SelectedId, Value) : FText::GetEmpty();
+			DungeonSelectionText->SetText(Rewards.IsEmpty() ? Selection
+				: FText::Format(NSLOCTEXT("RPGOnlineLobby", "SelectionWithRewards", "{0}\n\n{1}"), Selection, Rewards));
+		}
 	}
 	return bValidId && bValidDifficulty;
 }

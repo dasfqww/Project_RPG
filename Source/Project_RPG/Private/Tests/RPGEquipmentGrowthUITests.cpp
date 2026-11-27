@@ -112,14 +112,22 @@ bool FRPGEquipmentGrowthWidgetTest::RunTest(const FString&)
 	TestNotNull(TEXT("Current-item source selector"),Panel->SourceBox.Get()); TestNotNull(TEXT("Transfer target selector"),Panel->TargetBox.Get());
 	TestFalse(TEXT("No authenticated context cannot prepare"),Panel->PrepareButton->GetIsEnabled());
 	Panel->OpenScreen(); Panel->Prepare(); Panel->Confirm(); Panel->Retry();
+	const auto* MaterialSource = Cast<UTextBlock>(Panel->WidgetTree->FindWidget(TEXT("EquipmentMaterialSource")));
+	if (!TestNotNull(TEXT("Material source row"), MaterialSource)) return false;
+	TestTrue(TEXT("Upgrade shows first-boss ore per clear before any equipment selection"),
+		MaterialSource->GetText().ToString().Contains(TEXT("일반 클리어당 4개 확정")));
 	TestFalse(TEXT("Calling handlers cannot bypass the context guard"),Panel->bConfirming);
 	TestFalse(TEXT("No context cannot confirm or pay"),Panel->ConfirmButton->GetIsEnabled());
 	TestFalse(TEXT("Read without authentication is blocked"),Panel->ReloadButton->GetIsEnabled());
 	TestEqual(TEXT("Confirmation starts hidden"),Panel->ConfirmButton->GetVisibility(),ESlateVisibility::Collapsed);
 	TestEqual(TEXT("Transfer target role is hidden in upgrade mode"),Panel->WidgetTree->FindWidget(TEXT("EquipmentTargetLabel"))->GetVisibility(),ESlateVisibility::Collapsed);
 	Panel->OperationBox->SetSelectedIndex(1);
+	TestEqual(TEXT("Transfer hides the material source"), MaterialSource->GetVisibility(), ESlateVisibility::Collapsed);
 	TestEqual(TEXT("Transfer target role is visible in transfer mode"),Panel->WidgetTree->FindWidget(TEXT("EquipmentTargetLabel"))->GetVisibility(),ESlateVisibility::Visible);
 	Panel->OperationBox->SetSelectedIndex(2);
+	TestTrue(TEXT("Craft shows first-boss tokens and the dismantle alternative before choosing a recipe"),
+		MaterialSource->GetText().ToString().Contains(TEXT("고난도 클리어당 2개 확정"))
+		&& MaterialSource->GetText().ToString().Contains(TEXT("분해")));
 	TestEqual(TEXT("Craft mode exposes exactly four server-supported choices"),Panel->CraftBox->GetOptionCount(),4);
 	TestEqual(TEXT("Craft mode shows output selector"),Panel->CraftBox->GetVisibility(),ESlateVisibility::Visible);
 	TestEqual(TEXT("Craft mode hides source input"),Panel->SourceBox->GetVisibility(),ESlateVisibility::Collapsed);

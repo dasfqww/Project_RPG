@@ -10,6 +10,7 @@
 #include "Manager/HttpWebManager.h"
 #include "Online/RPGDungeonSessionSubsystem.h"
 #include "Progression/RPGEquipmentMutationSubsystem.h"
+#include "UI/Lobby/RPGDungeonRewardPreview.h"
 #include "UI/Lobby/RPGOnlineLobbyLayout.h"
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
 #include "UI/RPGConfirmationInput.h"
@@ -40,6 +41,7 @@ TSharedRef<SWidget> URPGEquipmentGrowthWidget::RebuildWidget()
 		CraftBox=WidgetTree->ConstructWidget<UComboBoxString>(UComboBoxString::StaticClass(),TEXT("EquipmentGrowthCraftTarget"));
 		for (const auto& Target : RPGEquipmentGrowthUI::CraftTargets()) CraftBox->AddOption(Target.Value.ToString());
 		RPGOnlineLobbyLayout::Control(*WidgetTree,*Root,*CraftBox);
+		RPGOnlineLobbyLayout::Text(*WidgetTree, *Root, TEXT("EquipmentMaterialSource"), FText::GetEmpty());
 		PreviewText=RPGOnlineLobbyLayout::Text(*WidgetTree,*Root,TEXT("EquipmentGrowthPreview"),FText::GetEmpty());
 		PrepareButton=RPGOnlineLobbyLayout::Action(*WidgetTree,*Root,TEXT("PrepareEquipmentButton"),LOCTEXT("Prepare","비용과 변경 내용 확인"));
 		ConfirmButton=RPGOnlineLobbyLayout::Action(*WidgetTree,*Root,TEXT("ConfirmEquipmentButton"),LOCTEXT("Confirm","확인한 내용으로 실행"));
@@ -190,6 +192,20 @@ void URPGEquipmentGrowthWidget::Draw()
 	if (OperationBox) OperationBox->SetIsEnabled(Editable && !bConfirming);
 	if (SourceBox) SourceBox->SetIsEnabled(Editable && !bConfirming);
 	const int32 Mode=OperationBox ? OperationBox->GetSelectedIndex() : INDEX_NONE;
+	if (auto* MaterialSource = WidgetTree ? Cast<UTextBlock>(WidgetTree->FindWidget(TEXT("EquipmentMaterialSource"))) : nullptr)
+	{
+		FText Source;
+		if (bScreenOpen && Lobby.IsValid() && (Mode == 0 || Mode == 2))
+		{
+			const FName Material(Mode == 0 ? TEXT("GameItem.Material.Progression.Ore") : TEXT("GameItem.Material.Progression.Token"));
+			Source = RPGDungeonRewardPreview::DescribeFirstBossMaterial(Material,
+				Lobby->GetDungeonDisplayName(TEXT("Progression.FirstBoss")));
+			if (Mode == 2 && !Source.IsEmpty())
+				Source = FText::Format(LOCTEXT("TokenSources", "{0}\n남는 +0 목표 장비를 분해해도 증표를 얻을 수 있습니다."), Source);
+		}
+		MaterialSource->SetText(Source);
+		MaterialSource->SetVisibility(Source.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	}
 	if (SourceBox) RPGOnlineLobbyLayout::SetControlVisibility(*SourceBox,Mode==2 ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 	if (auto* Label=WidgetTree ? Cast<UTextBlock>(WidgetTree->FindWidget(TEXT("EquipmentSourceLabel"))) : nullptr)
 	{

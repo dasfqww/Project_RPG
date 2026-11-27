@@ -296,6 +296,8 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 ## 12. 현재 현황과 다음 작업 체크리스트 (2026-10-20)
 
+- [x] 2026-11-27 원정 보상 미리보기와 장비 재료 획득처. 첫 보스·기존 검사의 레이드의 난이도별 확정 보상과 개인 추첨을 서버 보상 에셋에서 표시한다. 강화·제작 화면에 첫 보스 광석/증표 지급량과 분해 안내를 연결했다. UE 5.8 격리 링크·네이티브 자동화 11건 통과. [장비 성장·제작 계약](PLAYER_PROGRESSION_EQUIPMENT_UI.md#원정-보상-미리보기와-재료-획득처-2026-11-27).
+
 - [x] 2026-11-27 Steam 초대 참가 재시도. Steam의 일반 참가 오류 뒤에는 같은 초대를 다시 사용할 수 있으며, 이전 참가 결과가 도착해도 더 최근에 받은 초대는 보존된다. UE Editor 모듈 빌드와 신규 재시도 검사 통과. 추가 회귀 5건 통과, 1건은 로컬 Hitreact 에셋 구조체 로드 오류로 실패. [로비 계약](ONLINE_LOBBY_UI.md#steam-친구-목록과-파티-초대).
 
 - [x] 2026-11-27 Steam 친구 목록과 파티 초대. 로비에서 Steam 친구 닉네임·접속 상태를 보고 온라인 친구를 현재 파티에 초대할 수 있다. UE 5.8 Editor 모듈 링크 및 `-nosteam` 로비 자동화 7건 통과. 실제 Steam 2계정 초대·합류는 미검증. [로비 계약](ONLINE_LOBBY_UI.md#steam-친구-목록과-파티-초대).
@@ -1021,6 +1023,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| dungeon-reward-preview-27 | 원정 보상 미리보기와 장비 성장 재료 획득처 | Private/UI/Lobby/RPGDungeonRewardPreview.h·cpp, RPGOnlineLobbyDungeonSelection.cpp, RPGEquipmentGrowthWidget.cpp; Private/Tests/RPGDungeonSelectionTests.cpp·RPGEquipmentGrowthUITests.cpp; Docs/PLAYER_PROGRESSION_EQUIPMENT_UI.md와 본인 행/12절 | UE 5.8 격리 C++ 5개·Editor 모듈 링크·던전 선택/장비 성장 native 11건 성공. 임시 192,851,632 bytes·정션 39개 정리. Saved/BuildChecks/DungeonRewardPreview27 | 구현·검증 예약 해제. 본인 경로와 로드맵 두 조각만 main index/ref·origin/main 순차 게시 예약, 원격 일치 시 해제 |
 | steam-invite-retry | Steam 초대 참가 일시 실패 뒤 재시도 | RPGSteamLobbySubsystem.h·cpp, RPGSteamLobbyPublicationTests.cpp, Docs/ONLINE_LOBBY_UI.md, 본인 기록 | UE Editor 빌드, 신규 포함 자동화 6건 통과. 기존 DeferredDispatch는 로컬 Hitreact 에셋 로드 오류로 실패. 본인 임시 파일 149,142,741 bytes 정리. Saved/BuildChecks/SteamInviteRetry에 요약 보관 | 소스·실행 자원 해제. 본인 5경로만 main index/ref 및 origin/main 순차 게시. 이 행 포함 커밋 원격 일치 시 Git 예약 해제 |
 | steam-friends-lobby-27 | 로비 Steam 친구 목록과 선택 초대 | Online/RPGSteamLobbySubsystem.h·cpp, UI/Lobby/RPGOnlineLobbyWidget.h·cpp, Private/Tests/RPGOnlineLobbyTests.cpp, Docs/ONLINE_LOBBY_UI.md, 본인 행/완료 기록 | UE 5.8 Editor 모듈 링크·로비 자동화 7건 통과, 검사 중 오류 0. 임시 149,165,552 bytes 정리, Saved/BuildChecks/SteamFriendsLobby27에 요약 보관 | 소스·검증 자원 해제. 본인 7경로만 main index/ref 및 origin/main 순차 게시. 이 행 포함 커밋 원격 일치 시 Git 예약 해제 |
 | skill-progress-icon-27 | 차지·홀딩·캐스팅 진행 바의 스킬 아이콘 제거 | RPGActionProgressWidget.cpp, RPGActionProgressWidgetTests.cpp, PLAYER_HUD_MODULARIZATION.md, 본인 행 | UE 5.8 C++ 2개·격리 링크·UMG 회귀 2건 및 1280×720 실제 Charge Slash HUD에서 진행률·이름·아이콘 숨김·해제 확인. 임시 476,694,485 bytes·정션 2개 정리. Saved/BuildChecks/SkillProgressIcon27 | 실행 자원 해제. 본인 4경로 main index/ref 및 origin/main 순차 게시 예약. 이 행 포함 커밋 원격 일치 시 해제 |
