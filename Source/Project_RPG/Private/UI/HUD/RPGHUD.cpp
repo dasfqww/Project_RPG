@@ -13,6 +13,7 @@
 #include "Components/NativeWidgetHost.h"
 #include "Components/TextBlock.h"
 #include "Component/UI/QuickSlotComponent.h"
+#include "Controller/RPGPlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "UI/RPGMainMenuWidget.h"
 #include "UI/RPGInteractionWidget.h"
@@ -28,6 +29,7 @@
 #include "UObject/StrongObjectPtr.h"
 #include "Blueprint/UserWidget.h"
 #include "Widgets/Input/SComboButton.h"
+#include "Widgets/Input/SButton.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace
@@ -69,6 +71,43 @@ namespace
         MenuSlot->SetSize(FVector2D(MenuWidth, MailSlot->GetSize().Y));
         MenuSlot->SetZOrder(MailSlot->GetZOrder());
         MailSlot->SetPosition(Position - FVector2D(MenuWidth + Gap, 0.f));
+    }
+
+    void AttachItemCodexButton(UUserWidget& HUD, ARPGPlayerController& Controller)
+    {
+        auto* MailButton = Cast<UButton>(HUD.GetWidgetFromName(TEXT("RewardMailButton")));
+        const auto* MailLabel = Cast<UTextBlock>(HUD.GetWidgetFromName(TEXT("RewardMailLabel")));
+        const auto* MailSlot = MailButton ? Cast<UCanvasPanelSlot>(MailButton->Slot) : nullptr;
+        auto* Canvas = MailButton ? Cast<UCanvasPanel>(MailButton->GetParent()) : nullptr;
+        if (!MailSlot || !Canvas || !MailLabel) return;
+
+        constexpr float Width = 112.f;
+        constexpr float Gap = 8.f;
+        auto* Host = HUD.WidgetTree->ConstructWidget<UNativeWidgetHost>(UNativeWidgetHost::StaticClass(), TEXT("ItemCodexButton"));
+        Host->SetContent(
+            SNew(SButton)
+            .ButtonStyle(&MailButton->GetStyle())
+            .ForegroundColor(MailLabel->GetColorAndOpacity())
+            .HAlign(HAlign_Center)
+            .VAlign(VAlign_Center)
+            .ToolTipText(NSLOCTEXT("RPGItemCodex", "Shortcut", "아이템 사전 열기 (Ctrl+J)"))
+            .OnClicked_Lambda([WeakController = TWeakObjectPtr<ARPGPlayerController>(&Controller)]()
+            {
+                if (auto* Owner = WeakController.Get()) Owner->OpenItemCodex();
+                return FReply::Handled();
+            })
+            [
+                SNew(STextBlock)
+                .Text(NSLOCTEXT("RPGItemCodex", "HUDLabel", "아이템 사전"))
+                .Font(MailLabel->GetFont())
+            ]);
+
+        auto* Slot = Canvas->AddChildToCanvas(Host);
+        Slot->SetLayout(MailSlot->GetLayout());
+        Slot->SetSize(FVector2D(Width, MailSlot->GetSize().Y));
+        Slot->SetPosition(MailSlot->GetPosition() - FVector2D(MailSlot->GetSize().X * (1.f - MailSlot->GetAlignment().X)
+            + Width * MailSlot->GetAlignment().X + Gap, 0.f));
+        Slot->SetZOrder(MailSlot->GetZOrder());
     }
 }
 
@@ -272,6 +311,8 @@ void ARPGHUD::RefreshPlayerHUD()
     {
         RPGPlayerMinimap::Attach(*Widget, *Pawn);
         AttachChannelMenu(*Widget);
+        if (auto* RPGController = Cast<ARPGPlayerController>(Controller))
+            AttachItemCodexButton(*Widget, *RPGController);
 
 		// Keep the authored tree intact; replace only its right-hand item region.
 		auto* Original = Widget->WidgetTree ? Widget->WidgetTree->FindWidget(TEXT("HorizontalBox_QuickSlot")) : nullptr;

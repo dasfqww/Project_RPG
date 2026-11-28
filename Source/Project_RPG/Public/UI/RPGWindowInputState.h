@@ -21,6 +21,7 @@ public:
 	bool HasOpenWindows() const { return !Windows.IsEmpty(); }
 	bool ContainsWindow(const UUserWidget& Window) const;
 	UUserWidget* GetTopWindow() const;
+	UUserWidget* FindWindow(TFunctionRef<bool(const UUserWidget&)> Matches) const;
 
 private:
 	struct FWindowEntry

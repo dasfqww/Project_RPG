@@ -18,6 +18,18 @@ UUserWidget* FRPGWindowInputState::GetTopWindow() const
 	return Top ? Top->Window.Get() : nullptr;
 }
 
+UUserWidget* FRPGWindowInputState::FindWindow(TFunctionRef<bool(const UUserWidget&)> Matches) const
+{
+	for (const FWindowEntry& Entry : Windows)
+	{
+		if (UUserWidget* Window = Entry.Window.Get(); Window && Matches(*Window))
+		{
+			return Window;
+		}
+	}
+	return nullptr;
+}
+
 const FRPGWindowInputState::FWindowEntry* FRPGWindowInputState::GetTopEntry() const
 {
 	const FWindowEntry* Top = nullptr;

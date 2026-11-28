@@ -10,37 +10,37 @@ namespace
 {
 	constexpr const TCHAR* FirstBossId = TEXT("Progression.FirstBoss");
 
-	const URPGDungeonRewardDefinition* FindReward(const FString& DungeonId, ERPGGameDifficulty Difficulty)
-	{
-		static const FSoftObjectPath FirstBoss(TEXT("/Game/System/Dungeons/Progression/DA_DungeonServer_FirstBoss.DA_DungeonServer_FirstBoss"));
-		static const FSoftObjectPath RaidSwordMan(TEXT("/Game/System/Dungeons/DA_DungeonServer_RaidSwordMan.DA_DungeonServer_RaidSwordMan"));
-		const FSoftObjectPath* Path = nullptr;
-		if (DungeonId.Equals(FirstBossId, ESearchCase::CaseSensitive))
-			Path = &FirstBoss;
-		else if (DungeonId.Equals(TEXT("Dungeon.RaidSwordMan"), ESearchCase::CaseSensitive))
-			Path = &RaidSwordMan;
-		if (!Path)
-			return nullptr;
-
-		const auto* Dungeon = Cast<URPGDungeonServerDefinition>(Path->ResolveObject());
-		if (!Dungeon)
-			Dungeon = Cast<URPGDungeonServerDefinition>(Path->TryLoad());
-		if (!Dungeon || !Dungeon->DungeonId.Equals(DungeonId, ESearchCase::CaseSensitive))
-			return nullptr;
-
-		const auto* Reward = Dungeon->ClearRewardsByDifficulty.Find(Difficulty);
-		FString Version, Error;
-		TArray<FRPGCurrencyChange> Currency;
-		TArray<FRPGDungeonItemReward> Items;
-		return Reward && *Reward && (*Reward)->BuildSettlement(Version, Currency, Items, Error) ? Reward->Get() : nullptr;
-	}
-
 	FText FormatChance(int32 BasisPoints)
 	{
 		FNumberFormattingOptions Formatting;
 		Formatting.SetMaximumFractionalDigits(2);
 		return FText::AsPercent(BasisPoints / 10000.0, &Formatting);
 	}
+}
+
+const URPGDungeonRewardDefinition* RPGDungeonRewardPreview::FindReward(const FString& DungeonId, ERPGGameDifficulty Difficulty)
+{
+	static const FSoftObjectPath FirstBoss(TEXT("/Game/System/Dungeons/Progression/DA_DungeonServer_FirstBoss.DA_DungeonServer_FirstBoss"));
+	static const FSoftObjectPath RaidSwordMan(TEXT("/Game/System/Dungeons/DA_DungeonServer_RaidSwordMan.DA_DungeonServer_RaidSwordMan"));
+	const FSoftObjectPath* Path = nullptr;
+	if (DungeonId.Equals(FirstBossId, ESearchCase::CaseSensitive))
+		Path = &FirstBoss;
+	else if (DungeonId.Equals(TEXT("Dungeon.RaidSwordMan"), ESearchCase::CaseSensitive))
+		Path = &RaidSwordMan;
+	if (!Path)
+		return nullptr;
+
+	const auto* Dungeon = Cast<URPGDungeonServerDefinition>(Path->ResolveObject());
+	if (!Dungeon)
+		Dungeon = Cast<URPGDungeonServerDefinition>(Path->TryLoad());
+	if (!Dungeon || !Dungeon->DungeonId.Equals(DungeonId, ESearchCase::CaseSensitive))
+		return nullptr;
+
+	const auto* Reward = Dungeon->ClearRewardsByDifficulty.Find(Difficulty);
+	FString Version, Error;
+	TArray<FRPGCurrencyChange> Currency;
+	TArray<FRPGDungeonItemReward> Items;
+	return Reward && *Reward && (*Reward)->BuildSettlement(Version, Currency, Items, Error) ? Reward->Get() : nullptr;
 }
 
 FText RPGDungeonRewardPreview::DescribeClearRewards(const FString& DungeonId, ERPGGameDifficulty Difficulty)

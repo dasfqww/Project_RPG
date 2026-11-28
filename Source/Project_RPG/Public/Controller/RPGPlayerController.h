@@ -207,6 +207,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "RPG|Skill|UI")
 	void ToggleSkillWindow();
+	void OpenItemCodex();
 
 	/** Window preview routing keeps UI hotkeys available while a child has focus. */
 	bool HandlePlayerWindowKeyDown(UUserWidget* SourceWindow, const FKeyEvent& Event);
@@ -330,9 +331,11 @@ private:
 	void RaiseProjectionWindow(URPGInventoryProjectionWidget* Widget);
 	bool IsProjectionWindow(const UUserWidget* Widget) const;
 	bool CloseTopPlayerWindow();
-	bool AttachContentEntryModal(URPGWidgetBase& Widget, int32 Layer);
-	void CloseContentEntryModal(URPGWidgetBase& Widget);
-	void OnContentEntryModalRemoved(UWidget* Widget);
+	bool AttachPlayerModal(URPGWidgetBase& Widget, int32 Layer);
+	URPGWidgetBase* FindItemCodex() const;
+	void CloseItemCodex();
+	void ClosePlayerModal(URPGWidgetBase& Widget);
+	void OnPlayerModalRemoved(UWidget* Widget);
 	UPROPERTY(Transient)
 	TObjectPtr<URPGContentEntryWidget> ContentEntryPopup;
 	UPROPERTY(Transient)

@@ -296,6 +296,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 ## 12. 현재 현황과 다음 작업 체크리스트 (2026-10-20)
 
+- [x] 2026-11-28 인게임 아이템 사전. 플레이어 HUD 버튼 또는 Ctrl+J로 첫 보스 목표 장비 4종과 강화·제작 재료 2종을 검색한다. UE 5.8 격리 링크, 마을 D3D11 게임플레이 1건과 에디터 자동화 9건 통과. [아이템 사전 사용과 데이터](PLAYER_PROGRESSION_EQUIPMENT_UI.md#인게임-아이템-사전-2026-11-28).
 - [x] 2026-11-27 원정 보상 미리보기와 장비 재료 획득처. 첫 보스·기존 검사의 레이드의 난이도별 확정 보상과 개인 추첨을 서버 보상 에셋에서 표시한다. 강화·제작 화면에 첫 보스 광석/증표 지급량과 분해 안내를 연결했다. UE 5.8 격리 링크·네이티브 자동화 11건 통과. [장비 성장·제작 계약](PLAYER_PROGRESSION_EQUIPMENT_UI.md#원정-보상-미리보기와-재료-획득처-2026-11-27).
 
 - [x] 2026-11-27 Steam 초대 참가 재시도. Steam의 일반 참가 오류 뒤에는 같은 초대를 다시 사용할 수 있으며, 이전 참가 결과가 도착해도 더 최근에 받은 초대는 보존된다. UE Editor 모듈 빌드와 신규 재시도 검사 통과. 추가 회귀 5건 통과, 1건은 로컬 Hitreact 에셋 구조체 로드 오류로 실패. [로비 계약](ONLINE_LOBBY_UI.md#steam-친구-목록과-파티-초대).
@@ -1023,6 +1024,7 @@ Iris와 Replication Graph를 처음부터 동시에 깊게 커스터마이징하
 
 | 담당 식별명 | 목표 | 수정 경로 | 공유 빌드/검증 자원 | 상태 |
 |---|---|---|---|---|
+| ingame-item-codex-28 | 게임플레이 HUD 아이템 사전과 첫 보스 장비·재료 검색 | Private/UI/HUD/RPGHUD.cpp, Private/UI/Inventory/RPGItemCodex.h·cpp, Public·Private/Controller/RPGPlayerController.h·cpp, Public·Private/UI/RPGWindowInputState.h·cpp, Private/UI/Lobby/RPGDungeonRewardPreview.h·cpp, Private/Tests/RPGItemCodexTests.cpp, Docs/PLAYER_PROGRESSION_EQUIPMENT_UI.md와 본인 행/12절 | UE 5.8 격리 C++ 6개·링크, 마을 D3D11 1280×720 HUD 버튼·검색·Esc·클릭 닫기·입력 복원 1건과 에디터 9건 통과. 자기 임시 306,656,414 bytes 및 정션 117개 정리. Saved/BuildChecks/IngameItemCodex28에 소규모 증거 유지 | 소스·검증 예약 해제. 본인 11경로와 로드맵의 본인 두 조각만 main index/ref·origin/main 순차 게시 예약, 이 기록 포함 커밋 원격 일치 시 해제 |
 | dungeon-reward-preview-27 | 원정 보상 미리보기와 장비 성장 재료 획득처 | Private/UI/Lobby/RPGDungeonRewardPreview.h·cpp, RPGOnlineLobbyDungeonSelection.cpp, RPGEquipmentGrowthWidget.cpp; Private/Tests/RPGDungeonSelectionTests.cpp·RPGEquipmentGrowthUITests.cpp; Docs/PLAYER_PROGRESSION_EQUIPMENT_UI.md와 본인 행/12절 | UE 5.8 격리 C++ 5개·Editor 모듈 링크·던전 선택/장비 성장 native 11건 성공. 임시 192,851,632 bytes·정션 39개 정리. Saved/BuildChecks/DungeonRewardPreview27 | 구현·검증 예약 해제. 본인 경로와 로드맵 두 조각만 main index/ref·origin/main 순차 게시 예약, 원격 일치 시 해제 |
 | steam-invite-retry | Steam 초대 참가 일시 실패 뒤 재시도 | RPGSteamLobbySubsystem.h·cpp, RPGSteamLobbyPublicationTests.cpp, Docs/ONLINE_LOBBY_UI.md, 본인 기록 | UE Editor 빌드, 신규 포함 자동화 6건 통과. 기존 DeferredDispatch는 로컬 Hitreact 에셋 로드 오류로 실패. 본인 임시 파일 149,142,741 bytes 정리. Saved/BuildChecks/SteamInviteRetry에 요약 보관 | 소스·실행 자원 해제. 본인 5경로만 main index/ref 및 origin/main 순차 게시. 이 행 포함 커밋 원격 일치 시 Git 예약 해제 |
 | steam-friends-lobby-27 | 로비 Steam 친구 목록과 선택 초대 | Online/RPGSteamLobbySubsystem.h·cpp, UI/Lobby/RPGOnlineLobbyWidget.h·cpp, Private/Tests/RPGOnlineLobbyTests.cpp, Docs/ONLINE_LOBBY_UI.md, 본인 행/완료 기록 | UE 5.8 Editor 모듈 링크·로비 자동화 7건 통과, 검사 중 오류 0. 임시 149,165,552 bytes 정리, Saved/BuildChecks/SteamFriendsLobby27에 요약 보관 | 소스·검증 자원 해제. 본인 7경로만 main index/ref 및 origin/main 순차 게시. 이 행 포함 커밋 원격 일치 시 Git 예약 해제 |

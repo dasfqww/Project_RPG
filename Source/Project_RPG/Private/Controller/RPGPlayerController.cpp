@@ -28,6 +28,7 @@
 #include "UI/HUD/RPGHUD.h"
 #include "UI/Minimap/RPGPlayerMinimap.h"
 #include "UI/Inventory/Equipment/RPGEquipmentWidget.h"
+#include "UI/Inventory/RPGItemCodex.h"
 #include "UI/Inventory/Projection/RPGInventoryProjectionWidget.h"
 #include "UI/Inventory/Projection/RPGRewardMailWidget.h"
 #include "UI/MVVM/RPGInventoryProjectionViewModel.h"
@@ -536,6 +537,8 @@ void ARPGPlayerController::SetupInputComponent()
 	{
 		InputComponent->BindKey(EKeys::P, IE_Pressed, this, &ThisClass::ToggleEquipmentProjection).bConsumeInput = true;
 		InputComponent->BindKey(EKeys::M, IE_Pressed, this, &ThisClass::ToggleMountCollection).bConsumeInput = true;
+		InputComponent->BindKey(FInputChord(EKeys::J, EModifierKey::Control), IE_Pressed,
+			this, &ThisClass::OpenItemCodex).bConsumeInput = true;
 	}
 	if (!InputConfigDataAsset || !GetLocalPlayer()) return;
 	const auto ObservePartyInputSetup = [this](const TCHAR* Phase)
@@ -647,7 +650,8 @@ void ARPGPlayerController::BeginPlay()
 void ARPGPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	bItemPresentationEnded = true;
-	if (ContentEntryPopup) CloseContentEntryModal(*ContentEntryPopup);
+	if (ContentEntryPopup) ClosePlayerModal(*ContentEntryPopup);
+	CloseItemCodex();
 	ClearBossBattleRetryRequest(FString(), false);
 	CloseDungeonAbandonmentConfirmation(GameplayAbandonmentWidget);
 	if (SkillWindowComponent) SkillWindowComponent->CloseWindow();
@@ -1138,6 +1142,46 @@ void ARPGPlayerController::ToggleSkillWindow()
 	if (SkillWindowComponent) SkillWindowComponent->ToggleWindow();
 }
 
+URPGWidgetBase* ARPGPlayerController::FindItemCodex() const
+{
+	return Cast<URPGWidgetBase>(WindowInputState->FindWindow(RPGItemCodex::IsWindow));
+}
+
+void ARPGPlayerController::OpenItemCodex()
+{
+	const auto* PlayerHUD = Cast<ARPGHUD>(GetHUD());
+	if (!IsLocalController() || !GetLocalPlayer() || !GetPawn() || bItemPresentationEnded
+		|| IsActorBeingDestroyed() || !GetWorld() || GetWorld()->bIsTearingDown || ContentEntryPopup || GameplayAbandonmentWidget
+		|| !PlayerHUD || !PlayerHUD->GetPlayerHUDWidget() || PlayerHUD->bIsMenuVisible || PlayerHUD->bIsOptionMenuVisible
+		|| FindItemCodex())
+	{
+		return;
+	}
+
+	TSharedPtr<SWidget> Search;
+	TStrongObjectPtr<URPGWidgetBase> Widget(RPGItemCodex::CreateWindow(*this,
+		FSimpleDelegate::CreateUObject(this, &ThisClass::CloseItemCodex), Search));
+	if (Widget.IsValid() && AttachPlayerModal(*Widget, 130))
+	{
+		FInputModeUIOnly Mode;
+		Mode.SetWidgetToFocus(Search).SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(Mode);
+		if (FSlateApplication::IsInitialized() && Search.IsValid())
+		{
+			const int32 UserIndex = FSlateApplication::Get().GetUserIndexForController(GetLocalPlayer()->GetControllerId());
+			FSlateApplication::Get().SetUserFocus(UserIndex, Search, EFocusCause::SetDirectly);
+		}
+	}
+}
+
+void ARPGPlayerController::CloseItemCodex()
+{
+	if (URPGWidgetBase* Widget = FindItemCodex())
+	{
+		ClosePlayerModal(*Widget);
+	}
+}
+
 void ARPGPlayerController::ShowContentEntry(TSubclassOf<URPGContentEntryWidget> WidgetClass)
 {
 	if (!WidgetClass || bItemPresentationEnded || !GetLocalPlayer() || IsActorBeingDestroyed()
@@ -1149,7 +1193,7 @@ void ARPGPlayerController::ShowContentEntry(TSubclassOf<URPGContentEntryWidget> 
 	}
 	if (ContentEntryConfirmation) return;
 	ContentEntryPopup = CreateWidget<URPGContentEntryWidget>(this, WidgetClass);
-	if (ContentEntryPopup) AttachContentEntryModal(*ContentEntryPopup, 140);
+	if (ContentEntryPopup) AttachPlayerModal(*ContentEntryPopup, 140);
 }
 
 bool ARPGPlayerController::ShowContentEntryConfirmation(URPGContentEntryWidget& Entry,
@@ -1164,10 +1208,10 @@ bool ARPGPlayerController::ShowContentEntryConfirmation(URPGContentEntryWidget& 
 	ContentEntryConfirmation = CreateWidget<URPGMessageBox>(this, WidgetClass);
 	if (!ContentEntryConfirmation) return false;
 	ContentEntryConfirmation->SetGameLevelTag(LevelTag);
-	return AttachContentEntryModal(*ContentEntryConfirmation, 141);
+	return AttachPlayerModal(*ContentEntryConfirmation, 141);
 }
 
-bool ARPGPlayerController::AttachContentEntryModal(URPGWidgetBase& Widget, const int32 Layer)
+bool ARPGPlayerController::AttachPlayerModal(URPGWidgetBase& Widget, const int32 Layer)
 {
 	UGameViewportSubsystem* Viewport = UGameViewportSubsystem::Get();
 	const TStrongObjectPtr<URPGWidgetBase> KeepAlive(&Widget);
@@ -1176,10 +1220,11 @@ bool ARPGPlayerController::AttachContentEntryModal(URPGWidgetBase& Widget, const
 	FGameViewportWidgetSlot Slot;
 	Slot.ZOrder = Layer;
 	UWorld* World = GetWorld();
-	if (Viewport && World && World->GetGameViewport() && (ContentEntryPopup == &Widget || ContentEntryConfirmation == &Widget))
+	if (Viewport && World && World->GetGameViewport()
+		&& (ContentEntryPopup == &Widget || ContentEntryConfirmation == &Widget || RPGItemCodex::IsWindow(Widget)))
 	{
 		if (!Viewport->OnWidgetRemoved.IsBoundToObject(this))
-			Viewport->OnWidgetRemoved.AddUObject(this, &ThisClass::OnContentEntryModalRemoved);
+			Viewport->OnWidgetRemoved.AddUObject(this, &ThisClass::OnPlayerModalRemoved);
 		if (WindowInputState->BeginWindow(*this, Widget, Layer, true)
 			&& !bItemPresentationEnded && !World->bIsTearingDown && Viewport->AddWidget(&Widget, Slot)
 			&& Widget.IsInViewport() && WindowInputState->ContainsWindow(Widget))
@@ -1188,18 +1233,18 @@ bool ARPGPlayerController::AttachContentEntryModal(URPGWidgetBase& Widget, const
 			return WindowInputState->ContainsWindow(Widget);
 		}
 	}
-	CloseContentEntryModal(Widget);
+	ClosePlayerModal(Widget);
 	return false;
 }
 
-void ARPGPlayerController::CloseContentEntryModal(URPGWidgetBase& Widget)
+void ARPGPlayerController::ClosePlayerModal(URPGWidgetBase& Widget)
 {
 	const TStrongObjectPtr<URPGWidgetBase> KeepAlive(&Widget);
 	Widget.RemoveFromParent();
-	OnContentEntryModalRemoved(&Widget);
+	OnPlayerModalRemoved(&Widget);
 }
 
-void ARPGPlayerController::OnContentEntryModalRemoved(UWidget* Widget)
+void ARPGPlayerController::OnPlayerModalRemoved(UWidget* Widget)
 {
 	if (!Widget) return;
 	if (Widget == ContentEntryPopup)
@@ -1210,10 +1255,10 @@ void ARPGPlayerController::OnContentEntryModalRemoved(UWidget* Widget)
 	{
 		ContentEntryConfirmation = nullptr;
 	}
-	else return;
+	else if (const auto* Codex = Cast<UUserWidget>(Widget); !Codex || !RPGItemCodex::IsWindow(*Codex)) return;
 	WindowInputState->EndWindow(*CastChecked<URPGWidgetBase>(Widget));
-	if (!ContentEntryPopup && ContentEntryConfirmation) CloseContentEntryModal(*ContentEntryConfirmation);
-	if (!ContentEntryPopup && !ContentEntryConfirmation)
+	if (!ContentEntryPopup && ContentEntryConfirmation) ClosePlayerModal(*ContentEntryConfirmation);
+	if (!ContentEntryPopup && !ContentEntryConfirmation && !FindItemCodex())
 	{
 		if (auto* Viewport = UGameViewportSubsystem::Get()) Viewport->OnWidgetRemoved.RemoveAll(this);
 	}
@@ -1366,9 +1411,9 @@ void ARPGPlayerController::CloseProjectionWindow(URPGInventoryProjectionWidget* 
 bool ARPGPlayerController::CloseTopPlayerWindow()
 {
 	UUserWidget* Top = WindowInputState->GetTopWindow();
-	if (Top && (Top == ContentEntryPopup || Top == ContentEntryConfirmation))
+	if (Top && (Top == ContentEntryPopup || Top == ContentEntryConfirmation || RPGItemCodex::IsWindow(*Top)))
 	{
-		CloseContentEntryModal(*CastChecked<URPGWidgetBase>(Top));
+		ClosePlayerModal(*CastChecked<URPGWidgetBase>(Top));
 		return true;
 	}
 	if (IsProjectionWindow(Top))
