@@ -131,8 +131,42 @@ internal static class FirstSliceStarterCases
             Verify(await reopened.FindByOwnerAsync(new(ItemOwnerType.Character, retried.CharacterId.ToString("D")), false, 100, default), retried.CharacterId);
             groups.Add("postgres_second_item_failure_rolls_back_character_items_and_progression");
             groups.Add("postgres_retry_and_fresh_pool_read_three_persisted_zero_states");
+            await VerifyLegacyGrowthAsync(source, fresh, retried.CharacterId, retried.SteamId, now);
+            groups.Add("postgres_legacy_investment_refinement_slots_and_receipt_survive_reopen");
         }
         Console.WriteLine(JsonSerializer.Serialize(new { passed = true, candidateOnly = true, scope = postgres ? "owned PG candidate" : "Memory candidate", groups }));
+    }
+
+    private static async Task VerifyLegacyGrowthAsync(NpgsqlDataSource original, NpgsqlDataSource fresh,
+        Guid id, string steam, DateTimeOffset now)
+    {
+        var legacy = FirstSliceProgression.Create(id) with
+        {
+            ClassId = FirstSliceProgression.LegacyClassId, Revision = 23, Experience = 300, Milestones = 7,
+            Skills = [new(FirstSliceProgression.Assault, 1, ["", ""]), new(FirstSliceProgression.Charge, 4, ["QuickCharge", ""]),
+                new(FirstSliceProgression.Whirlwind, 1, ["", ""]), new(FirstSliceProgression.Jump, 1, ["", ""])],
+            SkillSlots = ["", "", FirstSliceProgression.Charge, "", "", "", "", FirstSliceProgression.Jump]
+        };
+        using var seed = original.CreateCommand("UPDATE character_progression SET state = @state WHERE character_id = @id");
+        seed.Parameters.AddWithValue("id", id);
+        seed.Parameters.AddWithValue("state", NpgsqlTypes.NpgsqlDbType.Jsonb,
+            JsonSerializer.Serialize(legacy, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        Require(await seed.ExecuteNonQueryAsync() == 1, "Legacy growth fixture missing.");
+
+        var game = new PostgresGameRepository(fresh, NullLogger<PostgresGameRepository>.Instance);
+        var restored = await game.LoadProgressionAsync(id, now, default) ?? throw new InvalidOperationException("Save missing.");
+        Require(restored.ClassId == FirstSliceProgression.ClassId && restored.Revision == 24 &&
+            restored.Experience == legacy.Experience && restored.Milestones == legacy.Milestones &&
+            restored.Skills[^1].SkillTag == FirstSliceProgression.SwordWave &&
+            JsonSerializer.Serialize(restored.Skills.Take(4)) == JsonSerializer.Serialize(legacy.Skills) &&
+            restored.SkillSlots.SequenceEqual(legacy.SkillSlots), "Legacy investment or loadout changed during migration.");
+        var command = new SkillConfigurationCommand(Guid.NewGuid(), restored.Revision, restored.Skills, restored.SkillSlots);
+        var saved = await game.CommitSkillConfigurationAsync(id, steam, command, now, default);
+        var reopened = new PostgresGameRepository(original, NullLogger<PostgresGameRepository>.Instance);
+        var replay = await reopened.CommitSkillConfigurationAsync(id, steam, command, now, default);
+        Require(saved.Revision == 25 && JsonSerializer.Serialize(saved) == JsonSerializer.Serialize(replay) &&
+            JsonSerializer.Serialize(saved) == JsonSerializer.Serialize(await reopened.LoadProgressionAsync(id, now, default)),
+            "Reopening a migrated save changed its revision, receipt or skill build.");
     }
 
     private static async Task CreationAsync(IGameRepository game, IItemRepository items, List<string> groups)

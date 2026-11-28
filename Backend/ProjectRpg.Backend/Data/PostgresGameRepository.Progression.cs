@@ -94,7 +94,8 @@ public sealed partial class PostgresGameRepository : ICharacterProgressionReposi
         }
 
         CharacterProgressionState originalState = state;
-        state = FirstSliceProgression.MigrateStoredState(state);
+        var profile = CharacterProgressionProfiles.Registered.Resolve(state, allowLegacy: true);
+        state = profile.MigrateStoredState(state);
 
         List<(Guid SessionId, string DungeonId, string Difficulty)> completed = [];
         await using (NpgsqlCommand query = new("""
@@ -123,7 +124,7 @@ public sealed partial class PostgresGameRepository : ICharacterProgressionReposi
         bool changed = state.Revision != originalState.Revision;
         foreach (var clear in completed)
         {
-            if (!FirstSliceProgression.TryCredit(state, clear.DungeonId, clear.Difficulty,
+            if (!profile.TryCredit(state, clear.DungeonId, clear.Difficulty,
                     FirstSliceProgression.RewardVersion, out CharacterProgressionState updated)) continue;
             await using NpgsqlCommand award = new("""
                 INSERT INTO character_progression_awards (character_id, dungeon_session_id, credited_at)

@@ -14,7 +14,7 @@ public static class CharacterCreationCatalog
     public static CharacterCreationRecipe Default { get; } = new(
         new CharacterCreationOption(LegacyDefaultClassId, "대검 전사",
             "대검의 차지 공격과 회전 공격으로 빈틈을 공략하는 근접 전투 직업입니다."),
-        FirstSliceProgression.Create, FirstSliceStarterEquipment.Create);
+        GreatSwordProgression.Rules.Create, FirstSliceStarterEquipment.Create);
 
     private static readonly CharacterCreationRecipe[] Recipes = [Default];
     public static IReadOnlyList<CharacterCreationOption> Options { get; } =

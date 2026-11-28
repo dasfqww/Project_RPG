@@ -40,7 +40,8 @@ public sealed partial class InMemoryGameRepository : ICharacterProgressionReposi
     private CharacterProgressionState? LoadProgressionLocked(Guid characterId)
     {
         if (!_progression.TryGetValue(characterId, out CharacterProgressionState? state)) return null;
-        state = FirstSliceProgression.MigrateStoredState(state);
+        var profile = CharacterProgressionProfiles.Registered.Resolve(state, allowLegacy: true);
+        state = profile.MigrateStoredState(state);
         List<(Guid CharacterId, Guid SessionId)> credits = [];
         foreach (DungeonRewardSettlement settlement in _dungeonRewardSettlements.Values
             .Where(value => value.State == DungeonRewardSettlementState.Completed && value.CompletedAt.HasValue
@@ -49,7 +50,7 @@ public sealed partial class InMemoryGameRepository : ICharacterProgressionReposi
         {
             if (_progressionCredits.Contains((characterId, settlement.DungeonSessionId))
                 || !_dungeonSessions.TryGetValue(settlement.DungeonSessionId, out DungeonSession? session)) continue;
-            if (!FirstSliceProgression.TryCredit(state, session.DungeonId, session.Difficulty, settlement.RewardVersion,
+            if (!profile.TryCredit(state, session.DungeonId, session.Difficulty, settlement.RewardVersion,
                     out CharacterProgressionState updated)) continue;
             credits.Add((characterId, settlement.DungeonSessionId));
             state = updated;

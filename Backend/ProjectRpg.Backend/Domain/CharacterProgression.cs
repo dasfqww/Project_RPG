@@ -17,57 +17,46 @@ public sealed record SkillConfigurationCommand(
 
 public sealed class ProgressionConflictException(string code) : Exception(code);
 
-/// <summary>The explicit first-slice recipe; it does not change other classes or old saves.</summary>
+/// <summary>Shared first-slice dungeon milestones and save protocol. Class-specific rules come from the saved profile.</summary>
 public static class FirstSliceProgression
 {
-    public const string ProfileId = "FirstSlice.GreatSword.v1";
-    public const string ClassId = "RPGPlayerClassDefinition:GreatSwordWarrior";
-    public const string LegacyClassId = "RPGPlayerClassDefinition:GreatSword";
+    public const string ProfileId = GreatSwordProgression.ProfileId;
+    public const string ClassId = GreatSwordProgression.ClassId;
+    public const string LegacyClassId = GreatSwordProgression.LegacyClassId;
     public const string RewardVersion = "FirstSlice.v1";
     public const string Training = "Progression.Training";
     public const string Intro1 = "Progression.Intro1";
     public const string Intro2 = "Progression.Intro2";
     public const string Intro3 = "Progression.Intro3";
     public const string Boss = "Progression.FirstBoss";
-    public const string Assault = "Player.Ability.Skill.AssultBlade";
-    public const string Charge = "Player.Ability.Skill.Charge";
-    public const string Whirlwind = "Player.Ability.Skill.WhirlWind";
-    public const string Jump = "Player.Ability.Skill.JumpSmash";
-    public const string SwordWave = "Player.Ability.Skill.SwordWave";
-    public const string QuickSlash = "Player.Ability.Skill.QuickSlash";
-    public const string CounterSlash = "Player.Ability.Skill.CounterSlash";
-    public const string RetreatSlash = "Player.Ability.Skill.RetreatSlash";
+    public const string Assault = GreatSwordProgression.Assault;
+    public const string Charge = GreatSwordProgression.Charge;
+    public const string Whirlwind = GreatSwordProgression.Whirlwind;
+    public const string Jump = GreatSwordProgression.Jump;
+    public const string SwordWave = GreatSwordProgression.SwordWave;
+    public const string QuickSlash = GreatSwordProgression.QuickSlash;
+    public const string CounterSlash = GreatSwordProgression.CounterSlash;
+    public const string RetreatSlash = GreatSwordProgression.RetreatSlash;
     private const int Intro2Cleared = 4;
     private const int Intro3Cleared = 8;
     private const int NormalBossCleared = 16;
     private const int HardBossCleared = 32;
-    private static readonly (int Milestone, string SkillTag)[] ExpansionUnlocks =
-        [(Intro2Cleared, SwordWave), (Intro3Cleared, QuickSlash),
-         (NormalBossCleared, CounterSlash), (HardBossCleared, RetreatSlash)];
     public const long MaximumRevision = 9_007_199_254_740_991;
-    private static readonly int[] SkillPoints = [0, 3, 6, 9, 12, 14, 15, 16, 17, 18];
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-    private static readonly IReadOnlyDictionary<string, string[][]> Choices =
-        new Dictionary<string, string[][]>(StringComparer.Ordinal)
-        {
-            [Assault] = [["LongReach", "QuickApproach"], ["ExtraReach", "ExtraRecovery"]],
-            [Charge] = [["FullCharge", "QuickCharge"], ["Stagger", "PartBreak"]],
-            [Whirlwind] = [["Mobile", "Stationary"], ["WideArea", "FinalStagger"]],
-            [Jump] = [["WideArea", "PartBreak"], ["ExtraArea", "Stagger"]],
-            [SwordWave] = [[], []],
-            [QuickSlash] = [[], []],
-            [CounterSlash] = [[], []],
-            [RetreatSlash] = [[], []]
-        };
 
+    private static CharacterProgressionProfile Rules(CharacterProgressionState state, bool allowLegacy = false) =>
+        CharacterProgressionProfiles.Registered.Resolve(state, allowLegacy);
+
+    public static CharacterProgressionState Create(Guid characterId) => GreatSwordProgression.Rules.Create(characterId);
     public static int Level(CharacterProgressionState state) => state.Experience / 100 + 1;
-    public static int TotalSP(CharacterProgressionState state) => SkillPoints[Level(state) - 1];
-    public static int Cost(int level) => level <= 4 ? level - 1 : 3 + (level - 4) * 2;
-    public static int UsedSP(CharacterProgressionState state) => state.Skills.Sum(skill => Cost(skill.Level));
-    public static bool IdentityUnlocked(CharacterProgressionState state) => (state.Milestones & 1) != 0;
+    public static int TotalSP(CharacterProgressionState state) => Rules(state, true).TotalSP(state);
+    public static int UsedSP(CharacterProgressionState state) => Rules(state, true).UsedSP(state);
+    public static bool IdentityUnlocked(CharacterProgressionState state) => Rules(state, true).IdentityUnlocked(state);
+    public static int Cost(int level) => GreatSwordProgression.Rules.Cost(level);
+
     public static bool IsContent(string dungeonId) => dungeonId is Training or Intro1 or Intro2 or Intro3 or Boss;
 
-    private static (int Flag, int Required)? Stage(string dungeonId, string difficulty) =>
+    internal static (int Flag, int Required)? Stage(string dungeonId, string difficulty) =>
         (dungeonId, difficulty) switch
         {
             (Training, "Normal") => (1, 0),
@@ -86,35 +75,18 @@ public static class FirstSliceProgression
             && (state.Milestones & stage.Required) == stage.Required;
     }
 
-    public static CharacterProgressionState Create(Guid characterId) => new(
-        characterId, ProfileId, ClassId, 1, 0, 0,
-        [NewSkill(Assault), NewSkill(Charge)], [Assault, Charge, "", "", "", "", "", ""]);
+    public static CharacterProgressionState MigrateStoredState(CharacterProgressionState state) =>
+        Rules(state, true).MigrateStoredState(state);
 
-    private static ProgressionSkill NewSkill(string tag) => new(tag, 1, ["", ""]);
+    public static bool TryCredit(CharacterProgressionState state, string dungeonId, string difficulty,
+        string rewardVersion, out CharacterProgressionState result) =>
+        Rules(state).TryCredit(state, dungeonId, difficulty, rewardVersion, out result);
 
-    // Migrate live records only. Replayed receipts keep their original state and revision.
-    public static CharacterProgressionState MigrateStoredState(CharacterProgressionState state)
-    {
-        ValidateState(state, allowLegacyState: true);
-        var missing = ExpansionUnlocks.Where(unlock => (state.Milestones & unlock.Milestone) != 0
-                && !state.Skills.Any(skill => skill.SkillTag == unlock.SkillTag))
-            .Select(unlock => NewSkill(unlock.SkillTag)).ToArray();
-        if (state.ClassId != LegacyClassId && missing.Length == 0) return state;
-        CharacterProgressionState migrated = state with
-        {
-            ClassId = ClassId, Revision = NextRevision(state.Revision),
-            Skills = [.. state.Skills, .. missing]
-        };
-        ValidateState(migrated);
-        return Copy(migrated);
-    }
+    public static CharacterProgressionState Configure(CharacterProgressionState state, SkillConfigurationCommand command) =>
+        Rules(state).Configure(state, command);
 
-    private static string[] Acquired(int flags, IReadOnlyList<ProgressionSkill>? legacySkills = null) => new[] { Assault, Charge }
-        .Concat((flags & 1) != 0 ? [Whirlwind] : Array.Empty<string>())
-        .Concat((flags & 2) != 0 ? [Jump] : Array.Empty<string>())
-        .Concat(ExpansionUnlocks.Where(unlock => (flags & unlock.Milestone) != 0 &&
-            (legacySkills is null || legacySkills.Any(skill => skill?.SkillTag == unlock.SkillTag)))
-            .Select(unlock => unlock.SkillTag)).ToArray();
+    public static void ValidateState(CharacterProgressionState state, bool allowLegacyState = false) =>
+        Rules(state, allowLegacyState).ValidateState(state, allowLegacyState);
 
     public static CharacterProgressionState Copy(CharacterProgressionState state) => state with
     {
@@ -122,34 +94,13 @@ public static class FirstSliceProgression
         SkillSlots = state.SkillSlots.ToArray()
     };
 
-    /// <summary>Caller supplies only completed, eligible settlement rows and deduplicates their session IDs.</summary>
-    public static bool TryCredit(CharacterProgressionState state, string dungeonId, string difficulty,
-        string rewardVersion, out CharacterProgressionState result)
-    {
-        result = state;
-        if (rewardVersion != RewardVersion || Stage(dungeonId, difficulty) is not { } stage
-            || (state.Milestones & stage.Required) != stage.Required) return false;
-        int xp = Math.Min(900, state.Experience + 100);
-        int flags = state.Milestones | stage.Flag;
-        if (xp == state.Experience && flags == state.Milestones) return true;
-        string[] acquired = Acquired(flags);
-        result = state with
-        {
-            Experience = xp,
-            Milestones = flags,
-            Revision = NextRevision(state.Revision),
-            Skills = acquired.Select(tag => state.Skills.SingleOrDefault(skill => skill.SkillTag == tag)
-                ?? NewSkill(tag)).ToArray()
-            // Newly acquired skills are not automatically inserted into the eight slots.
-        };
-        ValidateState(result);
-        return true;
-    }
-
     public static string Fingerprint(SkillConfigurationCommand command)
+        => Fingerprint(command, CharacterProgressionProfiles.Registered.AcceptsSkillCount);
+
+    internal static string Fingerprint(SkillConfigurationCommand command, Func<int, bool> acceptsSkillCount)
     {
         if (command.RequestId == Guid.Empty || command.ExpectedRevision is < 1 or > MaximumRevision
-            || command.Skills is null || command.Skills.Count < 2 || command.Skills.Count > Choices.Count
+            || command.Skills is null || !acceptsSkillCount(command.Skills.Count)
             || command.SkillSlots is null || command.SkillSlots.Count != 8
             || command.Skills.Any(skill => skill is null || string.IsNullOrEmpty(skill.SkillTag) || skill.SkillTag.Length > 96
                 || skill.Tripods is null || skill.Tripods.Count != 2
@@ -165,56 +116,6 @@ public static class FirstSliceProgression
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
     }
 
-    public static CharacterProgressionState Configure(CharacterProgressionState state, SkillConfigurationCommand command)
-    {
-        _ = Fingerprint(command);
-        if (state.Revision != command.ExpectedRevision)
-            throw new ProgressionConflictException("stale_progression_revision");
-        CharacterProgressionState result = state with
-        {
-            Revision = NextRevision(state.Revision), Skills = command.Skills.ToArray(),
-            SkillSlots = command.SkillSlots.ToArray()
-        };
-        ValidateState(result);
-        return Copy(result);
-    }
-
-    public static void ValidateState(CharacterProgressionState state, bool allowLegacyState = false)
-    {
-        if (state.CharacterId == Guid.Empty || state.ProfileId != ProfileId
-            || (state.ClassId != ClassId && (!allowLegacyState || state.ClassId != LegacyClassId))
-            || state.Revision is < 1 or > MaximumRevision || state.Experience is < 0 or > 900
-            || state.Experience % 100 != 0 || state.Milestones is < 0 or > 63
-            || state.Skills is null || state.SkillSlots is null || state.SkillSlots.Count != 8)
-            throw new ProgressionConflictException("invalid_progression_state");
-        foreach ((int flag, int required) in new[] { (2, 1), (4, 3), (8, 7), (16, 15), (32, 31) })
-            if ((state.Milestones & flag) != 0 && (state.Milestones & required) != required)
-                throw new ProgressionConflictException("invalid_progression_milestones");
-        if (state.Experience < System.Numerics.BitOperations.PopCount((uint)state.Milestones) * 100)
-            throw new ProgressionConflictException("invalid_progression_milestones");
-        string[] acquired = Acquired(state.Milestones, allowLegacyState ? state.Skills : null);
-        if (state.Skills.Count != acquired.Length
-            || state.Skills.Any(skill => skill is null || !acquired.Contains(skill.SkillTag, StringComparer.Ordinal))
-            || state.Skills.Select(skill => skill.SkillTag).Distinct(StringComparer.Ordinal).Count() != acquired.Length)
-            throw new ProgressionConflictException("invalid_acquired_skills");
-        foreach (ProgressionSkill skill in state.Skills)
-        {
-            if (skill.Level is < 1 or > 7 || skill.Tripods is null || skill.Tripods.Count != 2)
-                throw new ProgressionConflictException("invalid_skill_level");
-            for (int tier = 0; tier < 2; tier++)
-            {
-                string choice = skill.Tripods[tier];
-                if (choice is null || (choice.Length > 0 && (skill.Level < (tier == 0 ? 4 : 7)
-                    || !Choices[skill.SkillTag][tier].Contains(choice, StringComparer.Ordinal))))
-                    throw new ProgressionConflictException("invalid_tripod_selection");
-            }
-        }
-        string[] slotted = state.SkillSlots.Where(tag => !string.IsNullOrEmpty(tag)).ToArray();
-        if (state.SkillSlots.Any(tag => tag is null) || slotted.Distinct(StringComparer.Ordinal).Count() != slotted.Length
-            || slotted.Any(tag => !acquired.Contains(tag, StringComparer.Ordinal)) || UsedSP(state) > TotalSP(state))
-            throw new ProgressionConflictException("invalid_sp_or_skill_slots");
-    }
-
-    private static long NextRevision(long revision) => revision < MaximumRevision
+    internal static long NextRevision(long revision) => revision < MaximumRevision
         ? revision + 1 : throw new ProgressionConflictException("progression_revision_exhausted");
 }

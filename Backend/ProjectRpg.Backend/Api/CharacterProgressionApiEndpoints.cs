@@ -76,12 +76,17 @@ public static class CharacterProgressionApiEndpoints
         catch (ProgressionConflictException) { return false; }
     }
 
-    private static object ToResponse(CharacterProgressionState state) => new
+    private static object ToResponse(CharacterProgressionState state)
     {
-        state.CharacterId, state.ProfileId, state.ClassId,
-        Revision = state.Revision.ToString(CultureInfo.InvariantCulture), state.Experience,
-        Level = FirstSliceProgression.Level(state), TotalSP = FirstSliceProgression.TotalSP(state),
-        UsedSP = FirstSliceProgression.UsedSP(state), state.Milestones,
-        IdentityUnlocked = FirstSliceProgression.IdentityUnlocked(state), state.Skills, state.SkillSlots
-    };
+        // A replay may carry the original, pre-migration class ID.
+        var profile = CharacterProgressionProfiles.Registered.Resolve(state, allowLegacy: true);
+        return new
+        {
+            state.CharacterId, state.ProfileId, state.ClassId,
+            Revision = state.Revision.ToString(CultureInfo.InvariantCulture), state.Experience,
+            Level = FirstSliceProgression.Level(state), TotalSP = profile.TotalSP(state),
+            UsedSP = profile.UsedSP(state), state.Milestones,
+            IdentityUnlocked = profile.IdentityUnlocked(state), state.Skills, state.SkillSlots
+        };
+    }
 }

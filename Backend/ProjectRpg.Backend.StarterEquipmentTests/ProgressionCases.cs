@@ -5,6 +5,7 @@ internal static class ProgressionCases
 {
     public static async Task RunAsync()
     {
+        VerifyProfileSelection();
         InMemoryGameRepository game = new();
         const string steam = "76561198000000991", server = "progression-server", worker = "progression-worker";
         DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -204,6 +205,31 @@ internal static class ProgressionCases
             "Concurrent updates to one revision must have exactly one winner.");
         Require((await Read()).SkillSlots.SequenceEqual(slots), "All eight skills must survive saving and reloading.");
         Console.WriteLine("CharacterProgression: creation, settlement authority/deduplication, unlocks, save ownership, SP/tripods/slots, replay, failure, cap and concurrent revision checks passed.");
+    }
+
+    private static void VerifyProfileSelection()
+    {
+        var other = new CharacterProgressionProfile("Test.Profile", "Test.Class", null,
+            skillPoints: [0, 4], levelCosts: [0, 4], refinementLevels: [2, 2], identityMilestone: 2,
+            skills: [new("Test.Start", 0, [["Test.Choice"], []]), new("Test.Unlock", 1, [[], []])]);
+        var profiles = new CharacterProgressionProfiles(GreatSwordProgression.Rules, other);
+        var initial = other.Create(Guid.NewGuid());
+        var rules = profiles.Resolve(initial);
+        Require(rules.TryCredit(initial, FirstSliceProgression.Training, "Normal", FirstSliceProgression.RewardVersion,
+            out var trained) && rules.TotalSP(trained) == 4 && !rules.IdentityUnlocked(trained)
+            && trained.Skills.Select(skill => skill.SkillTag).SequenceEqual(["Test.Start", "Test.Unlock"]),
+            "Settlement must use the saved class's unlocks, SP and identity milestone.");
+        var saved = rules.Configure(trained, new(Guid.NewGuid(), trained.Revision,
+            [new("Test.Start", 2, ["Test.Choice", ""]), trained.Skills[1]], trained.SkillSlots));
+        Require(rules.UsedSP(saved) == 4 && rules.MigrateStoredState(saved).Revision == saved.Revision,
+            "The second class must retain its own level cost and refinement on reload.");
+        foreach (var invalid in new[] { initial with { ProfileId = FirstSliceProgression.ProfileId },
+                     initial with { ClassId = FirstSliceProgression.LegacyClassId } })
+        {
+            try { profiles.Resolve(invalid, allowLegacy: true); }
+            catch (ProgressionConflictException error) when (error.Message == "invalid_progression_state") { continue; }
+            throw new InvalidOperationException("A class/profile mismatch selected another class's rules.");
+        }
     }
 
     private static void Require(bool condition, string message)
