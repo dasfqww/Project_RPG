@@ -21,6 +21,50 @@ namespace
 		return true;
 	}
 
+	bool ReadLevels(const FJsonObject& Rules, const TCHAR* Key, int32 MaxCount, TArray<int32>& Out)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Values;
+		if (!Rules.TryGetArrayField(Key, Values) || Values->IsEmpty() || Values->Num() > MaxCount) return false;
+		for (const auto& Item : *Values)
+		{
+			if (!Item || Item->Type != EJson::Number) return false;
+			const double N = Item->AsNumber();
+			if (!FMath::IsFinite(N) || N < 0 || N > MAX_int32 || FMath::FloorToDouble(N) != N
+				|| (!Out.IsEmpty() && N < Out.Last())) return false;
+			Out.Add(static_cast<int32>(N));
+		}
+		return true;
+	}
+
+	bool ReadConfigurationRules(const FJsonObject& Rules, FRPGCharacterProgressionSnapshot& Record)
+	{
+		const TSharedPtr<FJsonObject>* Choices;
+		if (!ReadLevels(Rules, TEXT("levelCosts"), 128, Record.LevelCosts)
+			|| !ReadLevels(Rules, TEXT("refinementLevels"), 2, Record.RefinementLevels)
+			|| Record.RefinementLevels.Num() != 2 || Record.RefinementLevels[0] < 1
+			|| !Rules.TryGetObjectField(TEXT("choicesBySkill"), Choices)
+			|| (*Choices)->Values.Num() != Record.Skills.Num()) return false;
+		for (const auto& Skill : Record.Skills)
+		{
+			const TArray<TSharedPtr<FJsonValue>>* Tiers;
+			if (!(*Choices)->TryGetArrayField(Skill.SkillTag.ToString(), Tiers) || Tiers->Num() != 2) return false;
+			auto& Row = Record.ChoicesBySkill.Add(Skill.SkillTag);
+			for (int32 Tier = 0; Tier < 2; ++Tier)
+			{
+				const auto& Value = (*Tiers)[Tier];
+				if (!Value || Value->Type != EJson::Array) return false;
+				for (const auto& Choice : Value->AsArray())
+				{
+					if (!Choice || Choice->Type != EJson::String) return false;
+					const FString Id = Choice->AsString();
+					if (Id.IsEmpty() || Id.Len() > 32 || Row.Tiers[Tier].Contains(Id)) return false;
+					Row.Tiers[Tier].Add(Id);
+				}
+			}
+		}
+		return true;
+	}
+
 	bool ReadTag(const FJsonValue& Value, FGameplayTag& Out, const bool bAllowEmpty)
 	{
 		FString Text;
@@ -95,6 +139,11 @@ bool FRPGCharacterProgressionSnapshotCodec::Decode(const FString& Body, const FS
 		if (Tag.IsValid() && (!Acquired.Contains(Tag) || Slotted.Contains(Tag))) return false;
 		if (Tag.IsValid()) Slotted.Add(Tag);
 		Record.SkillSlots.Add(Tag);
+	}
+	if (Root->HasField(TEXT("configurationRules")))
+	{
+		const TSharedPtr<FJsonObject>* Rules;
+		if (!Root->TryGetObjectField(TEXT("configurationRules"), Rules) || !ReadConfigurationRules(**Rules, Record)) return false;
 	}
 	OutSnapshot = MoveTemp(Record);
 	OutError.Reset();

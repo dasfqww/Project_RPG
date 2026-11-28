@@ -9,6 +9,7 @@ class UButton;
 class UTextBlock;
 class UVerticalBox;
 class URPGOnlineLobbyWidget;
+class URPGPlayerClassDefinition;
 class URPGCharacterConfigurationWidget;
 
 /** Per-control event binding; carries indices, never authority or a saved record. */
@@ -84,6 +85,7 @@ private:
 	TWeakObjectPtr<APlayerController> ContextController;
 	FString CharacterId, SteamId;
 	FText Message;
+	UPROPERTY(Transient) TObjectPtr<URPGPlayerClassDefinition> LoadedClass;
 	FRPGCharacterProgressionSnapshot Saved;
 	TArray<FRPGSavedProgressionSkill> DraftSkills;
 	TArray<FGameplayTag> DraftSlots;

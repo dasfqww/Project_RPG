@@ -11,63 +11,51 @@
 #include "UI/Lobby/RPGOnlineLobbyLayout.h"
 #include "UI/Lobby/RPGOnlineLobbyWidget.h"
 #include "UI/Lobby/RPGCharacterConfigurationPreview.h"
-#include "Skill/RPGSkillCatalogSubsystem.h"
-#include "Engine/GameInstance.h"
+#include "PlayerClass/RPGPlayerClassDefinition.h"
+#include "Skill/RPGSkillDefinition.h"
+#include "Engine/AssetManager.h"
 
 #define LOCTEXT_NAMESPACE "RPGCharacterConfiguration"
 
 namespace
 {
-	// Presentation for the explicit FirstSlice.GreatSword.v1 contract. The backend
-	// revalidates every command; these previews never modify a Pawn or grant skills.
-	struct FChoice { const TCHAR* Id; const TCHAR* Label; };
-	struct FSkillPresentation { const TCHAR* Tag; const TCHAR* Label; FChoice Tiers[2][2]; };
-	const FSkillPresentation Catalog[] = {
-		{TEXT("Player.Ability.Skill.AssultBlade"), TEXT("돌진 베기"),
-			{{{TEXT("LongReach"), TEXT("긴 돌진")}, {TEXT("QuickApproach"), TEXT("짧고 빠른 돌진")}},
-			 {{TEXT("ExtraReach"), TEXT("추가 이동 거리")}, {TEXT("ExtraRecovery"), TEXT("추가 쿨타임 감소")}}}},
-		{TEXT("Player.Ability.Skill.Charge"), TEXT("차지 슬래시"),
-			{{{TEXT("FullCharge"), TEXT("완충 강화")}, {TEXT("QuickCharge"), TEXT("빠른 충전")}},
-			 {{TEXT("Stagger"), TEXT("무력화 강화")}, {TEXT("PartBreak"), TEXT("부위 파괴 강화")}}}},
-		{TEXT("Player.Ability.Skill.WhirlWind"), TEXT("회전 베기"),
-			{{{TEXT("Mobile"), TEXT("이동하며 회전")}, {TEXT("Stationary"), TEXT("제자리 회전 강화")}},
-			 {{TEXT("WideArea"), TEXT("범위 확대")}, {TEXT("FinalStagger"), TEXT("마지막 타격 무력화")}}}},
-		{TEXT("Player.Ability.Skill.JumpSmash"), TEXT("도약 강타"),
-			{{{TEXT("WideArea"), TEXT("범위 확대")}, {TEXT("PartBreak"), TEXT("부위 파괴 강화")}},
-			 {{TEXT("ExtraArea"), TEXT("추가 범위 확대")}, {TEXT("Stagger"), TEXT("무력화 강화")}}}},
-		{TEXT("Player.Ability.Skill.SwordWave"), TEXT("검풍"), {}},
-		{TEXT("Player.Ability.Skill.QuickSlash"), TEXT("빠른 횡베기"), {}},
-		{TEXT("Player.Ability.Skill.CounterSlash"), TEXT("반격 베기"), {}},
-		{TEXT("Player.Ability.Skill.RetreatSlash"), TEXT("후퇴 베기"), {}}
-	};
-	const FSkillPresentation* Presentation(FGameplayTag Tag)
+	const URPGSkillDefinition* SkillFor(const URPGPlayerClassDefinition* Class, FGameplayTag Tag)
 	{
-		for (const auto& Row : Catalog) if (Tag.ToString() == Row.Tag) return &Row;
-		return nullptr;
+		const auto* Binding = Class ? Class->FindSkill(Tag) : nullptr;
+		return Binding ? Binding->Definition.Get() : nullptr;
 	}
-	int32 Cost(int32 Level) { return Level <= 4 ? Level - 1 : 3 + (Level - 4) * 2; }
-	int32 UnlockLevel(int32 Tier) { return Tier == 0 ? 4 : 7; }
-	int32 ChoiceIndex(const FSkillPresentation& Info, int32 Tier, const FString& Id)
+
+	const FRPGSkillRefinementOption* OptionFor(const URPGSkillDefinition& Skill, int32 Level, const FString& Id)
+	{
+		int32 Tier, Index;
+		return Skill.ResolveSavedRefinement(Level, FName(*Id), Tier, Index) ? &Skill.RefinementTiers[Tier].Options[Index] : nullptr;
+	}
+
+	int32 ChoiceIndex(const TArray<FString>& Choices, const FString& Id)
 	{
 		if (Id.IsEmpty()) return 0;
-		for (int32 Index = 0; Index < 2; ++Index)
-			if (Info.Tiers[Tier][Index].Id && Id == Info.Tiers[Tier][Index].Id) return Index + 1;
-		return INDEX_NONE;
+		const int32 Index = Choices.IndexOfByPredicate([&Id](const FString& Choice) { return Choice.Equals(Id, ESearchCase::CaseSensitive); });
+		return Index == INDEX_NONE ? INDEX_NONE : Index + 1;
 	}
-	bool IsSupported(const FRPGCharacterProgressionSnapshot& Record)
+
+	bool PrepareChoices(FRPGCharacterProgressionSnapshot& Record, const URPGPlayerClassDefinition& Class)
 	{
-		if (Record.ProfileId != TEXT("FirstSlice.GreatSword.v1")
-			|| Record.ClassId.ToString() != TEXT("RPGPlayerClassDefinition:GreatSwordWarrior")
-			|| Record.Skills.Num() < 2 || Record.Skills.Num() > UE_ARRAY_COUNT(Catalog)) return false;
-		int32 UsedSP = 0;
+		if (Record.ClassId != Class.GetPrimaryAssetId() || Record.LevelCosts.IsEmpty() || Record.RefinementLevels.Num() != 2) return false;
+		int64 UsedSP = 0;
 		for (const auto& Skill : Record.Skills)
 		{
-			const auto* Info = Presentation(Skill.SkillTag);
-			if (!Info || Skill.Level < 1 || Skill.Level > 7 || Skill.RefinementIds.Num() != 2) return false;
+			const auto* Definition = SkillFor(&Class, Skill.SkillTag);
+			auto* Choices = Record.ChoicesBySkill.Find(Skill.SkillTag);
+			if (!Definition || !Choices || Skill.Level < 1 || Skill.Level > Definition->MaxSkillLevel
+				|| Skill.Level > Record.LevelCosts.Num() || Skill.RefinementIds.Num() != 2) return false;
 			for (int32 Tier = 0; Tier < 2; ++Tier)
-				if (ChoiceIndex(*Info, Tier, Skill.RefinementIds[Tier]) == INDEX_NONE
-					|| (!Skill.RefinementIds[Tier].IsEmpty() && Skill.Level < UnlockLevel(Tier))) return false;
-			UsedSP += Cost(Skill.Level);
+			{
+				const int32 Unlock = Record.RefinementLevels[Tier];
+				Choices->Tiers[Tier].RemoveAll([&](const FString& Id) { return !OptionFor(*Definition, Unlock, Id); });
+				if (ChoiceIndex(Choices->Tiers[Tier], Skill.RefinementIds[Tier]) == INDEX_NONE
+					|| (!Skill.RefinementIds[Tier].IsEmpty() && Skill.Level < Unlock)) return false;
+			}
+			UsedSP += Record.LevelCosts[Skill.Level - 1];
 		}
 		return UsedSP == Record.UsedSP && UsedSP <= Record.TotalSP;
 	}
@@ -86,7 +74,7 @@ namespace
 
 void URPGCharacterConfigurationBinding::Selected(FString Option, ESelectInfo::Type)
 {
-	if (Editor.IsValid() && Box) Editor->HandleChoice(*this, Box->FindOptionIndex(Option));
+	if (Editor.IsValid() && Box) Editor->HandleChoice(*this, Box->GetSelectedIndex());
 }
 
 void URPGCharacterConfigurationWidget::SetLobby(URPGOnlineLobbyWidget* InLobby) { Lobby = InLobby; }
@@ -145,6 +133,7 @@ void URPGCharacterConfigurationWidget::RefreshContext()
 		++RequestSerial;
 		CharacterId = CurrentCharacter; SteamId = CurrentSteam;
 		ContextWorld = GetWorld(); ContextController = Owner ? Owner->GetOwningPlayer() : nullptr;
+		LoadedClass = nullptr;
 		Saved = {}; DraftSkills.Reset(); DraftSlots.Reset(); PendingCommand = {};
 		bRequestInFlight = bLoaded = bNeedsReload = false;
 		bInitialReadAttempted = false;
@@ -270,7 +259,9 @@ void URPGCharacterConfigurationWidget::HandleResult(uint64 Serial, bool bWrite, 
 		RefreshLobby();
 		return;
 	}
-	if (!IsSupported(Result.Snapshot) || Result.Snapshot.Revision < Saved.Revision
+	const FSoftObjectPath ClassPath = UAssetManager::Get().GetPrimaryAssetPath(Result.Snapshot.ClassId);
+	auto* Class = Cast<URPGPlayerClassDefinition>(ClassPath.TryLoad());
+	if (!Class || !PrepareChoices(Result.Snapshot, *Class) || Result.Snapshot.Revision < Saved.Revision
 		|| (bWrite && Result.Snapshot.Revision <= PendingCommand.ExpectedRevision))
 	{
 		PendingCommand = {};
@@ -280,6 +271,7 @@ void URPGCharacterConfigurationWidget::HandleResult(uint64 Serial, bool bWrite, 
 		return;
 	}
 	PendingCommand = {};
+	LoadedClass = Class;
 	Saved = MoveTemp(Result.Snapshot);
 	DraftSkills = Saved.Skills;
 	DraftSlots = Saved.SkillSlots;
@@ -293,7 +285,7 @@ void URPGCharacterConfigurationWidget::HandleResult(uint64 Serial, bool bWrite, 
 int32 URPGCharacterConfigurationWidget::UsedDraftSP() const
 {
 	int32 Result = 0;
-	for (const auto& Skill : DraftSkills) Result += Cost(Skill.Level);
+	for (const auto& Skill : DraftSkills) Result += Saved.LevelCosts[Skill.Level - 1];
 	return Result;
 }
 
@@ -317,16 +309,17 @@ bool URPGCharacterConfigurationWidget::ResetDraft()
 
 bool URPGCharacterConfigurationWidget::SetSkillLevel(FGameplayTag Tag, int32 Level)
 {
-	if (!CanEdit() || Level < 1 || Level > 7) return false;
+	const auto* Definition = SkillFor(LoadedClass, Tag);
+	if (!CanEdit() || !Definition || Level < 1 || Level > Definition->MaxSkillLevel || Level > Saved.LevelCosts.Num()) return false;
 	auto* Skill = DraftSkills.FindByPredicate([Tag](const auto& Entry) { return Entry.SkillTag == Tag; });
 	if (!Skill) return false;
-	if (UsedDraftSP() - Cost(Skill->Level) + Cost(Level) > Saved.TotalSP)
+	if (static_cast<int64>(UsedDraftSP()) - Saved.LevelCosts[Skill->Level - 1] + Saved.LevelCosts[Level - 1] > Saved.TotalSP)
 	{
 		Message = LOCTEXT("NotEnoughSP", "사용할 수 있는 SP가 부족합니다. 다른 스킬의 레벨을 먼저 낮추세요.");
 		RefreshControls(); return false;
 	}
 	Skill->Level = Level;
-	for (int32 Tier = 0; Tier < 2; ++Tier) if (Level < UnlockLevel(Tier)) Skill->RefinementIds[Tier].Reset();
+	for (int32 Tier = 0; Tier < 2; ++Tier) if (Level < Saved.RefinementLevels[Tier]) Skill->RefinementIds[Tier].Reset();
 	Message = LOCTEXT("DraftChanged", "변경 내용은 저장 후 적용됩니다.");
 	RefreshLobby(); return true;
 }
@@ -335,9 +328,9 @@ bool URPGCharacterConfigurationWidget::SetRefinementChoice(FGameplayTag Tag, int
 {
 	if (!CanEdit() || Tier < 0 || Tier > 1) return false;
 	auto* Skill = DraftSkills.FindByPredicate([Tag](const auto& Entry) { return Entry.SkillTag == Tag; });
-	const auto* Info = Presentation(Tag);
-	if (!Skill || !Info || ChoiceIndex(*Info, Tier, PersistenceId) == INDEX_NONE
-		|| (!PersistenceId.IsEmpty() && Skill->Level < UnlockLevel(Tier))) return false;
+	const auto* ChoicesForSkill = Saved.ChoicesBySkill.Find(Tag);
+	if (!Skill || !ChoicesForSkill || ChoiceIndex(ChoicesForSkill->Tiers[Tier], PersistenceId) == INDEX_NONE
+		|| (!PersistenceId.IsEmpty() && Skill->Level < Saved.RefinementLevels[Tier])) return false;
 	Skill->RefinementIds[Tier] = PersistenceId;
 	Message = LOCTEXT("DraftChanged", "변경 내용은 저장 후 적용됩니다.");
 	RefreshLobby(); return true;
@@ -402,16 +395,18 @@ void URPGCharacterConfigurationWidget::RebuildChoices()
 	PreviewTexts.SetNum(DraftSkills.Num());
 	for (int32 Row = 0; Row < DraftSkills.Num(); ++Row)
 	{
-		const auto* Info = Presentation(DraftSkills[Row].SkillTag);
-		if (!Info) continue;
+		const auto* Definition = SkillFor(LoadedClass, DraftSkills[Row].SkillTag);
+		const auto& Allowed = Saved.ChoicesBySkill.FindChecked(DraftSkills[Row].SkillTag);
 		TArray<FString> Levels;
-		for (int32 Level = 1; Level <= 7; ++Level) Levels.Add(FString::Printf(TEXT("%d"), Level));
-		AddChoice(0, Row, 0, FText::Format(LOCTEXT("SkillLevel", "{0} — 레벨"), FText::FromString(Info->Label)), Levels);
+		for (int32 Level = 1; Level <= FMath::Min(Saved.LevelCosts.Num(), Definition->MaxSkillLevel); ++Level) Levels.Add(FString::Printf(TEXT("%d"), Level));
+		AddChoice(0, Row, 0, FText::Format(LOCTEXT("SkillLevel", "{0} — 레벨"), Definition->SkillName), Levels);
 		for (int32 Tier = 0; Tier < 2; ++Tier)
 		{
-			if (!Info->Tiers[Tier][0].Id) continue;
-			TArray<FString> Options{LOCTEXT("NoTripod", "선택 안 함").ToString(), Info->Tiers[Tier][0].Label, Info->Tiers[Tier][1].Label};
-			AddChoice(1, Row, Tier, FText::Format(LOCTEXT("TripodTier", "{0}레벨 스킬 연마"), FText::AsNumber(UnlockLevel(Tier))), Options);
+			if (Allowed.Tiers[Tier].IsEmpty()) continue;
+			TArray<FString> Options{LOCTEXT("NoTripod", "선택 안 함").ToString()};
+			for (const auto& Id : Allowed.Tiers[Tier])
+				Options.Add(OptionFor(*Definition, Saved.RefinementLevels[Tier], Id)->OptionName.ToString());
+			AddChoice(1, Row, Tier, FText::Format(LOCTEXT("TripodTier", "{0}레벨 스킬 연마"), FText::AsNumber(Saved.RefinementLevels[Tier])), Options);
 		}
 		auto* Preview = RPGOnlineLobbyLayout::Text(*WidgetTree, *Choices, NAME_None, GetSkillPreview(DraftSkills[Row].SkillTag));
 		Preview->SetToolTipText(LOCTEXT("PreviewHelp", "편집 중인 선택의 기본 수치입니다. 저장 후 다음 전투 입장부터 적용되며, 전투 중 상태 보정과 적 방어는 포함하지 않습니다."));
@@ -420,18 +415,10 @@ void URPGCharacterConfigurationWidget::RebuildChoices()
 	if (DraftSlots.Num() == 8)
 	{
 		TArray<FString> Options{LOCTEXT("Empty", "빈 슬롯").ToString()};
-		for (const auto& Skill : DraftSkills) Options.Add(Presentation(Skill.SkillTag)->Label);
+		for (const auto& Skill : DraftSkills) Options.Add(SkillFor(LoadedClass, Skill.SkillTag)->SkillName.ToString());
 		for (int32 Index = 0; Index < 8; ++Index)
 			AddChoice(2, Index, 0, FText::Format(LOCTEXT("Slot", "전투 슬롯 {0}"), FText::AsNumber(Index + 1)), Options);
 	}
-	if (!DraftSkills.IsEmpty())
-		if (auto* GameInstance = GetGameInstance())
-			if (auto* SkillCatalog = GameInstance->GetSubsystem<URPGSkillCatalogSubsystem>())
-				SkillCatalog->RequestSkillDefinitions(FSimpleDelegate::CreateWeakLambda(this, [this]()
-				{
-					// Shared data readiness only: refresh the current draft, never an old captured selection.
-					if (bAttached && GetWorld() && !GetWorld()->bIsTearingDown) RefreshControls();
-				}));
 }
 
 void URPGCharacterConfigurationWidget::RefreshControls()
@@ -490,10 +477,10 @@ void URPGCharacterConfigurationWidget::RefreshControls()
 		{
 			const auto& Skill = DraftSkills[Binding->Row];
 			if (Binding->Kind == 0) Selected = Skill.Level - 1;
-			else if (const auto* Info = Presentation(Skill.SkillTag))
+			else if (const auto* Allowed = Saved.ChoicesBySkill.Find(Skill.SkillTag))
 			{
-				Selected = ChoiceIndex(*Info, Binding->Tier, Skill.RefinementIds[Binding->Tier]);
-				bUnlocked = Skill.Level >= UnlockLevel(Binding->Tier);
+				Selected = ChoiceIndex(Allowed->Tiers[Binding->Tier], Skill.RefinementIds[Binding->Tier]);
+				bUnlocked = Skill.Level >= Saved.RefinementLevels[Binding->Tier];
 			}
 		}
 		Binding->Box->SetSelectedIndex(Selected);
@@ -510,9 +497,12 @@ void URPGCharacterConfigurationWidget::HandleChoice(const URPGCharacterConfigura
 	{
 		const FGameplayTag Tag = DraftSkills[Binding.Row].SkillTag;
 		if (Binding.Kind == 0) SetSkillLevel(Tag, Choice + 1);
-		else if (Binding.Tier >= 0 && Binding.Tier < 2 && Choice >= 0 && Choice <= 2)
-			if (const auto* Info = Presentation(Tag); Info && Info->Tiers[Binding.Tier][0].Id)
-				SetRefinementChoice(Tag, Binding.Tier, Choice == 0 ? FString() : FString(Info->Tiers[Binding.Tier][Choice - 1].Id));
+		else if (Binding.Tier >= 0 && Binding.Tier < 2)
+		{
+			const auto& Allowed = Saved.ChoicesBySkill.FindChecked(Tag).Tiers[Binding.Tier];
+			if (Choice >= 0 && Choice <= Allowed.Num())
+				SetRefinementChoice(Tag, Binding.Tier, Choice == 0 ? FString() : Allowed[Choice - 1]);
+		}
 	}
 	RefreshControls();
 }
@@ -524,10 +514,7 @@ FText URPGCharacterConfigurationWidget::GetSkillPreview(FGameplayTag Skill) cons
 {
 	const auto* Draft = DraftSkills.FindByPredicate([Skill](const auto& Entry) { return Entry.SkillTag == Skill; });
 	if (!bLoaded || !Draft) return LOCTEXT("PreviewReadFirst", "저장된 구성을 읽은 뒤 수치를 확인할 수 있습니다.");
-	const auto* GameInstance = GetGameInstance();
-	const auto* SkillCatalog = GameInstance ? GameInstance->GetSubsystem<URPGSkillCatalogSubsystem>() : nullptr;
-	if (SkillCatalog && !SkillCatalog->IsCatalogReady()) return LOCTEXT("PreviewLoading", "스킬 수치 정보를 읽고 있습니다.");
-	return RPGCharacterConfigurationPreview::Describe(SkillCatalog ? SkillCatalog->FindSkillDefinition(Skill) : nullptr, *Draft);
+	return RPGCharacterConfigurationPreview::Describe(SkillFor(LoadedClass, Skill), *Draft, Saved.RefinementLevels);
 }
 void URPGCharacterConfigurationWidget::ClickSave() { SaveConfiguration(); }
 void URPGCharacterConfigurationWidget::ClickReset() { ResetDraft(); }

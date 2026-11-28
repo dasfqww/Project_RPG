@@ -10,6 +10,7 @@ struct FRPGSkillRuntimeSpec;
 namespace RPGCharacterConfigurationPreview
 {
 	bool Resolve(const URPGSkillDefinition& Definition, const FRPGSavedProgressionSkill& Draft,
-		FRPGSkillRuntimeSpec& OutSpec);
-	FText Describe(const URPGSkillDefinition* Definition, const FRPGSavedProgressionSkill& Draft);
+		FRPGSkillRuntimeSpec& OutSpec, TConstArrayView<int32> RefinementLevels = {});
+	FText Describe(const URPGSkillDefinition* Definition, const FRPGSavedProgressionSkill& Draft,
+		TConstArrayView<int32> RefinementLevels = {});
 }

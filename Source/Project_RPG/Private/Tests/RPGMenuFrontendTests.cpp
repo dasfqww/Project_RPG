@@ -204,13 +204,28 @@ bool FRPGMenuFrontendTest::RunTest(const FString&)
 	Completed.ClassId = FPrimaryAssetId(TEXT("RPGPlayerClassDefinition:GreatSwordWarrior"));
 	Completed.Revision = 2; Completed.Experience = 100; Completed.Level = 2; Completed.TotalSP = 3;
 	Completed.Milestones = 1; Completed.bIdentityUnlocked = true;
+	Completed.LevelCosts = {0, 1, 2, 3, 5, 7, 9};
+	Completed.RefinementLevels = {4, 7};
 	for (const TCHAR* Name : {TEXT("Player.Ability.Skill.AssultBlade"), TEXT("Player.Ability.Skill.Charge"), TEXT("Player.Ability.Skill.WhirlWind")})
 	{
 		FRPGSavedProgressionSkill Skill; Skill.SkillTag = FGameplayTag::RequestGameplayTag(FName(Name));
 		Skill.Level = 1; Skill.RefinementIds = {FString(), FString()}; Completed.Skills.Add(Skill);
+		Completed.ChoicesBySkill.Add(Skill.SkillTag);
 	}
 	Completed.SkillSlots.SetNum(8); Completed.SkillSlots[0] = Completed.Skills[0].SkillTag; Completed.SkillSlots[1] = Completed.Skills[1].SkillTag;
 	FRPGCharacterProgressionResult Confirmed; Confirmed.bSuccessful = true; Confirmed.Snapshot = Completed;
+	auto Variant = Confirmed;
+	Variant.Snapshot.ProfileId = TEXT("Fixture.ClassBuild.v2");
+	Variant.Snapshot.LevelCosts = {0, 1, 1, 2};
+	const FGameplayTag Charge = Completed.Skills[1].SkillTag;
+	Variant.Snapshot.ChoicesBySkill.FindChecked(Charge).Tiers[0] = {TEXT("QuickCharge"), TEXT("MissingAssetChoice")};
+	Configuration->HandleResult(++Configuration->RequestSerial, false, Variant);
+	TestTrue(TEXT("A server profile can use a different SP curve"), Configuration->SetSkillLevel(Charge, 4));
+	TestEqual(TEXT("Editing spends the selected profile's cost"), Configuration->UsedDraftSP(), 2);
+	TestFalse(TEXT("The server level cap applies to edits"), Configuration->SetSkillLevel(Charge, 5));
+	TestFalse(TEXT("An authored but unlisted choice cannot be selected"), Configuration->SetRefinementChoice(Charge, 0, TEXT("FullCharge")));
+	TestFalse(TEXT("An unbound server choice cannot be selected"), Configuration->SetRefinementChoice(Charge, 0, TEXT("MissingAssetChoice")));
+	TestTrue(TEXT("A bound server choice can be selected"), Configuration->SetRefinementChoice(Charge, 0, TEXT("QuickCharge")));
 	Configuration->HandleResult(++Configuration->RequestSerial, false, Confirmed);
 	TestNotNull(TEXT("A confirmed record is available only in its current context"), Configuration->GetConfirmedProgression());
 	TestTrue(TEXT("Saved milestone completes the menu with no retained session"), Widget->HasCompletedTutorial());

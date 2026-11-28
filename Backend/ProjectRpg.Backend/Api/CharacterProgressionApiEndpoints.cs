@@ -86,7 +86,8 @@ public static class CharacterProgressionApiEndpoints
             Revision = state.Revision.ToString(CultureInfo.InvariantCulture), state.Experience,
             Level = FirstSliceProgression.Level(state), TotalSP = profile.TotalSP(state),
             UsedSP = profile.UsedSP(state), state.Milestones,
-            IdentityUnlocked = profile.IdentityUnlocked(state), state.Skills, state.SkillSlots
+            IdentityUnlocked = profile.IdentityUnlocked(state), state.Skills, state.SkillSlots,
+            ConfigurationRules = profile.ConfigurationRules(state)
         };
     }
 }

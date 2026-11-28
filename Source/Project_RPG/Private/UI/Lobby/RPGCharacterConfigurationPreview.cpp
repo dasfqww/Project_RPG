@@ -7,18 +7,19 @@
 #define LOCTEXT_NAMESPACE "RPGCharacterConfigurationPreview"
 
 bool RPGCharacterConfigurationPreview::Resolve(const URPGSkillDefinition& Definition,
-	const FRPGSavedProgressionSkill& Draft, FRPGSkillRuntimeSpec& OutSpec)
+	const FRPGSavedProgressionSkill& Draft, FRPGSkillRuntimeSpec& OutSpec, TConstArrayView<int32> RefinementLevels)
 {
 	OutSpec.Reset();
 	if (Draft.SkillTag != Definition.SkillTag || !Draft.SkillTag.IsValid() || Draft.Level < 1
-		|| Definition.ClampSkillLevel(Draft.Level) != Draft.Level || Draft.RefinementIds.Num() != 2) return false;
+		|| Definition.ClampSkillLevel(Draft.Level) != Draft.Level || Draft.RefinementIds.Num() != 2
+		|| (!RefinementLevels.IsEmpty() && RefinementLevels.Num() != Draft.RefinementIds.Num())) return false;
 	FRPGSkillSaveData Save;
 	Save.SkillLevel = Draft.Level;
 	Save.SelectedRefinementIndices.Init(INDEX_NONE, Definition.RefinementTiers.Num());
 	for (int32 Tier = 0; Tier < Draft.RefinementIds.Num(); ++Tier)
 	{
 		if (Draft.RefinementIds[Tier].IsEmpty()) continue;
-		const int32 RequiredLevel = Tier == 0 ? 4 : 7; // Existing frontend save contract, not asset array indices.
+		const int32 RequiredLevel = RefinementLevels.IsEmpty() ? (Tier == 0 ? 4 : 7) : RefinementLevels[Tier];
 		int32 TierIndex, OptionIndex;
 		if (!Definition.ResolveSavedRefinement(RequiredLevel, FName(*Draft.RefinementIds[Tier]), TierIndex, OptionIndex)
 			|| !Definition.IsRefinementSelectionAllowed(Draft.Level, TierIndex, OptionIndex)) return false;
@@ -34,10 +35,10 @@ bool RPGCharacterConfigurationPreview::Resolve(const URPGSkillDefinition& Defini
 }
 
 FText RPGCharacterConfigurationPreview::Describe(const URPGSkillDefinition* Definition,
-	const FRPGSavedProgressionSkill& Draft)
+	const FRPGSavedProgressionSkill& Draft, TConstArrayView<int32> RefinementLevels)
 {
 	FRPGSkillRuntimeSpec Spec;
-	if (!IsValid(Definition) || !Resolve(*Definition, Draft, Spec))
+	if (!IsValid(Definition) || !Resolve(*Definition, Draft, Spec, RefinementLevels))
 		return LOCTEXT("Unavailable", "선택한 구성의 수치 정보를 확인할 수 없습니다.");
 	FNumberFormattingOptions Format;
 	Format.SetMaximumFractionalDigits(2);

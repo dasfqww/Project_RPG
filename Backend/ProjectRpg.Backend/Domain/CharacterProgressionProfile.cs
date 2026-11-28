@@ -27,6 +27,14 @@ public sealed class CharacterProgressionProfile(
     public int UsedSP(CharacterProgressionState state) => state.Skills.Sum(skill => Cost(skill.Level));
     public bool IdentityUnlocked(CharacterProgressionState state) => (state.Milestones & identityMilestone) == identityMilestone;
 
+    public object ConfigurationRules(CharacterProgressionState state) => new
+    {
+        LevelCosts = levelCosts,
+        RefinementLevels = refinementLevels,
+        ChoicesBySkill = state.Skills.ToDictionary(skill => skill.SkillTag,
+            skill => byTag[skill.SkillTag].Refinements, StringComparer.Ordinal)
+    };
+
     public CharacterProgressionState Create(Guid characterId)
     {
         string[] starting = Acquired(0);

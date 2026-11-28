@@ -15,6 +15,11 @@ struct FRPGSavedProgressionSkill
 	TArray<FString> RefinementIds;
 };
 
+struct FRPGAllowedSkillRefinements
+{
+	TArray<FString> Tiers[2];
+};
+
 /** Validated backend record; never a client command or a replacement for the skill state owner. */
 struct PROJECT_RPG_API FRPGCharacterProgressionSnapshot
 {
@@ -30,6 +35,9 @@ struct PROJECT_RPG_API FRPGCharacterProgressionSnapshot
 	bool bIdentityUnlocked = false;
 	TArray<FRPGSavedProgressionSkill> Skills;
 	TArray<FGameplayTag> SkillSlots;
+	TArray<int32> LevelCosts;
+	TArray<int32> RefinementLevels;
+	TMap<FGameplayTag, FRPGAllowedSkillRefinements> ChoicesBySkill;
 
 	bool BuildSkillRestoreData(const URPGPlayerClassDefinition& Definition,
 		const URPGPlayerSkillComponent& Growth, FRPGPlayerSkillRestoreData& OutData, FText& OutError) const;

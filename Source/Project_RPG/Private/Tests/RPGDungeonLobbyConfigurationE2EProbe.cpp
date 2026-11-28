@@ -409,7 +409,15 @@ bool URPGDungeonFlowE2EClient::TickLobbyConfigurationProbe(UWorld*, APlayerContr
 
 	// The fixture's confirmed recipe has three acquired skills in server order,
 	// or two for the untouched sibling. Drive their actual dynamic UI controls.
-	if (bPreview && !GI->GetSubsystem<URPGSkillCatalogSubsystem>()->IsCatalogReady()) return true;
+	if (bPreview)
+	{
+		auto* Catalog = GI->GetSubsystem<URPGSkillCatalogSubsystem>();
+		if (!Catalog->IsCatalogReady())
+		{
+			Catalog->RequestSkillDefinitions();
+			return true;
+		}
+	}
 	TArray<UComboBoxString*> Choices;
 	Configuration->WidgetTree->ForEachWidget([&Choices](UWidget* Child)
 	{ if (auto* Box = Cast<UComboBoxString>(Child)) Choices.Add(Box); });
