@@ -270,7 +270,8 @@ public sealed partial class InMemoryGameRepository(TimeProvider? connectionClock
         string steamId,
         string name,
         DateTimeOffset createdAt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CharacterCreationRecipe? recipe = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_starterTransactionGate?.SyncRoot ?? _characterGate)
@@ -295,8 +296,11 @@ public sealed partial class InMemoryGameRepository(TimeProvider? connectionClock
                     steamId,
                     name,
                     createdAt);
-                _starterItems?.SeedStarters(FirstSliceStarterEquipment.Create(character.CharacterId));
-                _progression[character.CharacterId] = FirstSliceProgression.Create(character.CharacterId);
+                recipe ??= CharacterCreationCatalog.Default;
+                CharacterProgressionState progression = recipe.CreateProgression(character.CharacterId);
+                if (_starterItems is not null && recipe.CreateEquipment(character.CharacterId) is { Count: > 0 } starters)
+                    _starterItems.SeedStarters(starters);
+                _progression[character.CharacterId] = progression;
                 _characters[character.CharacterId] = character;
                 return Task.FromResult(character);
             }

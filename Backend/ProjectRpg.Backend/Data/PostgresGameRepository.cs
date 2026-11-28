@@ -261,7 +261,8 @@ public sealed partial class PostgresGameRepository(
         string steamId,
         string name,
         DateTimeOffset createdAt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CharacterCreationRecipe? recipe = null)
     {
         const string sql = """
             INSERT INTO characters (
@@ -291,10 +292,12 @@ public sealed partial class PostgresGameRepository(
                     "The account does not have a default roster.");
             }
 
-            foreach (ItemRecord starter in FirstSliceStarterEquipment.Create(characterId))
+            recipe ??= CharacterCreationCatalog.Default;
+            CharacterProgressionState progression = recipe.CreateProgression(characterId);
+            foreach (ItemRecord starter in recipe.CreateEquipment(characterId))
                 await PostgresItemRepository.WriteRecordAsync(
                     connection, transaction, starter, true, createdAt, cancellationToken);
-            await InitializeProgressionAsync(connection, transaction, characterId, createdAt, cancellationToken);
+            await InitializeProgressionAsync(connection, transaction, progression, createdAt, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
             return new GameCharacter(

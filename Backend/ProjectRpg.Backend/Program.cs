@@ -370,7 +370,8 @@ app.MapPost(
             return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
 
-        if (!CharacterCreationCatalog.IsSupported(request.ClassId))
+        CharacterCreationRecipe? recipe = CharacterCreationCatalog.Resolve(request.ClassId);
+        if (recipe is null)
         {
             return Results.BadRequest(new { error = "unsupported_character_class" });
         }
@@ -389,7 +390,8 @@ app.MapPost(
                 principal.SteamId,
                 normalizedName,
                 timeProvider.GetUtcNow(),
-                cancellationToken);
+                cancellationToken,
+                recipe);
             return Results.Created(
                 $"/api/characters/{character.CharacterId}",
                 ToCharacterResponse(character));

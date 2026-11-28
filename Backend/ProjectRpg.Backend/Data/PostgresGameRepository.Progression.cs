@@ -38,15 +38,15 @@ public sealed partial class PostgresGameRepository : ICharacterProgressionReposi
     }
 
     private static async Task InitializeProgressionAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
-        Guid characterId, DateTimeOffset now, CancellationToken cancellationToken)
+        CharacterProgressionState progression, DateTimeOffset now, CancellationToken cancellationToken)
     {
         await using NpgsqlCommand command = new("""
             INSERT INTO character_progression (character_id, state, updated_at)
             VALUES (@character_id, @state, @now);
             """, connection, transaction);
-        command.Parameters.AddWithValue("character_id", characterId);
+        command.Parameters.AddWithValue("character_id", progression.CharacterId);
         command.Parameters.AddWithValue("state", NpgsqlDbType.Jsonb,
-            JsonSerializer.Serialize(FirstSliceProgression.Create(characterId), ProgressionJson));
+            JsonSerializer.Serialize(progression, ProgressionJson));
         command.Parameters.AddWithValue("now", now);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }

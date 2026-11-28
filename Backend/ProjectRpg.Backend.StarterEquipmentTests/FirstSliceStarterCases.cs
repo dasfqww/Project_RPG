@@ -157,12 +157,31 @@ internal static class FirstSliceStarterCases
         ItemRepositoryCommitResult stored = await items.CommitAsync(new(Guid.NewGuid(), "LegacyFixture", "legacy", owner, 0, [new(0, legacy)]), now, default);
         Require(stored.Status == ItemRepositoryCommitStatus.Committed, "Legacy fixture creation failed.");
         string before = JsonSerializer.Serialize(await items.FindAsync(legacy.ItemId, default));
-        GameCharacter second = await game.CreateCharacterAsync(steam, "Sibling" + suffix, now, default);
+        CharacterCreationRecipe selected = CharacterCreationCatalog.Resolve(FirstSliceProgression.ClassId)
+            ?? throw new InvalidOperationException("The offered greatsword recipe could not be resolved.");
+        GameCharacter second = await game.CreateCharacterAsync(steam, "Sibling" + suffix, now, default, selected);
         Verify(await items.FindByOwnerAsync(new(ItemOwnerType.Character, second.CharacterId.ToString("D")), false, 100, default), second.CharacterId);
+        var growth = (ICharacterProgressionRepository)game;
+        CharacterProgressionState? selectedGrowth = await growth.LoadProgressionAsync(second.CharacterId, now, default);
+        Require(JsonSerializer.Serialize(selectedGrowth) == JsonSerializer.Serialize(progression with { CharacterId = second.CharacterId }),
+            "Explicit greatsword selection and legacy creation must persist identical starting growth.");
         Require(JsonSerializer.Serialize(await items.FindAsync(legacy.ItemId, default)) == before
             && (await items.FindAsync(legacy.ItemId, default))!.State.EquipmentProgression is null,
             "New creation migrated an existing legacy item.");
         groups.Add("new_sibling_does_not_migrate_existing_legacy_identity_or_missing_growth");
+
+        // A distinct loadout using the supported save format detects either provider falling back to its own defaults.
+        CharacterCreationRecipe alternate = selected with
+        {
+            CreateProgression = id => FirstSliceProgression.Create(id) with { SkillSlots = Enumerable.Repeat("", 8).ToArray() },
+            CreateEquipment = _ => Array.Empty<ItemRecord>()
+        };
+        GameCharacter custom = await game.CreateCharacterAsync(steam, "Custom" + suffix, now, default, alternate);
+        CharacterProgressionState? customGrowth = await growth.LoadProgressionAsync(custom.CharacterId, now, default);
+        var customItems = await items.FindByOwnerAsync(new(ItemOwnerType.Character, custom.CharacterId.ToString("D")), false, 100, default);
+        Require(customGrowth is not null && customGrowth.SkillSlots.SequenceEqual(Enumerable.Repeat("", 8)) && customItems.Count == 0,
+            "The repository must use the selected recipe for both skill slots and equipment.");
+        groups.Add("selected_recipe_controls_progression_and_equipment_in_both_providers");
     }
 
     private static void Require(bool condition, string message)

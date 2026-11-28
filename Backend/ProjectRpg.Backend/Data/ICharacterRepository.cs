@@ -16,5 +16,6 @@ public interface ICharacterRepository : ICharacterOwnershipRepository, ICharacte
         string steamId,
         string name,
         DateTimeOffset createdAt,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        CharacterCreationRecipe? recipe = null);
 }
